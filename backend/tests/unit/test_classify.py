@@ -187,6 +187,28 @@ def test_an_empty_item_list_lists_nothing(entries: str, expected: BlockClass) ->
     assert classify(200, _HTML, _page(400, 2, item_list), page_kind="listing") == expected
 
 
+_TILE = '<li class="c"><a href="/c/{i}">{shown}</a></li>'
+_MENU = "<nav>" + "".join(f'<a href="/c/{i}">Category {i}</a>' for i in range(4)) + "</nav>"
+
+
+@pytest.mark.parametrize(
+    ("shown", "chrome", "expected"),
+    [
+        ('<img src="/t/{i}.jpg" alt=""> Item {i}', "", "ok"),
+        ("Item {i}", "", "shell"),  # a tag cloud: a link and its label only
+        ('<img src="/t/{i}.jpg" alt=""> Item {i}', _MENU, "shell"),  # the menu's sections again
+    ],
+)
+def test_a_listing_lists_items_only_in_a_group_that_shows_more_and_copies_no_navigation(
+    shown: str, chrome: str, expected: BlockClass
+) -> None:
+    tiles = "<ul>" + "".join(_TILE.format(i=i, shown=shown.format(i=i)) for i in range(4)) + "</ul>"
+    body = f"<html><body>{chrome}<main><p>{'x' * 400}</p>{tiles}</main></body></html>"
+    redirect = Redirect(_AT, "https://shop.example.test/c", "listing")
+
+    assert classify(200, _HTML, body, page_kind="listing", redirect=redirect) == expected
+
+
 @pytest.mark.parametrize(
     ("headers", "expected"),
     [

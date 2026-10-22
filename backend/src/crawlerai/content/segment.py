@@ -14,18 +14,23 @@ paths of the elements `content.text.script_revealed` names, as the cleaned text 
 """
 
 from collections.abc import Iterator, Mapping, Sequence
-from typing import Final
 
 from lxml.html import HtmlElement
 
-from crawlerai.acquire.items import LINKS, Group, content_root, element_path, in_chrome, is_hyperlink
+from crawlerai.acquire.items import (
+    Group,
+    content_root,
+    element_path,
+    holds_image,
+    holds_several_texts,
+    hyperlinks,
+    in_chrome,
+)
 from crawlerai.content.text import hidden, xpath_step
 from crawlerai.normalize.url import canonical_url
 
 # The rendered area of item blocks in CSS pixels, by element path (`acquire.items.element_path`).
 Areas = Mapping[str, float]
-# A block's text nodes outside elements that are never rendered (HTML Standard §15.3.1: script, style, template).
-_VISIBLE_TEXT: Final = "descendant-or-self::text()[not(ancestor::script or ancestor::style or ancestor::template)]"
 
 
 def rank(
@@ -61,27 +66,7 @@ def _hidden(element: HtmlElement, revealed: frozenset[str]) -> bool:
 
 def evidence(group: Group) -> int:
     """How much the blocks show beyond their link (module docstring)."""
-    return sum(holds_image(block) + _holds_several_texts(block) for block in group)
-
-
-def holds_image(block: HtmlElement) -> bool:
-    return next(block.iter("img", "picture"), None) is not None
-
-
-def _holds_several_texts(block: HtmlElement) -> bool:
-    """Whether the block holds visible text in two or more runs: script data, style sheets and templates are never
-    rendered (HTML Standard §15.3.1), so their text is no run."""
-    return sum(1 for text in block.xpath(_VISIBLE_TEXT) if text.strip()) >= 2
-
-
-def shows_more(block: HtmlElement) -> bool:
-    """Whether a block shows more than its link: an image, or text in two or more runs."""
-    return holds_image(block) or _holds_several_texts(block)
-
-
-def hyperlinks(block: HtmlElement) -> Iterator[HtmlElement]:
-    """The block's hyperlinks (HTML Standard §4.6.1), the block itself first when it is one."""
-    return (element for element in block.iter(*LINKS) if is_hyperlink(element))
+    return sum(holds_image(block) + holds_several_texts(block) for block in group)
 
 
 def block_links(block: HtmlElement, base: str | None) -> Iterator[str]:

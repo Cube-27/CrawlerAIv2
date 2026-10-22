@@ -11,10 +11,10 @@ from urllib.parse import urlsplit
 
 from lxml.html import HtmlElement
 
-from crawlerai.acquire.items import Group, is_hyperlink
+from crawlerai.acquire.items import Group, hyperlinks, is_hyperlink
 from crawlerai.collect.dom_images import is_image_url
 from crawlerai.content.dom import tokens
-from crawlerai.content.segment import hyperlinks, text_path
+from crawlerai.content.segment import text_path
 from crawlerai.normalize.url import canonical_url
 from crawlerai.normalize.url_key import document_key, item_key
 

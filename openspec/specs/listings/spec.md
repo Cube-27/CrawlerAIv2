@@ -61,8 +61,11 @@ blocks share is `ambiguous_in_block`, as nothing says which is the field's). Val
 fields is first, and every other group that aligns follows, for the sections bind reads. A group one of whose blocks
 stands for the page itself (a link marked `aria-current="page"`, or links to this very URL only) is the site's
 navigation and gives no rows; so is a group that aligns no typed value and more than half of whose blocks lead to
-documents a hyperlink of the site's chrome (as "Item groups" names it) outside the group leads to: the site's sections
-repeated in the content (a category carousel, a menu's tiles), not the page's items. An item's own list is a group
+documents a hyperlink of the site's chrome (as "Item groups" names it) outside the group leads to, or a block of another
+group apart from it does (neither inside, around nor a sibling of one of its blocks: a record may span adjacent
+siblings): the site's sections repeated in the content (a category carousel, a menu's tiles, the same links in a desktop
+and a mobile copy), not the page's items. The listing shell rule (acquisition spec, "Structural outcome
+classification") asks the same of a group, but the typed value, with one predicate (`acquire/items.py`). An item's own list is a group
 lying in one block of another group at one tag path in two or more of its blocks (one template renders every item's
 list alike); the different lists a page's sections hold are no item's. Refs: owner #67.
 #### Scenario: Cards with title, link and price
@@ -118,6 +121,10 @@ list alike); the different lists a page's sections hold are no item's. Refs: own
 - **WHEN** a listing's only group is four category tiles with an image and a name, three of whose categories the `nav`
   also links, and no tile shows a price
 - **THEN** the listing has no rows (`no_rows: no_blocks`); the same tiles each showing a price are its rows
+#### Scenario: The same tiles twice
+- **WHEN** a listing's only groups are two copies, in two containers, of four category tiles with an image and a name,
+  and no tile shows a price
+- **THEN** the listing has no rows
 #### Scenario: Sections holding different lists
 - **WHEN** a page's sections each link to more and hold one list: three job cards in one, three salary cards in another
 - **THEN** the job cards are rows

@@ -13,10 +13,18 @@ A list split into sections (a job board's teams, a grid's rows: each section a l
 section with one template and its items with another: the items of one shape in sibling sections of one shape are one
 group, in document order, however few items a section holds, when two or more sections hold them and one holds several
 (a part each item shows once, the wrapper of its title or its image, is no section's run).
+
+What a group must be to list a page's items, for every reader that asks (the item layer's alignment, the listing shell
+rule of `acquire.classify`): `MIN_ITEMS` of its blocks show more than their link (`shows_items`: an image, or text in
+two or more runs), and it is no copy of the site's navigation (`copies_navigation`): more than half of its blocks lead
+to documents the site's chrome outside it, or another group apart from it, leads to. What a page repeats is its
+template, not its records (DEPTA, Zhai and Liu 2005): the same links shown twice (a menu's desktop and mobile copies)
+or again beside the chrome's are the site's sections.
 """
 
 import re
 from collections import Counter
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Final
 
 from lxml import etree
@@ -42,6 +50,8 @@ _PARSER: Final = lxml_html.HTMLParser()
 _XML_CHARS: Final = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
 
 _DASHES: Final = re.compile("-(?=-)")
+# A block's text nodes outside elements that are never rendered (HTML Standard §15.3.1: script, style, template).
+_VISIBLE_TEXT: Final = "descendant-or-self::text()[not(ancestor::script or ancestor::style or ancestor::template)]"
 
 # A group of repeated items, in document order.
 Group = tuple[HtmlElement, ...]
@@ -131,6 +141,61 @@ def _comment(text: str) -> etree._Comment:
 
 def is_hyperlink(element: HtmlElement) -> bool:
     return element.tag in LINKS and element.get("href") is not None
+
+
+def hyperlinks(block: HtmlElement) -> Iterator[HtmlElement]:
+    """The block's hyperlinks (HTML Standard §4.6.1), the block itself first when it is one."""
+    return (element for element in block.iter(*LINKS) if is_hyperlink(element))
+
+
+def holds_image(block: HtmlElement) -> bool:
+    return next(block.iter("img", "picture"), None) is not None
+
+
+def holds_several_texts(block: HtmlElement) -> bool:
+    """Whether the block holds visible text in two or more runs: script data, style sheets and templates are never
+    rendered (HTML Standard §15.3.1), so their text is no run."""
+    return sum(1 for text in block.xpath(_VISIBLE_TEXT) if text.strip()) >= 2
+
+
+def shows_more(block: HtmlElement) -> bool:
+    """Whether a block shows more than its link: an image, or text in two or more runs."""
+    return holds_image(block) or holds_several_texts(block)
+
+
+def shows_items(blocks: Iterable[HtmlElement]) -> bool:
+    """Whether `MIN_ITEMS` of the blocks show more than their link (`shows_more`): a pager, a tag cloud or a list of
+    related searches shows a link and its label only, while a grid whose later cards a script fills still shows its
+    first ones."""
+    return sum(shows_more(block) for block in blocks) >= MIN_ITEMS
+
+
+def copies_navigation(
+    group: Group,
+    leads: Iterable[str | None],
+    groups: Sequence[Group],
+    chrome: Sequence[tuple[HtmlElement, str]],
+    documents: Callable[[HtmlElement], Iterable[str]],
+) -> bool:
+    """Whether the group is a copy of the site's navigation (module docstring): more than half of its blocks (`leads`:
+    the document each block leads to, None for none, counting against it) lead to documents that a hyperlink of the
+    `chrome` (each chrome hyperlink with its document) outside the group, or a block of another of the page's `groups`
+    apart from it (`documents`: the documents a block's hyperlinks lead to), leads to. Apart means neither inside nor
+    around a block of it (an item's own list is no copy) nor its sibling: a record may span adjacent siblings of one
+    parent (DEPTA's generalized nodes), each part a group of its own."""
+    members = set(group)
+    around = {ancestor for block in group for ancestor in block.iterancestors()}
+    parents = {block.getparent() for block in group}
+    led = {url for anchor, url in chrome if anchor not in members and members.isdisjoint(anchor.iterancestors())}
+    led.update(
+        url
+        for other in groups
+        if other is not group
+        for block in other
+        if block not in around and block.getparent() not in parents and members.isdisjoint(block.iterancestors())
+        for url in documents(block)
+    )
+    return 2 * sum(link in led for link in leads) > len(group)
 
 
 def _tokens(value: str | None) -> tuple[str, ...]:
