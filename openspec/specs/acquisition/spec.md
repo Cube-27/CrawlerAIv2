@@ -341,7 +341,9 @@ Refs: §7.1, §18, Appendix A #59, D-0320, D-1311.
 Every outbound connection target SHALL be a public IP: the guard in `acquire/ssrf.py` resolves once, rejects
 non-global addresses, odd schemes, ports and IPv4 forms, connects to the checked IP and re-checks every redirect hop
 (also through each endpoint of a proxy pool); the browser does the same through a per-fetch SOCKS5 guard. A rejection
-is `error`/`ssrf_rejected`, never retried. Enforced by: SSRF tests with a stub
+is `error`/`ssrf_rejected`, never retried. The check splits in two: the URL's form (`check_form`: scheme, port, host
+form, IDNA, a literal address public), which needs no DNS and is all a multi-URL submission checks (rest-api), and the
+host's resolution (`dns`, `private_address`), which the fetch checks before it connects. Enforced by: SSRF tests with a stub
 resolver and pool tests over every endpoint; active. Refs: §7.1, §18, D-0115, D-0249, D-1323.
 #### Scenario: Redirect to a private address
 - **WHEN** `https://example.com/` answers 302 to a host resolving to 10.0.0.5

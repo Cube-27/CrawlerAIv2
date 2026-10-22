@@ -42,8 +42,9 @@ async def extract_records(
 ) -> ExtractSubmitted:
     """Queue a job that extracts a record of `page_kind` from each of `urls`; a URL with a `*` is a glob, expanded
     through a map of its host. A `schema.prompt` is drafted from the first pages before the job is queued, and the
-    draft is returned as `schema`. A target the API may not fetch, in `urls`, a glob's map or `webhook_url`, is a 422
-    and nothing is queued."""
+    draft is returned as `schema`. A target the API may not fetch, a URL by its form, a glob's origin or map or
+    `webhook_url`, is a 422 and nothing is queued; a URL refused only once its host is resolved (`dns`, a private
+    address) fails its own task."""
     fetching: Fetching = request.app.state.fetching
     llm = KeyCapped(request.app.state.llm, database(request), key)
     data: EngineData | None = request.app.state.engine_data

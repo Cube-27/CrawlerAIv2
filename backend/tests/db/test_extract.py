@@ -210,7 +210,7 @@ async def test_globs_that_match_nothing_queue_no_job(
 @pytest.mark.parametrize(
     ("members", "refused"),
     [
-        ({"urls": ["{origin}/p/1", f"https://{PRIVATE_HOST}/p/1"]}, "urls[1]"),
+        ({"urls": ["{origin}/p/1", "https://10.0.0.7/p/1"]}, "urls[1]"),
         ({"urls": ["{origin}/p/1", f"https://{PRIVATE_HOST}/p/*"]}, "urls[1]"),
         ({"urls": ["{origin}/p/1"], "webhook_url": f"https://{PRIVATE_HOST}/done"}, "webhook_url"),
     ],

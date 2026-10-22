@@ -33,7 +33,8 @@ export interface paths {
         /**
          * Batch Scrape
          * @description Queue a job that scrapes each of `urls` with the same formats, schema and fetch options; a URL given twice is
-         *     scraped once. A target the API may not fetch, in `urls` or `webhook_url`, is a 422 and nothing is queued.
+         *     scraped once. A target the API may not fetch, a URL by its form or `webhook_url`, is a 422 and nothing is queued;
+         *     a URL refused only once its host is resolved (`dns`, a private address) fails its own task.
          */
         post: operations["batch_scrape_v1_batch_scrape_post"];
         delete?: never;
@@ -217,8 +218,9 @@ export interface paths {
          * Extract Records
          * @description Queue a job that extracts a record of `page_kind` from each of `urls`; a URL with a `*` is a glob, expanded
          *     through a map of its host. A `schema.prompt` is drafted from the first pages before the job is queued, and the
-         *     draft is returned as `schema`. A target the API may not fetch, in `urls`, a glob's map or `webhook_url`, is a 422
-         *     and nothing is queued.
+         *     draft is returned as `schema`. A target the API may not fetch, a URL by its form, a glob's origin or map or
+         *     `webhook_url`, is a 422 and nothing is queued; a URL refused only once its host is resolved (`dns`, a private
+         *     address) fails its own task.
          */
         post: operations["extract_records_v1_extract_post"];
         delete?: never;

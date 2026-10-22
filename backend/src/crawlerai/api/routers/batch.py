@@ -33,7 +33,8 @@ async def batch_scrape(
     body: BatchScrapeRequest, request: Request, key: Annotated[ApiKeyId, Depends(require_api_key)]
 ) -> BatchSubmitted:
     """Queue a job that scrapes each of `urls` with the same formats, schema and fetch options; a URL given twice is
-    scraped once. A target the API may not fetch, in `urls` or `webhook_url`, is a 422 and nothing is queued."""
+    scraped once. A target the API may not fetch, a URL by its form or `webhook_url`, is a 422 and nothing is queued;
+    a URL refused only once its host is resolved (`dns`, a private address) fails its own task."""
     fetching: Fetching = request.app.state.fetching
     data: EngineData | None = request.app.state.engine_data
     llm = KeyCapped(request.app.state.llm, database(request), key)

@@ -6,6 +6,7 @@ are (§4.6, §4.7), and the plain HTTP fetches of a site's sitemaps.
 """
 
 import asyncio
+from collections.abc import Collection
 from dataclasses import dataclass, field, replace
 from functools import partial
 from urllib.parse import urlsplit
@@ -18,7 +19,7 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.browser_tab import Tab
 from crawlerai.acquire.politeness import Admit, HostLimiter
 from crawlerai.acquire.rungs import NO_PLAN, FetchPlan, Rung, Rungs, acquire
-from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
+from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected, check_form
 from crawlerai.acquire.types import (
     ActionsReport,
     AttemptRecord,
@@ -86,18 +87,29 @@ class TargetsRejected(Refusal):
 
 
 async def check_targets(
-    connector: SafeConnector, targets: list[tuple[str, str]], *, webhook_url: str | None = None
+    connector: SafeConnector,
+    targets: list[tuple[str, str]],
+    *,
+    webhook_url: str | None = None,
+    queued: Collection[str] = (),
 ) -> None:
     """Check each of `targets`, (member, URL) pairs, and the request's `webhook_url` with the guard, before anything
-    is fetched or stored. Raises `TargetsRejected` for the first refused one in order."""
+    is fetched or stored. Raises `TargetsRejected` for the first refused one in order. The members in `queued`, URLs
+    a task of their own fetches, are checked by their form alone (`check_form`): a refusal only resolving the host
+    tells (`dns`, a `private_address` it resolves to) fails that task when it fetches the URL (rest-api spec)."""
     if webhook_url is not None:
         targets = [*targets, ("webhook_url", webhook_url)]
-    checked = await asyncio.gather(*(connector.check(url) for _, url in targets), return_exceptions=True)
+    checks = (_form(url) if member in queued else connector.check(url) for member, url in targets)
+    checked = await asyncio.gather(*checks, return_exceptions=True)
     for (member, _), result in zip(targets, checked, strict=True):
         if isinstance(result, SsrfRejected):
             raise TargetsRejected(member, str(result))
         if isinstance(result, BaseException):
             raise result
+
+
+async def _form(url: str) -> None:
+    check_form(url)
 
 
 async def check_target(connector: SafeConnector, url: str) -> None:
