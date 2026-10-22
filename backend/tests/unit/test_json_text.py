@@ -81,3 +81,8 @@ documents = st.recursive(
 @given(document=documents)
 def test_trailing_commas_outside_strings_parse_leniently_as_the_same_document(document: JsonValue) -> None:
     assert parse(_with_trailing_commas(document), lenient=True) == document
+
+
+def test_a_comma_after_no_value_stays_invalid() -> None:
+    with pytest.raises(ValueError, match="Expecting"):
+        parse("[ ,]", lenient=True)

@@ -89,7 +89,7 @@ def identify(entities: Sequence[Entity], vocabulary: Vocabulary, page_urls: Sequ
             if _agree(eligible[i], eligible[j], prop, related):
                 sets.join(i, j, certain=prop == _IRI)
     documents = page_documents(pages)
-    _join_page_items(eligible, sets, documents, vocabulary)
+    _join_page_items(eligible, sets, documents, vocabulary, frozenset(variant_of))
     _join_requested(eligible, sets, documents)
     aliases, groups = sets.aliases(), sets.groups()
     merged = [_merged(e, groups.get(e.id, ()), aliases, vocabulary) for e in entities if e.id not in aliases]
@@ -164,18 +164,51 @@ def _join_requested(eligible: Sequence[Entity], sets: "_Sets", documents: Docume
                 sets.join(i, members[0], certain=True)
 
 
-def _join_page_items(eligible: Sequence[Entity], sets: "_Sets", documents: Documents, vocabulary: Vocabulary) -> None:
+def _join_page_items(
+    eligible: Sequence[Entity], sets: "_Sets", documents: Documents, vocabulary: Vocabulary, variants: frozenset[str]
+) -> None:
     """Join the page markup's roots of related types that name only the page and state the same names (module
-    docstring): a root stating several names joins only one stating each of them and no other."""
+    docstring): a root stating several names joins only one stating each of them and no other. A Product naming its
+    group (`inProductGroupWithID`, `isVariantOf`; `variants`: those whose group `_detached_groups` set beside them) is
+    that group's variant, placed by `_grouped`, not the group. Only roots whose types are related, every pair of them,
+    join (`_related_clusters`): a WebPage of the product's name stays the page."""
     by_name: defaultdict[frozenset[str], list[int]] = defaultdict(list)
     for i, e in enumerate(eligible):
-        if e.names and e.parent is None and not e.requested and _names_only_the_page(e, documents):
+        if _page_item(e, documents) and not (e.group_ids or e.variant_of or e.id in variants):
             by_name[frozenset(e.names)].append(i)
     for members in by_name.values():
-        for i, j in combinations(members, 2):
-            a, b = eligible[i].types[0], eligible[j].types[0]
-            if vocabulary.is_a(a, b) or vocabulary.is_a(b, a):
-                sets.join(i, j, certain=True)
+        for cluster in _related_clusters(eligible, members, vocabulary):
+            for j in cluster[1:]:
+                sets.join(cluster[0], j, certain=True)
+
+
+def _related_clusters(eligible: Sequence[Entity], members: Sequence[int], vocabulary: Vocabulary) -> list[list[int]]:
+    """`members` in clusters whose most specific types are each other's or subtypes of one another, every pair of them:
+    each member joins the first cluster it is related to throughout, else starts one."""
+    clusters: list[list[int]] = []
+    for i in members:
+        kind = eligible[i].types[0]
+        fits = (c for c in clusters if all(_kin(kind, eligible[j].types[0], vocabulary) for j in c))
+        cluster = next(fits, None)
+        if cluster is None:
+            clusters.append([i])
+        else:
+            cluster.append(i)
+    return clusters
+
+
+def _kin(a: str, b: str, vocabulary: Vocabulary) -> bool:
+    return vocabulary.is_a(a, b) or vocabulary.is_a(b, a)
+
+
+def _page_item(entity: Entity, documents: Documents) -> bool:
+    """Whether the entity is a root of the page's markup that states a name and names only the page."""
+    return (
+        bool(entity.names)
+        and entity.parent is None
+        and not entity.requested
+        and _names_only_the_page(entity, documents)
+    )
 
 
 def _names_only_the_page(entity: Entity, documents: Documents) -> bool:

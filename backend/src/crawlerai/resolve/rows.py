@@ -180,9 +180,10 @@ def _not_own(row_field: RowField, outcome: RowOutcome, rows: Sequence[Entity]) -
 
 
 def _offered_only(rows: Sequence[Entity]) -> frozenset[str]:
-    """The URLs the rows' `hasVariant` members state on their Offers only, not as their own (`Entity.urls` holds both,
-    `Entity.item_urls` the member's own)."""
-    return frozenset(u for e in rows if e.via == VARIANT for u in e.urls if u not in e.item_urls)
+    """The URLs the rows' `hasVariant` members state on their Offers only, which no row of the variant states as its own
+    (`Entity.urls` holds both, `Entity.item_urls` the member's own)."""
+    own = {u for e in rows for u in e.item_urls}
+    return frozenset(u for e in rows if e.via == VARIANT for u in e.urls if u not in own)
 
 
 def _variant_urls(row_field: RowField, values: Sequence[JsonValue], pages: set[DocumentKey | None]) -> bool:

@@ -48,7 +48,7 @@ def _as_written(match: re.Match[str]) -> str:
 
 
 def _without_comma(match: re.Match[str]) -> str:
-    """A string token as it is, a trailing comma as nothing (`parse`)."""
+    """A string token, or an opening bracket's comma, as it is; a trailing comma as nothing (`parse`)."""
     return "" if match[0] == "," else match[0]
 
 
@@ -79,8 +79,9 @@ _LEADING_ZEROS = re.compile(
     r"|(?:(?<=[\[:,])|(?<![\s\S]))(?P<space>[ \t\n\r]*)(?P<number>-?0[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)"
     r"(?=[ \t\n\r]*(?:[,\]}]|\Z))"
 )
-# RFC 8259 §7: a string token is skipped whole, as above; outside strings, a comma (§4, §5: value separator) followed
-# only by whitespace (§2) before the `]` or `}` that ends its array or object.
-_TRAILING_COMMAS = re.compile(r'"(?:[^"\\]|\\[\s\S])*"|,(?=[ \t\n\r]*[\]}])')
+# RFC 8259 §7: a string token is skipped whole, as above, and so is a comma right after `[` or `{` (§4, §5: it follows
+# no value, so `[,]` stays invalid); outside strings, a comma (value separator) followed only by whitespace (§2) before
+# the `]` or `}` that ends its array or object.
+_TRAILING_COMMAS = re.compile(r'"(?:[^"\\]|\\[\s\S])*"|[\[{][ \t\n\r]*,|,(?=[ \t\n\r]*[\]}])')
 # RFC 8259 §2: insignificant whitespace is space, horizontal tab, line feed and carriage return.
 _NOT_WHITESPACE = re.compile(r"[^ \t\n\r]")
