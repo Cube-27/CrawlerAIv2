@@ -91,6 +91,21 @@ def apply_action(member: str) -> Shape:
 
 
 @dataclass(frozen=True)
+class ApplicationEmbed:
+    """A platform's documented embed of a posting's application form in a page on another host (resolution spec,
+    "Derived values"): the id of the container element its loader fills, the hosts and path of its loader script and the
+    query parameter naming the board it loads, and the query parameter of the page URL naming the posting whose
+    application the loader shows, with its id's form."""
+
+    container: str
+    loader_hosts: frozenset[str]
+    loader_path: str
+    loader_param: str
+    posting_param: str
+    posting_id: re.Pattern[str]
+
+
+@dataclass(frozen=True)
 class AdapterMatch:
     tenant: str  # the platform's identifier for the tenant (a board token, a site name, a shop's host)
     page_kind: PageKind

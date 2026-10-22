@@ -48,7 +48,8 @@ each step, predicate name and joined name a property of the pinned schema.org vo
 its enumeration members or types, and a `schema:` `vocab`
 reference an enumeration of it; a schema a caller creates or edits that names others is refused with the error at the
 field (a process without the vocabulary file checks syntax only). `job_detail.apply_url` is
-`JobPosting.potentialAction.target`. Refs: §5.2, D-0240, D-1374, D-1493, D-1626, architecture-v3 d.1.
+`JobPosting.potentialAction.target`; a page that holds its own application form and states no target derives it
+([resolution](../resolution/spec.md) "Derived values", `application_form`). Refs: §5.2, D-0240, D-1374, D-1493, D-1626, architecture-v3 d.1.
 #### Scenario: Price roles from predicates
 - **WHEN** an Offer states its price and a `priceSpecification` with `priceType` `StrikethroughPrice`, and a schema
   maps `list_price` to `Offer.priceSpecification{priceType=StrikethroughPrice}.price+priceCurrency`

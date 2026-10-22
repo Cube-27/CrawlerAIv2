@@ -12,6 +12,13 @@ A job's `absolute_url` is where the board's owner publishes the job: the hosted 
 `gh_jid` routing query, or the owner's own career page that embeds the board. A page on a hosted board names its jobs
 by the board's own route, `/{board_token}/jobs/{job_id}` on the board's host, so a job read for a hosted board page has
 that URL; one read for an embedded board keeps `absolute_url`, the page the embedding site states (D-1483).
+
+Where a candidate applies (support.greenhouse.io, "Job board integration options" and "Tracking a candidate's source",
+2026-10-22): on a Greenhouse-hosted board (options 1 and 3) candidates apply on the hosted job page, which holds the
+application form, so a job read for a hosted board page has that page as its ApplyAction's `target`. An embedded board
+(options 2 and 4) is a container element `grnhse_app` and the loader script
+`https://boards.greenhouse.io/embed/job_board/js?for={board_token}` on the owner's page; with `gh_jid={job_id}` in that
+page's URL the loader shows the job's application form there (`APPLICATION_EMBED`).
 """
 
 import re
@@ -23,7 +30,7 @@ from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import ALL, PATH_SEGMENT, AdapterMatch, Shape
+from crawlerai.adapters.base import ALL, PATH_SEGMENT, AdapterMatch, ApplicationEmbed, Shape, apply_action
 from crawlerai.db.models import PageKind
 
 API: Final = "https://boards-api.greenhouse.io/v1/boards"
@@ -34,6 +41,15 @@ BOARD_HOSTS: Final = frozenset({"boards.greenhouse.io", "job-boards.greenhouse.i
 # A board token is a `PATH_SEGMENT`; a job id is the API's integer id, in ASCII digits.
 _TOKEN = PATH_SEGMENT
 _JOB_ID = re.compile(r"\d+", re.ASCII)
+# The embedded board's application form on the owner's page (module docstring).
+APPLICATION_EMBED: Final = ApplicationEmbed(
+    container="grnhse_app",
+    loader_hosts=frozenset({"boards.greenhouse.io"}),
+    loader_path="/embed/job_board/js",
+    loader_param="for",
+    posting_param="gh_jid",
+    posting_id=_JOB_ID,
+)
 
 # A job object as a schema.org JobPosting (Job Board API documentation, job object): property -> the member names
 # leading to its value. `content` is the description as HTML-escaped HTML; `first_published` and `company_name` are in
@@ -89,13 +105,12 @@ class Greenhouse:
         if match.host is None:
             return _SHAPES[match.page_kind]
         # A hosted board page: each job's URL is its page on the board's route, the job object's `id` after it.
-        on_board = replace(
-            _JOB,
-            properties={**_JOB.properties, "url": ("id",)},
-            prefixes={"url": f"https://{match.host}/{quote(match.tenant, safe='')}/jobs/"},
-        )
+        route = f"https://{match.host}/{quote(match.tenant, safe='')}/jobs/"
+        on_board = replace(_JOB, properties={**_JOB.properties, "url": ("id",)}, prefixes={"url": route})
         if match.page_kind == "detail":
-            return (on_board,)
+            # The hosted job page holds the application form (module docstring).
+            apply = replace(apply_action("id"), prefixes={"target": route})
+            return (replace(on_board, nodes={**on_board.nodes, "potentialAction": (apply,)}),)
         return (replace(_SHAPES["listing"][0], nodes={"itemListElement": (replace(on_board, at=("jobs", ALL)),)}),)
 
 
