@@ -41,13 +41,21 @@ from base64 import urlsafe_b64decode
 from collections.abc import Callable, Iterator
 from contextlib import suppress
 from typing import NamedTuple
-from urllib.parse import SplitResult, parse_qsl, unquote, urljoin, urlsplit
+from urllib.parse import SplitResult, parse_qsl, unquote, urldefrag, urljoin, urlsplit
 
+from lxml.html import HtmlElement
 from selectolax.lexbor import LexborHTMLParser
 
-from crawlerai.acquire.items import MIN_ITEMS, item_groups, lxml_root
+from crawlerai.acquire.items import (
+    MIN_ITEMS,
+    copies_navigation,
+    hyperlinks,
+    in_chrome,
+    item_groups,
+    lxml_root,
+    shows_items,
+)
 from crawlerai.acquire.types import BlockClass
-from crawlerai.content.segment import block_links, chrome_links, copies_navigation, shows_items
 from crawlerai.core import json_text
 from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import HeaderList
@@ -393,13 +401,24 @@ def _type_names(found: object) -> Iterator[str]:
 def lists_items(text: str, base: str | None) -> bool:
     """Whether the page lists items: a group of its repeated blocks (`acquire.items.item_groups`, the walk the item
     layer's segment step ranks; lxml reads it, as the segment step does) that shows them and copies no navigation, as
-    the item layer requires of a group (`content.segment`: `shows_items`, `copies_navigation`, each block leading to
-    its first hyperlink's document, resolved against `base`, the URL that served the page)."""
+    the item layer requires of a group (`shows_items`, `copies_navigation`), each block leading to its first
+    hyperlink's document (`_documents`)."""
     root = lxml_root(text)
     groups = item_groups(root)
-    chrome = chrome_links(root, base)
+    chrome = [(anchor, url) for anchor in hyperlinks(root) if in_chrome(anchor) for url in _documents(anchor, base)]
+
+    def documents(block: HtmlElement) -> list[str]:
+        return [url for anchor in hyperlinks(block) for url in _documents(anchor, base)]
+
     return any(
         shows_items(group)
-        and not copies_navigation(group, (next(block_links(b, base), None) for b in group), groups, chrome, base)
+        and not copies_navigation(group, (next(iter(documents(b)), None) for b in group), groups, chrome, documents)
         for group in groups
     )
+
+
+def _documents(anchor: HtmlElement, base: str | None) -> list[str]:
+    """The document a hyperlink leads to, resolved against `base`, the URL that served the page (RFC 3986 §5), without
+    its fragment, which names a part of the document (§3.5); none for a reference that `base` cannot resolve."""
+    url = urldefrag(urljoin(base or "", (anchor.get("href") or "").strip())).url
+    return [url] if urlsplit(url).scheme in _WEB_SCHEMES else []

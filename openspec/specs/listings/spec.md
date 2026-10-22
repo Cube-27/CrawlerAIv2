@@ -65,7 +65,7 @@ documents a hyperlink of the site's chrome (as "Item groups" names it) outside t
 group apart from it does (neither inside, around nor a sibling of one of its blocks: a record may span adjacent
 siblings): the site's sections repeated in the content (a category carousel, a menu's tiles, the same links in a desktop
 and a mobile copy), not the page's items. The listing shell rule (acquisition spec, "Structural outcome
-classification") asks the same of a group, but the typed value, with one predicate (`content/segment.py`). An item's own list is a group
+classification") asks the same of a group, but the typed value, with one predicate (`acquire/items.py`). An item's own list is a group
 lying in one block of another group at one tag path in two or more of its blocks (one template renders every item's
 list alike); the different lists a page's sections hold are no item's. Refs: owner #67.
 #### Scenario: Cards with title, link and price

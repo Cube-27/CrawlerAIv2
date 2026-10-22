@@ -62,7 +62,7 @@ C4):
 A group one of whose blocks stands for the page itself (`current_page`: `aria-current="page"`, or links to this very
 URL only) is the site's navigation (a category or city hub listing the page among its documents) and gives no rows. So
 is a group that aligns no typed value and more than half of whose blocks lead to documents the site's chrome links to
-outside the group, or another group apart from it does (`content.segment.copies_navigation`; chrome as `in_chrome` of
+outside the group, or another group apart from it does (`acquire.items.copies_navigation`; chrome as `in_chrome` of
 `acquire.items` reads it: the HTML Standard's `nav`, `header`, `footer`, `aside`, `search` and their WAI-ARIA
 landmarks, the `menubar` and `menu` roles): the site's navigation repeated in the content (a category carousel, a
 menu's tiles, a list of a sidebar's links, the same links in a desktop and a mobile copy), whose destinations are the
@@ -86,7 +86,7 @@ from typing import Final, Literal
 from lxml.html import HtmlElement
 from pydantic import ValidationError
 
-from crawlerai.acquire.items import MIN_ITEMS, Group
+from crawlerai.acquire.items import MIN_ITEMS, Group, copies_navigation, hyperlinks, shows_items
 from crawlerai.collect.base import ITEM_BLOCK, Candidate, Entity
 from crawlerai.collect.dom import struck as is_struck
 from crawlerai.collect.dom_images import decorative, image_source
@@ -97,7 +97,7 @@ from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate, is_item_url
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.segment import chrome_links, copies_navigation, hyperlinks, shows_items, text_path
+from crawlerai.content.segment import block_links, chrome_links, text_path
 from crawlerai.content.text import completed, hidden, xpath_step
 from crawlerai.normalize.base import Ambiguous, Context, raw_key
 from crawlerai.normalize.dispatch import equality_key
@@ -262,7 +262,7 @@ class _Aligned:
     ) -> "_Aligned | None":
         """The group's alignment; None when a block of it is the current page (`current_page`: the group is the
         site's navigation), when fewer than a quorum of its blocks lead to one item, or too few of those show more
-        than their link (`content.segment.shows_items`)."""
+        than their link (`acquire.items.shows_items`)."""
         here = canonical_url(ctx.page_url, None) if ctx.page_url is not None else None
         if any(current_page(block, ctx.base_url, here) for block in group):
             return None
@@ -281,11 +281,12 @@ class _Aligned:
         base: str | None,
     ) -> bool:
         """Whether the group is a copy of the site's navigation (module docstring): it aligns no typed value, and its
-        blocks' item URLs are the documents of the chrome or of another group (`content.segment.copies_navigation`,
+        blocks' item URLs are the documents of the chrome or of another group (`acquire.items.copies_navigation`,
         blocks without an item URL counting against it)."""
         if any(roles[name] == "typed" for name in self.fields):
             return False
-        return copies_navigation(self.group, (view.link for view in self.views), groups, chrome, base)
+        leads = (view.link for view in self.views)
+        return copies_navigation(self.group, leads, groups, chrome, lambda block: block_links(block, base))
 
     def items(self, schema: SchemaContent, ctx: Context, number: int, main: bool) -> Items:
         """The group's rows, its entities numbered `item_block:<number>:<block>`; `main`: it may be the listing's own
