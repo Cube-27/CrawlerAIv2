@@ -13,9 +13,10 @@ Code (`pre`) and table cells, with the blocks inside them, are data a reader wan
 them. Headings are dropped only when their section ends up empty. A page whose pruning leaves nothing, or only
 headings, is returned as `markdown` would.
 
-With a `query`, the pruned markdown is split into blocks (`content.md_blocks`) and each block that is not a heading is
-scored against it with BM25 (`content.bm25`); blocks with a score of zero are dropped, and with `max_blocks` only the
-highest-scoring ones stay, in page order. A heading stays while a block of its section does.
+With a `query`, that markdown (pruned, or unpruned by the fallback above) is split into blocks (`content.md_blocks`)
+and each block that is not a heading is scored against it with BM25 (`content.bm25`); blocks with a score of zero are
+dropped, and with `max_blocks` only the highest-scoring ones stay, in page order. A heading stays while a block of its
+section does.
 """
 
 from lxml.html import HtmlElement
