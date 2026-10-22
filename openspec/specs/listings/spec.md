@@ -53,7 +53,8 @@ one; never a URL; text every block repeats is the template's, also a child eleme
 a block the chosen rule leaves unnamed reads the one line at the tag path a quorum of its names have), the image, and typed value spotting for money, dates and check-digit identifiers (text in `s`/`del`
 and the options a drop-down `select` does not show, those not selected (HTML §4.10.7), excluded, also from the lines of the elements holding it; an element's line is not read where two text nodes run digits
 together, a token boundary the text does not show; an element holding others is also read in each of its own text
-nodes). Values are `dom` candidates with locators; of the segment step's first eight groups, the one aligning most
+nodes; a block showing, beside its aligned value, another value of the field in the same currency at a place too few
+blocks share is `ambiguous_in_block`, as nothing says which is the field's). Values are `dom` candidates with locators; of the segment step's first eight groups, the one aligning most
 fields is first, and every other group that aligns follows, for the sections bind reads. A group one of whose blocks
 stands for the page itself (a link marked `aria-current="page"`, or links to this very URL only) is the site's
 navigation and gives no rows; so is a group that aligns no typed value and more than half of whose blocks lead to
@@ -98,6 +99,9 @@ list alike); the different lists a page's sections hold are no item's. Refs: own
 #### Scenario: Was and now prices
 - **WHEN** a card shows a current price and a second price not struck through
 - **THEN** its price is `ambiguous_in_block` and publishes nothing unless a stated row bound to it agrees with one
+#### Scenario: A second amount off the price place
+- **WHEN** most tiles show their price at one place, and two show a "worth" amount there and their price in a button
+- **THEN** those two tiles' price is `ambiguous_in_block`; the others publish theirs
 #### Scenario: A badge next to the price
 - **WHEN** a card renders `<span>EUR 10.99</span><span>20</span>` with no space between them
 - **THEN** its price is `10.99` EUR from the first span, never `10.9920`
@@ -119,7 +123,8 @@ list alike); the different lists a page's sections hold are no item's. Refs: own
 The stated rows SHALL be structured data's (`resolve/listing.py`), else the active config's, else the captured calls'.
 The blocks are those of the group the stated rows name most and of every other section read with it: an aligned group
 of its row shape (or holding every required field it aligns and a field beyond the item URL), inner groups first (a
-department's jobs before the departments holding them), whose blocks lead, a quorum of them, to
+department's jobs before the departments holding them), a group past the first eight only where its blocks lie at the
+chosen group's tag path (one template renders both), whose blocks lead, a quorum of them, to
 documents of the kind its blocks lead to (host, path depth, first segment), apart from blocks already read, fewer than
 half of whose blocks lead to items the chosen group lists (else it is a featured or recently viewed copy) and not
 starting after the chosen group's `rel=next` link (past the listing's end); an item two sections show is one block

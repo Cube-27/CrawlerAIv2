@@ -116,18 +116,17 @@ layers =
     crawlerai.core
 
 # learning-configs spec, INV-20: the release executor shares no code with the engine beyond the IR model, so that the two
-# executors agreeing is evidence that an export reproduces the engine. Its imports from crawlerai are the model, the
-# one HTML parse (an XPath names one element in both trees) and the one decode of state documents both executors read
-# (serializer formats, the RSC Flight reader); their own imports are indirect, so they are allowed.
+# executors agreeing is evidence that an export reproduces the engine. Its imports from crawlerai are the model and the
+# one decode of state documents both executors read (serializer formats, the RSC Flight reader); their own imports are
+# indirect, so they are allowed.
 [importlinter:contract:release-executor-isolated]
-name = The release executor imports only the IR model, the HTML parse and the state decoders from crawlerai
+name = The release executor imports only the IR model and the state decoders from crawlerai
 type = forbidden
 source_modules =
     crawlerai.config_ir.release_executor
 forbidden_modules =
     crawlerai.**
 ignore_imports =
-    crawlerai.config_ir.release_executor -> crawlerai.acquire.items
     crawlerai.config_ir.release_executor -> crawlerai.config_ir.model
     crawlerai.config_ir.release_executor -> crawlerai.content.page
     crawlerai.config_ir.release_executor -> crawlerai.content.rsc

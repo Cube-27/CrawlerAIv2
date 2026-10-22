@@ -200,6 +200,23 @@ def test_a_card_that_is_a_link_holding_another_link_is_read_as_the_html_parser_b
     ]
 
 
+def test_a_card_showing_a_second_amount_off_the_aligned_place_declines() -> None:
+    # C7: the price place shows a "worth" amount in two tiles whose offer price sits in their button instead.
+    tile = (
+        '<li class="c"><a href="/p/{i}">Set {i}</a><div><div>{shown} EUR</div></div><a href="/p/{i}">{button}</a></li>'
+    )
+    tiles = [tile.replace("{shown}", "1{i}.00").replace("{button}", "Buy"), tile.replace("{shown}", "9{i}.00")]
+    tiles[1] = tiles[1].replace("{button}", "2{i}.00 EUR")
+    body = "<ul>" + "".join(tiles[i >= 3].format(i=i) for i in range(5)) + "</ul>"
+
+    (group,) = _groups(body)
+    prices = [c.normalized for c in group.candidates if c.field == "price"]
+    assert [p.value if isinstance(p, Ok) else p for p in prices[:3]] == [
+        {"amount": f"1{i}.00", "currency": "EUR"} for i in range(3)
+    ]
+    assert all(isinstance(p, Ambiguous) and p.reason == AMBIGUOUS_IN_BLOCK for p in prices[3:])
+
+
 def test_options_a_drop_down_list_does_not_display_are_not_the_cards_values() -> None:
     # HTML Standard §4.10.7: a drop-down `select` shows its selected option only; the others are choices (add-ons).
     card = (

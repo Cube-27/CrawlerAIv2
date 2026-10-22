@@ -4,9 +4,11 @@ the release check on held-out pages.
 It shares no code with the engine executor beyond the IR model and the shared decoders of state documents
 (`.importlinter`), so a field on which the two agree is evidence that the exported config reproduces the engine
 (INV-20).
-It parses the page body itself, the one exception to INV-26, by the engine's one HTML parse (`acquire.items.lxml_root`,
-the HTML Standard's algorithm), so that an exported XPath names the element it names in the engine's tree, and reads
-it with lxml (XPath 1.0), `re`, `json` and
+It parses the page body itself, the one exception to INV-26, as an exported config's consumer does: with libxml2's
+HTML parser (PHP `DOMXPath`, `config_ir.xpath1`), not the HTML Standard's parse the engine's tree copies
+(`acquire.items.lxml_of`). The two repair malformed markup differently, so a field whose XPath selects another element
+in libxml2's tree fails the check and is exported `manual` rather than silently wrong. It reads the page with lxml
+(XPath 1.0), `re`, `json` and
 jsonpath-ng: no collector, normalizer or vocabulary. A state document is read as the engine reads it, through the one
 decode of serializer formats (`content.state_decoders`: devalue flat arrays, normalized caches, Astro island props) and
 the one RSC Flight reader (`content.state.flight_rows`, `content.rsc`), never a second mechanism. What
@@ -26,8 +28,8 @@ from urllib.parse import urljoin
 from jsonpath_ng import parse as parse_jsonpath  # type: ignore[import-untyped]
 from jsonpath_ng.exceptions import JsonPathLexerError, JsonPathParserError  # type: ignore[import-untyped]
 from lxml import etree
+from lxml import html as lxml_html
 
-from crawlerai.acquire.items import lxml_root
 from crawlerai.config_ir.model import (
     NEXT_PAGE_FIELD,
     AbsolutizeUrlOp,
@@ -124,7 +126,7 @@ class Released:
 def release_run(ir: ExtractionConfigIR, page: ReleasePage, rules: Mapping[str, FieldRule]) -> Released:
     """The IR's values on `page`. In each field the first step whose value passes its post ops and the field's rule
     wins (§12.1); a field without a rule, or `suspended`, does not run."""
-    run = _Run(page, lxml_root(page.html), rules)
+    run = _Run(page, _parse(page.html), rules)
     fields = run.fields(ir.fields, run.root, in_row=False)
     rows: tuple[dict[str, Value], ...] = ()
     if ir.listing is not None:
@@ -313,6 +315,14 @@ def _query(query: str, documents: Sequence[Value]) -> list[Value]:
 def _jsonpath(query: str) -> Any:
     """The parsed query; jsonpath-ng builds a parser per call, and a config's queries repeat on every held-out page."""
     return parse_jsonpath(query)
+
+
+def _parse(html: str) -> etree._Element:
+    # Parsed from UTF-8 with the encoding named, so that an XML encoding declaration in the text is ignored.
+    try:
+        return lxml_html.document_fromstring(html.encode("utf-8"), parser=lxml_html.HTMLParser(encoding="utf-8"))
+    except etree.ParserError:  # an empty or all-whitespace body has no root element
+        return lxml_html.Element("html")
 
 
 def _documents(source: JsonSource, page: ReleasePage, root: etree._Element) -> Iterator[Value]:

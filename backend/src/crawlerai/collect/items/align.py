@@ -55,7 +55,8 @@ C4):
   template's (a shipping threshold) when another place gives the field differing values. A block whose places give one
   value publishes it; one whose places give several (a price and an instalment) gives an `ambiguous_in_block`
   candidate, which publishes nothing unless a structured row bound to the block agrees with one of them
-  (`collect.items.bind`).
+  (`collect.items.bind`). So does a block showing, beside its aligned value, another value of the field in the same
+  currency at a place too few blocks share (`_unsettled`): nothing in the markup says which is the field's.
 
 A group one of whose blocks stands for the page itself (`current_page`: `aria-current="page"`, or links to this very
 URL only) is the site's navigation (a category or city hub listing the page among its documents) and gives no rows. So
@@ -332,6 +333,8 @@ def _field(
     if role == "name":
         _note_parts(views)
     found = [view.read(role, spec, ctx) for view in views]
+    if role == "typed":
+        return _unsettled(found, _aligned(found, needed, spec, one_place=False), needed, spec)
     if role != "name":
         return _aligned(found, needed, spec, one_place=False)
     stated = [view.stated() for view in views]
@@ -468,6 +471,35 @@ def _aligned(
     if not places:
         return None
     return [tuple(spot for spot in found if spot.place in places) for found in spots]
+
+
+def _unsettled(
+    found: Sequence[tuple[Spot, ...]], kept: list[tuple[Spot, ...]] | None, needed: int, spec: FieldSpec
+) -> list[tuple[Spot, ...]] | None:
+    """The aligned spots, a block's own values at places too few blocks share added where they differ from its aligned
+    ones: nothing in the markup says which of the amounts a block shows is the field's (an offer price in one tile's
+    button, a "worth" amount in the place the others show their price), so the block's value is `ambiguous_in_block`
+    rather than the aligned place's guess (C7). A place a quorum of blocks share is aligned or the template's. An
+    amount in another currency than the aligned ones (ISO 4217) is no rival: a conversion, or a code read in a name.
+    """
+    if kept is None:
+        return None
+    shared = set(_distinct_values(found, needed, spec))
+    settled: list[tuple[Spot, ...]] = []
+    for spots_, aligned in zip(found, kept, strict=True):
+        values = {_key(spot, spec) for spot in aligned}
+        currencies = {_currency(spot) for spot in aligned}
+        strays = tuple(
+            s for s in spots_ if s.place not in shared and _key(s, spec) not in values and _currency(s) in currencies
+        )
+        settled.append((*aligned, *strays) if aligned and strays else aligned)
+    return settled
+
+
+def _currency(spot: Spot) -> object:
+    """A money spot's currency (None where the page leaves it unclear); None for another type."""
+    value = spot.normalized.value
+    return value.get("currency") if isinstance(value, dict) else None
 
 
 def _distinct_values(spots: Sequence[tuple[Spot, ...]], needed: int, spec: FieldSpec) -> dict[str, int]:
