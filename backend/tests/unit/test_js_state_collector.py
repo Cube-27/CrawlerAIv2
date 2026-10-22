@@ -353,3 +353,24 @@ def test_astro_island_props_revive_from_their_type_tuples() -> None:
         }
     }
     assert revive_astro_props({"name": "Desk lamp"}) is None
+
+
+def test_a_visible_value_another_identifier_field_holds_is_not_admitted_by_visibility() -> None:
+    schema = SCHEMA.model_copy(
+        update={
+            "fields": {
+                "sku": FieldSpec(type=FieldType.IDENTIFIER, description="d", scheme="sku", schema_org="Product.sku"),
+                "gtin": FieldSpec(type=FieldType.IDENTIFIER, description="d", scheme="gtin", schema_org="Product.gtin"),
+            }
+        }
+    )
+    page = _state({"id": "4006381333931"}, body="Item no. 4006381333931")
+    dom_sku = _candidate(
+        "sku", "4006381333931", Ok("4006381333931"), source_kind="dom", locator="dom:/html[1]", independent=True
+    )
+
+    alone = JsStateCollector().collect(page, schema, CTX, []).candidates
+    beside_sku = JsStateCollector().collect(page, schema, CTX, [dom_sku]).candidates
+
+    assert [c.field for c in alone] == ["gtin"]
+    assert [(c.field, c.independent) for c in beside_sku] == [("sku", False)]

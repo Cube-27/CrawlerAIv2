@@ -62,6 +62,17 @@ def test_text_opening_with_a_member_phrase_matches_through_the_type_vocabulary(
     assert enum.normalize(f"{_phrase(member).upper()}{rest}", TYPE, CTX) == Ok(member)
 
 
+@pytest.mark.parametrize(
+    ("raw", "member"),
+    [("New", "NewCondition"), ("used", "UsedCondition"), ("Refurbished condition", "RefurbishedCondition")],
+)
+def test_a_condition_phrase_names_its_offer_item_condition(raw: str, member: str) -> None:
+    condition = FieldSpec(type=FieldType.ENUM, vocab="schema:OfferItemCondition")
+
+    assert enum.normalize(raw, condition, CTX) == Ok(member)
+    assert enum.normalize("Like new", condition, CTX) == Invalid("not_a_member")
+
+
 @given(_members, _members)
 def test_text_stating_two_members_is_ambiguous(a: str, b: str) -> None:
     assume(a != b)

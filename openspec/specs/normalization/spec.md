@@ -158,6 +158,10 @@ Enforced by: `tests/property/test_normalize_enum.py` and `tests/replay/test_repl
 #### Scenario: Qualified phrase
 - **WHEN** availability text is "Not in stock", "In stock soon" or "5 in stock"
 - **THEN** the result is `Invalid`; "In stock (5 available)" is `Ok("InStock")`
+#### Scenario: Condition phrase
+- **WHEN** condition text (`schema:OfferItemCondition`) is "New", "new" or "Used"
+- **THEN** the results are `Ok("NewCondition")`, `Ok("NewCondition")` and `Ok("UsedCondition")` (`type:condition`:
+  the members' names de-camel-cased, with and without their shared word "condition"); "Like new" is `Invalid`
 
 ### Requirement: date and datetime
 `normalize/date.py` SHALL read ISO 8601 directly and other dates in every order the page locales allow, returning

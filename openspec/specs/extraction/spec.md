@@ -209,7 +209,9 @@ captured XHR bodies (JSON or Flight payloads; other than an identity-checked dat
 collectors") only when it equals another
 kind's candidate (`independent=false`, owned by that candidate's entity), or when the field has none, the value is
 visible and its type is checkable (`collect/admission.py`) and the value shows the type's checked syntax (`Ok.checked`:
-money with a currency sign or code); text-like types admit by equality only. A value admitted by
+money with a currency sign or code); text-like types admit by equality only. An identifier another kind's candidate
+gives to another identifier field (a sku whose digits pass a GTIN check digit) is not admitted by visibility. A value
+admitted by
 visibility inside an array row (an object item of an array holding two or more objects, or an array's only object when
 its own scope writes a URL that names a document, not a media file) is owned by that row's `array_row` entity, whose
 `urls` are the URLs in its scope up to nested rows; elsewhere it is owned by `page`. An array row writing a URL is an
@@ -219,6 +221,10 @@ D-0418, D-0943, D-1250–D-1252, D-1254, D-1343, D-1345.
 #### Scenario: Visible text in state
 - **WHEN** a visible state string is the only candidate for a `text` field
 - **THEN** it is not admitted
+#### Scenario: Another identifier's value in state
+- **WHEN** a label line `Item no. <span>4006381333931</span>` gives `sku` that value (a drafted sku label) and a
+  visible state string holds the same digits
+- **THEN** neither the DOM nor the state gives `gtin` a candidate, though the digits pass a GTIN-13 check digit
 #### Scenario: Price in a row of state
 - **WHEN** a visible state price is the only candidate for a `money` field and sits in the second object of an array
   of two objects
@@ -253,15 +259,16 @@ On a detail page the system SHALL take label–value pairs from the page's main 
 `role=main`, else the one `article`, else the body) outside chrome, dialogs, media fallback and other items' content
 (microdata `isRelatedTo`, `isSimilarTo`, `review`, Review items; sibling blocks that each link to one other document;
 other items' cards, below):
-two-cell `tr` rows, `dl` groups, elements starting with `Label:` and sibling containers of one shape (two or more)
-holding a label element and a value element, whose label is one of the field's labels; lines and sibling pairs that
+two-cell `tr` rows, `dl` groups, elements starting with `Label:`, elements holding only a label's text and then one
+value element (`Item no. <span>x</span>`) and sibling containers of one shape (two or more) holding a label element
+and a value element, whose label is one of the field's labels; lines and sibling pairs that
 give a field several values, or one value at the same place in each of three or more sibling blocks of one
 template (XPaths differing only in one step's position: each review's `Reviews: 1`; a responsive copy elsewhere in the
 layout is not one), are dropped, and an identifier field given two values by any pairs reads none. It SHALL
 also take a money or check-digit identifier field's one shown value in the main region (`collect/items/spot.py`, which
 spots only text showing the type's checked syntax, `Ok.checked`: a number without a currency sign is not money; for
-an identifier also an unlabelled pair's value, never inside a hyperlink to another document; none when several
-differ); an identifier without a check digit is read only next to one of its labels. A money field reads by the
+an identifier also an unlabelled pair's value, never inside a hyperlink to another document nor a value pairs' labels
+give to other fields only; none when several differ); an identifier without a check digit is read only next to one of its labels. A money field reads by the
 price role its path gives it (schemas spec, "Presets"): struck text (`s`, `del`, `strike`, HTML Standard; an inline
 `style` whose `text-decoration` or `text-decoration-line` holds `line-through`, CSS Text Decoration 3) only for a list
 price; an amount followed by a CLDR per pattern and a CLDR mass, volume, length, area or item unit (`€25/kg`,

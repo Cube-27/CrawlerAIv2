@@ -529,6 +529,16 @@ def test_a_label_names_a_field_through_the_schemas_drafted_vocabulary() -> None:
     assert _values(body, drafted) == {"sku": ["W-100"]}
 
 
+def test_a_label_without_a_colon_gives_its_value_to_its_field_and_not_to_a_check_digit_identifier() -> None:
+    body = "<main><div>Item no. <span>4006381333931</span></div><h4>Item no. <b>Specs</b></h4></main>"
+    drafted = MONEY_SCHEMA.model_copy(update={"labels": {"sku": ["Item no."]}})
+
+    assert _values(body, MONEY_SCHEMA) == {"gtin": ["4006381333931"]}
+    assert _values(body, drafted) == {"sku": ["4006381333931"]}
+    nested = "<main><table><tr><th>Item no.</th><td><span>4006381333931</span></td></tr></table></main>"
+    assert _values(nested, drafted) == {"sku": ["4006381333931"]}
+
+
 def test_a_checked_identifier_is_read_from_an_unlabelled_pair_but_not_from_other_items() -> None:
     cards = '<ul><li><a href="/p/2">Other</a> 5901234123457</li><li><a href="/p/3">Another</a> 9780306406157</li></ul>'
     related = '<div itemprop="isRelatedTo">EAN: 4012345678901</div>'
