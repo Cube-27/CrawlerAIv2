@@ -31,6 +31,7 @@ _RATING_VALUE, _REVIEW_COUNT = "ratingValue", "reviewCount"
 # A served number keeps at most two decimal places (normalization spec, "Served form"), rounded half to even (ISO
 # 80000-1 Annex B, IEEE 754's default): a rating's float noise, `4.439477977161501`, serves as 4.44.
 _SERVED_PLACES = Decimal("0.01")
+_EXACT_DIGITS = 15  # IEEE 754 binary64 holds 15 significant decimal digits exactly
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
@@ -103,5 +104,9 @@ def served(value: JsonValue) -> JsonValue:
         with suppress(InvalidOperation):
             number = Decimal(value)
             if number.is_finite():
-                return numbers.json_number(number.quantize(_SERVED_PLACES, rounding=ROUND_HALF_EVEN))
+                # Past binary64's 15 significant digits the fraction is lost in the JSON number anyway, and rounding
+                # such a value would exceed the decimal context's precision.
+                if number.adjusted() < _EXACT_DIGITS:
+                    number = number.quantize(_SERVED_PLACES, rounding=ROUND_HALF_EVEN)
+                return numbers.json_number(number)
     return value

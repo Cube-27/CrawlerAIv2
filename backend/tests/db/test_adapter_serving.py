@@ -133,7 +133,8 @@ async def test_a_storefront_collection_page_is_joined_with_its_answer_and_shows_
     for _, title, _, shown in LAMPS:
         fields = by_title[title]
         # The page keeps its markup: the card's visible amount publishes over the answer's, flagged (#334).
-        assert (fields["price"].value, fields["price"].reason) == ({"amount": float(shown), "currency": "EUR"}, "disagree")
+        price = {"amount": float(shown), "currency": "EUR"}  # served as a JSON number
+        assert (fields["price"].value, fields["price"].reason) == (price, "disagree")
         assert fields["title"].source_kind == "adapter"
 
 
