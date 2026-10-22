@@ -34,6 +34,8 @@ from crawlerai.schemas.types import SchemaDef
 
 # JSON-LD 1.1 §4.2: the keyword of a value object, which holds a scalar.
 _VALUE: Final = "@value"
+# JSON-LD 1.1 §3.5: the keyword naming a node's types.
+_TYPE: Final = "@type"
 
 # A context naming schema.org by its namespace, with or without the trailing slash (schema.org's published form).
 _CONTEXTS = frozenset(n.rstrip("/") for n in NAMESPACES)
@@ -198,7 +200,7 @@ class JsonLdCollector:
         executor of it reads them, so an Offer `_implied` by where it sits is none of them."""
         for index, document in blocks(page, []):
             for found in self._walk(index, document):
-                if found.types and "@type" in found.data:
+                if found.types and _TYPE in found.data:
                     yield found.id, found.types, found.data
 
     def _walk(self, block: int, document: JsonValue) -> Iterator[_Object]:
@@ -228,9 +230,9 @@ class JsonLdCollector:
 
     def _node_types(self, value: Mapping[str, JsonValue], in_schema: bool, implied: str | None) -> tuple[str, ...]:
         """The node's declared types; for a node declaring none, not a node reference, the `implied` one."""
-        if "@type" not in value and value.keys() != {"@id"}:
+        if _TYPE not in value and value.keys() != {"@id"}:
             return () if implied is None else (implied,)
-        return self._types(value.get("@type"), in_schema)
+        return self._types(value.get(_TYPE), in_schema)
 
     def _implied(self, holder: _Object, key: str) -> str | None:
         """The type of an untyped node that is the value of `key` on `holder`: schema.org `offers` expects an Offer or
