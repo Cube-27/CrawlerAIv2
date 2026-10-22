@@ -59,3 +59,25 @@ def test_a_number_with_leading_zeros_parses_leniently_as_its_written_digits() ->
         parse(text)
     with pytest.raises(ValueError, match="delimiter"):
         parse("[0\u0661]", lenient=True)
+
+
+def _with_trailing_commas(value: JsonValue) -> str:
+    """`value` as JSON text with a comma and a line break after the last item of every non-empty array and object."""
+    if isinstance(value, list):
+        return "[" + "".join(f"{_with_trailing_commas(item)},\n" for item in value) + "]"
+    if isinstance(value, dict):
+        return "{" + "".join(f"{json.dumps(k)}: {_with_trailing_commas(v)},\n" for k, v in value.items()) + "}"
+    return json.dumps(value)
+
+
+comma_text = st.text(alphabet=st.sampled_from(',]}" \\az'), max_size=6)
+documents = st.recursive(
+    st.none() | st.booleans() | st.integers() | comma_text,
+    lambda children: st.lists(children, max_size=4) | st.dictionaries(comma_text, children, max_size=4),
+    max_leaves=20,
+)
+
+
+@given(document=documents)
+def test_trailing_commas_outside_strings_parse_leniently_as_the_same_document(document: JsonValue) -> None:
+    assert parse(_with_trailing_commas(document), lenient=True) == document

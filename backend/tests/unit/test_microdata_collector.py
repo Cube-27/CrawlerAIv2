@@ -76,8 +76,10 @@ def test_a_product_with_nested_items() -> None:
         f"microdata:{BODY}/div[1]/div[2]",
     )
     assert result.entities == (
-        Entity(id=product, types=("Product",), urls=(PAGE_URL,), parent=None, item_urls=(PAGE_URL,)),
-        Entity(id=brand, types=("Brand",), urls=(), parent=product, via="brand"),
+        Entity(
+            id=product, types=("Product",), urls=(PAGE_URL,), parent=None, item_urls=(PAGE_URL,), names=("Widget 9",)
+        ),
+        Entity(id=brand, types=("Brand",), urls=(), parent=product, via="brand", names=("Acme 7",)),
         Entity(id=offer, types=("Offer",), urls=(), parent=product, via="offers"),
     )
     assert result.candidates == (

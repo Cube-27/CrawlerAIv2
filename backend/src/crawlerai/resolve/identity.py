@@ -12,7 +12,12 @@ and, of one most specific type, when
   different items (schema.org `url`, "URL of the item"): a listing's items may repeat an identifier;
 - they name one item URL that is not a page URL, stated by two collectors or by a group's member and a standalone
   product: a page often states its items in two syntaxes (JSON-LD and microdata), and a URL naming the page itself
-  names no item.
+  names no item;
+and, of most specific types each other's or a subtype of one another, when
+- they are roots of the page's own markup (not a data call's answer) that name only the page (each item URL names the
+  page's document: RFC 3986 authority and path) and state one schema.org `name`: each says it is the item this page
+  is about, as a page often states its product twice (one block naming it by a relative `@id` and `url`, another by
+  its absolute `url`).
 The root of an identity-checked data call's answer (`Entity.requested`, acquisition spec "Data calls") states the
 requested item by construction, though it may name it by no identifier the page's markup states (Shopify's product
 JSON holds its sku and barcode on its variants only): it is the page's one root item of its most specific type, when
@@ -44,6 +49,7 @@ from crawlerai.collect.base import ARRAY_ROW, PAGE, Entity
 from crawlerai.collect.scope import LISTS, Documents, leads_elsewhere, page_documents
 from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.content.repeats import template_siblings
+from crawlerai.normalize.url_key import document_key
 
 # schema.org `hasVariant`: "Indicates a Product that is a member of this ProductGroup". A variant is part of its group,
 # not another thing the page is about, and its Offer offers the group's product too: it joins the group's Offers under
@@ -82,7 +88,9 @@ def identify(entities: Sequence[Entity], vocabulary: Vocabulary, page_urls: Sequ
         for i, j in combinations(members, 2):
             if _agree(eligible[i], eligible[j], prop, related):
                 sets.join(i, j, certain=prop == _IRI)
-    _join_requested(eligible, sets, page_documents(pages))
+    documents = page_documents(pages)
+    _join_page_items(eligible, sets, documents, vocabulary)
+    _join_requested(eligible, sets, documents)
     aliases, groups = sets.aliases(), sets.groups()
     merged = [_merged(e, groups.get(e.id, ()), aliases, vocabulary) for e in entities if e.id not in aliases]
     named = {aliases.get(p, p): aliases.get(g, g) for p, g in variant_of.items()}
@@ -154,6 +162,24 @@ def _join_requested(eligible: Sequence[Entity], sets: "_Sets", documents: Docume
             members = _one_root(eligible, sets, e.types[0])
             if members and not all(leads_elsewhere(eligible[j], documents) for j in members):
                 sets.join(i, members[0], certain=True)
+
+
+def _join_page_items(eligible: Sequence[Entity], sets: "_Sets", documents: Documents, vocabulary: Vocabulary) -> None:
+    """Join the page markup's roots of related types that name only the page and state one name (module docstring)."""
+    by_name: defaultdict[str, list[int]] = defaultdict(list)
+    for i, e in enumerate(eligible):
+        if e.parent is None and not e.requested and _names_only_the_page(e, documents):
+            for name in e.names:
+                by_name[name].append(i)
+    for members in by_name.values():
+        for i, j in combinations(members, 2):
+            a, b = eligible[i].types[0], eligible[j].types[0]
+            if vocabulary.is_a(a, b) or vocabulary.is_a(b, a):
+                sets.join(i, j, certain=True)
+
+
+def _names_only_the_page(entity: Entity, documents: Documents) -> bool:
+    return bool(entity.item_urls) and all(document_key(u) in documents for u in entity.item_urls)
 
 
 def _one_root(eligible: Sequence[Entity], sets: "_Sets", type_: str) -> list[int]:

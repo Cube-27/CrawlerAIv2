@@ -85,10 +85,12 @@ def test_a_product_with_a_nested_offer() -> None:
             "offers": {"@type": "Offer", "price": "10.50", "priceCurrency": "EUR"},
         }
     )
-    product = Entity(id="jsonld:0:$", types=("Product",), urls=(PAGE_URL,), parent=None, item_urls=(PAGE_URL,))
+    product = Entity(
+        id="jsonld:0:$", types=("Product",), urls=(PAGE_URL,), parent=None, item_urls=(PAGE_URL,), names=("Widget 9",)
+    )
     assert result.entities == (
         product,
-        Entity(id="jsonld:0:$['brand']", types=("Brand",), urls=(), parent=product.id, via="brand"),
+        Entity(id="jsonld:0:$['brand']", types=("Brand",), urls=(), parent=product.id, via="brand", names=("Acme 7",)),
         Entity(id="jsonld:0:$['offers']", types=("Offer",), urls=(), parent=product.id, via="offers"),
     )
     assert result.candidates == (
@@ -179,7 +181,9 @@ def test_a_value_the_candidate_model_refuses_is_skipped_with_a_diagnostic() -> N
 
 
 def test_an_invalid_block_is_skipped_with_a_diagnostic() -> None:
-    result = _collect('{"@type": "Product", "name": "x",}', {"@context": SCHEMA_ORG, "@type": "Product", "name": "y"})
+    result = _collect(
+        '{"@type": "Product", "name": "x" "sku": "1"}', {"@context": SCHEMA_ORG, "@type": "Product", "name": "y"}
+    )
     assert [(c.locator, c.raw) for c in result.candidates] == [("jsonld:1:$['name']", "y")]
     assert len(result.diagnostics) == 1
     assert result.diagnostics[0].startswith("jsonld:0: invalid JSON")

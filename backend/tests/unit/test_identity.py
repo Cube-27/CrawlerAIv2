@@ -99,6 +99,20 @@ def test_one_node_id_of_unrelated_types_merges_nothing() -> None:
     assert graph.aliases == {}
 
 
+def test_roots_naming_only_the_page_by_one_name_are_one_item() -> None:
+    # Each says it is the item at this page (schema.org `url`, `@id` with a fragment naming part of it), by one name:
+    # a ProductGroup and a Product of it are one item; a WebPage of that name is the page, not the item, and a product
+    # at another page or of another name stays apart.
+    group = {"@context": SCHEMA_ORG, "@type": "ProductGroup", "@id": "/p/1#product", "url": "/p/1", "name": "Widget"}
+    product = _product(url=f"{PAGE_URL}?variant=1", name="Widget")
+    page = {"@context": SCHEMA_ORG, "@type": "WebPage", "url": PAGE_URL, "name": "Widget"}
+    others = [_product(url="https://shop.example.test/p/2", name="Widget"), _product(url=PAGE_URL, name="Gadget")]
+
+    graph, _ = _graph(group, product, page, *others)
+
+    assert graph.aliases == {"jsonld:1:$": "jsonld:0:$"}
+
+
 # `isVariantOf` (D-1344): the inverse of `hasVariant`, so the group stands beside the page's Product.
 
 

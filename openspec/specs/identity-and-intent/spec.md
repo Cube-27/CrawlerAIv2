@@ -15,7 +15,9 @@ Entities that share an IRI, when the most specific types of all entities stating
 one another (JSON-LD 1.1 node map generation merges node objects with one `@id`; with one unrelated pair, only those of
 one most specific type), and entities of one most specific type that share an identifier value
 (unless their item URLs differ) or, across collectors, an item URL other than a page URL SHALL be one entity before
-intent (`resolve/identity.py`); the merged entity holds every member's types, most specific first. The root
+intent (`resolve/identity.py`); so SHALL roots of the page's own markup, of most specific types each other's or a
+subtype of one another, whose every item URL names the page's document (RFC 3986 authority and path; a relative `@id`
+or `url` resolved against the page) and that state one schema.org `name`: each says it is the item the page is about; the merged entity holds every member's types, most specific first. The root
 of an identity-checked data call's answer (acquisition spec "Data calls") SHALL be one entity with the page's single
 root entity of its most specific type, and stay apart when the page states none or several; it states the product
 with every variant it has, so it never joins a product group's `hasVariant` member, whichever variant's identifiers it
@@ -54,6 +56,10 @@ D-1291, D-1379.
 #### Scenario: A product group and a product under one IRI
 - **WHEN** a JSON-LD ProductGroup and a separate JSON-LD Product with an `aggregateRating` state one `@id`
 - **THEN** they are one target, which owns the rating; a WebPage, an Organization and a Thing under one `@id` stay apart
+#### Scenario: One product stated twice by the page
+- **WHEN** a detail page states a JSON-LD ProductGroup with a relative `@id` and `url` and a separate JSON-LD Product with
+  the page's absolute `url`, both of one `name`, and a WebPage of that name
+- **THEN** the group and the product are one target and intent is not ambiguous; the WebPage stays apart
 #### Scenario: A product's rating names the product
 - **WHEN** a Product's `aggregateRating` holds an `itemReviewed` Product naming the page URL
 - **THEN** the outer Product is the target and intent is not ambiguous

@@ -81,6 +81,7 @@ def test_a_detail_response_is_one_posting_with_a_candidate_per_documented_field(
             urls=(),
             parent=entity,
             via="hiringOrganization",
+            names=("Example Tenant",),
         ),
     )
     assert _values(result) == {
