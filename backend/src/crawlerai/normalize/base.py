@@ -110,7 +110,10 @@ class Context(BaseModel):
     og_locale: str | None = None
     hreflang: tuple[str, ...] = ()
     page_currencies: tuple[str, ...] = ()  # ISO 4217 codes stated in the page's structured data
-    declared_currencies: tuple[str, ...] = ()  # ISO 4217 codes the page declares page-wide (OGP, page state)
+    # ISO 4217 codes the page declares page-wide in its own name (OGP, its platform's documented currency global), and
+    # those its state documents hold in anonymous members, which a third party's script config can also hold.
+    declared_currencies: tuple[str, ...] = ()
+    state_currencies: tuple[str, ...] = ()
     # The CLDR decimal symbol every unambiguous amount the page writes uses (`page_convention` of `collect.currencies`),
     # which settles the reading of an amount the conventions read differently (`numbers.readings`); None when they
     # do not agree or the page writes none.

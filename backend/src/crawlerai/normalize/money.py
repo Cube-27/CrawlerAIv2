@@ -191,14 +191,16 @@ def _page_currencies(ctx: Context) -> frozenset[str]:
     request asked for aside: that is the caller's, not the page's (as `_regional`)."""
     territories = {Locale.parse(loc).territory for loc in numbers.regional_locales(ctx)}
     tender = {code for t in territories if t and (code := _tender_currency(t, ctx)) is not None}
-    return frozenset({*ctx.page_currencies, *ctx.declared_currencies, *filter(None, (url_currency(ctx),)), *tender})
+    declared = {*ctx.page_currencies, *ctx.declared_currencies, *ctx.state_currencies}
+    return frozenset({*declared, *filter(None, (url_currency(ctx),)), *tender})
 
 
 def _unwritten(ctx: Context, *, written: bool) -> _Currency:
-    """The currency of an amount written without one: the one currency the page states and declares, when every
-    statement agrees (normalization spec, "a page-level declaration ... consistent across the page"); else the one its
-    URL names (`url_currency`); else unknown."""
-    declared = set(ctx.page_currencies) | set(ctx.declared_currencies)
+    """The currency of an amount written without one: the one currency the page states and declares in its own name,
+    when every such statement agrees (normalization spec, "a page-level declaration ... consistent across the page");
+    when it makes none, the one its state members hold; else the one its URL names (`url_currency`); else unknown."""
+    own = set(ctx.page_currencies) | set(ctx.declared_currencies)
+    declared = own or set(ctx.state_currencies)
     if len(declared) == 1:
         return _Currency(declared.pop(), "page", written)
     if (code := url_currency(ctx)) is not None:
@@ -208,14 +210,16 @@ def _unwritten(ctx: Context, *, written: bool) -> _Currency:
 
 def _narrowed(signs: Sequence[str], denoted: frozenset[str], ctx: Context) -> _Currency:
     """Of the currencies a written sign can denote, the one the evidence settles, strongest first: the page's
-    structured data (schema.org `priceCurrency`), its page-level declarations, then its locale and region (CLDR
-    currency symbols of the locales its language tags and ccTLD name), then the currency its URL names. Each step
+    structured data (schema.org `priceCurrency`), its page-level declarations in its own name, then its state members,
+    then its locale and region (CLDR currency symbols of the locales its language tags and ccTLD name), then the
+    currency its URL names. Each step
     narrows what the one before left; none settling it leaves the currency unknown, never a default (C7)."""
     if len(denoted) == 1:
         return _Currency(next(iter(denoted)), None, True)
     steps: tuple[tuple[Callable[[], frozenset[str]], Basis | None], ...] = (
         (lambda: frozenset(ctx.page_currencies), None),
         (lambda: frozenset(ctx.declared_currencies), "page"),
+        (lambda: frozenset(ctx.state_currencies), "page"),
         (lambda: _regional(signs, ctx), "locale"),
         (lambda: frozenset(filter(None, (url_currency(ctx),))), "url"),
     )

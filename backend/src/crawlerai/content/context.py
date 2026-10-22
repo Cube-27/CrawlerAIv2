@@ -4,8 +4,8 @@ language and URLs, and when it was fetched.
 Only evidence the page or the request states is read (C7): `<html lang>`, `og:locale`, the `hreflang` of the alternate
 links to the page itself, the Content-Language the response and the page declare, the document base URL and the final
 URL. `cctld_territory` is left empty, so a number or date that needs it declines rather than guesses; the money rules
-alone read the ccTLD, to narrow a shared currency sign (normalization spec). `page_currencies` and
-`declared_currencies` come from the page, which `collect.currencies` reads (this module sits below the collectors).
+alone read the ccTLD, to narrow a shared currency sign (normalization spec). `page_currencies`, `declared_currencies`
+and `state_currencies` come from the page, which `collect.currencies` reads (this module sits below the collectors).
 """
 
 from collections.abc import Sequence

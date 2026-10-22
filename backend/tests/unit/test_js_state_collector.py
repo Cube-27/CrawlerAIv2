@@ -12,7 +12,7 @@ from pydantic import JsonValue
 
 from crawlerai.collect.admission import Admitted
 from crawlerai.collect.base import ARRAY_ROW, PAGE, Candidate, Entity
-from crawlerai.collect.currencies import declared_currencies
+from crawlerai.collect.currencies import state_currencies
 from crawlerai.collect.js_state import JsStateCollector, state_documents
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.state_decoders import revive_astro_props
@@ -262,7 +262,7 @@ def test_analytics_call_arguments_are_documents_and_declare_their_currency() -> 
         },
         {"value": 30.03, "currency": "USD", "content_ids": ["SKU_1"], "content_type": "product"},
     ]
-    assert declared_currencies(page) == ("USD",)
+    assert state_currencies(page) == ("USD",)
 
 
 def test_the_object_argument_of_a_start_call_is_a_document() -> None:

@@ -1,6 +1,7 @@
 """The currencies a page states (normalization spec, money): schema.org `priceCurrency` in JSON-LD, microdata and RDFa
-Lite, and page-wide declarations (OGP price currency, generic currency members of state JSON, a platform's documented
-currency global); ISO 4217 codes as written, each once; and the decimal symbol of the page's structured prices."""
+Lite, page-wide declarations in the page's own name (OGP price currency, a platform's documented currency global) and
+the generic currency members of state JSON; ISO 4217 codes as written, each once; and the decimal symbol of the page's
+structured prices."""
 
 import json
 from datetime import UTC, datetime
@@ -8,6 +9,7 @@ from typing import Any
 
 from crawlerai.collect.currencies import (
     declared_currencies,
+    state_currencies,
     stated_currencies,
     stated_languages,
     with_page_declarations,
@@ -66,6 +68,7 @@ def test_a_page_declares_currencies_in_ogp_and_in_generic_state_members() -> Non
     )
 
     assert set(declared_currencies(page)) == {"SEK", "NOK"}
+    assert state_currencies(page) == ("SEK",)
     # A price written without a sign takes the page's currency only when every statement agrees.
     one = _page('<meta property="og:price:currency" content="SEK">')
     spec = FieldSpec(type=FieldType.MONEY, description="d")
@@ -74,6 +77,21 @@ def test_a_page_declares_currencies_in_ogp_and_in_generic_state_members() -> Non
     )
     assert money.normalize("12", spec, with_page_declarations(CTX, page)) == Ok(
         {"amount": "12", "currency": None}, basis="unknown", checked=False
+    )
+
+
+def test_the_pages_own_declaration_outranks_an_anonymous_state_member() -> None:
+    state = '<script type="application/json">{"config": {"currency": "USD"}}</script>'
+    own = _page('<meta property="og:price:currency" content="NZD">', state)
+    spec = FieldSpec(type=FieldType.MONEY, description="d")
+
+    for text in ("$12", "12"):
+        found = money.normalize(text, spec, with_page_declarations(CTX, own))
+        assert isinstance(found, Ok)
+        assert found.value == {"amount": "12", "currency": "NZD"}
+    # A state member alone still settles the sign.
+    assert money.normalize("$12", spec, with_page_declarations(CTX, _page(body=state))) == Ok(
+        {"amount": "12", "currency": "USD"}, basis="page"
     )
 
 
