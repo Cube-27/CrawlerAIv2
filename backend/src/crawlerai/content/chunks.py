@@ -22,14 +22,11 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
 from crawlerai.content.md_blocks import Block, parse, paths
+from crawlerai.normalize.strings import sentences
 
 Strategy = Literal["heading", "sentence", "token"]
 Source = Literal["markdown", "markdown_fit"]
 _WORD = re.compile(r"\S+")
-# CJK sentences end without a following space (Unicode Sentence_Break=STerm: U+3002, U+FF01, U+FF1F).
-_IDEOGRAPHIC_END = r"[\u3002\uff01\uff1f]"
-_TERMINATED = re.compile(rf"[.!?\u2026]+[\"')\]]*(?=\s)|{_IDEOGRAPHIC_END}")
-_IDEOGRAPHIC = re.compile(_IDEOGRAPHIC_END)
 
 
 class ChunkOptions(BaseModel):
@@ -131,21 +128,13 @@ def _windows(text: str, options: ChunkOptions) -> Iterator[str]:
 
 
 def _sentences(blocks: list[Block]) -> list[str]:
-    """The sentences of the blocks, in order; a code block is one."""
-    found: list[str] = []
-    for block in blocks:
-        if block.kind in ("code", "heading"):
-            found.append(block.text)
-            continue
-        start = 0
-        text = block.text
-        for match in _TERMINATED.finditer(text):
-            rest = text[match.end() :].lstrip()
-            if (rest and not rest[0].islower()) or _IDEOGRAPHIC.fullmatch(match.group()):
-                found.append(text[start : match.end()].strip())
-                start = match.end()
-        found.append(text[start:].strip())
-    return [sentence for sentence in found if sentence]
+    """The sentences of the blocks, in order (`normalize.strings.sentences`); a code block or a heading is one."""
+    return [
+        sentence
+        for block in blocks
+        for sentence in ([block.text] if block.kind in ("code", "heading") else sentences(block.text))
+        if sentence
+    ]
 
 
 def _packed(sentences: list[str], options: ChunkOptions) -> Iterator[str]:

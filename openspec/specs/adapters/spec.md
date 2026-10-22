@@ -115,7 +115,9 @@ with `description` (its HTML body) as `description`, every `images[]` URL as `im
 one Offer per `variants[]` member: `title` as `name`, `sku`, `barcode` as `gtin`, `price` in cents for every
 currency (×100), `available: false` as `OutOfStock` (`Shape.booleans`; `true`, it can be bought, names no one schema.org
 ItemAvailability: a variant on pre-order or back order can be bought too, so the page states which), so the variants
-rows fill from it; the variant the page shows (Liquid `product.selected_or_first_available_variant`: the one whose `id`
+rows fill from it, and `price_min` and `price_max` (cents, the lowest and highest variant price) as an AggregateOffer's
+`lowPrice` and `highPrice`, the range whose bounds resolution reads (resolution spec, price; the product's `price`,
+`price_min`, is no variant's own and is not read); the variant the page shows (Liquid `product.selected_or_first_available_variant`: the one whose `id`
 the page URL's `?variant=` names, else, when it names none or an id the product lacks, the first `available` one, else
 the first) gives the Product its `sku` and `barcode`, so resolution reads that variant's Offer as the shown one; they
 stay that variant's, so they publish for the Product only where the page states none of its own (variants spec,

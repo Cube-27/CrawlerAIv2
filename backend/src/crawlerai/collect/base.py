@@ -5,6 +5,7 @@ A collector proposes; it never chooses. Ownership, intent and preference are `cr
 """
 
 from collections.abc import Mapping, Sequence
+from decimal import Decimal
 from typing import Protocol, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -54,6 +55,10 @@ class Entity(_Model):
     # Whether its source already checked that it states the requested item: the root of an identity-checked data
     # call's answer (acquisition spec "Data calls"). Identity merges it into the page's own item (`resolve.identity`).
     requested: bool = False
+    # A schema.org AggregateOffer's price range: its `lowPrice` and `highPrice` when they differ, with its
+    # `priceCurrency` (None: unknown). The item's offers' prices span it; resolution reads its bounds
+    # (`resolve.preference`, range bounds).
+    price_range: tuple[Decimal, Decimal, str | None] | None = None
 
 
 class Candidate(_Model):

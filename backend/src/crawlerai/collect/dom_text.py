@@ -22,7 +22,9 @@ reviews, related items and the blocks outside the product container (`collect.do
   §5.2.2), so they are its text; a template that marks only a description's first section is read whole. An element
   that is the last of its wrappers goes on with the siblings of the outermost wrapper holding nothing after it, inside
   the element that opens the item (`itemscope`, RDFa `typeof`).
-- **Main text.** For a description that only an Open Graph summary states (or nothing does), the longest prose block.
+- **Main text.** For a description that only an Open Graph summary states (or nothing does), the longest prose block,
+  when it holds at least two sentences (UAX #29 sentence boundaries, approximated): one line is a control's caption or a
+  notice, not running text.
   A summary is shorter than what it summarizes and restates it, so the block must be longer than the summary and hold
   most of the summary's words other than the title's (the page's `h1`), unless the summary holds fewer words of its
   own than of the title, a line that only names the item ("Buy <title> at <site>"); and it must not be the buy box: a
@@ -55,7 +57,7 @@ from crawlerai.collect.schema_org_map import candidate
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage, node_xpath
 from crawlerai.normalize.base import Context, Ok
-from crawlerai.normalize.strings import collapse, is_cut_of, solid
+from crawlerai.normalize.strings import collapse, is_cut_of, sentences, solid
 from crawlerai.schemas.types import FieldType, SchemaDef
 
 # HTML Standard §4.3 (sectioning content tangential to the main content) and §4.11.4 (`dialog`): not the page's prose.
@@ -95,6 +97,8 @@ _ITEM_ATTRIBUTES = ("itemprop", "itemscope", "property", "typeof")
 _ITEM_SELECTOR = ",".join(f"[{a}]" for a in _ITEM_ATTRIBUTES)
 _ITEM_SCOPES = frozenset({"itemscope", "typeof"})  # the attributes that open an item
 _ELEMENT_VALUED = "microdata"  # the collector of microdata and RDFa: a value states the element its locator names
+# The fewest sentences a main text holds: one line alone is a caption or a notice, not running text.
+_RUNNING_TEXT = 2
 _OPEN_GRAPH = "og"  # the protocol defines og:description as a one-to-two sentence summary
 _DESCRIPTION = "description"  # schema.org `Thing.description`
 
@@ -477,13 +481,15 @@ def _label(blocks: _Blocks, element: LexborNode) -> str | None:
 
 
 def _largest(blocks: _Blocks) -> _Block | None:
-    """The longest of the region's maximal prose blocks (those whose parent is no prose block): the main text. A block
-    of mostly links is no text; a heading that opens a block names it, it is not its text."""
+    """The longest of the region's maximal prose blocks (those whose parent is no prose block): the main text, when it
+    is running text of at least two sentences (`normalize.strings.sentences`): one line is a control's caption or a
+    notice, not a text. A block of mostly links is no text; a heading that opens a block names it, it is not its
+    text."""
     maximal = [b for b in blocks.blocks.values() if b.node.parent is None or blocks.prose(b.node.parent) is None]
     ranked = sorted((b for b in maximal if not _linked(b)), key=lambda b: len(b.form), reverse=True)[:2]
     if not ranked or (len(ranked) == 2 and len(ranked[0].form) == len(ranked[1].form)):
         return None
-    return ranked[0]
+    return ranked[0] if len(sentences(ranked[0].form)) >= _RUNNING_TEXT else None
 
 
 def _linked(block: _Block) -> bool:

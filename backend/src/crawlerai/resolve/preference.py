@@ -67,6 +67,7 @@ OUTSCORED = "outscored"
 
 Orders = Mapping[FieldType, tuple[SourceKind, ...]]  # per precedence type, the source kinds, first weighs most
 Rejection = tuple[Candidate, str]  # a candidate that does not publish, with its reason
+_Bound = tuple[Decimal, str | None]  # a range bound's amount and the range's currency (`None`: unknown)
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,7 +113,8 @@ class Resolver:
     """Preference for one entity, `target`: a detail page's target (§4.6), a listing's page or one of its rows (§4.7).
     Its fields' candidates are screened, then scored. `page_values`: whether page-level candidates are the target's
     (`EntityGraph.owned_by`). `owns` stands in for ownership where the owner is not one entity: a variant's rows
-    (variants spec). `detail`: a detail page's target, which reads the variant it shows and fills from its variants.
+    (variants spec). `detail`: a detail page's target, which reads the variant it shows and fills from its variants;
+    `variant`: one variant's row, whose candidates are all that variant's.
     `confident`: whether a chosen value of the named field would publish at the request's `min_confidence`
     (`resolve.evidence`); None: every one would."""
 
@@ -123,6 +125,7 @@ class Resolver:
     page_values: bool = True
     detail: bool = False
     owns: Callable[[Candidate], bool] | None = None
+    variant: bool = False  # one variant's row: every candidate it owns is that variant's (variants spec)
     confident: Callable[[str, FieldSpec, "Chosen"], bool] | None = None
     target_offers: TargetOffers = field(init=False)
 
@@ -139,15 +142,11 @@ class Resolver:
         field's sub-fields are `<field>.<sub-field>`, variants spec)."""
         by_field = {name: [c for c in candidates if c.field == f"{prefix}{name}"] for name in fields}
         screened = {name: self.screen(by_field[name]) for name in fields}
-        bounds = _range_bounds(fields, screened)
-        screened = {
-            name: _without_bounds(*found, bounds, fields[name]) if price_role(fields[name]) == "price" else found
-            for name, found in screened.items()
-        }
         screened = {name: self._variants_yield(fields[name], *found) for name, found in screened.items()}
         # In schema order: the anchor takes the first Offer seen on a tie.
         offer_fields = [name for name, spec in fields.items() if self.target_offers.is_offer_field(spec)]
         offers = self._page_offers(fields, candidates, screened, offer_fields)
+        screened, offers = self._bounded(fields, candidates, screened, offer_fields, offers)
         chosen = {
             name: self._choose(spec, *screened[name], offers=offers, offer_field=name in offer_fields)
             for name, spec in fields.items()
@@ -243,8 +242,8 @@ class Resolver:
         - the shown variant (INV-38): its Offer's amount beats the amounts of other Offers (other variants or sellers);
         - a list or was price, a unit, member, installment or bundle price are not candidates of this field: the
           price path's predicates leave out struck, list, member and unit price specifications (`schemas.paths`), the
-          DOM collectors skip struck text and amounts written per unit or per period (`normalize.units`), and a
-          visible amount bounding a stated price range is rejected `range_bound` (`_range_bounds`).
+          DOM collectors skip struck text and amounts written per unit or per period (`normalize.units`), and an
+          amount bounding a stated price range is rejected `range_bound` (`_without_bounds`).
         An amount two candidates of one source role state for the same variant, with nothing explaining it, is the
         product's price by no evidence: `conflict` (owner: accuracy before coverage). Amounts that differ only in
         currency are not rivals (C7: the currency is unknown, not the price)."""
@@ -294,6 +293,66 @@ class Resolver:
             return OWN if not offers.anchor or offer is None or offer in offers.anchor else OTHER_OFFER
 
         return scope
+
+    def _bounded(
+        self,
+        fields: Mapping[str, FieldSpec],
+        candidates: Sequence[Candidate],
+        screened: dict[str, tuple[list[Candidate], list[Rejection]]],
+        offer_fields: Sequence[str],
+        offers: PageOffers,
+    ) -> tuple[dict[str, tuple[list[Candidate], list[Rejection]]], PageOffers]:
+        """The screened candidates without the active prices' range bounds (`_without_bounds`), and the page's Offers
+        read again from what is left: a bound is no Offer's own value, so the anchor is the Offer holding the most of
+        the rest."""
+        bounds = _range_bounds(fields, screened) | self._stated_ranges()
+        if not bounds:
+            return screened, offers
+        screened = {
+            name: self._without_bounds(fields[name], *found, bounds, offers)
+            if price_role(fields[name]) == "price"
+            else found
+            for name, found in screened.items()
+        }
+        return screened, self._page_offers(fields, candidates, screened, offer_fields)
+
+    def _stated_ranges(self) -> frozenset[_Bound]:
+        """The bounds of the price ranges the target's AggregateOffers state (`Entity.price_range`), each with its
+        range's currency: a platform answer's `price_min` and `price_max` as well as JSON-LD's `lowPrice` and
+        `highPrice`."""
+        return frozenset(
+            (bound, currency)
+            for e in self.graph.entities.values()
+            if e.price_range is not None and self.graph.offered(e).id == self.target.id
+            for low, high, currency in (e.price_range,)
+            for bound in (low, high)
+        )
+
+    def _without_bounds(
+        self,
+        spec: FieldSpec,
+        kept: list[Candidate],
+        rejected: list[Rejection],
+        bounds: frozenset[_Bound],
+        offers: PageOffers,
+    ) -> tuple[list[Candidate], list[Rejection]]:
+        """The price's candidates with the amounts that are a stated range's bound (`_range_bounds`, `_stated_ranges`)
+        rejected `range_bound` (resolution spec, "Candidate score"): a visible one always ("From $80" beside
+        `lowPrice` 80 states the range, not the price), a structured, meta or data-call one while another amount
+        stands for the shown variant (`_shown_amount`), so that a variant that is the cheapest keeps its price. An
+        amount in another currency than the range's is no bound; a currency either leaves unknown may be."""
+        bound = [c for c in kept if _bounds_it(money.amount_and_currency(value_of(c)), bounds)]
+        rival = any(self._shown_amount(c, offers) for c in kept if c not in bound)
+        dropped = [c for c in bound if rival or is_visible_amount(c, spec)]
+        return [c for c in kept if c not in dropped], [*rejected, *((c, RANGE_BOUND) for c in dropped)]
+
+    def _shown_amount(self, candidate: Candidate, offers: PageOffers) -> bool:
+        """Whether the candidate states the price of the variant the target shows: any of one variant's row (`variant`);
+        on a detail page whose shown variant is known, one no Offer outside its Offers states."""
+        if self.variant:
+            return True
+        offer = self.target_offers.offer_of(candidate)
+        return self.detail and bool(offers.shown) and (offer is None or offer in offers.shown)
 
     def _page_offers(
         self,
@@ -391,9 +450,6 @@ _LOW_PRICE, _HIGH_PRICE = "lowPrice", "highPrice"
 RANGE_BOUND = "range_bound"
 
 
-_Bound = tuple[Decimal, str | None]  # a range bound's amount and the range's currency (`None`: unknown)
-
-
 def _bounds_it(shown: _Bound | None, bounds: frozenset[_Bound]) -> bool:
     if shown is None:
         return False
@@ -421,18 +477,6 @@ def _stated_bounds(candidate: Candidate) -> tuple[_Bound, ...]:
     known = currency if isinstance(currency, str) else None
     bounds = {(low, known), (high, known)}
     return tuple(bounds) if len(bounds) > 1 else ()  # equal bounds state one price, no range
-
-
-def _without_bounds(
-    kept: list[Candidate], rejected: list[Rejection], bounds: frozenset[_Bound], spec: FieldSpec
-) -> tuple[list[Candidate], list[Rejection]]:
-    """The price's candidates with the visible amounts that are a stated range's bound (`_range_bounds`) rejected
-    `range_bound` (resolution spec, "Candidate score"): "From $80" beside `lowPrice` 80 states the range, not the
-    price. An amount in another currency than the range's is no bound; a currency either leaves unknown may be."""
-    bound = [
-        c for c in kept if is_visible_amount(c, spec) and _bounds_it(money.amount_and_currency(value_of(c)), bounds)
-    ]
-    return [c for c in kept if c not in bound], [*rejected, *((c, RANGE_BOUND) for c in bound)]
 
 
 def _same_amount(a: Group, b: Group) -> bool:

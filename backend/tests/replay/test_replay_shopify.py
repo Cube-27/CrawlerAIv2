@@ -160,9 +160,12 @@ def _variant(n: int, cents: int, *, available: bool) -> dict[str, JsonValue]:
     return {"id": 100 + n, "title": f"Colour {n}", "sku": f"W-{n}", "price": cents, "available": available}
 
 
-def _product_page(variants: list[dict[str, JsonValue]], *, query: str = "", markup: str = "") -> ExtractionResult:
-    """A product page at `query` with `markup` in its body, and its Ajax product answer listing `variants`."""
-    answer = json.dumps({"title": "Widget", "url": "/products/widget", "variants": variants}).encode()
+def _product_page(
+    variants: list[dict[str, JsonValue]], *, query: str = "", markup: str = "", **product: JsonValue
+) -> ExtractionResult:
+    """A product page at `query` with `markup` in its body, and its Ajax product answer listing `variants`, with the
+    `product` members."""
+    answer = json.dumps({"title": "Widget", "url": "/products/widget", "variants": variants, **product}).encode()
     call = NetworkBody(
         url=f"{SHOP}/products/widget.js",
         status=200,
@@ -240,3 +243,30 @@ def test_a_product_answer_is_the_page_groups_item_not_the_shown_variant() -> Non
     rows = result.entity["variants"].value
     assert isinstance(rows, list)
     assert [row["sku"] for row in rows if isinstance(row, dict)] == ["W-0", "W-1"]
+
+
+def test_the_products_lowest_price_the_page_states_is_no_rival_of_the_shown_variants() -> None:
+    # The answer's `price_min` and `price_max` are the range the variants span (an AggregateOffer's bounds): the
+    # page's `og:price:amount` and an Offer stating the low bound for the shown variant are that bound, not its price.
+    variants = [_variant(0, 1500, available=True), _variant(1, 1000, available=True), _variant(2, 2000, available=True)]
+    offer = {
+        "@type": "Offer",
+        "price": "10.00",
+        "priceCurrency": "EUR",
+        "sku": "W-0",
+        "url": f"{SHOP}/products/widget?variant=100",
+    }
+    product = {"@type": "Product", "name": "Widget", "sku": "W-0", "offers": offer}
+    og = '<meta property="og:price:amount" content="10.00"><meta property="og:price:currency" content="EUR">'
+
+    result = _product_page(
+        variants, markup=og + _jsonld(product), price=1000, price_min=1000, price_max=2000, price_varies=True
+    )
+
+    assert result.entity is not None
+    assert result.entity["price"].value == {"amount": "15.00", "currency": "EUR"}
+    rows = result.entity["variants"].value
+    assert isinstance(rows, list)
+    assert [row.get("price") for row in rows if isinstance(row, dict)] == [
+        {"amount": f"{amount}.00", "currency": "EUR"} for amount in (15, 10, 20)
+    ]

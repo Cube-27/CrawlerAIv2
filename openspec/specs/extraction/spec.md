@@ -406,7 +406,8 @@ another property or item; else the section after a heading (a sibling holding a 
 outermost prose elements), or named by `aria-label` or
 `aria-labelledby`, whose words are the field's or its schema.org property's; else, for a field whose path names
 `description` that only Open Graph (or nothing) states, the longest maximal prose block with no image that is not
-mostly links, without its opening heading, unless it holds the page's title heading (`h1`, or an ARIA heading of level
+mostly links, without its opening heading, when it holds at least two sentences (UAX #29 sentence boundaries,
+approximated: one line is a control's caption or a notice, not running text), unless it holds the page's title heading (`h1`, or an ARIA heading of level
 1) or a price the structural pass read, or, beside an Open Graph summary, is no longer than it or holds at most half
 of its words other than the title heading's (a summary with fewer words of its own than of the title heading only names
 the item, and asks no words of the block). Blocks that differ are ambiguous: none. The candidate is `dom`, independent, in
@@ -425,6 +426,10 @@ active.
 #### Scenario: Buy box is no main text
 - **WHEN** only `og:description` states a description, and the longest prose block holds the `h1` and the price
 - **THEN** no `dom` candidate is made, and the Open Graph summary publishes
+#### Scenario: One line is no main text
+- **WHEN** no source states a description, and the longest prose block of the main content is one sentence (an image
+  overlay's hint, a stock notice)
+- **THEN** no `dom` candidate is made
 #### Scenario: Description marked on its first section
 - **WHEN** `itemprop="description"` marks a job's first `section`, and two sibling sections of prose follow in its item
 - **THEN** the `dom` candidate is the three sections' text
