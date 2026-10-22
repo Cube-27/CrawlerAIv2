@@ -17,7 +17,7 @@ one most specific type), and entities of one most specific type that share an id
 (unless their item URLs differ) or, across collectors, an item URL other than a page URL SHALL be one entity before
 intent (`resolve/identity.py`); so SHALL roots of the page's own markup, of most specific types each other's or a
 subtype of one another, whose every item URL names the page's document (RFC 3986 authority and path; a relative `@id`
-or `url` resolved against the page) and that state one schema.org `name`: each says it is the item the page is about; the merged entity holds every member's types, most specific first. The root
+or `url` resolved against the page) and that state the same schema.org `name` values: each says it is the item the page is about; the merged entity holds every member's types, most specific first. The root
 of an identity-checked data call's answer (acquisition spec "Data calls") SHALL be one entity with the page's single
 root entity of its most specific type, and stay apart when the page states none or several; it states the product
 with every variant it has, so it never joins a product group's `hasVariant` member, whichever variant's identifiers it

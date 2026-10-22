@@ -15,9 +15,9 @@ and, of one most specific type, when
   names no item;
 and, of most specific types each other's or a subtype of one another, when
 - they are roots of the page's own markup (not a data call's answer) that name only the page (each item URL names the
-  page's document: RFC 3986 authority and path) and state one schema.org `name`: each says it is the item this page
-  is about, as a page often states its product twice (one block naming it by a relative `@id` and `url`, another by
-  its absolute `url`).
+  page's document: RFC 3986 authority and path) and state the same schema.org `name` values: each says it is the item
+  this page is about, as a page often states its product twice (one block naming it by a relative `@id` and `url`,
+  another by its absolute `url`).
 The root of an identity-checked data call's answer (`Entity.requested`, acquisition spec "Data calls") states the
 requested item by construction, though it may name it by no identifier the page's markup states (Shopify's product
 JSON holds its sku and barcode on its variants only): it is the page's one root item of its most specific type, when
@@ -165,12 +165,12 @@ def _join_requested(eligible: Sequence[Entity], sets: "_Sets", documents: Docume
 
 
 def _join_page_items(eligible: Sequence[Entity], sets: "_Sets", documents: Documents, vocabulary: Vocabulary) -> None:
-    """Join the page markup's roots of related types that name only the page and state one name (module docstring)."""
-    by_name: defaultdict[str, list[int]] = defaultdict(list)
+    """Join the page markup's roots of related types that name only the page and state the same names (module
+    docstring): a root stating several names joins only one stating each of them and no other."""
+    by_name: defaultdict[frozenset[str], list[int]] = defaultdict(list)
     for i, e in enumerate(eligible):
-        if e.parent is None and not e.requested and _names_only_the_page(e, documents):
-            for name in e.names:
-                by_name[name].append(i)
+        if e.names and e.parent is None and not e.requested and _names_only_the_page(e, documents):
+            by_name[frozenset(e.names)].append(i)
     for members in by_name.values():
         for i, j in combinations(members, 2):
             a, b = eligible[i].types[0], eligible[j].types[0]
