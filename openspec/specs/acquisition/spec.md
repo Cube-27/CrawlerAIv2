@@ -276,7 +276,8 @@ linkless page, self-refreshing page and listing-shell rules in `acquire/classify
 and has no hyperlink, or that declares a refresh and has hyperlinks but none to a web page (even one short enough to be
 a shell), is `blocked`; a listing without repeated items is a shell unless its structured data lists items; a 401 is
 `auth_wall`), and from one kind of site data only: a 2xx HTML document that shows a vendor's stand-in marker
-(`adapters/challenges.py`) is `blocked`. A block needs corroboration and usable content beats it: a 403, or a 2xx
+(`adapters/challenges.py`: a fixed string of the vendor's template, or the pattern of a token the vendor fills in, such
+as an edge's error reference id) is `blocked`. A block needs corroboration and usable content beats it: a 403, or a 2xx
 document with a stand-in marker, that carries the page's structured data (`classify.usable_content`: a schema.org
 Product with offers, an OGP product price, a microdata Product with offers; on a listing the items its structured data
 lists) is `ok`. A 2xx answer whose media type is not HTML (`text/html`, `application/xhtml+xml`; a response without a

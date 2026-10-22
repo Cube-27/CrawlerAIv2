@@ -8,6 +8,7 @@ through, so a 2xx document showing one is `blocked`. Header names, cookies and s
 its cookies and loads its script on the pages it lets through too.
 """
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -20,7 +21,9 @@ class ChallengeSignature:
     header_names: frozenset[str] = frozenset()  # lowercase response header names
     cookie_prefixes: tuple[str, ...] = ()  # cookie names, or the fixed start of names the vendor numbers
     script_paths: tuple[str, ...] = ()  # in a challenge document's markup
-    stand_in_markers: tuple[str, ...] = ()  # in the markup of the document served in place of the page only
+    # In the markup of the document served in place of the page only: a fixed string, or a pattern for a token the
+    # vendor fills in.
+    stand_in_markers: tuple[str | re.Pattern[str], ...] = ()
 
 
 SIGNATURES: tuple[ChallengeSignature, ...] = (
@@ -40,8 +43,16 @@ SIGNATURES: tuple[ChallengeSignature, ...] = (
         "akamai",
         cookie_prefixes=("_abck", "bm_sz", "ak_bmsc", "bm_sv"),
         script_paths=("/akam/",),
-        # The edge's waiting-room and failover template, whose ESI comments name it (served with 200).
-        stand_in_markers=("AKAMAI-UPA:",),
+        stand_in_markers=(
+            # The edge's waiting-room and failover template, whose ESI comments name it (served with 200).
+            "AKAMAI-UPA:",
+            # The edge's error reference, in its own error template and in the customer templates that print it in
+            # place of the page: "Reference" and the id <error code>.<edge server hex>.<epoch seconds>.<request
+            # hex>, its dots written as character references (HTML §13.5) in the edge's own template.
+            re.compile(
+                r"Reference[^<]{0,16}?\b\d{1,3}(?:\.|&#46;)[0-9a-f]{6,8}(?:\.|&#46;)\d{10}(?:\.|&#46;)[0-9a-f]{4,8}\b"
+            ),
+        ),
     ),
     ChallengeSignature(
         "imperva",
@@ -81,11 +92,18 @@ def vendor_of(header_names: Iterable[str], cookie_names: Iterable[str], markup: 
             return signature
         if any(name.startswith(signature.cookie_prefixes) for name in cookies if signature.cookie_prefixes):
             return signature
-        if any(path in markup for path in (*signature.script_paths, *signature.stand_in_markers)):
+        if any(path in markup for path in signature.script_paths) or _shows_stand_in(signature, markup):
             return signature
     return None
 
 
 def stand_in_vendor(markup: str) -> ChallengeSignature | None:
     """The first signature whose stand-in marker the markup shows, if any."""
-    return next((s for s in SIGNATURES if any(m in markup for m in s.stand_in_markers)), None)
+    return next((s for s in SIGNATURES if _shows_stand_in(s, markup)), None)
+
+
+def _shows_stand_in(signature: ChallengeSignature, markup: str) -> bool:
+    return any(
+        marker.search(markup) is not None if isinstance(marker, re.Pattern) else marker in markup
+        for marker in signature.stand_in_markers
+    )
