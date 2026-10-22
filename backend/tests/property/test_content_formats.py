@@ -1,7 +1,7 @@
 """Content-format properties (rest-api spec): `links` are absolute canonical http(s) URLs, cleaned `html` runs no
-script, and `metadata.language` is `<html lang>`, else `og:locale`, else absent. Examples pin the markdown of an
-article, of a page with furniture and of a listing, and that two canonical links name none (RFC 6596 §3); all read the
-shared `ParsedPage`."""
+script, `metadata.language` is `<html lang>`, else `og:locale`, else absent, and a wrapper named after furniture that
+holds the page's longest block is kept. Examples pin the markdown of an article, of a page with furniture and of a
+listing, and that two canonical links name none (RFC 6596 §3); all read the shared `ParsedPage`."""
 
 from html import escape
 from urllib.parse import urlsplit
@@ -152,6 +152,30 @@ def test_markdown_is_the_page_minus_its_furniture() -> None:
         "# Opening hours\n\nOpen **daily**from nine.\n\n- Mon\n  - 9-17\n\n"
         "| Day | Hours |\n| --- | --- |\n| Sat | 10-14 |\n\n```\na  b\n```"
     )
+
+
+_FURNITURE_NAMES = ("has-no-sidebar", "sidebarContent", "page_menu", "share-panel", "modal")
+
+
+@given(
+    st.sampled_from(_FURNITURE_NAMES),
+    st.integers(min_value=12, max_value=40),
+    st.lists(st.integers(min_value=1, max_value=11), min_size=1, max_size=6),
+)
+def test_a_wrapper_named_after_furniture_that_holds_the_longest_block_is_kept(
+    name: str, longest: int, others: list[int]
+) -> None:
+    # Readability: the content is where the longest text runs; a name is a weak sign of furniture.
+    blocks = "".join(f"<p>{'Other words here. ' * n}</p>" for n in others)
+    page = (
+        f"<html><body><nav>{'Menu entry ' * 5}</nav><div>{blocks * 4}</div>"
+        f"<div class='{name}'><p>{'Long running text. ' * longest}</p></div></body></html>"
+    )
+
+    made = markdown(ParsedPage(page), FINAL_URL)
+
+    assert ("Long running text. " * longest).strip() in made
+    assert "Menu entry" not in made
 
 
 def test_a_page_that_shows_nothing_with_scripts_is_read_without_them() -> None:
