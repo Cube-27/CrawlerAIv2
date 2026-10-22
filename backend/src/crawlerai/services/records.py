@@ -4,7 +4,8 @@ connection.
 
 Every schema field is a member, published or not, with the §13.1 attributes (`value`, `status`, `evidence`,
 `confidence`, `calibrated`, `locator`) and `reason`, `source_kind`, `derived_by` from `field_meta`. The value is the
-record's published value, unchanged (INV-27), and `None` for a field that did not publish.
+record's published value in its served form (`normalize.dispatch.served`: money, ranges and numbers as JSON numbers;
+INV-27), and `None` for a field that did not publish.
 """
 
 from collections.abc import Mapping, Sequence
@@ -30,6 +31,7 @@ from crawlerai.db.models import (
     UrlTaskId,
 )
 from crawlerai.db.paging import keyset_page, total_rows
+from crawlerai.normalize.dispatch import served
 from crawlerai.resolve.records import Delta, FieldChange, FieldMeta, RecordContent, record_confidence
 from crawlerai.resolve.types import FieldSet, Probability
 from crawlerai.schemas import registry
@@ -71,8 +73,10 @@ class ExtractedRecord(BaseModel):
     fields: dict[str, RecordField]
 
     @classmethod
-    def of_content(cls, content: RecordContent, *, mode: ExtractionMode, confidence: float | None) -> Self:
-        fields = _fields(content.data, content.field_meta)
+    def of_content(
+        cls, schema: SchemaDef, content: RecordContent, *, mode: ExtractionMode, confidence: float | None
+    ) -> Self:
+        fields = _fields(schema, content.data, content.field_meta)
         return cls(mode=mode, complete=content.complete, confidence=confidence, fields=fields)
 
 
@@ -82,8 +86,16 @@ class ScrapedRecord(ExtractedRecord):
     id: RecordId
 
     @classmethod
-    def of(cls, record_id: RecordId, draft: RecordContent, *, mode: ExtractionMode, confidence: float | None) -> Self:
-        fields = _fields(draft.data, draft.field_meta)
+    def of(
+        cls,
+        schema: SchemaDef,
+        record_id: RecordId,
+        draft: RecordContent,
+        *,
+        mode: ExtractionMode,
+        confidence: float | None,
+    ) -> Self:
+        fields = _fields(schema, draft.data, draft.field_meta)
         return cls(id=record_id, mode=mode, complete=draft.complete, confidence=confidence, fields=fields)
 
 
@@ -214,7 +226,7 @@ async def _committed(conn: AsyncConnection) -> None:
 
 
 def _stored(row: RowMapping, schema: SchemaDef) -> StoredRecord:
-    data = row["data"]
+    data = served(row["data"], schema.fields)
     fields = {
         name: RecordField.model_validate({**meta, "value": data.get(name)}) for name, meta in row["field_meta"].items()
     }
@@ -230,15 +242,15 @@ def _stored(row: RowMapping, schema: SchemaDef) -> StoredRecord:
         "egress_basis",
     )
     columns = {name: row[name] for name in names}
-    delta = _delta(row) if "delta" in row else None
+    delta = _delta(row, schema) if "delta" in row else None
     return StoredRecord(**columns, confidence=record_confidence(schema, fields), fields=fields, delta=delta)
 
 
-def _delta(row: RowMapping) -> Delta:
-    """The record's delta, with each changed field's previous value from the version it superseded."""
+def _delta(row: RowMapping, schema: SchemaDef) -> Delta:
+    """The record's delta, with each changed field's previous value from the version it superseded, both served."""
     if row["delta"] != "changed":
         return Delta(kind=row["delta"])
-    data, previous = row["data"], row["previous_data"] or {}
+    data, previous = served(row["data"], schema.fields), served(row["previous_data"] or {}, schema.fields)
     changes = [
         FieldChange(field=name, previous=previous.get(name), value=data.get(name)) for name in row["changed_fields"]
     ]
@@ -250,8 +262,9 @@ def page_fields(schema: SchemaDef, fields: FieldSet) -> dict[str, RecordField]:
     that kept no record still resolved, such as its next page."""
     scoped = {name: outcome for name, outcome in fields.items() if schema.fields[name].scope == "page"}
     data = {name: outcome.published for name, outcome in scoped.items() if outcome.status == "published"}
-    return _fields(data, {name: FieldMeta.of(outcome) for name, outcome in scoped.items()})
+    return _fields(schema, data, {name: FieldMeta.of(outcome) for name, outcome in scoped.items()})
 
 
-def _fields(data: Mapping[str, Any], meta: Mapping[str, FieldMeta]) -> dict[str, RecordField]:
-    return {name: RecordField(**field.model_dump(), value=data.get(name)) for name, field in meta.items()}
+def _fields(schema: SchemaDef, data: Mapping[str, JsonValue], meta: Mapping[str, FieldMeta]) -> dict[str, RecordField]:
+    values = served(data, schema.fields)
+    return {name: RecordField(**field.model_dump(), value=values.get(name)) for name, field in meta.items()}

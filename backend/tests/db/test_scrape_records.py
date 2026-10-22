@@ -332,7 +332,7 @@ async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
     assert result.outcome == "extracted"
     assert result.records is not None
     price_field = result.records[0].fields["price"]
-    assert (price_field.value, price_field.source_kind) == ({"amount": "19.90", "currency": "EUR"}, "llm")
+    assert (price_field.value, price_field.source_kind) == ({"amount": 19.9, "currency": "EUR"}, "llm")
     assert result.usage.llm_calls == 1
 
 

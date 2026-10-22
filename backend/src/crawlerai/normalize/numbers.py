@@ -61,6 +61,13 @@ def json_decimal(value: object) -> Decimal | None:
     return None
 
 
+def json_number(value: Decimal) -> int | float:
+    """A finite decimal as the JSON number a record serves (RFC 8259 §6; normalization spec, "Served form"): an integer
+    when it is whole (`85.00` is 85), else the IEEE 754 binary64 nearest it (I-JSON, RFC 7493 §2.2), whose shortest
+    form (`repr`) writes its digits back for up to 15 significant digits (`199.95` stays 199.95)."""
+    return int(value) if value == value.to_integral_value() else float(value)
+
+
 @dataclass(frozen=True, slots=True)
 class Stated:
     """The one number a text holds, as written (for `readings`), the text before it, where a sign would be, the text

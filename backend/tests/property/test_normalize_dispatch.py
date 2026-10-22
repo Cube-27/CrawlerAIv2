@@ -1,16 +1,17 @@
 """The normalize dispatcher (normalization spec): each field type goes to its one module, lists and objects recurse
-into their items and sub-fields, range resolves currencies by the registered money rules, and no type returns `Ok`
-for empty input (INV-06)."""
+into their items and sub-fields, range resolves currencies by the registered money rules, no type returns `Ok`
+for empty input (INV-06), and records serve money, ranges and numbers as JSON numbers ("Served form")."""
 
+import json
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_EVEN, Decimal
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
 from crawlerai.normalize.base import Ambiguous, Context, Invalid, Ok
-from crawlerai.normalize.dispatch import normalize
+from crawlerai.normalize.dispatch import normalize, served
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 AT = datetime(2026, 1, 1, tzinfo=UTC)
@@ -112,3 +113,35 @@ def test_a_list_is_as_checked_as_its_least_checked_item_and_as_settled_as_its_we
 def test_a_range_bound_past_any_amount_is_not_a_number() -> None:
     raw: JsonValue = {"currency": "EUR", "value": {"minValue": "1e1000000000", "maxValue": 5}}
     assert normalize(raw, _spec(FieldType.RANGE), CTX) == Invalid("bound_not_a_number")
+
+
+# Money's storage bounds (`numbers.storable`: under 10^12, six fraction digits) within binary64's 15 exact digits.
+_written = st.decimals(min_value=0, max_value=Decimal("999999999.999999"), places=6).map(
+    lambda d: format(d.normalize() if d else d, "f")
+)
+
+
+@given(_written, _written)
+def test_records_serve_money_and_range_amounts_as_the_json_numbers_they_state_and_numbers_to_two_places(
+    a: str, b: str
+) -> None:
+    lo, hi = sorted([a, b], key=Decimal)
+    fields = {
+        "price": _spec(FieldType.MONEY),
+        "salary": _spec(FieldType.RANGE),
+        "rating": _spec(FieldType.NUMBER),
+        "variants": FieldSpec.model_validate(
+            {"type": "list", "item": {"type": "object", "fields": {"price": {"type": "money", "description": "d"}}}}
+        ),
+    }
+    money: JsonValue = {"amount": a, "currency": "EUR"}
+    salary: JsonValue = {"min": lo, "max": hi, "currency": "EUR", "unit": None, "period": "YEAR"}
+    data: dict[str, JsonValue] = {"price": money, "salary": salary, "rating": a, "variants": [{"price": money}], "x": a}
+
+    # As a JSON document carries them: the text a JSON number is written in reads back as the stated decimal.
+    out = json.loads(json.dumps(served(data, fields)), parse_float=Decimal, parse_int=Decimal)
+
+    assert out["price"] == out["variants"][0]["price"] == {"amount": Decimal(a), "currency": "EUR"}
+    assert out["salary"] == {**salary, "min": Decimal(lo), "max": Decimal(hi)}
+    assert out["rating"] == Decimal(a).quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
+    assert out["x"] == a  # a key the schema lacks is served as it is

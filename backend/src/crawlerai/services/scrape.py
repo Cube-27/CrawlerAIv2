@@ -59,8 +59,8 @@ from crawlerai.llm.roles.s_labels import with_labels
 from crawlerai.llm.roles.s_schema import draft_schema
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData
-from crawlerai.resolve.task import ActiveConfig, StoredRecord
-from crawlerai.resolve.types import ExtractionResult, Probability
+from crawlerai.resolve.task import ActiveConfig
+from crawlerai.resolve.types import Probability
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.fetch_options import CAPTURE_FORMATS, FetchOptions, check_proxy_pool, fetch_policy
 from crawlerai.services.fetching import (
@@ -475,7 +475,7 @@ def _answer(
         reason=reason,
         usage=usage,
         schema_=derived.drafted,
-        records=None if end.kept is None else [_scraped(record, of) for record, of in end.kept],
+        records=_scraped(end, derived.extracted),
         page=end.fields,
         browser_actions=report,
         **_fetch_members(page.result, end.capture_id, adapters),
@@ -570,8 +570,15 @@ def _fetch_members(result: FetchResult, capture_id: CaptureId, adapters: Adapter
     )
 
 
-def _scraped(kept: StoredRecord, extraction: ExtractionResult) -> ScrapedRecord:
-    return ScrapedRecord.of(kept.id, kept.draft, mode=extraction.mode, confidence=extraction.record_confidence)
+def _scraped(end: PageEnd, extracted: Extracted | None) -> list[ScrapedRecord] | None:
+    """The records the page kept, served in the schema they were extracted with; None when it kept none."""
+    if end.kept is None or extracted is None:
+        return None
+    schema = extracted.records.schema
+    return [
+        ScrapedRecord.of(schema, record.id, record.draft, mode=of.mode, confidence=of.record_confidence)
+        for record, of in end.kept
+    ]
 
 
 def _content(

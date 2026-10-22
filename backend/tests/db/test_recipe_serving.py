@@ -152,7 +152,7 @@ async def test_a_scrape_of_a_site_with_a_recipe_is_served_over_its_api(
     title, price = record.fields["title"], record.fields["price"]
     assert (record.mode, title.value, title.source_kind, title.evidence) == ("config", "Desk Lamp", "api", "adapter")
     assert title.locator == f"api:{recipe_config}:$['data']['name']"
-    assert price.value == {"amount": "19.5", "currency": "EUR"}
+    assert price.value == {"amount": 19.5, "currency": "EUR"}
     # The page steps did not run on the JSON, so their window shows nothing of them.
     assert await _drift_window(engine, recipe_config) == {}
 

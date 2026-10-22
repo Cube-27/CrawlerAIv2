@@ -50,6 +50,7 @@ from crawlerai.db.models import (
 from crawlerai.db.paging import keyset_page, total_rows
 from crawlerai.db.queue import settle_job
 from crawlerai.llm.pricing import default_pricing
+from crawlerai.normalize.dispatch import served
 from crawlerai.resolve.records import FieldMeta, RecordContent
 from crawlerai.schemas import registry
 from crawlerai.services.llm_costs import costs_of_jobs
@@ -385,7 +386,7 @@ async def job_results(
     conn: AsyncConnection, job_id: JobId, query: ResultsQuery, *, store: ObjectStore, adapters: Adapters | None = None
 ) -> RecordPage | ExportPage | PageOutputPage | JsonValuesPage:
     """The job's records after `query.cursor`, newest first, in the field shape of `/v1/records` (`json`) or exported
-    in the schema's columns. Values are the stored published values, unchanged (INV-27). A job without a schema
+    in the schema's columns. Values are the stored published values, served (INV-27). A job without a schema
     answers `json` with its page outputs, made from the captures in `store`, and has nothing to export. Any job
     answers `json_values` with its tasks after `query.cursor`, oldest first. `adapters` names the platform adapter in a
     fetch summary; without it none is named."""
@@ -538,7 +539,7 @@ async def _clean_records(
     conn: AsyncConnection, schema_id: SchemaId | None, task_ids: list[UrlTaskId]
 ) -> dict[UrlTaskId, list[dict[str, JsonValue]]]:
     """The clean records each task's page stands for, oldest first: those it stored, or the latest versions of its
-    entities when its records equalled them (`task_record`, jobs spec)."""
+    entities when its records equalled them (`task_record`, jobs spec), served as the API serves records."""
     if schema_id is None or not task_ids:
         return {}
     schema = await registry.get_by_id(conn, schema_id)
@@ -550,7 +551,7 @@ async def _clean_records(
     )
     records: defaultdict[UrlTaskId, list[dict[str, JsonValue]]] = defaultdict(list)
     for row in await conn.execute(statement):
-        records[row.url_task_id].append(clean_record(schema, row.data))
+        records[row.url_task_id].append(clean_record(schema, served(row.data, schema.fields)))
     return records
 
 

@@ -193,7 +193,7 @@ D-1372, D-1373.
 `normalize/range.py`, `count.py` and `number.py` SHALL each accept one stated value and decline otherwise: a
 monetary range without a period is `Ambiguous`, except a schema.org AggregateOffer's `lowPrice` and `highPrice`
 (a price range: no period), each bound read as an Offer's `price` with its `priceCurrency`; count and number decline on two numbers; number keeps digits as
-written, and a schema.org `ratingValue` joined to a `reviewCount` of 0 is `Invalid("no_ratings")`. A count with
+written (a record serves it rounded: "Served form"), and a schema.org `ratingValue` joined to a `reviewCount` of 0 is `Invalid("no_ratings")`. A count with
 `unitCode` `C62` declines a `unitText` that names a CLDR measurement unit, and a count written in a compact form (a
 CLDR compact decimal unit of any locale right after the digits: `1K+ reviews`, `2,5 Mio.`) is `Invalid("compact")`: a
 rounded magnitude, not the count; digits right after a letter, its combining marks and format characters aside
@@ -234,6 +234,20 @@ D-1270, D-1271, D-1371, architecture-v3 d.1, d.4.
 #### Scenario: Interval as text
 - **WHEN** a salary has `currency: "EUR"`, bounds `60000` to `80000` and `unitText: "1 YEAR"` (or `unitCode: "ANN"`)
 - **THEN** the period is `YEAR`; with `unitText: "2 YEAR"` the range is `Ambiguous("period_missing")`
+
+### Requirement: Served form
+Normalized money amounts, range bounds and numbers SHALL stay decimal strings with their digits as written, which
+storage, equality, resolution, grounding and learning read; a record SHALL serve them (`normalize.dispatch.served`:
+the API's record fields and deltas, `json_values`, exports, MCP and webhook record events) as JSON numbers (RFC 8259
+§6): a whole value as an integer, any other as the IEEE 754 binary64 nearest it, whose shortest form writes its digits
+back up to 15 significant digits, and a `number` rounded half to even to at most two decimal places (owner #80).
+Lists and objects serve their items and sub-fields so; every other value is served as stored. Enforced by:
+`tests/property/test_normalize_dispatch.py`; active. Refs: owner #80.
+#### Scenario: Served price and rating
+- **WHEN** a record publishes `price` `{"amount": "199.95", "currency": "EUR"}`, a variant row's `price` amount `"85"`
+  and `rating` `"4.439477977161501"`
+- **THEN** it serves `{"amount": 199.95, "currency": "EUR"}`, `{"amount": 85, ...}` and `4.44`, while its stored value
+  and every comparison keep `"4.439477977161501"`
 
 ### Requirement: identifier, text and url
 `normalize/identifier.py` SHALL check GTIN and ISBN check digits and publish the identifier as a string, the scheme being

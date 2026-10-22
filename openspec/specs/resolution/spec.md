@@ -297,8 +297,10 @@ stays `missing` with reason `unverified`, never published. Refs: §8.4, D-0489, 
 
 ### Requirement: Nothing after resolution changes a value (INV-27)
 No layer after resolution (storage, exporters, API, MCP, UI) SHALL change a published value; fixes go to extraction,
-a config or an operator correction (C5). Opt-in `csv_safe` only prefixes `'` to formula-like cells. Refs: §10, D-0879.
+a config or an operator correction (C5). Output serves it in its served form only (normalization spec, "Served form":
+decimals as JSON numbers, a `number` rounded to two places; owner #80), and opt-in `csv_safe` only prefixes `'` to
+formula-like cells. Refs: §10, D-0879.
 Enforced by: a property test that exported and API values equal the stored record's, and review; active.
 #### Scenario: Records API
 - **WHEN** a record is read through `GET /v1/records` and the MCP server
-- **THEN** each published value equals the stored record's value
+- **THEN** each published value equals the stored record's value in its served form

@@ -144,6 +144,8 @@ async def _replay(
         diagnostics=result.diagnostics,
     )
     return [
-        ExtractedRecord.of_content(draft, mode=result.mode, confidence=record_confidence(schema, draft.field_meta))
+        ExtractedRecord.of_content(
+            schema, draft, mode=result.mode, confidence=record_confidence(schema, draft.field_meta)
+        )
         for draft in drafts
     ]

@@ -6,7 +6,7 @@ their items and sub-fields.
 """
 
 from collections import Counter
-from collections.abc import Hashable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
 from functools import partial
 
 from pydantic import JsonValue
@@ -56,6 +56,12 @@ _TYPES: dict[FieldType, tuple[Normalizer, EqualityKey]] = {
     FieldType.NUMBER: (number.normalize, number.key),
 }
 _COMPARED: dict[FieldType, tuple[Normalizer, Equality]] = {FieldType.LOCATION: (location.normalize, location.equal)}
+# The types whose published values a record serves in another form (normalization spec, "Served form").
+_SERVED: dict[FieldType, Callable[[JsonValue], JsonValue]] = {
+    FieldType.MONEY: money.served,
+    FieldType.RANGE: range_.served,
+    FieldType.NUMBER: number.served,
+}
 
 
 def warm() -> None:
@@ -90,6 +96,23 @@ def compared_form(value: JsonValue, spec: FieldSpec, ctx: Context) -> JsonValue:
         fields = _fields(spec)
         return {k: compared_form(v, fields[k], ctx) if k in fields else v for k, v in value.items()}
     return value
+
+
+def served(data: Mapping[str, JsonValue], fields: Mapping[str, FieldSpec]) -> dict[str, JsonValue]:
+    """A record's published values `data`, of the schema `fields`, as the API, exports and webhooks serve them
+    (normalization spec, "Served form"): money amounts, range bounds and numbers as JSON numbers, a number rounded to
+    two decimal places, in lists and objects too; every other value, and a key `fields` lacks, as it is. Only output
+    reads this form: storage, equality and learning keep the normalized values, whose precision it may round away."""
+    return {name: _served(value, fields[name]) if name in fields else value for name, value in data.items()}
+
+
+def _served(value: JsonValue, spec: FieldSpec) -> JsonValue:
+    if spec.type is FieldType.LIST and isinstance(value, list):
+        return [_served(item, _item(spec)) for item in value]
+    if spec.type is FieldType.OBJECT and isinstance(value, dict):
+        return served(value, _fields(spec))
+    serve = _SERVED.get(spec.type)
+    return value if serve is None else serve(value)
 
 
 def equal(a: JsonValue, b: JsonValue, spec: FieldSpec) -> bool:
