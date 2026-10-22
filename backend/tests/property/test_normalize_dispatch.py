@@ -135,7 +135,7 @@ def test_records_serve_money_and_range_amounts_as_the_json_numbers_they_state_an
         ),
     }
     money: JsonValue = {"amount": a, "currency": "EUR"}
-    salary: JsonValue = {"min": lo, "max": hi, "currency": "EUR", "unit": None, "period": "YEAR"}
+    salary: dict[str, JsonValue] = {"min": lo, "max": hi, "currency": "EUR", "unit": None, "period": "YEAR"}
     data: dict[str, JsonValue] = {"price": money, "salary": salary, "rating": a, "variants": [{"price": money}], "x": a}
 
     # As a JSON document carries them: the text a JSON number is written in reads back as the stated decimal.
