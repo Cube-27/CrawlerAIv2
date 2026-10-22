@@ -207,7 +207,9 @@ class _Writer:
         step = -1 if element.get("reversed") is not None else 1
         bodies = [body for blocks in self.items(element) if (body := "\n".join(map(_unheaded, filter(None, blocks))))]
         start = element.get("start", "").strip()
-        number = int(start) if start.isdecimal() and len(start) < 9 else (len(bodies) if step < 0 else 1)
+        number = len(bodies) if step < 0 else 1
+        if start.isdecimal() and len(start) < 9:
+            number = int(start)
         lines: list[str] = []
         for body in bodies:
             marker = f"{max(number, 0)}." if ordered else "-"
