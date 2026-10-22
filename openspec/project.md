@@ -15,7 +15,7 @@ Goals G1–G7 and non-goals: [design/overview.md](design/overview.md) (§1).
 ## Stack
 
 Python 3.12 (FastAPI, pydantic v2, SQLAlchemy async + asyncpg, Alembic, curl_cffi, httpx, Patchright headless,
-selectolax, lxml, Babel/CLDR, trafilatura), PostgreSQL 16 (also the queue), S3-compatible object storage;
+selectolax, lxml, Babel/CLDR), PostgreSQL 16 (also the queue), S3-compatible object storage;
 TypeScript (Vite+, React, HeroUI v3). One Docker image with three roles: `api`, `worker`, `scheduler`.
 Full table and rejected alternatives: ARCHITECTURE §19. Commands: `CLAUDE.md`.
 

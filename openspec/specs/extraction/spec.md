@@ -371,37 +371,53 @@ Enforced by: resolver test; active.
 
 ### Requirement: Page content formats
 The system SHALL produce `markdown`, `html`, `raw_html`, `links` and `metadata` from the `ParsedPage` with no per-site
-cleaning (`content/`); `markdown` is `""` when there is no main content, keeps the space after an inline element in a
-`div`, `td` or `li`, and a listing capture appends the first of the page's ranked repeated item groups
-(`ParsedPage.item_groups`, [listings](../listings/spec.md)) as a list, a listing without one being read in recall
-mode, as is any page whose precision-mode read finds no main content. A JSON body (an `api` capture's) is never read as HTML: its `links` are its absolute http(s) URL string values
-in document order, never markup inside a value; its `markdown` (and `markdown_fit`) is the answer pretty-printed in
-one fenced `json` code block; its `html` is `""`. Refs: §8.5, SPEC-07 §4.5, D-0401, D-0993, D-1275, D-1276, D-1277,
-D-1450, D-1473, D-1474;
-endpoint in [rest-api](../rest-api/spec.md).
-#### Scenario: No main content
-- **WHEN** trafilatura finds no main content
+cleaning (`content/`). `markdown` is the page minus its furniture (`content/regions.py`, the one definition the DOM
+collectors share): elements never rendered or hidden by the page itself (`script`, `style`, `template`, `hidden`,
+`aria-hidden="true"`, a closed `dialog`), the landmarks `nav`, `aside`, an open `dialog` and a `header` or `footer`
+whose scope is the body, the WAI-ARIA landmark and window roles of the same meaning, and elements whose class or id
+names a furniture word (header, footer, nav, menu, breadcrumb, cookie, consent, sidebar, social, share, newsletter,
+modal, popup, skip, as Firecrawl's `excludeNonMainTags` and Readability read them); no rule drops an element holding the
+page's first `h1`, a `main` or `article`, and no name or page-hidden mark one holding more than two fifths of the page's
+text. Everything left is written in document order as CommonMark with GFM tables (headings, paragraphs with collapsed
+inline whitespace, nested lists, tables, fenced code, block quotes, links and images resolved against the document
+base URL); a form control's value is no text. A page that shows nothing once scripts would run is written as a user
+agent with scripting disabled renders it, its `noscript` content included (HTML Standard §4.12.2). `markdown` is `""`
+when nothing is left. A JSON body (an `api` capture's) is never read as HTML: its `links` are its absolute http(s) URL
+string values in document order, never markup inside a value; its `markdown` (and `markdown_fit`) is the answer
+pretty-printed in one fenced `json` code block; its `html` is `""`. Refs: §8.5, SPEC-07 §4.5, D-0401, D-0993, D-1276,
+D-1277, D-1450, D-1473, D-1474; endpoint in [rest-api](../rest-api/spec.md).
+#### Scenario: Furniture dropped
+- **WHEN** a page has a body-level `header`, a `div` named `cookie-consent` and a `nav` around its content
+- **THEN** `markdown` holds the content and none of their text
+#### Scenario: Wrapper named after furniture
+- **WHEN** a `div` whose class names a drawer modal holds the page's `h1` and its text
+- **THEN** `markdown` keeps it
+#### Scenario: Listing items
+- **WHEN** a listing's grid of cards sits in its `main`
+- **THEN** `markdown` holds each card's link, image and text, in page order
+#### Scenario: Client-rendered page
+- **WHEN** the body shows nothing but a `noscript` element holding the page's text
+- **THEN** `markdown` is that text
+#### Scenario: Nothing left
+- **WHEN** the body holds only furniture
 - **THEN** `markdown` is the empty string
-#### Scenario: Precision read finds nothing
-- **WHEN** precision mode keeps none of a page whose only content is a link-dense paragraph
-- **THEN** `markdown` is that paragraph, read in recall mode
-#### Scenario: Tag cloud beside a grid
-- **WHEN** a listing holds 30 bare tag links and 4 cards with an image, a link and a price
-- **THEN** the cards are the listed items
 #### Scenario: API answer
 - **WHEN** an adapter's JSON answer holds a posting URL and a description whose markup links elsewhere
 - **THEN** `links` holds the posting URL and nothing read from the description's markup, `markdown` is the answer in a
   `json` code block and `html` is empty
 
 ### Requirement: Fit markdown and chunks
-`markdown_fit` SHALL be the page's markdown pruned by deterministic block scores (link density, text density, and
-repetition of a block across the page), keeping at most `fit.max_blocks`; with `fit.query` it keeps the blocks that
-rank by BM25 (Robertson and Zaragoza, 2009) over the blocks. `chunks` SHALL split the markdown (or `markdown_fit`)
-by `heading`, `sentence` or `token` strategy with a `size` and `overlap` in words, each chunk carrying its heading
-path. Neither uses an LLM. Refs: D-1422, D-1423.
+`markdown_fit` SHALL be `markdown`'s tree (the page minus its furniture) pruned further by deterministic block scores
+(link density, text density, and repetition of a block across the page); with `fit.query` it keeps the blocks that
+rank by BM25 (Robertson and Zaragoza, 2009) over the blocks, at most `fit.max_blocks` of them. `chunks` SHALL split
+the markdown (or `markdown_fit`) by `heading`, `sentence` or `token` strategy with a `size` and `overlap` in words, each
+chunk carrying its heading path. Neither uses an LLM. Refs: D-1422, D-1423.
 #### Scenario: Query keeps relevant blocks
 - **WHEN** `fit.query` names a topic of one block
 - **THEN** that block is kept and unrelated blocks are not
+#### Scenario: Link block pruned
+- **WHEN** a `div` of three bare links sits between two paragraphs of prose
+- **THEN** `markdown_fit` keeps the prose and drops the links, while `markdown` keeps both
 
 ### Requirement: DOM description block
 On a detail page the system SHALL propose for each `long_text` field the prose block of the page's main region

@@ -1,8 +1,8 @@
 """One parsed page per capture (INV-26; extraction spec).
 
 The body is decoded once and parsed once, by selectolax (lexbor, the HTML Standard's parsing algorithm) on first use;
-the lxml tree an XPath step or trafilatura reads is a copy of that parse (`acquire.items.lxml_of`), so an element has
-one path in both. The script blocks, their JSON-LD documents, the cleaned text and the visibility index are
+the lxml tree an XPath step or the Markdown writer reads is a copy of that parse (`acquire.items.lxml_of`), so an
+element has one path in both. The script blocks, their JSON-LD documents, the cleaned text and the visibility index are
 derived once from the selectolax tree; the captured network bodies are kept as the bundle holds them. Every consumer
 (collectors, content formats, pagination, the engine executor) takes a `ParsedPage`, never the raw body.
 """

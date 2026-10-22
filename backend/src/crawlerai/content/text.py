@@ -30,7 +30,7 @@ NOT_RENDERED = frozenset(
 )
 # HTML Standard, Rendering, the user-agent style sheet: elements that are `display: block`, `list-item` or a table
 # box other than a cell. Their text starts and ends a line, as the `innerText` getter breaks it.
-_LINE_BOXES = frozenset(
+LINE_BOXES = frozenset(
     {
         *("html", "body", "address", "blockquote", "center", "dialog", "div", "figure", "figcaption", "footer"),
         *("form", "header", "hr", "legend", "listing", "main", "p", "plaintext", "pre", "search", "xmp"),
@@ -270,7 +270,7 @@ def completed(text: str, title: str | None) -> str | None:
 def _separator(tag: str) -> str:
     """What separates an element's box from its siblings' text."""
     # HTML Standard, Rendering: `br` is a forced line break.
-    if tag in _LINE_BOXES or tag == "br":
+    if tag in LINE_BOXES or tag == "br":
         return "\n"
     return " " if tag in CELLS else ""
 

@@ -50,18 +50,17 @@ from pydantic import JsonValue
 from selectolax.lexbor import LexborNode
 
 from crawlerai.collect.base import PAGE, Candidate, CollectResult
-from crawlerai.collect.dom import OTHER_ITEMS, content_region, list_items
+from crawlerai.collect.dom import OTHER_ITEMS, list_items
 from crawlerai.collect.labels import field_labels, labelled, properties, words
 from crawlerai.collect.locator import InvalidLocator, format_locator, parse_locator
 from crawlerai.collect.schema_org_map import candidate
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage, node_xpath
+from crawlerai.content.regions import DIALOG, DIALOG_ROLES, LANDMARK_ROLES, TANGENTIAL, content_region
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.strings import collapse, is_cut_of, sentences, solid
 from crawlerai.schemas.types import FieldType, SchemaDef
 
-# HTML Standard §4.3 (sectioning content tangential to the main content) and §4.11.4 (`dialog`): not the page's prose.
-_TANGENTIAL = ("nav", "header", "footer", "aside", "dialog")
 # HTML Standard §4.8 (embedded content), §4.10 (forms: interactive controls; §4.10.16 `legend`, the caption of a
 # fieldset's group of controls), §4.9 (tabular data), §4.12 (scripting): elements that are no running text.
 _NOT_PROSE = (
@@ -87,8 +86,10 @@ _NOT_PROSE = (
 )
 # HTML Standard §3.2.5.2.5: embedded content that is phrasing content, and so runs among the text of rich prose.
 _PHRASING_IMAGES = frozenset({"img", "picture"})
-# WAI-ARIA 1.2 §5.4: roles of content set apart from the main content.
-_APART_ROLES = ("dialog", "alertdialog", "form", "navigation", "complementary", "banner", "contentinfo")
+# The page's furniture (`content.regions`: tangential sections, dialogs, landmark roles) and WAI-ARIA 1.2 §5.3.4 `form`:
+# content set apart from the main content.
+_APART = (*TANGENTIAL, DIALOG)
+_APART_ROLES = (*DIALOG_ROLES, "form", *LANDMARK_ROLES)
 _HEADING = 'h1,h2,h3,h4,h5,h6,[role~="heading"]'
 # HTML Standard §4.3.6 and WAI-ARIA 1.2 `aria-level`: the page's title heading, which opens the item, not its text.
 _TITLE_HEADING = 'h1,[role~="heading"][aria-level="1"]'
@@ -118,7 +119,7 @@ class _Blocks:
         spans, text = page.text_spans, page.cleaned_text.text
         selector = ",".join(
             (
-                *_TANGENTIAL,
+                *_APART,
                 *(tag for tag in _NOT_PROSE if not (images and tag in _PHRASING_IMAGES)),
                 *(f'[role~="{role}"]' for role in _APART_ROLES),
                 OTHER_ITEMS,

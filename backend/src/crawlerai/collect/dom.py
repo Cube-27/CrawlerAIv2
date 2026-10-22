@@ -46,7 +46,6 @@ from crawlerai.collect.dom_images import (
     apart_ids,
     children,
     image_found,
-    main_region,
     up_to,
 )
 from crawlerai.collect.items.spot import is_typed, reads, spots
@@ -55,6 +54,7 @@ from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate
 from crawlerai.collect.vocabulary import NAMESPACES, schema_term
 from crawlerai.content.page import ParsedPage, node_xpath
+from crawlerai.content.regions import content_region, main_region
 from crawlerai.content.repeats import MIN_REPEATS, template_siblings
 from crawlerai.content.text import CELLS, declarations, shown
 from crawlerai.normalize.base import Context, Ok
@@ -228,11 +228,6 @@ def _unambiguous(name: str, raw: str, kinds: Mapping[tuple[str, str], set[str]],
     if raw in kinds.get((name, _TABLE), ()):
         return True
     return all(len(kinds[(name, kind)]) == 1 for kind in _REPEATING if raw in kinds.get((name, kind), ()))
-
-
-def content_region(page: ParsedPage) -> LexborNode | None:
-    """The page's main content: its main region, else the document body."""
-    return main_region(page) or page.tree.body
 
 
 def product_apart(page: ParsedPage, schema: SchemaDef, ctx: Context, stated: Sequence[Candidate]) -> frozenset[int]:

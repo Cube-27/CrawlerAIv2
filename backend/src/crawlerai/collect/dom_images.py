@@ -1,5 +1,6 @@
-"""The structural DOM collector's image pass (`collect.dom`, extraction spec), and the rules of a page's regions it
-shares with the other DOM passes: the main region, the elements set apart from it and where its hyperlinks lead.
+"""The structural DOM collector's image pass (`collect.dom`, extraction spec), and the rules it
+shares with the other DOM passes: the elements set apart from the main region (`content.regions`) and where its
+hyperlinks lead.
 
 - **The main image.** The first image of the page's main region (the `main` element, else the one `role="main"`
   landmark, WAI-ARIA 1.2; else the document's one `article`, §4.3.2), outside the region's tangential content
@@ -39,6 +40,7 @@ from crawlerai.collect.base import Candidate
 from crawlerai.collect.labels import properties
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage, node_xpath
+from crawlerai.content.regions import DIALOG, DIALOG_ROLES, TANGENTIAL, main_region
 from crawlerai.content.repeats import MIN_REPEATS
 from crawlerai.content.text import shown
 from crawlerai.normalize.base import Context, Ok
@@ -46,13 +48,6 @@ from crawlerai.normalize.images import same_family, same_file
 from crawlerai.normalize.url import canonical_url, media_type
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
-# HTML Standard §4.3: sectioning content of a region that is not its main content (navigation, headers, footers and
-# content tangential to it).
-_TANGENTIAL = frozenset({"nav", "header", "footer", "aside"})
-# HTML Standard §4.11.4 (`dialog`) and WAI-ARIA 1.2 §5.4 (roles `dialog`, `alertdialog`): a window apart from the
-# page's content, such as a drawer or a modal, whose images are its own, not the main content's. A closed `dialog` is
-# not rendered at all (`content.text.shown`); an open one or a dialog role is still apart.
-_DIALOG_ROLES = frozenset({"dialog", "alertdialog"})
 # HTML Standard §4.8.7 (`object`), §4.8.9 (`video`, `audio`), §4.12.5 (`canvas`): their children are fallback content,
 # shown only where the element itself cannot be.
 _MEDIA = frozenset({"video", "audio", "object", "canvas"})
@@ -81,20 +76,11 @@ _Named = Callable[[str], bool]
 Found = tuple[str, JsonValue, str, JsonValue]
 
 
-def main_region(page: ParsedPage) -> LexborNode | None:
-    """The `main` element, else the `role="main"` landmark, else the one `article`; none when the page has several."""
-    for selector in ("main", '[role="main"]', "article"):
-        found = page.tree.css(selector)
-        if found:
-            return found[0] if len(found) == 1 else None
-    return None
-
-
 def apart_ids(region: LexborNode, *, tangential: bool = True) -> frozenset[int]:
-    """The elements in the region's tangential content (unless not `tangential`), in a dialog or a media element's
-    fallback."""
-    roles = (f'[role~="{role}"]' for role in sorted(_DIALOG_ROLES))
-    selector = ",".join((*(_TANGENTIAL if tangential else ()), *_MEDIA, "dialog", *roles))
+    """The elements in the region's tangential content (unless not `tangential`), in a dialog (`content.regions`: a
+    window apart, whose images are its own) or a media element's fallback."""
+    roles = (f'[role~="{role}"]' for role in DIALOG_ROLES)
+    selector = ",".join((*(TANGENTIAL if tangential else ()), *_MEDIA, DIALOG, *roles))
     return frozenset(inside.mem_id for root in region.css(selector) for inside in (root, *root.css("*")))
 
 
@@ -187,7 +173,7 @@ def _main(
 
 def _sections(image: LexborNode, region: LexborNode) -> frozenset[int]:
     """The elements of the tangential sections holding the image: they hold its slides, the region's others do not."""
-    roots = [node for node in up_to(image, region) if node.tag in _TANGENTIAL]
+    roots = [node for node in up_to(image, region) if node.tag in TANGENTIAL]
     return frozenset(inside.mem_id for root in roots for inside in (root, *root.css("*")))
 
 
