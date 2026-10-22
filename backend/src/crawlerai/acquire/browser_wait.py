@@ -7,14 +7,15 @@ import asyncio
 import contextlib
 import time
 from collections.abc import Callable
+from functools import partial
 from typing import Final
 
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import Frame, Page, Request, Response
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
-from crawlerai.acquire.browser_capture import DataCalls
-from crawlerai.acquire.classify import INTERSTITIAL_STATUS, interstitial
+from crawlerai.acquire.browser_capture import DataCalls, document_html
+from crawlerai.acquire.classify import interstitial
 from crawlerai.acquire.types import CallEndpoint, FetchPolicy
 
 __all__ = ["READY_MAX_S", "STEP_QUIET_S", "MainFrame", "called", "ms_until", "settle", "until"]
@@ -33,9 +34,10 @@ _POLL_S = 0.25
 STEP_QUIET_S: Final = 0.5
 # RFC 9110 §15.4: a 3xx document answer is a redirect hop (or a validator's 304), never the document the frame shows.
 _REDIRECTION = range(300, 400)
-# D-1206, D-1262: for a document `interstitial` judges to stand in for the page, the wait for the main frame to navigate
-# on lasts up to this share of `browser_timeout_s`, and at most `_INTERSTITIAL_MAX_S`, not the ready wait, and ends
-# as soon as a navigation commits. Nothing is clicked or typed. The bound is an unmeasured starting point (master plan
+# D-1206, D-1262: for a ready document `interstitial` judges to stand in for the page, the wait for the main frame to
+# navigate on ends this share of `browser_timeout_s` after the fetch began, and at most `_INTERSTITIAL_MAX_S` after,
+# whatever rule judged it (a refusal's status, or a rendered 2xx document's structure), and as soon as a navigation
+# commits. Nothing is clicked or typed. The bound is an unmeasured starting point (master plan
 # 2026-10-18 §6): a challenge that does not clear headless held each fetch for the whole share (backlog, #244).
 _INTERSTITIAL_SHARE = 0.4
 _INTERSTITIAL_MAX_S = 10.0
@@ -85,27 +87,33 @@ class MainFrame:
             self.commits += 1
             self._committed.set()
 
-    async def next_commit(self) -> None:
-        """Returns once the main frame commits a navigation after this call."""
-        shown = self.commits
-        self._committed.clear()  # no callback runs before the wait: the event loop is not yielded to in between
-        while self.commits == shown:
+    async def next_commit(self, seen: int) -> None:
+        """Returns once the main frame has committed more navigations than `seen` (a count read from `commits`)."""
+        self._committed.clear()  # no callback runs before the check: the event loop is not yielded to in between
+        while self.commits == seen:
             await self._committed.wait()
             self._committed.clear()
 
 
 async def settle(page: Page, frame: MainFrame, calls: DataCalls, policy: FetchPolicy, started: float) -> None:
-    """While the document is an interstitial, wait for the next one (within its own share of the budget); then wait
-    until the document is ready to read (`_ready`), at most `READY_MAX_S` after it fired `load`, a document the main
-    frame navigates to meanwhile starting that wait over (`until`); all within `_SETTLE_SHARE` of the budget that
-    began at `started` (on `time.monotonic`)."""
+    """Wait until the document is ready to read (`_ready`), at most `READY_MAX_S` after it fired `load`, a document
+    the main frame navigates to meanwhile starting that wait over (`until`); then, while the ready document is an
+    interstitial, wait for the next one (within its own share of the budget) and for it to be ready. All within
+    `_SETTLE_SHARE` of the budget that began at `started` (on `time.monotonic`). Judged once ready, a page that renders
+    itself by script is judged as rendered, so only a document that stays no page waits for a navigation."""
     budget_s = policy.browser_timeout_s
     interstitial_deadline = started + min(_INTERSTITIAL_SHARE * budget_s, _INTERSTITIAL_MAX_S)
-    while time.monotonic() < interstitial_deadline and await _interstitial(page, frame):
-        if not await _next_document(page, frame, interstitial_deadline):
-            break
     deadline = started + _SETTLE_SHARE * budget_s
     await until(frame, lambda: _ready(frame, calls, policy), READY_MAX_S, deadline, after_load=True)
+    while time.monotonic() < interstitial_deadline:
+        # Counted before the document is judged: a commit while it is read or classified is the one waited for.
+        seen = frame.commits
+        if (judged := await _interstitial(page, frame)) is False:
+            return
+        # None: the document was replaced while it was read, so the next one is waited for as any navigation is.
+        if judged and not await _next_document(page, frame, seen, interstitial_deadline):
+            return
+        await until(frame, lambda: _ready(frame, calls, policy), READY_MAX_S, deadline, after_load=True)
 
 
 async def until(
@@ -157,24 +165,28 @@ def _answered(endpoint: CallEndpoint, calls: DataCalls) -> bool:
     )
 
 
-async def _interstitial(page: Page, frame: MainFrame) -> bool:
+async def _interstitial(page: Page, frame: MainFrame) -> bool | None:
+    """Whether the document shown is an interstitial (`classify.interstitial`, judged as rendered: read as the capture
+    reads it, open shadow roots included); None when it was replaced while it was read."""
     shown = frame.latest
-    if shown is None or shown.status not in INTERSTITIAL_STATUS:
+    if shown is None:
         return False
     try:
-        text = await page.content()
+        text = await document_html(page)
     except PlaywrightError:
-        return False  # the document is being replaced: the waits that follow see the next one
+        return None
     # classify's rules parse HTML synchronously; a thread keeps the event loop free.
-    return await asyncio.to_thread(interstitial, shown.status, tuple(shown.headers.items()), text, shown.url)
+    headers = tuple(shown.headers.items())
+    return await asyncio.to_thread(partial(interstitial, rendered=True), shown.status, headers, text, shown.url)
 
 
-async def _next_document(page: Page, frame: MainFrame, deadline: float) -> bool:
-    """Whether the main frame committed another navigation and its document was parsed (`DOMContentLoaded`) before
-    `deadline`. The commit, not the response: until then the frame still shows the interstitial."""
+async def _next_document(page: Page, frame: MainFrame, seen: int, deadline: float) -> bool:
+    """Whether the main frame committed a navigation past the `seen` count and its document was parsed
+    (`DOMContentLoaded`) before `deadline`. The commit, not the response: until then the frame still shows the
+    interstitial."""
     try:
         async with asyncio.timeout(max(0.0, deadline - time.monotonic())):
-            await frame.next_commit()
+            await frame.next_commit(seen)
     except TimeoutError:
         return False
     with contextlib.suppress(PlaywrightTimeout):

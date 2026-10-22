@@ -434,3 +434,16 @@ def test_a_page_that_navigates_itself_during_the_settle_is_captured_as_its_final
 
     assert b"Final document" in result.bundle.body
     assert b"Interim shell" not in result.bundle.body
+
+
+def test_a_2xx_shell_that_navigates_itself_after_the_ready_wait_is_waited_for(browser: Browser, server: Server) -> None:
+    # A check served with 200: no links, little text, a script that moves on well after the document is ready.
+    check = b"<html><body><p>One moment</p><script>setTimeout(() => location.replace('/checked'), 2000);</script>"
+    server.routes["/check"] = Reply(body=check + b"</body></html>")
+    links = "".join(f'<a href="/p/{i}">Page {i}</a>' for i in range(6))
+    page = f"<html><body><p>{'Checked page text. ' * 20}</p>{links}</body></html>"
+    server.routes["/checked"] = Reply(body=page.encode())
+
+    result = browser.fetch(server.url("/check"))
+
+    assert (result.block_class, result.bundle.manifest.final_url) == ("ok", server.url("/checked"))

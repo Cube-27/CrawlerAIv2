@@ -83,6 +83,20 @@ def test_an_interstitial_is_a_refusal_that_can_navigate_and_is_no_page_of_the_si
     assert interstitial(status, headers, body, _AT) is expected
 
 
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        pytest.param(_EMPTY_APP, True, id="script-shell"),
+        pytest.param(_page(400, 0, _SCRIPT), True, id="script-linkless"),
+        pytest.param(_page(10, 0), False, id="static-shell"),
+        pytest.param(_page(400, 20, _SCRIPT), False, id="site-page-with-script"),
+        pytest.param(_OFF_SITE.replace("</body>", _SCRIPT + "</body>"), False, id="off-site-links-are-a-page"),
+    ],
+)
+def test_a_rendered_2xx_interstitial_can_navigate_and_is_a_shell_or_links_nowhere(body: str, expected: bool) -> None:
+    assert interstitial(200, _HTML, body, _AT, rendered=True) is expected
+
+
 # --- owner plan 2026-10-19 P3: usable content beats a refusal; where a redirect led ---------------------------------
 
 _PRODUCT = (
