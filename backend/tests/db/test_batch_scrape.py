@@ -129,7 +129,7 @@ async def test_a_submitted_batch_is_a_queued_job_with_one_task_per_canonical_url
 
 @pytest.mark.parametrize(
     ("member", "url"),
-    [("urls", f"https://{PRIVATE_HOST}/x"), ("webhook_url", f"https://{PRIVATE_HOST}/hook")],
+    [("urls", "https://10.0.0.7/x"), ("webhook_url", f"https://{PRIVATE_HOST}/hook")],
 )
 async def test_a_refused_target_queues_nothing(
     engine: AsyncEngine, fetching: Fetching, own_origin: str, member: str, url: str

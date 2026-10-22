@@ -3,6 +3,7 @@
 fixtures of them."""
 
 import itertools
+import socket
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -45,11 +46,14 @@ PRICE: dict[str, Any] = {
 # robots.txt allowing every path (RFC 9309).
 ALLOW_ALL = b"User-agent: *\nAllow: /\n"
 PRIVATE_HOST = "intranet.example.test"
+UNRESOLVED_HOST = "gone.example.test"  # a host the stub resolver finds no address for
 KEY_LABEL = "api-test"  # the label of the key `api` creates
 
 
 async def resolve(host: str) -> list[IPAddress]:
-    """A stub resolver: `PRIVATE_HOST` has a private address, every other host a public one."""
+    """A stub resolver: `PRIVATE_HOST` has a private address, `UNRESOLVED_HOST` none, every other host a public one."""
+    if host == UNRESOLVED_HOST:
+        raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
     return [ip_address("10.0.0.7" if host == PRIVATE_HOST else "93.184.215.14")]
 
 

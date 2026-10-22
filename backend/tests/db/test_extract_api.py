@@ -18,7 +18,7 @@ from crawlerai.llm.roles.s_schema import draft_name
 from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.fetching import Fetching
-from tests.db.support import KEY_LABEL, PRIVATE_HOST, Web, api
+from tests.db.support import KEY_LABEL, PRIVATE_HOST, UNRESOLVED_HOST, Page, Web, api
 from tests.support.fake_llm import FakeProvider
 
 pytestmark = pytest.mark.anyio
@@ -94,6 +94,21 @@ async def test_a_glob_on_a_private_host_is_refused_with_its_member(
     assert PRIVATE_HOST not in response.text
     async with engine.connect() as conn:
         assert (await conn.execute(select(Job.id).where(Job.kind == "extract"))).all() == []
+
+
+async def test_a_url_whose_host_does_not_resolve_is_queued_and_no_sample_of_the_draft(
+    client: httpx.AsyncClient, engine: AsyncEngine, web: Web, own_origin: str, prompt: str
+) -> None:
+    urls = [f"https://{UNRESOLVED_HOST}/p/2", f"{own_origin}/p/1"]
+    # The rungs stand in for the guard: the fetch of the sample at the host records its refusal (acquisition spec).
+    web.pages[urls[0]] = Page(0, b"", "error", "ssrf_rejected: dns")
+
+    response = await _post(client, urls, {"prompt": prompt})
+
+    assert response.status_code == 202, response.text
+    async with engine.connect() as conn:
+        tasks = await conn.execute(select(UrlTask.url).where(UrlTask.job_id == response.json()["job_id"]))
+        assert sorted(tasks.scalars().all()) == sorted(urls)
 
 
 async def test_extract_needs_a_key(client: httpx.AsyncClient, own_origin: str) -> None:

@@ -2,7 +2,8 @@
 INV-16). It fails closed: anything it can't prove public is rejected.
 
 Fetchers call `SafeConnector.check` before the first request and `SafeConnector.redirect` before each hop they
-follow, and connect only to `Target.ip`. The resolver is injected so tests run without DNS.
+follow, and connect only to `Target.ip`. The resolver is injected so tests run without DNS. `SafeConnector.check_form`
+is the part of the check that needs no DNS: what a URL says about itself.
 """
 
 import asyncio
@@ -79,9 +80,6 @@ async def resolve_public(host: str, resolver: Resolver = system_resolver) -> IPA
     """Resolve once and return the address to pin; reject if resolution fails or any address is not public."""
     try:
         addresses = await resolver(host)
-    except UnicodeError as e:
-        # The host can't be IDNA-encoded (RFC 5891), e.g. a label over 63 octets: no lookup was made.
-        raise SsrfRejected("host") from e
     except OSError as e:
         raise SsrfRejected("dns") from e
     if not addresses:
@@ -95,16 +93,29 @@ class SafeConnector:
     def __init__(self, resolver: Resolver = system_resolver) -> None:
         self._resolver = resolver
 
-    async def check(self, url: str) -> Target:
+    def check_form(self, url: str) -> tuple[str, int, IPAddress | None]:
+        """The host, port and literal address (None for a name) of `url`, checked without DNS: its scheme, host and
+        port (`authority`), a literal address public, a name not read as an IPv4 address and IDNA-encodable (RFC
+        5891). What only resolving the name tells, `dns` and a `private_address` it resolves to, `check` adds."""
         host, port = authority(url)
         literal = _literal_ip(host)
         if literal is not None:
             if not is_public(literal):
                 raise SsrfRejected("private_address")
-            return Target(url=url, host=host, port=port, ip=literal)
+            return host, port, literal
         if _ENDS_IN_NUMBER.search(host):
             raise SsrfRejected("host")
-        return Target(url=url, host=host, port=port, ip=await resolve_public(host, self._resolver))
+        try:
+            host.encode("idna")
+        except UnicodeError as e:
+            # The host can't be IDNA-encoded (RFC 5891), e.g. a label over 63 octets: no lookup could be made.
+            raise SsrfRejected("host") from e
+        return host, port, None
+
+    async def check(self, url: str) -> Target:
+        host, port, literal = self.check_form(url)
+        ip = literal if literal is not None else await resolve_public(host, self._resolver)
+        return Target(url=url, host=host, port=port, ip=ip)
 
     async def redirect(self, current: Target, location: str) -> Target:
         """The next hop of a redirect: `location` is resolved against the current URL (RFC 9110 §10.2.2) and

@@ -65,7 +65,8 @@ spec, "Incomplete pages") answers `no_match` with no record, as a batch task doe
 `not_found`, `shell` and the others of [jobs](../jobs/spec.md) "Page outcomes") are never `extracted` or `partial`.
 Request-level failures are problems: an SSRF refusal (DNS failure
 included) is 422 `ssrf_rejected` before any job is created; the guard is in [acquisition](../acquisition/spec.md)
-(INV-16). Refs: owner 2026-10-21, §18, D-0423, D-0426,
+(INV-16). A multi-URL submission refuses its URLs by form only (requirement "Multi-URL submissions and the SSRF
+guard"). Refs: owner 2026-10-21, §18, D-0423, D-0426,
 D-0504, D-1451, D-1475, D-1476, D-1605.
 #### Scenario: Robots disallow
 - **WHEN** robots.txt disallows the URL
@@ -171,6 +172,24 @@ A stored record answers `egress_country` and `egress_basis` ([acquisition](../ac
 #### Scenario: Forbidden header
 - **WHEN** a scrape's `fetch.headers` names `User-Agent`
 - **THEN** the answer is a 422 problem naming `fetch.headers` and no job is created
+
+### Requirement: Multi-URL submissions and the SSRF guard
+`POST /v1/batch/scrape` and `POST /v1/extract` (and the MCP tools that take their bodies) SHALL check each URL of
+`urls` by its form alone at submission (a glob's origin, which its map fetches at once, in full): a scheme, port or host form the guard refuses, a literal
+non-public address or an IPv4 form is 422 `ssrf_rejected` naming `urls[i]`, and nothing is queued. A refusal only
+resolving the host tells (`dns`, or a `private_address` the host resolves to) does not refuse the request: that URL's
+task is queued with the others and fails at once, never retried, outcome `failed` with error `ssrf_rejected: <reason>`
+(the fetch attempt's `error`/`ssrf_rejected`), when the guard refuses its fetch (acquisition, "Public targets only"); the other tasks run. A prompt's draft skips a sample the guard
+refused, as a page not reached. `webhook_url` is checked in full, DNS included: its refusal is a 422 naming it. A
+single scrape, a crawl's seed and a schedule's targets, when it is created and on each run (a refused run stores no
+job), are checked in full (owner 2026-10-21). Refs:
+owner 2026-10-22, INV-16.
+#### Scenario: A host that does not resolve in a batch
+- **WHEN** a batch names `https://a.example/` and `https://b.test/`, and `b.test` does not resolve
+- **THEN** the answer is 202, the task of `https://b.test/` fails with `ssrf_rejected: dns`, and the other runs
+#### Scenario: A literal private address in a batch
+- **WHEN** a batch names `http://10.0.0.5/` as `urls[1]`
+- **THEN** the answer is 422 `ssrf_rejected` naming `urls[1]`, and no job is created
 
 ### Requirement: Web search
 `POST /v1/search` `{query, limit ≤ 50, scrape?}` SHALL answer the provider's results in its order (`position`, `url`,

@@ -7602,7 +7602,7 @@
     },
     "/v1/batch/scrape": {
       "post": {
-        "description": "Queue a job that scrapes each of `urls` with the same formats, schema and fetch options; a URL given twice is\nscraped once. A target the API may not fetch, in `urls` or `webhook_url`, is a 422 and nothing is queued.",
+        "description": "Queue a job that scrapes each of `urls` with the same formats, schema and fetch options; a URL given twice is\nscraped once. A target the API may not fetch, a URL by its form or `webhook_url`, is a 422 and nothing is queued;\na URL refused only once its host is resolved (`dns`, a private address) fails its own task.",
         "operationId": "batch_scrape_v1_batch_scrape_post",
         "requestBody": {
           "content": {
@@ -8683,7 +8683,7 @@
     },
     "/v1/extract": {
       "post": {
-        "description": "Queue a job that extracts a record of `page_kind` from each of `urls`; a URL with a `*` is a glob, expanded\nthrough a map of its host. A `schema.prompt` is drafted from the first pages before the job is queued, and the\ndraft is returned as `schema`. A target the API may not fetch, in `urls`, a glob's map or `webhook_url`, is a 422\nand nothing is queued.",
+        "description": "Queue a job that extracts a record of `page_kind` from each of `urls`; a URL with a `*` is a glob, expanded\nthrough a map of its host. A `schema.prompt` is drafted from the first pages before the job is queued, and the\ndraft is returned as `schema`. A target the API may not fetch, a URL by its form, a glob's origin or map or\n`webhook_url`, is a 422 and nothing is queued; a URL refused only once its host is resolved (`dns`, a private\naddress) fails its own task.",
         "operationId": "extract_records_v1_extract_post",
         "requestBody": {
           "content": {

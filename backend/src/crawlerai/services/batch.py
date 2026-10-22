@@ -2,8 +2,9 @@
 `batch_scrape` with a `url_task` per URL. Workers run the tasks with the steps a scrape takes
 (`crawlerai.worker.handlers.scrape`), and `GET /v1/jobs/{id}/results` returns what they made.
 
-Submitting checks every target with the SSRF guard (INV-16) and resolves the schema, then stores the job and its tasks
-in one transaction. The job pins what its pages run with (INV-28): for `records`, the schema's document as it is
+Submitting checks every target with the SSRF guard (INV-16), each URL by its form alone (`check_targets`: one refused
+only once its host is resolved fails its own task), and resolves the schema, then stores the job and its tasks in one
+transaction. The job pins what its pages run with (INV-28): for `records`, the schema's document as it is
 at submit, the precedence orders and calibration of this process's engine data, and the active config each URL's site
 has for the schema and page kind (`job.pinned`, `JobPins`). A URL given twice
 (the same once canonicalized) is one task. URLs are caller-supplied: a page whose required fields don't all publish
@@ -159,13 +160,15 @@ async def submit_batch(
     """Store `request` as a queued job with its tasks, where `placement` says; `api_key_id`, the key that submitted
     it, signs its webhook (jobs spec); `egresses`, the configured pools, one of which `fetch.proxy_pool` must name
     (D-1434), and the countries they go out from. The job's egress is its pool's (`job_egress`). Raises, storing
-    nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a refused target, `RecordsUnavailable` for
-    `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use (or field names `llm` could
-    not draft)."""
+    nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a URL refused by its form or a refused
+    `webhook_url` (`check_targets`), `RecordsUnavailable` for `records` without `data`, and `named_schema`'s errors for
+    a schema `records` cannot use (or field names `llm` could not draft)."""
     if egresses is not None:
         check_proxy_pool(request.fetch, egresses.pools)
     targets = [(f"urls[{index}]", url) for index, url in enumerate(request.urls)]
-    await check_targets(connector, targets, webhook_url=request.webhook_url)
+    # A schedule's run checks its targets in full: a refused run stores no job (jobs spec, schedules).
+    queued = {member for member, _ in targets} if placement.schedule_id is None else set()
+    await check_targets(connector, targets, webhook_url=request.webhook_url, queued=queued)
     # A format batch that names a schema is a format job.
     schema = await records_schema(
         engine, request.formats, request.schema_, request.page_kind, data, llm, request.render

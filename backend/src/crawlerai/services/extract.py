@@ -14,11 +14,13 @@ draft is returned with the job. Field names are drafted from the names alone, be
 pins the engine data and the configs active when it was submitted (INV-28), and its pages count toward the site's
 learning trigger (learning-configs spec).
 
-Submitting checks every URL, each glob's origin and `webhook_url` with the SSRF guard first (INV-16), and the fetches
-of a map or a draft go through it too. Nothing is stored for a refused target, an unusable schema, or no URL to
-extract (beyond the `map` jobs of the globs). A prompt's job is stored before its draft, which charges the job's
-`budget`, and is `failed` when the draft cannot be made: no sample page reached, a refused redirect, an LLM failure,
-a draft of another page kind, or the timeout.
+Submitting checks every URL, each glob's origin and `webhook_url` with the SSRF guard first (INV-16), a URL (not a
+glob) by its form alone: one refused only once its host is resolved (`dns`, a `private_address`) is queued and its task
+fails as the guard refuses its fetch. The fetches of a map or a draft go through the guard too. Nothing is
+stored for a target refused by its form, an unusable schema, or no URL to extract (beyond the `map` jobs of the globs).
+A prompt's job is stored before its draft, which charges the job's `budget`, and is `failed` when the draft cannot be
+made: no sample page reached (a sample the guard refused is not reached), an LLM failure, a draft of another page kind,
+or the timeout.
 """
 
 import asyncio
@@ -47,7 +49,7 @@ from crawlerai.resolve.types import Probability
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.batch import MAX_URLS, OWN_TRANSACTION, Placement, insert_job, insert_tasks, job_pins
 from crawlerai.services.fetch_options import FetchOptions, check_proxy_pool, fetch_policy
-from crawlerai.services.fetching import Fetching, PagePlan, check_targets, fetch_now, site_rungs
+from crawlerai.services.fetching import Fetching, PagePlan, TargetRejected, check_targets, fetch_now, site_rungs
 from crawlerai.services.location import job_egress
 from crawlerai.services.map import MapRequest, map_urls
 from crawlerai.services.page_run import read_stored
@@ -153,12 +155,14 @@ async def submit_extract(
     """Store `request` as a queued job with its tasks, where `placement` says (a prompt's job, stored before its
     draft, always in transactions of its own); `api_key_id`, the key that submitted it, signs its webhook (§4.2).
     Raises, storing no extract job: `UnknownProxyPool` for a proxy pool not configured (D-1434), `TargetsRejected` for
-    a refused target, `RecordsUnavailable` without `data`, `named_schema`'s errors for a schema that cannot be used (or
-    field names `llm` could not draft), `TargetRejected` for a refused fetch of a map, and `NothingToExtract`. Raises,
-    failing the job: `NoSamplePage`, `TargetRejected` for a refused redirect, the LLM client's `LLMFailure`,
-    `SchemaUnusable` for a draft of another page kind, and `DraftTimedOut`."""
+    a refused target (`check_targets`; a URL is checked by its form alone), `RecordsUnavailable` without `data`,
+    `named_schema`'s errors for a schema that cannot be used (or field names `llm` could not draft), `TargetRejected`
+    for a refused fetch of a map, and `NothingToExtract`. Raises, failing the job: `NoSamplePage`, the LLM client's
+    `LLMFailure`, `SchemaUnusable` for a draft of another page kind, and `DraftTimedOut`."""
     check_proxy_pool(request.fetch, fetching.egresses.pools)
-    await check_targets(fetching.connector, request.targets(), webhook_url=request.webhook_url)
+    # A schedule's run checks its targets in full: a refused run stores no job (jobs spec, schedules).
+    queued = {f"urls[{i}]" for i, glob in enumerate(request.globs()) if glob is None and placement.schedule_id is None}
+    await check_targets(fetching.connector, request.targets(), webhook_url=request.webhook_url, queued=queued)
     if data is None:
         raise RecordsUnavailable("this process has not loaded the engine's data files")
     schema = await named_schema(engine, request.schema_, request.page_kind, llm)
@@ -303,9 +307,11 @@ async def _fetched_sample(
     engine: AsyncEngine, fetching: Fetching, job_id: JobId, url: str, page: PagePlan
 ) -> FetchResult | str:
     """The sample page at `url` fetched as a scrape fetches its page (`fetch_now`), its attempts counted as the job's
-    usage."""
+    usage; the guard's refusal when it refused a request of the fetch (INV-16), which leaves the page unreached."""
     try:
         return await fetch_now(engine, fetching, url, page)
+    except TargetRejected as e:
+        return e.reason
     finally:
         async with engine.begin() as conn:
             await record_fetch_usage(conn, job_id, page.attempts, page.policy.proxy_pool)

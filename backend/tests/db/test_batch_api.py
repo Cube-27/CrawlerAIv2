@@ -8,8 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.db.models import Job, UrlTask
-from tests.db.support import PRIVATE_HOST
+from crawlerai.db.models import UrlTask
 
 pytestmark = pytest.mark.anyio
 
@@ -30,16 +29,3 @@ async def test_a_batch_is_accepted_and_queued(submit_client: httpx.AsyncClient, 
     assert tasks == ["queued", "queued"]
     status = await submit_client.get(f"/v1/jobs/{job_id}")
     assert (status.json()["kind"], status.json()["counts"]["queued"]) == ("batch_scrape", 2)
-
-
-async def test_a_private_target_is_refused_with_the_member_that_names_it(
-    submit_client: httpx.AsyncClient, engine: AsyncEngine
-) -> None:
-    response = await _post(submit_client, urls=[URL, f"https://{PRIVATE_HOST}/admin"], formats=["markdown"])
-
-    assert response.status_code == 422, response.text
-    body = response.json()
-    assert (body["type"], [error["field"] for error in body["errors"]]) == ("ssrf_rejected", ["urls[1]"])
-    assert PRIVATE_HOST not in response.text
-    async with engine.connect() as conn:
-        assert (await conn.execute(select(Job.id).where(Job.kind == "batch_scrape"))).all() == []

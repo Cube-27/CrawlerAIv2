@@ -95,11 +95,19 @@ class SiteConnector(SafeConnector):
         self._host = host
         self._port = port
 
+    def check_form(self, url: str) -> tuple[str, int, IPAddress | None]:
+        if self._pinned(url):
+            return self._host, self._port, None
+        return super().check_form(url)
+
     async def check(self, url: str) -> Target:
-        parts = urlsplit(url)
-        if (parts.hostname, parts.port) == (self._host, self._port):
+        if self._pinned(url):
             return Target(url=url, host=self._host, port=self._port, ip=IPv4Address("127.0.0.1"))
         return await super().check(url)
+
+    def _pinned(self, url: str) -> bool:
+        parts = urlsplit(url)
+        return (parts.hostname, parts.port) == (self._host, self._port)
 
 
 @pytest.fixture
@@ -207,13 +215,15 @@ TARGETS: Sequence[tuple[str, str]] = [
 class Member:
     """Where a request names a target: `body` builds the request around it, `field` is the member a refusal names
     (`None` where the endpoint has one target, which its problem does not name). `tool` is the MCP tool that takes
-    the same `request` (jobs spec), if one does."""
+    the same `request` (jobs spec), if one does. A `queued` member is a URL a task of its own fetches: submitting
+    checks it by its form alone, and a refusal only resolving its host tells fails that task (rest-api spec)."""
 
     path: str
     field: str | None
     body: Callable[[str, str, str], dict[str, Any]]  # (target, a public URL of the site, a schema id) -> body
     glob: bool = False
     tool: str | None = None
+    queued: bool = False
 
     def __str__(self) -> str:
         return f"{self.path}:{self.field or 'url'}{':glob' if self.glob else ''}"
@@ -231,7 +241,10 @@ MEMBERS: Sequence[Member] = [
     Member("/v1/scrape", None, lambda target, _, __: {"url": target, "formats": ["markdown"]}, tool="scrape"),
     Member("/v1/map", None, lambda target, _, __: {"url": target}, tool="map"),
     Member(
-        "/v1/batch/scrape", "urls[1]", lambda target, public, _: {"urls": [public, target], "formats": ["markdown"]}
+        "/v1/batch/scrape",
+        "urls[1]",
+        lambda target, public, _: {"urls": [public, target], "formats": ["markdown"]},
+        queued=True,
     ),
     Member(
         "/v1/batch/scrape",
@@ -245,7 +258,13 @@ MEMBERS: Sequence[Member] = [
         lambda target, public, _: {"url": public, "formats": ["markdown"], "webhook_url": target},
         tool="crawl_start",
     ),
-    Member("/v1/extract", "urls[1]", lambda target, public, schema: _extract([public, target], schema), tool="extract"),
+    Member(
+        "/v1/extract",
+        "urls[1]",
+        lambda target, public, schema: _extract([public, target], schema),
+        tool="extract",
+        queued=True,
+    ),
     Member(
         "/v1/extract",
         "urls[1]",
@@ -264,14 +283,24 @@ MEMBERS: Sequence[Member] = [
 TOOL_MEMBERS: Sequence[Member] = [member for member in MEMBERS if member.tool is not None]
 
 
+def _resolved(target: str) -> bool:
+    """Whether only resolving `target`'s host refuses it: a name, not an address literal (RFC 3986 §3.2.2)."""
+    host = str(urlsplit(target).hostname)
+    return not any(c in host for c in ":[") and not all(part.isdigit() for part in host.split("."))
+
+
 def _named(members: Sequence[Member]) -> list[Any]:
     cases = []
     for member, (authority, reason) in itertools.product(members, TARGETS):
         target = f"http://{authority}"
         # A glob's `[` is a pattern character, so a glob on an IPv6 literal (RFC 3986 §3.2.2) is no glob on one host:
         # it is invalid before the guard sees it (`test_a_glob_on_an_ipv6_literal_is_invalid`).
-        if not (member.glob and "[" in target):
-            cases.append(pytest.param(member, target, reason, id=f"{member}-{target}"))
+        if member.glob and "[" in target:
+            continue
+        # A queued member's refusal by resolution fails its task instead (`test_a_queued_url_only_resolving_refuses`).
+        if member.queued and reason in ("dns", "private_address") and _resolved(target):
+            continue
+        cases.append(pytest.param(member, target, reason, id=f"{member}-{target}"))
     return cases
 
 
@@ -395,6 +424,40 @@ async def test_a_job_task_redirected_to_a_refused_target_fails_with_the_guards_r
     moved = tasks[f"{site}/moved"]
     # Refused at once, never retried (acquisition spec).
     assert (moved.outcome, moved.attempts, moved.last_error) == ("failed", 1, "ssrf_rejected: private_address")
+
+
+@pytest.mark.parametrize(
+    ("member", "target", "reason"),
+    [
+        pytest.param(member, f"http://{authority}", reason, id=f"{member}-{authority}")
+        for member in MEMBERS
+        if member.queued
+        for authority, reason in TARGETS
+        if reason in ("dns", "private_address") and _resolved(f"http://{authority}")
+    ],
+)
+async def test_a_queued_url_only_resolving_refuses_fails_its_own_task(
+    client: httpx.AsyncClient,
+    engine: AsyncEngine,
+    engine_data: EngineData,
+    fetching: Fetching,
+    server: Server,
+    site: str,
+    schema_id: str,
+    member: Member,
+    target: str,
+    reason: str,
+) -> None:
+    page(server, "/p/1", html("<h1>Kettle</h1>"))
+
+    response = await client.post(member.path, json=member.body(target, f"{site}/p/1", schema_id))
+    assert response.status_code == 202, response.text
+    tasks = await run_job(engine, fetching, engine_data, response.json()["job_id"])
+
+    # Refused at once, never retried (acquisition spec); the other task runs.
+    refused = tasks[target]
+    assert (refused.outcome, refused.attempts, refused.last_error) == ("failed", 1, f"ssrf_rejected: {reason}")
+    assert tasks[f"{site}/p/1"].status == "done"
 
 
 async def test_a_crawl_takes_private_locations_only_on_its_site_and_the_guard_refuses_them(
