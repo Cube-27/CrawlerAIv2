@@ -47,6 +47,11 @@ _AGGREGATE_OFFER = "AggregateOffer"
 _LOW_PRICE, _HIGH_PRICE, _CURRENCY = "lowPrice", "highPrice", "priceCurrency"
 # JSON-LD 1.1 §4.5.1: a blank node identifier is scoped to its document, so it identifies nothing across blocks.
 _BLANK = "_:"
+# schema.org `aggregateRating`: "The overall rating, based on a collection of reviews or ratings, of the item", whose
+# range is AggregateRating. A page can state that node apart from the item it rates (a sibling JSON-LD node, a review
+# widget's own microdata item); resolution decides whether it is the page's item's (resolution spec, rule 3).
+RATING = "aggregateRating"
+AGGREGATE_RATING = "AggregateRating"
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,6 +218,8 @@ def field_candidates(
             _path_candidates(name, spec, entities, paths, vocabulary, source_kind, ctx, diagnostics, entries=entries)
         )
         yield from found
+        detail = schema.page_kind == "detail"
+        yield from _ratings_apart(name, spec, entities, paths, vocabulary, source_kind, ctx, diagnostics, detail=detail)
         if entries and is_item_url(spec):
             read_on = {c.entity_id for c in found if isinstance(c.normalized, Ok)}
             unread = [e for e in entities if e.id not in read_on and any(_reads(e, p, vocabulary, True) for p in paths)]
@@ -243,6 +250,39 @@ def _path_candidates(
         )
         if found is not None:
             yield found
+
+
+def _ratings_apart(
+    name: str,
+    spec: FieldSpec,
+    entities: Sequence[Typed],
+    paths: Sequence[MappedPath],
+    vocabulary: Vocabulary,
+    source_kind: SourceKind,
+    ctx: Context,
+    diagnostics: list[str],
+    *,
+    detail: bool,
+) -> Iterator[Candidate]:
+    """On a detail page, a candidate per value the rest of a path through `aggregateRating` (`RATING`) reaches on an
+    AggregateRating node that no entity of the path's root type holds as its `aggregateRating`, read from that node;
+    none for a field whose paths do not go through it. A listing's rows are its items, each rated within itself."""
+    rest = tuple(
+        MappedPath(AGGREGATE_RATING, path.steps[1:], path.joined, path.rank, path.filters[1:])
+        for path in paths
+        if len(path.steps) > 1 and path.steps[0] == RATING and not path.where(0)
+    )
+    if not (detail and rest):
+        return
+    held = {
+        value.locator
+        for path in paths
+        for e in entities
+        if _reads(e, path, vocabulary, False)
+        for value in e.node.values(RATING)
+    }
+    apart = [e for e in entities if e.id not in held and any(vocabulary.is_a(t, AGGREGATE_RATING) for t in e.types)]
+    yield from _path_candidates(name, spec, apart, rest, vocabulary, source_kind, ctx, diagnostics, entries=False)
 
 
 def _member_read(raw: JsonValue, spec: FieldSpec, vocabulary: Vocabulary) -> str | None:

@@ -4,8 +4,10 @@ DOM subtree holds it, and the page's entities form a tree under their parents.
 A candidate is the target's when the target holds it, when the page holds it (page-level values describe what the
 page is about), or when an Offer of the target or of one of its variants holds it (atomic offers, §4.8). A state
 array row's value (`collect.admission`) is the target's where page values are, when the row and every row enclosing it
-names the target: one of its URLs is a page URL or the target's (Appendix A #55). Any other candidate is not owned and
-never publishes.
+names the target: one of its URLs is a page URL or the target's (Appendix A #55). An AggregateRating stated apart
+from the item (`collect.schema_org_map.RATING`) is the target's when the target is the page's one primary entity,
+states no rating of its own, and every such rating on the page, standing alone or within the target but in no Offer,
+states the same values (`EntityGraph.ratings_apart`). Any other candidate is not owned and never publishes.
 """
 
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -13,6 +15,7 @@ from dataclasses import dataclass, field
 from itertools import takewhile
 
 from crawlerai.collect.base import ARRAY_ROW, PAGE, Candidate, CollectResult, Entity
+from crawlerai.collect.schema_org_map import AGGREGATE_RATING, RATING
 from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.normalize.dispatch import equal
 from crawlerai.resolve.identity import VARIANT, identify
@@ -59,6 +62,32 @@ class EntityGraph:
             c.model_copy(update={"entity_id": self.aliases[c.entity_id]}) if c.entity_id in self.aliases else c
             for c in candidates
         )
+
+    def ratings_apart(self, target: Entity, candidates: Sequence[Candidate]) -> tuple[Candidate, ...]:
+        """The candidates with those of the AggregateRatings stated apart from `target` moved to it, when they are its
+        (module docstring); `target` must be the page's one primary entity, which the caller knows. A rating within
+        an Offer rates its seller or the offer, and one under another entity rates that entity, so neither counts;
+        ratings apart that differ are several things rated, so none is the target's."""
+        if any(e.parent == target.id and e.via == RATING for e in self.entities.values()):
+            return tuple(candidates)
+        apart = {e.id for e in self.entities.values() if self._rates_apart(e, target)}
+        stated = {
+            entity_id: sorted(repr((c.field, c.normalized)) for c in candidates if c.entity_id == entity_id)
+            for entity_id in apart
+        }
+        if len({tuple(values) for values in stated.values()}) != 1:
+            return tuple(candidates)
+        return tuple(c.model_copy(update={"entity_id": target.id}) if c.entity_id in apart else c for c in candidates)
+
+    def _rates_apart(self, entity: Entity, target: Entity) -> bool:
+        """Whether `entity` is an AggregateRating not held as `target`'s own, standing alone or within `target` but in
+        no Offer."""
+        if not self.is_a(entity, AGGREGATE_RATING) or entity.parent == target.id:
+            return False
+        holders = list(self.ancestors(entity))
+        if any(self.is_a(holder, OFFER) for holder in holders):
+            return False
+        return not holders or holders[-1].id == target.id
 
     def merges(self) -> tuple[str, ...]:
         """A diagnostic per merged entity."""

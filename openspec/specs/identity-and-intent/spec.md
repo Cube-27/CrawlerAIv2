@@ -33,11 +33,21 @@ same document.
 (D-1151), nor does the item a primary entity's review or rating names (`itemReviewed`), which is that entity;
 candidates the target does not own are rejected `not_owned`. An `array_row` entity's candidates are the
 target's only where page values are, when that row and every row enclosing it names a page URL or the target's URL
-(`resolve/ownership.py`). Refs: §8.2 rule 3, Appendix A #55, D-0413, D-0785, D-0942, D-1151, D-1253, D-1255, D-1290,
+(`resolve/ownership.py`). An AggregateRating a detail page states apart from its item (schema.org `aggregateRating`:
+a sibling node, a review widget's own microdata item, one no entity of the path's root type holds as its
+`aggregateRating`; `collect/schema_org_map.py` reads the field's path through it from that node) SHALL be the
+target's only when the target is the page's one primary-type entity, holds no `aggregateRating` of its own, and every
+such rating on the page (standing alone, or within the target but in no Offer: an Offer's seller rates itself) states
+the same values; else its candidates stay `not_owned` (owner 2026-10-22, OD-4). Refs: §8.2 rule 3, Appendix A #55, D-0413, D-0785, D-0942, D-1151, D-1253, D-1255, D-1290,
 D-1291, D-1379.
 #### Scenario: Related item's price in state
 - **WHEN** a detail page's state holds an array of two items, the related one with its own URL and a visible price
 - **THEN** that price is rejected `not_owned`, and a row naming the page URL keeps its price as the target's
+#### Scenario: A review widget's rating beside the product
+- **WHEN** a detail page states one JSON-LD Product without a rating and, elsewhere, a microdata AggregateRating item
+  in no other item
+- **THEN** its `ratingValue` is the Product's rating; with a second Product, or a second such rating stating other
+  values, or the AggregateRating in an Organization node, it is `not_owned`
 #### Scenario: One product in two syntaxes
 - **WHEN** a JSON-LD Product and a microdata Product state one sku, and only the microdata one states an Offer
 - **THEN** they are one target, its title `agreed`, and the Offer's price publishes

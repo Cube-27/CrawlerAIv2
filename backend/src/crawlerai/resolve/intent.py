@@ -87,6 +87,13 @@ def is_primary(graph: EntityGraph, entity: Entity, primary: frozenset[str]) -> b
     return any(graph.is_a(entity, type_) for type_ in primary)
 
 
+def sole_primary(graph: EntityGraph, target: Entity | AmbiguousTarget, primary: frozenset[str]) -> Entity | None:
+    """`target` when it is the page's one entity of a primary type, the only page whose item a rating stated apart
+    can rate (`EntityGraph.ratings_apart`); else None."""
+    primaries = [e for e in graph.entities.values() if is_primary(graph, e, primary)]
+    return target if isinstance(target, Entity) and primaries == [target] else None
+
+
 def _own(candidates: list[Entity], page_urls: list[str]) -> list[Entity]:
     """The candidates that are not another page's item: not leading only to other documents, not repeated."""
     documents = page_documents(page_urls)
