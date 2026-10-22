@@ -87,11 +87,10 @@ class MainFrame:
             self.commits += 1
             self._committed.set()
 
-    async def next_commit(self) -> None:
-        """Returns once the main frame commits a navigation after this call."""
-        shown = self.commits
-        self._committed.clear()  # no callback runs before the wait: the event loop is not yielded to in between
-        while self.commits == shown:
+    async def next_commit(self, seen: int) -> None:
+        """Returns once the main frame has committed more navigations than `seen` (a count read from `commits`)."""
+        self._committed.clear()  # no callback runs before the check: the event loop is not yielded to in between
+        while self.commits == seen:
             await self._committed.wait()
             self._committed.clear()
 
@@ -106,9 +105,13 @@ async def settle(page: Page, frame: MainFrame, calls: DataCalls, policy: FetchPo
     interstitial_deadline = started + min(_INTERSTITIAL_SHARE * budget_s, _INTERSTITIAL_MAX_S)
     deadline = started + _SETTLE_SHARE * budget_s
     await until(frame, lambda: _ready(frame, calls, policy), READY_MAX_S, deadline, after_load=True)
-    while time.monotonic() < interstitial_deadline and (judged := await _interstitial(page, frame)) is not False:
+    while time.monotonic() < interstitial_deadline:
+        # Counted before the document is judged: a commit while it is read or classified is the one waited for.
+        seen = frame.commits
+        if (judged := await _interstitial(page, frame)) is False:
+            return
         # None: the document was replaced while it was read, so the next one is waited for as any navigation is.
-        if judged and not await _next_document(page, frame, interstitial_deadline):
+        if judged and not await _next_document(page, frame, seen, interstitial_deadline):
             return
         await until(frame, lambda: _ready(frame, calls, policy), READY_MAX_S, deadline, after_load=True)
 
@@ -177,12 +180,13 @@ async def _interstitial(page: Page, frame: MainFrame) -> bool | None:
     return await asyncio.to_thread(partial(interstitial, rendered=True), shown.status, headers, text, shown.url)
 
 
-async def _next_document(page: Page, frame: MainFrame, deadline: float) -> bool:
-    """Whether the main frame committed another navigation and its document was parsed (`DOMContentLoaded`) before
-    `deadline`. The commit, not the response: until then the frame still shows the interstitial."""
+async def _next_document(page: Page, frame: MainFrame, seen: int, deadline: float) -> bool:
+    """Whether the main frame committed a navigation past the `seen` count and its document was parsed
+    (`DOMContentLoaded`) before `deadline`. The commit, not the response: until then the frame still shows the
+    interstitial."""
     try:
         async with asyncio.timeout(max(0.0, deadline - time.monotonic())):
-            await frame.next_commit()
+            await frame.next_commit(seen)
     except TimeoutError:
         return False
     with contextlib.suppress(PlaywrightTimeout):
