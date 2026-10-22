@@ -3,8 +3,8 @@ verbatim, under its locator (its position in the bound group and its item URL), 
 row fields that row does not publish.
 
 The span is the one the block's node path carries (`content.segment.text_path`, `ParsedPage.text_spans`), so a value
-role C grounds in it is a span of the cleaned text (INV-12). A block whose path no run carries is not read: it renders
-no text, or libxml2 and HTML tree construction built different trees there for malformed markup.
+role C grounds in it is a span of the cleaned text (INV-12). A block whose path no run carries renders no text and is
+not read.
 
 **Enclosing items.** A listing may nest its items: each item of an outer repeated group (a building, a store, a date)
 holds a repeated group of its own (its units, products, sessions), and states once, before that group, what all of

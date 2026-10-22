@@ -4,7 +4,11 @@ the release check on held-out pages.
 It shares no code with the engine executor beyond the IR model and the shared decoders of state documents
 (`.importlinter`), so a field on which the two agree is evidence that the exported config reproduces the engine
 (INV-20).
-It parses the page body itself, the one exception to INV-26, and reads it with lxml (XPath 1.0), `re`, `json` and
+It parses the page body itself, the one exception to INV-26, as an exported config's consumer does: with libxml2's
+HTML parser (PHP `DOMXPath`, `config_ir.xpath1`), not the HTML Standard's parse the engine's tree copies
+(`acquire.items.lxml_of`). The two repair malformed markup differently, so a field whose XPath selects another element
+in libxml2's tree fails the check and is exported `manual` rather than silently wrong. It reads the page with lxml
+(XPath 1.0), `re`, `json` and
 jsonpath-ng: no collector, normalizer or vocabulary. A state document is read as the engine reads it, through the one
 decode of serializer formats (`content.state_decoders`: devalue flat arrays, normalized caches, Astro island props) and
 the one RSC Flight reader (`content.state.flight_rows`, `content.rsc`), never a second mechanism. What

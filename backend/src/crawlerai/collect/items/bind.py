@@ -8,12 +8,14 @@ Beside stated rows of which one or more is bound to a block, the group's unbound
 listing, and a block no stated row names is an item the structured data left out (a list grown after its script was
 written, a later batch a call loaded).
 
-**Sections.** A listing split into sections reads them all: beside the chosen group, each aligned group of its row
-shape (or holding every required field it aligns and a field beyond the item URL), whose blocks lead to documents of
-the kind its blocks lead to and lie apart from the blocks already read (`_sections`); one item two sections show is
-one block. A group half or more of whose blocks lead to items the chosen group lists repeats the listing (a featured,
-trending or recently viewed strip), and a group after the chosen group's next-page link (`rel=next`) lies past the
-listing's end (a "you may also like" strip): neither is a section, so none of its blocks is read.
+**Sections.** A listing split into sections reads them all: beside the chosen group, each aligned group of its row shape
+(or holding every required field it aligns and a field beyond the item URL), whose blocks lead to documents of the kind
+its blocks lead to and lie apart from the blocks already read (`_sections`), inner groups first (a department's jobs
+before the departments), a group past the align step's main groups only where one template renders it and the chosen
+group (its blocks at the same tag path); one item two sections show is one block. A group half or more of whose blocks
+lead to items the chosen group lists repeats the listing (a featured, trending or recently viewed strip), and a group
+after the chosen group's next-page link (`rel=next`) lies past the listing's end (a "you may also like" strip): neither
+is a section, so none of its blocks is read.
 
 **Binding.** A row and a block are one item when the row names the block's item URL, and neither names another's (one
 to one, else neither binds: C7). URLs are compared as the page's links name items: without the page's session
@@ -152,9 +154,11 @@ def _chosen(listing: Listing, row_urls: _RowUrls) -> Items:
     urls = [url for row in listing.stated for url in row_urls.of(row)]
     if not urls:
         return listing.items[0]
+    # Only a main group may be the listing's own (`Items.main`): a late group is a section or a minor list.
+    groups = [group for group in listing.items if group.main]
     session = session_parameters([b.link for group in listing.items for b in group.blocks], listing.page_urls)
-    bound = [len(_Index([(b.entity.id, b.link) for b in group.blocks], session).find(urls)) for group in listing.items]
-    return listing.items[max(range(len(bound)), key=lambda i: (bound[i], -i))]
+    bound = [len(_Index([(b.entity.id, b.link) for b in group.blocks], session).find(urls)) for group in groups]
+    return groups[max(range(len(bound)), key=lambda i: (bound[i], -i))]
 
 
 def _grid_lists(listing: Listing, chosen: Items, row_urls: _RowUrls) -> tuple[Listing, list[str]]:
@@ -190,7 +194,9 @@ def _sections(listing: Listing, chosen: Items) -> Items:
     featured copy)."""
     section = _Section.of(listing, chosen)
     groups = [chosen]
-    for group in listing.items:
+    # Inner groups first: a group whose blocks hold another group's blocks is a list of sections (a department and its
+    # jobs), whose items are the inner blocks.
+    for group in sorted(listing.items, key=lambda items: -_depth(items)):
         if group is not chosen and section.admits(group):
             groups.append(group)
             section.elements.update(block.element for block in group.blocks)
@@ -221,6 +227,7 @@ class _Section:
     chosen: Items
     required: set[str]
     kinds: set[tuple[str, int, str]]
+    paths: set[str]
     elements: set[HtmlElement]
     listed: "_Index"
     position: dict[HtmlElement, int]
@@ -235,15 +242,22 @@ class _Section:
         last = max((position.get(block.element, -1) for block in chosen.blocks), default=-1)
         pagers = (position[a] for a in listing.page.lxml_tree.iter("a") if _next_link(a) and position[a] > last)
         kinds = {_url_kind(block.link) for block in chosen.blocks}
+        paths = {_root_path(block.element) for block in chosen.blocks}
         elements = {block.element for block in chosen.blocks}
-        return cls(chosen, required, kinds, elements, listed, position, min(pagers, default=None))
+        return cls(chosen, required, kinds, paths, elements, listed, position, min(pagers, default=None))
 
     def admits(self, group: Items) -> bool:
         """Whether `group` is a further section of the chosen group's listing: of its shape, its kind of item URL, apart
-        from the blocks read, not a copy of its items and not past its end."""
+        from the blocks read, not a copy of its items and not past its end. A group outside the main groups
+        (`Items.main`: a page's minor lists) is one only when one template renders it and the chosen group: its blocks
+        lie at the tag path the chosen group's do (DEPTA, Zhai and Liu 2005: a template renders every record alike),
+        as a job board's many departments do."""
         fields = self.chosen.fields
         shaped = group.fields == fields or (self.required <= group.fields and len(group.fields) > 1)
-        alike = sum(_url_kind(block.link) in self.kinds for block in group.blocks) >= quorum(len(group.blocks))
+        needed = quorum(len(group.blocks))
+        alike = sum(_url_kind(block.link) in self.kinds for block in group.blocks) >= needed
+        if not group.main and sum(_root_path(block.element) in self.paths for block in group.blocks) < needed:
+            return False
         apart = not any(_overlaps(block.element, self.elements) for block in group.blocks)
         return shaped and alike and apart and not self._copy(group) and not self._past_end(group)
 
@@ -258,6 +272,16 @@ class _Section:
         listing ends at its pager, so what follows it (a "you may also like" strip) is not one of its sections."""
         start = min((self.position.get(block.element, -1) for block in group.blocks), default=-1)
         return self.end is not None and start > self.end
+
+
+def _depth(items: Items) -> int:
+    """How deep in the document the group's blocks lie: the fewest ancestors one of them has."""
+    return min((sum(1 for _ in block.element.iterancestors()) for block in items.blocks), default=0)
+
+
+def _root_path(element: HtmlElement) -> str:
+    """The tag path from the document's root down to `element`, positions aside."""
+    return "/".join([*(str(ancestor.tag) for ancestor in reversed(list(element.iterancestors()))), str(element.tag)])
 
 
 def _next_link(anchor: HtmlElement) -> bool:
