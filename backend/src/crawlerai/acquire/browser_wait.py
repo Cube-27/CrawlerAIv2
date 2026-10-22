@@ -1,6 +1,6 @@
 """The browser rung's one wait (acquisition spec, "HTTP and browser rungs"): a page is read once it is ready
-(`settle`), its main frame's document navigations followed (`MainFrame`), an interstitial given its own bounded wait
-to navigate on.
+(`settle`) and shows the text its scripts carry (`_rendered`), its main frame's document navigations followed
+(`MainFrame`), an interstitial given its own bounded wait to navigate on.
 """
 
 import asyncio
@@ -15,7 +15,7 @@ from patchright.async_api import Frame, Page, Request, Response
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
 from crawlerai.acquire.browser_capture import DataCalls, document_html
-from crawlerai.acquire.classify import interstitial
+from crawlerai.acquire.classify import carries_unrendered, interstitial
 from crawlerai.acquire.types import CallEndpoint, FetchPolicy
 
 __all__ = ["READY_MAX_S", "STEP_QUIET_S", "MainFrame", "called", "ms_until", "settle", "until"]
@@ -96,7 +96,7 @@ class MainFrame:
 
 
 async def settle(page: Page, frame: MainFrame, calls: DataCalls, policy: FetchPolicy, started: float) -> None:
-    """Wait until the document is ready to read (`_ready`), at most `READY_MAX_S` after it fired `load`, a document
+    """Wait until the document is ready to read (`_rendered`), at most `READY_MAX_S` after it fired `load`, a document
     the main frame navigates to meanwhile starting that wait over (`until`); then, while the ready document is an
     interstitial, wait for the next one (within its own share of the budget) and for it to be ready. All within
     `_SETTLE_SHARE` of the budget that began at `started` (on `time.monotonic`). Judged once ready, a page that renders
@@ -104,7 +104,7 @@ async def settle(page: Page, frame: MainFrame, calls: DataCalls, policy: FetchPo
     budget_s = policy.browser_timeout_s
     interstitial_deadline = started + min(_INTERSTITIAL_SHARE * budget_s, _INTERSTITIAL_MAX_S)
     deadline = started + _SETTLE_SHARE * budget_s
-    await until(frame, lambda: _ready(frame, calls, policy), READY_MAX_S, deadline, after_load=True)
+    await _rendered(page, frame, partial(_ready, frame, calls, policy), deadline)
     while time.monotonic() < interstitial_deadline:
         # Counted before the document is judged: a commit while it is read or classified is the one waited for.
         seen = frame.commits
@@ -113,14 +113,29 @@ async def settle(page: Page, frame: MainFrame, calls: DataCalls, policy: FetchPo
         # None: the document was replaced while it was read, so the next one is waited for as any navigation is.
         if judged and not await _next_document(page, frame, seen, interstitial_deadline):
             return
-        await until(frame, lambda: _ready(frame, calls, policy), READY_MAX_S, deadline, after_load=True)
+        await _rendered(page, frame, partial(_ready, frame, calls, policy), deadline)
+
+
+async def _rendered(page: Page, frame: MainFrame, ready: Callable[[], bool], deadline: float) -> None:
+    """Wait `until` the document is `ready` and no longer carries its text unrendered (`classify.carries_unrendered`:
+    near-empty rendered text beside large script or concealed text), within the same bound: a page that hydrates from
+    its inline state makes no data call, so the quiet network says nothing of whether its script has written the
+    DOM."""
+    while await until(frame, ready, READY_MAX_S, deadline, after_load=True):
+        try:
+            text = await document_html(page)
+        except PlaywrightError:  # replaced while it was read: the next document is waited for
+            text = None
+        if text is not None and not await asyncio.to_thread(carries_unrendered, text):
+            return
+        await asyncio.sleep(_POLL_S)
 
 
 async def until(
     frame: MainFrame, ready: Callable[[], bool], within_s: float, deadline: float, *, after_load: bool = False
-) -> None:
-    """Returns once `ready` holds with no navigation in flight, or `within_s` after the wait began, or after the last
-    document the main frame navigated to meanwhile (a script's `location.replace`, a refresh: what was shown was an
+) -> bool:
+    """Whether `ready` held with no navigation in flight before the wait ended: `within_s` after it began, or after the
+    last document the main frame navigated to meanwhile (a script's `location.replace`, a refresh: what was shown was an
     interim document; a same-document navigation, `history.pushState`, is none), at most at `deadline`. With
     `after_load`, the wait ends `within_s` after the document fired `load`, and before that only at `deadline`."""
     shown, begun = frame.latest, time.monotonic()
@@ -128,8 +143,9 @@ async def until(
         if frame.latest is not shown:
             shown, begun = frame.latest, time.monotonic()
         elif not frame.pending and ready():
-            return
+            return True
         await asyncio.sleep(_POLL_S)
+    return False
 
 
 def _wait_end(frame: MainFrame, begun: float, within_s: float, deadline: float, *, after_load: bool) -> float:

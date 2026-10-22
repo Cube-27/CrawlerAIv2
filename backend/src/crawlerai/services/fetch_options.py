@@ -27,6 +27,7 @@ from pydantic import (
 )
 
 from crawlerai.acquire.types import FetchPolicy, RequestContext
+from crawlerai.collect.vocabulary import default_vocabulary
 from crawlerai.config_ir.page_actions import MAX_ACTIONS, Action, WaitFor, to_steps, wait_for_action
 from crawlerai.core.errors import Refusal
 from crawlerai.core.redaction import REDACTED
@@ -50,6 +51,10 @@ KEEP_SECRETS: Final = "keep_secrets"
 CacheMode = Literal["default", "bypass", "only"]
 # The formats made in the browser from the rendered page: a PNG of it and a PDF print (`FetchPolicy.screenshot`, `pdf`).
 CAPTURE_FORMATS: Final = frozenset({"screenshot", "pdf"})
+# The formats written from the page's rendered text (rest-api spec): a fetch for these and no `records` reads nothing
+# else of the page (`FetchPolicy.content_only`).
+_CONTENT_FORMATS: Final = frozenset({"markdown", "markdown_fit", "chunks"})
+_RECORDS: Final = "records"
 _MAX_PAIRS: Final = 50
 # RFC 9110 §5.1, §5.6.2: a field name is a token. §5.5: a field value holds no CR, LF or NUL.
 _TOKEN: Final = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
@@ -189,11 +194,12 @@ def fetch_policy(
     request names (`services.location`). A screenshot or PDF among its `formats` is made in the
     browser, which then fetches the page whatever the site's remembered method (`FetchPolicy.screenshot`, `pdf`).
     `schema`, the one the page is read with, names the types of the items it is read for (the policy's
-    `target_types`)."""
+    `target_types`, `_with_subtypes`); content formats without `records` read the page's text alone (`content_only`)."""
     wanted = set(formats)
     return FetchPolicy(
         page_kind=page_kind,
-        target_types=() if schema is None else target_types(schema),
+        target_types=() if schema is None else _with_subtypes(target_types(schema)),
+        content_only=bool(_CONTENT_FORMATS & wanted) and _RECORDS not in wanted,
         method_hint="browser" if options.in_browser or CAPTURE_FORMATS & wanted else options.method_hint,
         screenshot=options.screenshot if "screenshot" in wanted else None,
         pdf="pdf" in wanted,
@@ -204,3 +210,14 @@ def fetch_policy(
         context=options.context(),
         steps=to_steps(options.actions, options.wait_for),
     )
+
+
+def _with_subtypes(types: tuple[str, ...]) -> tuple[str, ...]:
+    """`types` and every type of the pinned schema.org vocabulary that is a subclass of one of them (`rdfs:subClassOf`,
+    transitively), sorted: a `JobPosting` schema reads a page whose data states one, a `Product` schema one stating a
+    `ProductGroup`."""
+    if not types:
+        return ()
+    vocabulary = default_vocabulary()
+    subtypes = {name for name in vocabulary.supertypes if any(vocabulary.is_a(name, wanted) for wanted in types)}
+    return tuple(sorted(subtypes.union(types)))

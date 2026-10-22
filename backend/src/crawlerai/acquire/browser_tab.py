@@ -252,7 +252,7 @@ class _PatchrightTab:
             exchange, content = await read_state(self._page, url=self.url, calls=(self._calls_from, calls_to))
         except (Failed, PlaywrightError):
             return False
-        block_class = await classified(exchange, markup(content))
+        block_class = await classified(exchange, markup(content), self._page.policy.target_types)
         self.kept.append(self._result(fetched_at, exchange, content, block_class))
         self._starts.append((self._since, self._calls_from))
         self._since = time.monotonic()

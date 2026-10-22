@@ -32,7 +32,8 @@ this client, and keep the browser outcome only when `ok`:
 | `ok`, whatever it lacks (offer, rows, a requested field) | **no** | HTTP |
 | `auth_wall`, `not_found`, `soft_404`, other `error`, redirect classes | no | HTTP |
 
-An HTTP listing shell kept with no browser outcome is `ok` when it is a shell by the listing rule alone. Any later
+An HTTP shell kept with no browser outcome is `ok` when it is a shell by the listing rule or the content rule alone
+(Structural outcome classification). Any later
 request of a fetch is sent only when `admit_next` allows, and no browser retry starts with less than `BROWSER_MIN_S`
 (20 s) left of the task's budget (a worker task's `TASK_DEADLINE`, a scrape's `timeout_s`): the HTTP outcome is kept.
 The browser MUST NOT be the default: it is also used when `method_hint` is `browser`, the block history says
@@ -209,7 +210,11 @@ a 403, 429 or 503 that is no page of the site, or a rendered 2xx document that i
 served with success that reloads once passed) is then given until 40% of `browser_timeout_s` from the fetch's start,
 and at most 10 s, to navigate on, the wait ending at the main frame's next commit, with nothing clicked or typed, and
 the document it navigates to read once ready. Over HTTP no script runs, so the 2xx case is the browser's only. A 2xx
-page that renders itself by script is judged as rendered; one that stays a shell costs that bound once. The browser reads a body's wire size before the body. The JSON rung
+page that renders itself by script is judged as rendered; one that stays a shell costs that bound once. A ready
+document that carries its text unrendered (`classify.carries_unrendered`, the content rule's measure: near-empty
+rendered text outside the site's chrome beside an order of magnitude more script or concealed text) is not yet read:
+a page that hydrates from its inline state makes no data call, so the wait goes on, within the same `READY_MAX_S`
+bound, until its script has written the DOM. The browser reads a body's wire size before the body. The JSON rung
 (`fetch_json`, method `api`) SHALL send through the HTTP rung's client (`acquire/curl_client.py`: impersonation, guard,
 caps, cookie jar, proxy pools, reasons) the headers a page's `fetch()` sends: Fetch Metadata of a CORS request,
 `Referer`, `Origin`, in a `fetch()`'s order. Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50,
@@ -277,20 +282,26 @@ and has no hyperlink, or that declares a refresh and has hyperlinks but none to 
 a shell), is `blocked`; a listing is a shell unless its structured data lists items or a group of its repeated items
 shows `MIN_ITEMS` blocks with more than a link (an image, or text in two or more runs) and copies no navigation, as the
 item layer requires of a group (listings spec, "Rows from blocks"; a tag cloud, a pager or the menu's category tiles
-lists no items, so the browser renders the grid a script fills); a 401 is
+lists no items, so the browser renders the grid a script fills); a fetch for content formats alone (`markdown`,
+`markdown_fit`, `chunks` and no `records`: `FetchPolicy.content_only`) is a shell whatever its links when its
+rendered text outside the site's chrome (`nav`, `header`, `footer`, `aside`, `search` and their landmark roles) is
+under 200 non-space characters while its scripts and concealed (`hidden`, inline `display: none`) subtrees hold at
+least 2,000 (the content rule: HTML Standard §4.12.1 script data and §6.1 `hidden` content are not rendered, so the
+browser renders it once); a 2xx document whose JSON-LD or microdata states an item of a type the task reads the page
+for (`FetchPolicy.target_types`: the schema's row types and their schema.org subtypes), or an OGP product price for a
+Product or Offer, is never a shell nor `blocked` for want of links (the reader reads that data); a 401 is
 `auth_wall`), and from one kind of site data only: a 2xx HTML document that shows a vendor's stand-in marker
 (`adapters/challenges.py`: a fixed string of the vendor's template, or the pattern of a token the vendor fills in, such
 as an edge's error reference id) is `blocked`. A block needs corroboration and usable content beats it: a 403, or a 2xx
-document with a stand-in marker, that carries the page's structured data (`classify.usable_content`: a schema.org
-Product with offers, an OGP product price, a microdata Product with offers; on a listing the items its structured data
-lists) is `ok`. A 2xx answer whose media type is not HTML (`text/html`, `application/xhtml+xml`; a response without a
+document with a stand-in marker, that carries the page's structured data (`classify.usable_content`: an item of a
+type the task reads the page for, as above; on a listing the items its structured data lists) is `ok`. A 2xx answer whose media type is not HTML (`text/html`, `application/xhtml+xml`; a response without a
 declared type is sniffed as HTML) is `unsupported_media`: no reader reads it and it gets no browser attempt. A 451
 (RFC 7725) is `blocked` with the challenge label `legal`, which names no vendor, and its task ends `geo_blocked`. A 2xx
 page fetched as a detail or listing page that a redirect (`classify.Redirect`) led away from the
 page asked for (another host or path past a BCP 47 locale segment) is `geo_redirect` when the answering URL names
 another region (a BCP 47 region subtag in its first path segment, else a two-letter ccTLD, RFC 1591) and another path,
 `soft_404` when it is a site's or an edition's root, and, for a detail page, `redirected_to_listing` when it lists items,
-states no product and its path does not keep the asked path's last segment as a word (a slug added); a fetch of no page
+states no item of a type the task reads it for and its path does not keep the asked path's last segment as a word (a slug added); a fetch of no page
 kind (a crawl's page) is never classed by its redirect. A redirect to a page whose query carries the asked path, as
 given or base64-encoded (RFC 4648), is an interstitial that sends the client back once passed: `blocked`. These classes are the
 transport outcome (the capture's `block_class`); a page in any of them yields zero records and ends its task with the
@@ -309,8 +320,15 @@ Enforced by: the site-literal scan (INV-03), classify and challenge tests and re
 - **WHEN** a 200 HTML document shows a vendor's stand-in marker and links to pages of its site
 - **THEN** the class is `blocked` with that vendor's challenge label
 #### Scenario: Usable content beats vendor noise
-- **WHEN** a 403 HTML document carries a JSON-LD Product with offers
+- **WHEN** a 403 HTML document fetched for a product schema carries a JSON-LD Product with offers
 - **THEN** the class is `ok` and the page is extracted
+#### Scenario: Structured data of the schema's type
+- **WHEN** a job-posting fetch answers 200 with no links and no rendered text, and a JSON-LD JobPosting
+- **THEN** the class is `ok` and the posting's fields are extracted from it, with no browser attempt
+#### Scenario: Content carried by a script
+- **WHEN** a `markdown` fetch answers 200 with a site header of links, an empty application root and its text in an
+  inline script's state
+- **THEN** the class is `shell` and the browser renders it once; the same answer to a `records` fetch is `ok`
 #### Scenario: Detail page redirected home
 - **WHEN** a detail page's HTTP fetch is redirected to its site's `/` and answers 200
 - **THEN** the class is `soft_404`, no browser attempt is made, and the task ends `soft_404`

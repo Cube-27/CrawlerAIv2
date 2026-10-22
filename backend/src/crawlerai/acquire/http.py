@@ -12,6 +12,7 @@ import asyncio
 import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from functools import partial
 from typing import cast
 
 from curl_cffi import CurlOpt
@@ -65,7 +66,12 @@ async def fetch_http(
         text = decode_html(last.body, last.response_headers, "http")
         redirect = Redirect(url, last.exchange.url, policy.page_kind)
         block_class = await asyncio.to_thread(
-            block_class_of, last.status, last.response_headers, text, policy.page_kind, redirect
+            partial(block_class_of, types=policy.target_types, content_only=policy.content_only),
+            last.status,
+            last.response_headers,
+            text,
+            policy.page_kind,
+            redirect,
         )
         if block_class in CHALLENGED:
             # The document's links resolve against the URL that served it (RFC 3986 §5), the last hop's.
