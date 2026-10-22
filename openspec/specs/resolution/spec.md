@@ -179,7 +179,13 @@ Refs: §10, owner #68, owner 2026-10-19; per-row and common-value rules in
 ### Requirement: Derived values (INV-07)
 Derived values SHALL fill only `missing` fields and carry `derived_by`; the only derivations are `absolutize`, then for
 a detail page's `T.url` field (`T.url` in every alternative of its path) `canonical_link` (RFC 6596), then
-`final_url`, each a named function (`resolve/derive.py`). Canonical links naming more than one URL designate none
+`final_url`, and for a detail page's apply link (`JobPosting.potentialAction.target` in every alternative)
+`application_form`, each a named function (`resolve/derive.py`). `application_form` is the page's final URL as fetched,
+query included, on a page that holds its posting's application (`collect/application.py`, owner #82): a form one of whose
+controls uploads a file (HTML Standard, the File Upload state) and another asks for the person's name or contact (an
+autofill field name `name`, `given-name`, `family-name`, `email` or `tel`, or the E-mail or Telephone input state), or
+a platform's documented embed of its application form on a page whose URL names one posting (adapters spec); a page
+with neither keeps the apply link `missing`. Canonical links naming more than one URL designate none
 (RFC 6596 §3: one per resource), so such a page states no canonical URL. Before derivation, when the page states one
 canonical link and it names a URL without userinfo (RFC 9110 §4.2.4) on the final URL's site (HTML Standard §7.1.1,
 the same registrable domain), that link is the page's own URL (owner #77) and a kept candidate of that `T.url` field naming another document (`normalize/url_key.py` `document_key`:
@@ -187,7 +193,8 @@ another scheme, authority or path, one trailing slash of the path aside; a query
 rejected `other_document`, and preference decides among the rest; a relative
 reference `absolutize` resolves to another document is rejected so too. A derived value publishes as the page states it
 (normalization spec): an absolutized reference as written, the canonical link as its first `href` is written; the final
-URL, which no page statement gives, as fetched. Refs: §9, §10, Appendix A #40, owner #77, D-0442, D-0910, D-1625.
+URL, which no page statement gives, as fetched. Refs: §9, §10, Appendix A #40, owner #77, owner #82, D-0442, D-0910,
+D-1625.
 Enforced by: resolver
 tests; active.
 #### Scenario: No url candidate
@@ -211,7 +218,17 @@ tests; active.
 - **WHEN** a detail page states no canonical link and `og:url` `https://example.com/collection`
 - **THEN** `url` publishes the `og:url` value as before; no candidate is rejected `other_document`
 #### Scenario: No stated apply link
-- **WHEN** a job page states no apply link and role C claims none
+- **WHEN** a job page states no apply link, role C claims none, and the page holds no application form
+- **THEN** `apply_url` stays `missing`
+#### Scenario: Application form on the job page
+- **WHEN** a job page fetched at `https://example.com/jobs/7` states no apply link and holds a form with an
+  `<input type="file">` and an `<input autocomplete="email">`
+- **THEN** `apply_url` publishes `https://example.com/jobs/7` with `derived_by=application_form`
+#### Scenario: Stated apply link beside an application form
+- **WHEN** that page's JSON-LD JobPosting also states a `potentialAction` with `target` `https://example.com/apply/7`
+- **THEN** `apply_url` publishes `https://example.com/apply/7`
+#### Scenario: Sign-in form
+- **WHEN** a job page's only form asks for an e-mail address and a password
 - **THEN** `apply_url` stays `missing`
 
 ### Requirement: Evidence, confidence and min_confidence
@@ -256,8 +273,8 @@ A page whose required fields and groups all publish SHALL be `extracted` and com
 stores the record as `partial` and a crawl-discovered URL is `no_match` with no record. Either way, a page none of whose
 required fields or group members (any field, for a schema that requires none) has a candidate read from the page,
 published or rejected by resolution (not as another entity's, `not_owned`, or the request URL's, `url_param`), beyond
-its own address (a field whose value is the `canonical_link` or
-`final_url` derivation), states no entity of the schema and is `no_match` with no record: a maintenance or error page
+its own address (a field whose value is the `canonical_link`,
+`final_url` or `application_form` derivation), states no entity of the schema and is `no_match` with no record: a maintenance or error page
 served for the URL states prose, never what identifies the item. An extraction miss is never `no_match`: a needed
 field's candidate that resolution rejected, or a page whose content the engine cannot read (its extraction raises the
 `closed_shadow_root` or `obfuscated_text` signal, [jobs](../jobs/spec.md) "Job outcome summary"), keeps a

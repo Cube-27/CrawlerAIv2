@@ -5251,6 +5251,7 @@
                 "enum": [
                   "canonical_link",
                   "final_url",
+                  "application_form",
                   "absolutize"
                 ],
                 "type": "string"

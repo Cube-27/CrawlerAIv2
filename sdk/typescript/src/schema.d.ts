@@ -2853,7 +2853,7 @@ export interface components {
             /** Confidence */
             confidence: number | null;
             /** Derived By */
-            derived_by: ("canonical_link" | "final_url" | "absolutize") | null;
+            derived_by: ("canonical_link" | "final_url" | "application_form" | "absolutize") | null;
             /** Dropped */
             dropped?: components["schemas"]["DroppedRowMeta"][] | null;
             /** Evidence */

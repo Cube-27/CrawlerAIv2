@@ -17,8 +17,9 @@ from crawlerai.content.attr_json import NAME_PATTERN as ATTRIBUTE_NAMES
 from crawlerai.schemas.types import NAME_PATTERN
 
 # The page-URL derivations (extraction spec, D-0355): the capture's `<link rel=canonical>` (RFC 6596) or its final URL
-# (RFC 9110 §15.4). No candidate states them, so their locator names the derivation.
-PageUrlDerivation = Literal["canonical_link", "final_url"]
+# (RFC 9110 §15.4), and the final URL as the apply link of a page holding its application form (resolution spec). No
+# candidate states them, so their locator names the derivation.
+PageUrlDerivation = Literal["canonical_link", "final_url", "application_form"]
 Scheme = Literal[
     "jsonld",
     "microdata",

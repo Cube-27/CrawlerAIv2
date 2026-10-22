@@ -121,8 +121,10 @@ Fixed after S3 (#430–#433), each replayed on every S3 capture of its schemas w
 JSON-LD blocks for one product no longer cancel each other; a ProductGroup keeps variants whose offers name their own
 URLs; JSON-LD with a trailing comma parses; listing titles come from the shown title link and every section is read
 (job-listing titles correct 416 → 575 of the replayed rows); a `?variant=` URL selects that variant; a labelled item
-number is no GTIN; "New" maps to `NewCondition`; untyped `offers` nodes are Offers. The S3 score above is the C1
-claim; these fixes are verified only on a later fresh batch.
+number is no GTIN; "New" maps to `NewCondition`; untyped `offers` nodes are Offers. Decided by the owner (#82, was an
+open decision): a job page that holds its application form, in its markup or by a documented ATS embed, is its own
+`apply_url` (3 of 15 S3 job pages); a page with no stated apply link and no form keeps it missing. The S3 score above
+is the C1 claim; these fixes are verified only on a later fresh batch.
 
 ## What is frozen
 
@@ -146,8 +148,6 @@ Each is a working rule today; the owner may change it (`openspec/design/owner-de
 - **Shopify vendor as brand.** Decided (owner #81): a brand the page states outranks the platform vendor, which
   fills `brand` only where the page states none.
 - **Role S label language tags.** Would change the public labels API; deferred.
-- **The page itself as `apply_url`.** Where the application form is on the job page (and the Greenhouse API's
-  `absolute_url`, which is the job page), `apply_url` stays missing; the owner may make the page URL the value.
 - **PHP export on an HTML5 parse.** The engine parses once with the HTML Standard parser (#431); the PHP export still
   runs XPaths on libxml2's parse, so the few fields whose paths differ export as `manual`. PHP 8.4's
   `Dom\HTMLDocument` would close the gap.

@@ -28,6 +28,7 @@ from typing import Final, Protocol, cast
 
 from pydantic import BaseModel, ConfigDict
 
+from crawlerai.collect.application import holds_application
 from crawlerai.collect.base import ARRAY_ROW, Candidate, Entity
 from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.currencies import with_page_declarations
@@ -44,7 +45,7 @@ from crawlerai.core.capture import BlockClass
 from crawlerai.core.engine_version import CALIBRATION_FILE
 from crawlerai.db.models import ExtractionMode, SourceKind
 from crawlerai.normalize.base import Context
-from crawlerai.resolve.derive import Derived, fill, is_page_url_field
+from crawlerai.resolve.derive import Derived, fill, is_application_field, is_page_url_field
 from crawlerai.resolve.evidence import Calibration, assess, assess_fields, load_calibration
 from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
 from crawlerai.resolve.listing import listing_rows, row_lists
@@ -306,6 +307,8 @@ class _Page:
     target: Entity | AmbiguousTarget
     facts: PageFacts
     page_urls: tuple[str, ...]  # the URLs naming the page (`collect.run`'s `page_urls`), canonicalized (variants spec)
+    # The page's final URL when it holds its posting's application form (`collect.application`), for the apply link.
+    application_url: str | None
 
     @classmethod
     def read(cls, source: _Source) -> "_Page":
@@ -345,8 +348,23 @@ class _Page:
         target = select_target(manifest.url, manifest.final_url, canonical, graph, primary)
         facts = PageFacts.of(manifest.url, page.visible_values.visible)
         href = canonical_href(page, manifest.final_url)
+        applies = any(is_application_field(schema, spec) for spec in schema.fields.values())
+        application = manifest.final_url if applies and holds_application(page, manifest.final_url) else None
         return cls(
-            page, ctx, schema, data, canonical, href, collected, config, graph, primary, target, facts, page_urls
+            page,
+            ctx,
+            schema,
+            data,
+            canonical,
+            href,
+            collected,
+            config,
+            graph,
+            primary,
+            target,
+            facts,
+            page_urls,
+            application,
         )
 
     @property
@@ -404,6 +422,7 @@ class _Page:
                     canonical_url=self.canonical_url,
                     canonical_href=self.canonical_href,
                     page_url_field=is_page_url_field(schema, spec, self.primary),
+                    application_url=self.application_url if is_application_field(schema, spec) else None,
                 )
                 for name, spec in schema.fields.items()
             }

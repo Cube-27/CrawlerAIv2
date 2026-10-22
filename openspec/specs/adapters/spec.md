@@ -71,8 +71,12 @@ They SHALL detect only the hosts and URL forms their public Job Board / Postings
 fields as in `adapters/greenhouse.py` and `adapters/lever.py`; filtered Lever lists, apply pages and undocumented
 regional hosts fall through to the page rungs. A job read for a hosted Greenhouse board page SHALL have the board's job
 route on the page's host as its URL; one read for an embedded board keeps the API's `absolute_url`. A posting answer's
-documented apply link (Lever and SmartRecruiters `applyUrl`) is its ApplyAction's `target` (`adapters.base.apply_action`).
-Refs: D-0267, D-0307, D-0310, D-1483, D-1493.
+documented apply link (Lever and SmartRecruiters `applyUrl`) is its ApplyAction's `target` (`adapters.base.apply_action`);
+a job read for a hosted Greenhouse board page has that job route as its target, where Greenhouse documents the hosted
+application form (owner #82). A platform's documented embed of its application form in a page on another host
+(`adapters.base.ApplicationEmbed`: Greenhouse's `grnhse_app` container and board loader script, on a page whose URL
+names one job by `gh_jid`) is site data of the adapter package, which `collect/application.py` reads
+([resolution](../resolution/spec.md) "Derived values"). Refs: D-0267, D-0307, D-0310, D-1483, D-1493, owner #82.
 
 ### Requirement: Shopify adapter
 It SHALL detect collection paths only, with any query, also under a locale subfolder
