@@ -122,7 +122,7 @@ def item_links(
     placed = [_placed_targets(block, base, here, sublists) for block in group]
     shared = _shared_targets(placed)
     own = [_without(block, shared) for block in placed]
-    pictured = [_pictured_places(block, sublists) for block in group]
+    pictured = [_pictured_places(block, base, here, sublists) for block in group]
     place = _group_place(own, pictured, needed)
     for i, targets in enumerate(own):
         at = targets.get(place) if place is not None and found[i] is None else None
@@ -138,29 +138,32 @@ def _placed_targets(
     """The documents the block's hyperlinks lead to (`link_targets`) by the links' places (`_link_places`), each with
     its first `href`, places in document order."""
     placed: dict[Place, dict[str, str]] = {}
-    for place, anchor in _link_places(block, sublists):
-        for url, (href, _) in link_targets((anchor,), base, here).items():
+    for place, _, targets in _link_places(block, base, here, sublists):
+        for url, (href, _) in targets.items():
             placed.setdefault(place, {}).setdefault(url, href)
     return placed
 
 
-def _link_places(block: HtmlElement, sublists: frozenset[HtmlElement]) -> list[tuple[Place, HtmlElement]]:
-    """The block's hyperlinks, those of its own lists aside, each at its place: its tag path from the block and the
-    rank of its parent among the parents of the block's hyperlinks at that path, in document order. One template
-    writes a card's title, author and "more" links into like elements, so their tag paths, positions aside, are one;
-    the order of those elements tells them apart (DEPTA aligns the sibling records of a template in order). Links in
-    one element share its place: inline in one run of text (HTML Standard §3.2.5.2.5, phrasing content), they are
-    that text's, as the links of a paragraph are."""
+def _link_places(
+    block: HtmlElement, base: str | None, here: str | None, sublists: frozenset[HtmlElement]
+) -> list[tuple[Place, HtmlElement, dict[str, tuple[str, HtmlElement]]]]:
+    """The block's hyperlinks that lead to a document (`link_targets`), those of its own lists aside, each at its
+    place, with its targets: its tag path from the block and the rank of its parent among the parents of those
+    hyperlinks at that path, in document order. One template writes a card's title, author and "more" links into like
+    elements, so their tag paths, positions aside, are one; the order of those elements tells them apart (DEPTA aligns
+    the sibling records of a template in order). Links in one element share its place: inline in one run of text (HTML
+    Standard §3.2.5.2.5, phrasing content), they are that text's, as the links of a paragraph are."""
     parents: dict[str, list[HtmlElement | None]] = {}
-    places: list[tuple[Place, HtmlElement]] = []
+    places: list[tuple[Place, HtmlElement, dict[str, tuple[str, HtmlElement]]]] = []
     for anchor in hyperlinks(block):
-        if anchor in sublists:
+        targets = link_targets((anchor,), base, here) if anchor not in sublists else {}
+        if not targets:
             continue
         path, parent = tag_path(block, anchor), anchor.getparent()
         seen = parents.setdefault(path, [])
         if parent not in seen:
             seen.append(parent)
-        places.append(((path, seen.index(parent)), anchor))
+        places.append(((path, seen.index(parent)), anchor, targets))
     return places
 
 
@@ -201,9 +204,15 @@ def _first_place(places: Iterable[Place], pictured: set[Place], qualified: set[P
     )
 
 
-def _pictured_places(block: HtmlElement, sublists: frozenset[HtmlElement]) -> set[Place]:
+def _pictured_places(
+    block: HtmlElement, base: str | None, here: str | None, sublists: frozenset[HtmlElement]
+) -> set[Place]:
     """The places of the block's hyperlinks that hold an image."""
-    return {place for place, anchor in _link_places(block, sublists) if next(anchor.iter("img"), None) is not None}
+    return {
+        place
+        for place, anchor, _ in _link_places(block, base, here, sublists)
+        if next(anchor.iter("img"), None) is not None
+    }
 
 
 def tag_path(block: HtmlElement, element: HtmlElement) -> str:
