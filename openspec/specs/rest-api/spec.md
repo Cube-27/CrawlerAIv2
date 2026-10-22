@@ -85,7 +85,7 @@ files give 503 `records_unavailable`. See [schemas](../schemas/spec.md). Refs: �
 
 ### Requirement: Response field shape
 Record fields SHALL carry status, evidence, confidence, locator and provenance as in [resolution](../resolution/spec.md),
-values serialized unchanged (INV-22, INV-27), and `usage` SHALL count every fetch attempt, robots.txt included
+values serialized unchanged in their served form (normalization spec, "Served form"; INV-22, INV-27), and `usage` SHALL count every fetch attempt, robots.txt included
 (INV-23). Refs: §13.1, §17, D-0430.
 
 ### Requirement: Schema, config, record and replay endpoints

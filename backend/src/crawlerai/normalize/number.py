@@ -10,14 +10,15 @@ Accepts:
   (`ratingValue+reviewCount`), declined `no_ratings` when the count is 0.
 
 The value is the decimal in fixed-point notation as a JSON string, with its digits as written (`4.50` stays `4.50`),
-as money writes an amount; equality compares decimals. Nothing is defaulted or rescaled (C7): a text with no number or
+as money writes an amount; equality compares decimals. A record serves it as a JSON number rounded to two decimal
+places (`served`), and nothing compares that form. Nothing is defaulted or rescaled (C7): a text with no number or
 two numbers ("4.5 out of 5") is `Invalid`, and so is a minus sign set apart from the number, which may be a dash; a
 number the page's locales read as different values is `Ambiguous`.
 """
 
 from collections.abc import Hashable, Mapping
 from contextlib import suppress
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 
 from pydantic import JsonValue
 
@@ -27,6 +28,10 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 
 # schema.org AggregateRating: `ratingValue` is the rating, `reviewCount` the count of reviews it is based on.
 _RATING_VALUE, _REVIEW_COUNT = "ratingValue", "reviewCount"
+# A served number keeps at most two decimal places (normalization spec, "Served form"), rounded half to even (ISO
+# 80000-1 Annex B, IEEE 754's default): a rating's float noise, `4.439477977161501`, serves as 4.44.
+_SERVED_PLACES = Decimal("0.01")
+_EXACT_DIGITS = 15  # IEEE 754 binary64 holds 15 significant decimal digits exactly
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
@@ -90,3 +95,18 @@ def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
         with suppress(InvalidOperation):
             return Decimal(value)
     return raw_key(value)
+
+
+def served(value: JsonValue) -> JsonValue:
+    """A published number as a record serves it (normalization spec, "Served form"): a JSON number of at most two
+    decimal places (`numbers.json_number`); any other value as it is."""
+    if isinstance(value, str):
+        with suppress(InvalidOperation):
+            number = Decimal(value)
+            if number.is_finite():
+                # Past binary64's 15 significant digits the fraction is lost in the JSON number anyway, and rounding
+                # such a value would exceed the decimal context's precision.
+                if number.adjusted() < _EXACT_DIGITS:
+                    number = number.quantize(_SERVED_PLACES, rounding=ROUND_HALF_EVEN)
+                return numbers.json_number(number)
+    return value

@@ -502,6 +502,13 @@ def without_currency(value: JsonValue) -> JsonValue:
     return _value(money[0], None)
 
 
+def served(value: JsonValue) -> JsonValue:
+    """A published money value as a record serves it (normalization spec, "Served form"): its amount a JSON number
+    (`numbers.json_number`), its currency as it is; any other value as it is."""
+    money = _money_value(value)
+    return value if money is None else {"amount": numbers.json_number(money[0]), "currency": money[1]}
+
+
 def _money_value(value: JsonValue) -> tuple[Decimal, str | None] | None:
     """A normalized money value (`{amount, currency}`) as (amount, ISO 4217 code or `None` when unknown), or `None` for
     any other value."""

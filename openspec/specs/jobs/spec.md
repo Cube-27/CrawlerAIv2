@@ -125,7 +125,7 @@ Refs: owner plan 2026-10-19 P9; architecture v3 a.5, (b)
 ### Requirement: Job endpoints
 `GET /v1/jobs` SHALL page all jobs newest first; `/v1/jobs/{id}` returns the summary, `/outcomes` the job's outcomes, `/request` the validated request,
 `DELETE` cancels queued tasks (a finished job is 409); `/results` serves records, page outputs, `json_values` and
-exports in the pinned schema's columns, values unchanged (INV-27). A `json_values` clean record holds only published
+exports in the pinned schema's columns, values unchanged in their served form (normalization spec; INV-27). A `json_values` clean record holds only published
 fields, a money value flat as its amount and a `currency` (beside `price`) or `<field>_currency` code, the first key
 that names no schema field, else whole (D-1210). A page output carries `fetch` (the scrape answer's summary, every
 attempt with its challenge label, from the capture), and a `json_values` item carries it when `include=fetch` is

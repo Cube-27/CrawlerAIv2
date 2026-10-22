@@ -170,5 +170,8 @@ async def test_each_jobs_record_carries_its_delta_against_the_previous_record(si
         await site.run(site.draft(data))
 
     deltas = [(await list_records(site.conn, RecordFilter(job_id=job))).items[0].delta for job in site.jobs]
-    price = FieldChange(field="price", previous=KETTLE["price"], value=CHEAPER["price"])
+    # Served as JSON numbers (normalization spec, "Served form").
+    price = FieldChange(
+        field="price", previous={"amount": 19.9, "currency": "EUR"}, value={"amount": 17.5, "currency": "EUR"}
+    )
     assert deltas == [Delta(kind="new"), Delta(kind="same"), Delta(kind="changed", changes=[price]), Delta(kind="same")]

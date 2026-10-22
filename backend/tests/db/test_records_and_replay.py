@@ -170,7 +170,7 @@ async def test_a_stored_record_carries_every_field_with_its_meta_and_where_it_ca
     }
     assert {name: (f.status, f.value) for name, f in record.fields.items()} == {
         "title": ("published", "Blue kettle"),
-        "price": ("published", {"amount": "19.90", "currency": "EUR"}),
+        "price": ("published", {"amount": 19.9, "currency": "EUR"}),
     }
     # Without a calibration no field is calibrated, so the record has no confidence (§10).
     assert record.confidence is None
@@ -238,7 +238,7 @@ async def test_records_are_listed_in_the_field_shape_with_a_cursor(client: httpx
         "delta",
     }
     assert (newest["id"], newest["capture_id"]) == (str(made[1].record_id), str(made[1].capture_id))
-    assert newest["fields"]["price"]["value"] == {"amount": "19.90", "currency": "EUR"}
+    assert newest["fields"]["price"]["value"] == {"amount": 19.9, "currency": "EUR"}
     assert set(newest["fields"]["title"]) == ATTRIBUTES
     assert [r["id"] for r in second.json()["items"]] == [str(made[0].record_id)]
     assert second.json()["next_cursor"] is None

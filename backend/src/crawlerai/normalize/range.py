@@ -361,6 +361,22 @@ def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
     return raw_key(value) if parts is None else ("range", *parts[:2], *(frozen(p) for p in parts[2:]))
 
 
+def served(value: JsonValue) -> JsonValue:
+    """A published range as a record serves it (normalization spec, "Served form"): its bounds JSON numbers
+    (`numbers.json_number`), its other parts as they are; any other value as it is."""
+    parts = _range_value(value)
+    if parts is None:
+        return value
+    lo, hi, currency, unit, period = parts
+    return {
+        "min": numbers.json_number(lo),
+        "max": numbers.json_number(hi),
+        "currency": currency,
+        "unit": unit,
+        "period": period,
+    }
+
+
 def _range_value(value: JsonValue) -> tuple[Decimal, Decimal, JsonValue, JsonValue, JsonValue] | None:
     """A normalized range as (min, max, currency, unit, period), or `None` for any other value."""
     if not isinstance(value, dict) or value.keys() != _VALUE_KEYS:

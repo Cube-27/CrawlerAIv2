@@ -8,14 +8,16 @@ and never contains the URL. Deliveries of one job are independent: a failing one
 receiver orders events by their ids (UUIDv7, RFC 9562 §5.7: creation order).
 
 Body (JSON): `{"delivery_id", "job_id", "attempt", "events": [{"id", "type", "created_at", "data"}]}`; a job end
-event's `data` carries the job's summary at delivery as `job`. Signature: `X-CrawlerAI-Signature: sha256=<hex>`, the
-HMAC-SHA256 (RFC 2104, FIPS 180-4) of the request body, keyed with the UTF-8 bytes of the key's `webhook_secret`,
-which `crawlerai apikey create` prints with the key; `X-CrawlerAI-Delivery` repeats the delivery id, the same on every
-attempt, for a receiver to drop a delivery it already took.
+event's `data` carries the job's summary at delivery as `job`, and a `record` or `record_changed` event's record
+values are served as the API serves them (normalization spec, "Served form"). Signature: `X-CrawlerAI-Signature:
+sha256=<hex>`, the HMAC-SHA256 (RFC 2104, FIPS 180-4) of the request body, keyed with the UTF-8 bytes of the key's
+`webhook_secret`, which `crawlerai apikey create` prints with the key; `X-CrawlerAI-Delivery` repeats the delivery id,
+the same on every attempt, for a receiver to drop a delivery it already took.
 """
 
 import hashlib
 import hmac
+import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -32,6 +34,7 @@ from crawlerai.db.models import (
     ApiKey,
     Job,
     JobId,
+    SchemaId,
     WebhookDelivery,
     WebhookDeliveryId,
     WebhookEvent,
@@ -39,6 +42,9 @@ from crawlerai.db.models import (
     WebhookEventType,
 )
 from crawlerai.db.webhook_outbox import JOB_END_EVENTS
+from crawlerai.normalize.dispatch import served
+from crawlerai.schemas import registry
+from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.jobs import get_job
 
 SIGNATURE_HEADER: Final = "X-CrawlerAI-Signature"
@@ -51,6 +57,8 @@ TIMEOUT_S: Final = 10.0
 DELIVERY_BATCH: Final = 1
 UNSIGNED: Final = "no API key submitted the job, so there is no secret to sign with"
 _JOB_END: Final = frozenset(JOB_END_EVENTS)
+# The events whose `data` holds a stored record's published values (`db.task_events`).
+_RECORD_EVENTS: Final = frozenset({"record", "record_changed"})
 
 # POST a body with headers to a URL; the response status. Raises `SsrfRejected` or `RequestFailed`.
 Poster = Callable[[str, bytes, Mapping[str, str]], Awaitable[int]]
@@ -128,7 +136,9 @@ async def delivery_body(conn: AsyncConnection, delivery_id: WebhookDeliveryId, j
         .where(WebhookEvent.delivery_id == delivery_id)
         .order_by(WebhookEvent.id)
     )
-    events = [EventOut(id=row.id, type=row.event, created_at=row.created_at, data=row.payload) for row in rows]
+    events = await _served(
+        [EventOut(id=row.id, type=row.event, created_at=row.created_at, data=row.payload) for row in rows], conn
+    )
     if any(event.type in _JOB_END for event in events):
         summary = (await get_job(conn, job_id)).model_dump(mode="json")
         events = [
@@ -137,6 +147,21 @@ async def delivery_body(conn: AsyncConnection, delivery_id: WebhookDeliveryId, j
         ]
     body = DeliveryBody(delivery_id=delivery_id, job_id=job_id, attempt=attempt, events=events)
     return body.model_dump_json().encode()
+
+
+async def _served(events: list[EventOut], conn: AsyncConnection) -> list[EventOut]:
+    """`events` with each record event's values served in the schema the record follows."""
+    schemas: dict[str, SchemaDef] = {}
+    out: list[EventOut] = []
+    for event in events:
+        if event.type in _RECORD_EVENTS:
+            schema_id = event.data["schema_id"]
+            if schema_id not in schemas:
+                schemas[schema_id] = await registry.get_by_id(conn, SchemaId(uuid.UUID(schema_id)))
+            data = served(event.data["data"], schemas[schema_id].fields)
+            event = event.model_copy(update={"data": {**event.data, "data": data}})
+        out.append(event)
+    return out
 
 
 async def _deliver(conn: AsyncConnection, row: _Due, post: Poster) -> None:

@@ -204,7 +204,7 @@ async def test_records_answer_every_field_with_its_attributes(
         "confidence": None,
     }
     assert record["fields"]["price"] == {
-        "value": {"amount": "19.90", "currency": "EUR"},
+        "value": {"amount": 19.9, "currency": "EUR"},
         "status": "published",
         "reason": None,
         "evidence": "structured",
