@@ -117,7 +117,8 @@ owner 2026-10-19, architecture-v3 d.2. Enforced by: `tests/property/test_prefere
 - **THEN** `image_url` publishes the `?sw=964` URL
 #### Scenario: A data call's image list
 - **WHEN** the only image candidates are the items of one product JSON `images` list, scoring alike
-- **THEN** `image_url` publishes its first item
+- **THEN** `image_url` publishes the first item its collector reads: for a platform answer that ties images to
+  variants, the shown variant's image, wherever the answer's array places it
 #### Scenario: An http twin
 - **WHEN** two merged JSON-LD blocks state one image over `http` and over `https?w=800`
 - **THEN** `image_url` publishes the `https` URL

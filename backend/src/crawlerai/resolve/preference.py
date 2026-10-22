@@ -96,16 +96,18 @@ Preference = Chosen | Unpublished
 
 @dataclass(frozen=True, slots=True)
 class PageFacts:
-    """What the URL-parameter rule reads of the page: the request URL's query values, and whether a value is shown."""
+    """What the URL-parameter rule reads of the page: the request URL's query values, and whether a value is shown;
+    and the request URL, which may name the variant the page shows (variants spec)."""
 
     query_values: frozenset[str]
     visible: Callable[[str], bool]
+    request_url: str
 
     @classmethod
     def of(cls, request_url: str, visible: Callable[[str], bool]) -> "PageFacts":
         # WHATWG URL Standard, application/x-www-form-urlencoded parsing: `+` is a space, triplets decode.
         pairs = parse_qsl(urlsplit(request_url).query)
-        return cls(frozenset(form for _, value in pairs if (form := text_form(value))), visible)
+        return cls(frozenset(form for _, value in pairs if (form := text_form(value))), visible, request_url)
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,7 +153,7 @@ class Resolver:
             name: self._choose(spec, *screened[name], offers=offers, offer_field=name in offer_fields)
             for name, spec in fields.items()
         }
-        return {name: self._fill(spec, by_field[name], chosen[name]) for name, spec in fields.items()}
+        return {name: self._fill(spec, by_field[name], chosen[name], offers) for name, spec in fields.items()}
 
     def prefer_field(self, spec: FieldSpec, candidates: Sequence[Candidate]) -> Preference:
         """One field on its own, outside the page's Offers: for values derived after preference (`derive`)."""
@@ -223,7 +225,7 @@ class Resolver:
             top = won
         elif offer_field:
             top = self.target_offers.shown_value([g for g in groups if g.score > 0], offers) or top
-        top, rivals, tied = _contest(spec, groups, top)
+        top, rivals, tied = _contest(spec, groups, top, kept)
         flag = self._flag(top, groups, rivals, offers, offer_field=offer_field)
         if rule_type(spec) is FieldType.MONEY:
             return _price(spec, top, tied, kept, rejected, flag)
@@ -368,12 +370,13 @@ class Resolver:
         if not self.detail:
             return offers
         # The target's own sku and gtin, as they publish, select the variant it shows (variants spec), and so does the
-        # shown variant's that yielded to the product's own (`_variants_yield`): it still names that variant.
+        # shown variant's that yielded to the product's own (`_variants_yield`): it still names that variant; so does
+        # the request URL where it is one variant's own.
         ids = [name for name in variant_ids(fields) if name in fields]
         stated = {name: self._choose(fields[name], *screened[name], offers=offers, offer_field=False) for name in ids}
         yielded = [(c, fields[name]) for name in ids for c, why in screened[name][1] if why == OUTSCORED]
         own = [*self._published_ids(fields, stated), *yielded]
-        shown, other = self.target_offers.shown_offers(fields, candidates, own)
+        shown, other = self.target_offers.shown_offers(fields, candidates, own, self.page.request_url)
         shown |= self.target_offers.lone_offers(frozenset(source_of(offer) for offer in shown)) - other
         return PageOffers(shown, shown) if shown else offers
 
@@ -412,27 +415,49 @@ class Resolver:
     def _fills(self, spec: FieldSpec) -> bool:
         return self.detail and spec.type is FieldType.IDENTIFIER and spec.scheme in VARIANT_IDS
 
-    def _fill(self, spec: FieldSpec, candidates: Sequence[Candidate], preference: Preference) -> Preference:
+    def _fill(
+        self, spec: FieldSpec, candidates: Sequence[Candidate], preference: Preference, offers: PageOffers
+    ) -> Preference:
         """Variant fill (variants spec): a gtin or sku field the target states nothing for (no candidate is the
         target's) takes its variants' candidates when every variant has one and all agree: the value is common to
-        the variants. A value the target states is never replaced, and no other field is filled."""
+        the variants; else those of the one variant the target shows (`offers.shown`), whose identifiers they are.
+        A value the target states is never replaced, and no other field is filled."""
         if not self._fills(spec):
             return preference
         if any(self.graph.owned_by(c, self.target, page_values=self.page_values) for c in candidates):
             return preference
-        pooled = [self._variant_kept(member, candidates) for member in self.graph.variants(self.target)]
-        if not pooled or not all(pooled):
-            return preference
-        kept = [c for member_kept in pooled for c in member_kept]
-        if not all(same_value(a, b, spec) for a, b in combinations(kept, 2)):
+        kept = self._variants_value(spec, candidates, offers)
+        if kept is None:
             return preference
         rejected = tuple(r for r in preference.rejected if not any(r[0] is c for c in kept))
         return Chosen(kept[0], tuple(kept[1:]), rejected, tuple(kept))
+
+    def _variants_value(
+        self, spec: FieldSpec, candidates: Sequence[Candidate], offers: PageOffers
+    ) -> list[Candidate] | None:
+        """The variants' candidates of one value when every variant has one and all agree, else the shown variant's
+        when they agree (`_fill`); None otherwise."""
+        members = self.graph.variants(self.target)
+        pooled = [self._variant_kept(member, candidates) for member in members]
+        kept = [c for member_kept in pooled for c in member_kept]
+        if pooled and all(pooled) and _one_value(spec, kept):
+            return kept
+        shown = [found for member, found in zip(members, pooled, strict=True) if self._shows(member, offers)]
+        return shown[0] if len(shown) == 1 and shown[0] and _one_value(spec, shown[0]) else None
+
+    def _shows(self, member: Entity, offers: PageOffers) -> bool:
+        """Whether the variant `member` is the one the target shows: its Offers are among the shown variant's."""
+        own = {o.id for o in self.graph.offers(member)}
+        return bool(own) and own <= offers.shown
 
     def _variant_kept(self, member: Entity, candidates: Sequence[Candidate]) -> list[Candidate]:
         """The candidates the variant `member` holds itself that pass screening, as they would for it as a target."""
         own = [c for c in candidates if c.entity_id == member.id]
         return Resolver(self.graph, member, self.page, self.orders, page_values=False).screen(own)[0]
+
+
+def _one_value(spec: FieldSpec, candidates: Sequence[Candidate]) -> bool:
+    return all(same_value(a, b, spec) for a, b in combinations(candidates, 2))
 
 
 def intent_ambiguous(schema: SchemaDef, candidates: Sequence[Candidate]) -> dict[str, Preference]:
@@ -550,28 +575,33 @@ def _currency_unknown(candidate: Candidate) -> Candidate:
     return candidate.model_copy(update={"normalized": Ok(value, basis="unknown", checked=checked)})
 
 
-# A locator of one item of a list (`…['image'][2]`): the list's own locator, and the item's index.
-_LIST_ITEM = re.compile(r"(.+)\[(\d{1,9})\]")
+# A locator of one item of a list (`…['image'][2]`): the list's own locator.
+_LIST_ITEM = re.compile(r"(.+)\[\d{1,9}\]")
 
 
-def _contest(spec: FieldSpec, groups: list[Group], top: Group) -> tuple[Group, list[Group], list[Group]]:
+def _contest(
+    spec: FieldSpec, groups: list[Group], top: Group, kept: Sequence[Candidate]
+) -> tuple[Group, list[Group], list[Group]]:
     """The best group, the other scored groups (its rivals), and those that tie with it (`_first_listed`)."""
     rivals = [g for g in groups if g is not top and g.score > 0]
     tied = [g for g in rivals if g.score == top.score]
-    first = _first_listed(spec, [top, *tied])
+    first = _first_listed(spec, [top, *tied], kept)
     if first is None:
         return top, rivals, tied
     return first, [g for g in groups if g is not first and g.score > 0], []
 
 
-def _first_listed(spec: FieldSpec, best: Sequence[Group]) -> Group | None:
+def _first_listed(spec: FieldSpec, best: Sequence[Group], kept: Sequence[Candidate]) -> Group | None:
     """Of image values that tie for the best score, the group holding the first item when all are items of one list of
     one node: a source listing a thing's images in order (RFC 8259 §1: an array is an ordered sequence) states its main
-    image first, as Open Graph prefers the first of a repeated `og:image` (Open Graph protocol, "Arrays")."""
+    image first, as Open Graph prefers the first of a repeated `og:image` (Open Graph protocol, "Arrays"). The first is
+    the one its collector reads first (`kept` is in collector order): a platform answer's images are read in the order
+    the page of the shown variant shows them (`adapters.platforms`), whatever their places in the answer's array."""
     if spec.type is not FieldType.IMAGE_URL or len(best) < 2:
         return None
+    place = {id(c): n for n, c in enumerate(kept)}
     items = [(g, c, _LIST_ITEM.fullmatch(c.locator)) for g in best for c in g.best]
-    found = [(g, (c.entity_id, c.source_kind, m.group(1)), int(m.group(2))) for g, c, m in items if m]
+    found = [(g, (c.entity_id, c.source_kind, m.group(1)), place[id(c)]) for g, c, m in items if m]
     if len(found) != len(items) or len({key for _, key, _ in found}) != 1:
         return None
     return min(found, key=lambda item: item[2])[0]

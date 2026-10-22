@@ -1,6 +1,7 @@
 """Common variant fields (variants spec, INV-38): a multi-variant product's top-level Offer fields publish
-only when every Offer agrees, whatever variant a page URL names; no variant is a default. An identifier the group
-states nothing for takes its variants' value only when every variant states it alike."""
+only when every Offer agrees, unless the page shows one variant (a request for its own URL); no variant is a default.
+An identifier the group states nothing for takes its variants' value only when every variant states it alike, or the
+shown variant's."""
 
 import json
 from datetime import UTC, datetime
@@ -103,3 +104,19 @@ def test_variant_fill_never_replaces_the_group_s_own_value_or_fills_another_fiel
 
     assert _value(_resolve(document, VARIANT_URLS[0])["sku"]) == "W-1"
     assert _why(_resolve(nameless, VARIANT_URLS[0])["title"]) == ("missing", "not_owned")
+
+
+def test_a_requested_variant_url_selects_that_variant() -> None:
+    document = _group(
+        _variant(VARIANT_URLS[0], "10.00", sku="W-11", gtin="4006381333931"),
+        _variant(VARIANT_URLS[1], "12.00", sku="W-12", gtin="4006381333948"),
+    )
+
+    selected = _resolve(document, VARIANT_URLS[1])
+    assert _value(selected["price"])["amount"] == "12.00"  # type: ignore[index]
+    assert (_value(selected["sku"]), _value(selected["gtin"])) == ("W-12", "4006381333948")
+    one_unstated = _group(_variant(VARIANT_URLS[0], "10.00"), _variant(VARIANT_URLS[1], "12.00", sku="W-12"))
+    assert _value(_resolve(one_unstated, VARIANT_URLS[1])["sku"]) == "W-12"
+    unselected = _resolve(document)
+    assert _why(unselected["price"]) == ("conflict", "offers_disagree")
+    assert _why(unselected["sku"]) == ("missing", "not_owned")

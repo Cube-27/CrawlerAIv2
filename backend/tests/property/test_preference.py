@@ -222,15 +222,16 @@ def test_an_image_publishes_at_the_largest_rendition_any_source_states() -> None
     assert (chosen.candidate, chosen.agreeing) == (og, (microdata,))
 
 
-def test_images_that_tie_as_items_of_one_list_publish_its_first() -> None:
+def test_images_that_tie_as_items_of_one_list_publish_the_first_its_collector_reads() -> None:
+    # A platform answer read as the shown variant's page shows it: its image first, wherever the array places it.
     first, second = (
         _candidate("image", f"https://cdn.example.test/i/{n}.jpg", n=n).model_copy(
             update={"locator": f"{PRODUCT.id}['image'][{n}]"}
         )
-        for n in (0, 1)
+        for n in (3, 0)
     )
 
-    chosen = _prefer(_schema(image=IMAGE), second, first)["image"]
+    chosen = _prefer(_schema(image=IMAGE), first, second)["image"]
 
     assert isinstance(chosen, Chosen)
     assert (chosen.candidate, chosen.rejected) == (first, ((second, "outscored"),))
