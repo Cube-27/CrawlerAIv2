@@ -10,6 +10,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from selectolax.lexbor import LexborHTMLParser
 
+from crawlerai.content.fit import markdown_fit
 from crawlerai.content.html import cleaned_html, is_javascript_url
 from crawlerai.content.links import links
 from crawlerai.content.markdown import markdown
@@ -200,3 +201,27 @@ def test_canonical_links_naming_two_urls_name_none() -> None:
 
     assert canonical_link(ParsedPage(one), FINAL_URL) == "https://shop.example.test/catalog/chairs"
     assert canonical_link(ParsedPage(two), FINAL_URL) is None
+
+
+# Blocks a page's main content is made of: headings, prose, link menus and repeated lines, so pruning can leave a page
+# anything from all of its blocks to only its headings.
+_block = st.sampled_from(
+    [
+        "<h2>Winter care</h2>",
+        "<h3>Feeding</h3>",
+        "<p>A colony clusters around its queen through the winter and shares the warmth it makes.</p>",
+        '<div><a href="/a">Shop</a> <a href="/b">Blog</a> <a href="/c">Contact us</a></div>',
+        "<p>Add this hive to your basket today.</p>",
+        '<p><a href="/more">Read the full notes on hive frames</a></p>',
+    ]
+)
+
+
+@given(st.lists(_block, max_size=8))
+def test_markdown_fit_is_part_of_markdown_and_empty_only_when_markdown_is(blocks: list[str]) -> None:
+    page = ParsedPage(f"<html><body><article>{''.join(blocks)}</article></body></html>")
+    full = markdown(page, FINAL_URL)
+    fit = markdown_fit(page, FINAL_URL)
+
+    assert all(block in full for block in fit.split("\n\n"))
+    assert bool(fit) == bool(full)

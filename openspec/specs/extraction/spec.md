@@ -409,15 +409,20 @@ D-1277, D-1450, D-1473, D-1474; endpoint in [rest-api](../rest-api/spec.md).
 ### Requirement: Fit markdown and chunks
 `markdown_fit` SHALL be `markdown`'s tree (the page minus its furniture) pruned further by deterministic block scores
 (link density, text density, and repetition of a block across the page); with `fit.query` it keeps the blocks that
-rank by BM25 (Robertson and Zaragoza, 2009) over the blocks, at most `fit.max_blocks` of them. `chunks` SHALL split
-the markdown (or `markdown_fit`) by `heading`, `sentence` or `token` strategy with a `size` and `overlap` in words, each
-chunk carrying its heading path. Neither uses an LLM. Refs: D-1422, D-1423.
+rank by BM25 (Robertson and Zaragoza, 2009) over the blocks, at most `fit.max_blocks` of them. A page whose pruning
+leaves no block but headings SHALL be fitted from its unpruned `markdown`, so without `fit.query` `markdown_fit` is
+empty only when `markdown` is. `chunks` SHALL split the markdown (or `markdown_fit`) by `heading`, `sentence` or
+`token` strategy with a `size` and `overlap` in words, each chunk carrying its heading path. Neither uses an LLM.
+Refs: D-1422, D-1423.
 #### Scenario: Query keeps relevant blocks
 - **WHEN** `fit.query` names a topic of one block
 - **THEN** that block is kept and unrelated blocks are not
 #### Scenario: Link block pruned
 - **WHEN** a `div` of three bare links sits between two paragraphs of prose
 - **THEN** `markdown_fit` keeps the prose and drops the links, while `markdown` keeps both
+#### Scenario: Pruning leaves only headings
+- **WHEN** every block under a page's headings is pruned
+- **THEN** `markdown_fit` is the page's `markdown`, not empty
 
 ### Requirement: DOM description block
 On a detail page the system SHALL propose for each `long_text` field the prose block of the page's main region
