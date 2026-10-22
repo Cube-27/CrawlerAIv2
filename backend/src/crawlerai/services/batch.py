@@ -166,7 +166,9 @@ async def submit_batch(
     if egresses is not None:
         check_proxy_pool(request.fetch, egresses.pools)
     targets = [(f"urls[{index}]", url) for index, url in enumerate(request.urls)]
-    await check_targets(connector, targets, webhook_url=request.webhook_url, queued={member for member, _ in targets})
+    # A schedule's run checks its targets in full: a refused run stores no job (jobs spec, schedules).
+    queued = {member for member, _ in targets} if placement.schedule_id is None else set()
+    await check_targets(connector, targets, webhook_url=request.webhook_url, queued=queued)
     # A format batch that names a schema is a format job.
     schema = await records_schema(
         engine, request.formats, request.schema_, request.page_kind, data, llm, request.render

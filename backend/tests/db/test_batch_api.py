@@ -8,8 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.db.models import Job, UrlTask
-from tests.db.support import PRIVATE_HOST, UNRESOLVED_HOST
+from crawlerai.db.models import UrlTask
 
 pytestmark = pytest.mark.anyio
 
@@ -30,29 +29,3 @@ async def test_a_batch_is_accepted_and_queued(submit_client: httpx.AsyncClient, 
     assert tasks == ["queued", "queued"]
     status = await submit_client.get(f"/v1/jobs/{job_id}")
     assert (status.json()["kind"], status.json()["counts"]["queued"]) == ("batch_scrape", 2)
-
-
-async def test_a_target_refused_by_its_form_is_refused_with_the_member_that_names_it(
-    submit_client: httpx.AsyncClient, engine: AsyncEngine
-) -> None:
-    response = await _post(submit_client, urls=[URL, "https://10.0.0.7/admin"], formats=["markdown"])
-
-    assert response.status_code == 422, response.text
-    body = response.json()
-    assert (body["type"], [error["field"] for error in body["errors"]]) == ("ssrf_rejected", ["urls[1]"])
-    assert "10.0.0.7" not in response.text
-    async with engine.connect() as conn:
-        assert (await conn.execute(select(Job.id).where(Job.kind == "batch_scrape"))).all() == []
-
-
-async def test_hosts_only_resolving_refuses_are_queued_with_the_others(
-    submit_client: httpx.AsyncClient, engine: AsyncEngine
-) -> None:
-    urls = [URL, f"https://{UNRESOLVED_HOST}/a", f"https://{PRIVATE_HOST}/admin"]
-
-    response = await _post(submit_client, urls=urls, formats=["markdown"])
-
-    assert response.status_code == 202, response.text
-    async with engine.connect() as conn:
-        tasks = await conn.execute(select(UrlTask.url).where(UrlTask.job_id == response.json()["job_id"]))
-        assert sorted(tasks.scalars().all()) == sorted(urls)

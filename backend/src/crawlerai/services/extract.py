@@ -160,7 +160,8 @@ async def submit_extract(
     for a refused fetch of a map, and `NothingToExtract`. Raises, failing the job: `NoSamplePage`, the LLM client's
     `LLMFailure`, `SchemaUnusable` for a draft of another page kind, and `DraftTimedOut`."""
     check_proxy_pool(request.fetch, fetching.egresses.pools)
-    queued = {f"urls[{index}]" for index, glob in enumerate(request.globs()) if glob is None}
+    # A schedule's run checks its targets in full: a refused run stores no job (jobs spec, schedules).
+    queued = {f"urls[{i}]" for i, glob in enumerate(request.globs()) if glob is None and placement.schedule_id is None}
     await check_targets(fetching.connector, request.targets(), webhook_url=request.webhook_url, queued=queued)
     if data is None:
         raise RecordsUnavailable("this process has not loaded the engine's data files")

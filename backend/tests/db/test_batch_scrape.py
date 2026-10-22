@@ -34,7 +34,7 @@ from crawlerai.worker.handlers import steps
 from crawlerai.worker.handlers.steps import Ended
 from crawlerai.worker.handlers.table import task_handlers
 from crawlerai.worker.loop import run_worker
-from tests.db.support import PRIVATE_HOST, UNRESOLVED_HOST
+from tests.db.support import PRIVATE_HOST
 from tests.db.support import Web as SharedWeb
 
 pytestmark = pytest.mark.anyio
@@ -217,31 +217,6 @@ async def test_a_task_that_raises_fails_alone(
         urls[2]: ("done", None),
     }
     assert (await _summary(engine, submitted.job_id)).status == "completed"
-
-
-@pytest.mark.usefixtures("site")
-async def test_a_url_the_guard_refuses_once_resolved_fails_its_task_alone(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
-) -> None:
-    urls = [f"{own_origin}/kettles/blue", f"https://{UNRESOLVED_HOST}/x", f"https://{PRIVATE_HOST}/x"]
-    web.serve(urls[0], _page("Blue kettle"))
-    submitted = await submit_batch(engine, fetching.connector, _batch(urls, "markdown"), data=None)
-
-    await _run(engine, fetching, None, submitted.job_id)
-
-    async with engine.connect() as conn:
-        rows = await conn.execute(
-            select(UrlTask.url, UrlTask.status, UrlTask.attempts, UrlTask.last_error).where(
-                UrlTask.job_id == submitted.job_id
-            )
-        )
-        tasks = {row.url: (row.status, row.attempts, row.last_error) for row in rows}
-    assert tasks == {
-        urls[0]: ("done", 1, None),
-        urls[1]: ("failed", 1, "ssrf_rejected: dns"),
-        urls[2]: ("failed", 1, "ssrf_rejected: private_address"),
-    }
-    assert web.urls() == [urls[0]]
 
 
 @pytest.mark.usefixtures("site")

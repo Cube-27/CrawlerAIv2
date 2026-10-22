@@ -19,7 +19,7 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.browser_tab import Tab
 from crawlerai.acquire.politeness import Admit, HostLimiter
 from crawlerai.acquire.rungs import NO_PLAN, FetchPlan, Rung, Rungs, acquire
-from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected, check_form
+from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
 from crawlerai.acquire.types import (
     ActionsReport,
     AttemptRecord,
@@ -95,11 +95,12 @@ async def check_targets(
 ) -> None:
     """Check each of `targets`, (member, URL) pairs, and the request's `webhook_url` with the guard, before anything
     is fetched or stored. Raises `TargetsRejected` for the first refused one in order. The members in `queued`, URLs
-    a task of their own fetches, are checked by their form alone (`check_form`): a refusal only resolving the host
-    tells (`dns`, a `private_address` it resolves to) fails that task when it fetches the URL (rest-api spec)."""
+    a task of their own fetches, are checked by their form alone (`SafeConnector.check_form`): a refusal only
+    resolving the host tells (`dns`, a `private_address` it resolves to) fails that task when it fetches the URL
+    (rest-api spec)."""
     if webhook_url is not None:
         targets = [*targets, ("webhook_url", webhook_url)]
-    checks = (_form(url) if member in queued else connector.check(url) for member, url in targets)
+    checks = (_checked(connector, url, form_only=member in queued) for member, url in targets)
     checked = await asyncio.gather(*checks, return_exceptions=True)
     for (member, _), result in zip(targets, checked, strict=True):
         if isinstance(result, SsrfRejected):
@@ -108,8 +109,11 @@ async def check_targets(
             raise result
 
 
-async def _form(url: str) -> None:
-    check_form(url)
+async def _checked(connector: SafeConnector, url: str, *, form_only: bool) -> None:
+    if form_only:
+        connector.check_form(url)
+    else:
+        await connector.check(url)
 
 
 async def check_target(connector: SafeConnector, url: str) -> None:

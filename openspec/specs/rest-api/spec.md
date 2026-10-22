@@ -181,7 +181,8 @@ resolving the host tells (`dns`, or a `private_address` the host resolves to) do
 task is queued with the others and fails at once, never retried, outcome `failed` with error `ssrf_rejected: <reason>`
 (the fetch attempt's `error`/`ssrf_rejected`), when the guard refuses its fetch (acquisition, "Public targets only"); the other tasks run. A prompt's draft skips a sample the guard
 refused, as a page not reached. `webhook_url` is checked in full, DNS included: its refusal is a 422 naming it. A
-single scrape, a crawl's seed and a schedule's targets are checked in full at submission (owner 2026-10-21). Refs:
+single scrape, a crawl's seed and a schedule's targets, when it is created and on each run (a refused run stores no
+job), are checked in full (owner 2026-10-21). Refs:
 owner 2026-10-22, INV-16.
 #### Scenario: A host that does not resolve in a batch
 - **WHEN** a batch names `https://a.example/` and `https://b.test/`, and `b.test` does not resolve
