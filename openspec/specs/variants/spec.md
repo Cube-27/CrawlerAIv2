@@ -101,9 +101,11 @@ Refs: §13.1, D-0798, D-0799, D-1185. Enforced by: Pydantic models (`FieldOutcom
 ### Requirement: Shown variant; common values otherwise (INV-38)
 Availability, currency and stock quantity are a variant's: where the Offers of the target and its variants state
 other values, a detail page's top-level field SHALL publish only the value of the variant the target shows, its
-default or selected one, else `conflict`/`offers_disagree`; no other default is taken, whatever variant a URL names.
+default or selected one, else `conflict`/`offers_disagree`; no other default is taken.
 The shown variant is the one variant (or Offer of the target) of a source whose sku or gtin, as a field or a row
 sub-field, equals one the target publishes as its own (screened, and publishing at the request's `min_confidence`),
+or whose own URL (schema.org `url`, its Offer's `url`) is the request URL where that URL is not one naming the target
+itself (a variant's URL addresses the page with that variant selected, such as `?variant=<id>`),
 with every other source's Offer stating that variant's sku or gtin (GS1 GTIN and a seller's SKU identify one variant
 whichever source states it), and a source's one Offer alone (Atomic offers) unless its sku or gtin names another
 variant; a source naming two variants names none.
@@ -117,6 +119,11 @@ Enforced by: `tests/unit/test_common_variant_fields.py` and `tests/unit/test_pip
 - **WHEN** the request URL is a variant's own URL and the variants' prices differ
 - **THEN** top-level `price` publishes the shown variant's with reason `offers_disagree` and each price is in its
   `variants` row; for a URL that selects none, `price` is `conflict` (`offers_disagree`)
+#### Scenario: A variant URL requested
+- **WHEN** a ProductGroup states no sku of its own and three `hasVariant` members, each with its sku, gtin, price and
+  `url` `?variant=<id>` on the page's path, and the request URL is the second's
+- **THEN** top-level `price`, `sku` and `gtin` publish the second member's; for the page's path without the query
+  `sku` and `gtin` are `missing` and `price` is `conflict` (`offers_disagree`)
 #### Scenario: The shown variant's availability
 - **WHEN** a Product states sku W-2 and two Offers, W-1 out of stock and W-2 in stock
 - **THEN** top-level `availability` is `InStock`; with neither a sku nor a gtin of the Product's that is one row's, it
@@ -124,7 +131,8 @@ Enforced by: `tests/unit/test_common_variant_fields.py` and `tests/unit/test_pip
 
 ### Requirement: Variant fill for sku and gtin
 A top-level `sku` or `gtin` field with no candidate owned by the target SHALL take its variants' value only when every
-variant has one and all agree; no other field is filled. A sku or gtin the target holds from inside the node of one
+variant has one and all agree, or else the value of the one variant the target shows (Shown variant), its
+identifier; no other field is filled. A sku or gtin the target holds from inside the node of one
 of its Offers or variants (a platform answer stating the shown variant's identifiers as the product's, adapters spec)
 is that variant's: where another candidate the target owns states the field on its own evidence, the variant's other
 value and a page state value admitted only by equality to it are `outscored`, never its rivals (GS1 GTIN and a

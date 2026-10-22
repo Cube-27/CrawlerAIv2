@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.identity import VARIANT
-from crawlerai.resolve.ownership import OFFER, EntityGraph
+from crawlerai.resolve.ownership import OFFER, EntityGraph, names_any, names_item
 from crawlerai.resolve.score import Group, same_value
 from crawlerai.schemas.paths import parse_paths
 from crawlerai.schemas.types import FieldSpec, FieldType
@@ -69,22 +69,37 @@ class TargetOffers:
         return frozenset(o[0] for source, o in by_source.items() if len(o) == 1 and source not in named)
 
     def shown_offers(
-        self, fields: Mapping[str, FieldSpec], candidates: Sequence[Candidate], own: list[tuple[Candidate, FieldSpec]]
+        self,
+        fields: Mapping[str, FieldSpec],
+        candidates: Sequence[Candidate],
+        own: list[tuple[Candidate, FieldSpec]],
+        request_url: str,
     ) -> tuple[frozenset[str], frozenset[str]]:
         """The Offers of the variant the target shows (variants spec): of the target's Offers and variants, those
-        whose sku or gtin (a field's or a row sub-field's) equals one of `own`, at most one per source, with every
-        other source's Offer stating the same sku or gtin as one of them (GS1 GTIN and a seller's SKU identify one
-        variant, whichever source states it); none when no unit matches or a source names two. Second, the Offers
-        whose sku or gtin names another variant than those: never the shown one's."""
+        whose sku or gtin (a field's or a row sub-field's) equals one of `own`, or whose own URL is `request_url`
+        (`addressed`), at most one per source, with every other source's Offer stating the same sku or gtin as one of
+        them (GS1 GTIN and a seller's SKU identify one variant, whichever source states it); none when no unit matches
+        or a source names two. Second, the Offers whose sku or gtin names another variant than those: never the shown
+        one's."""
         ids = variant_ids(fields)
         stated = [
             (unit, c, ids[c.field])
             for c in candidates
             if c.field in ids and isinstance(c.normalized, Ok) and (unit := self._unit(c)) is not None
         ]
-        matched = _shown_units(stated, own)
-        other = {unit for unit, _, _ in stated if own and unit not in matched}
+        addressed = self.addressed(request_url)
+        matched = _shown_units(stated, own, addressed)
+        other = {unit for unit, _, _ in stated if (own or addressed) and unit not in matched}
         return self._offers_of(matched), self._offers_of(other)
+
+    def addressed(self, request_url: str) -> set[str]:
+        """The target's variants and Offers whose own URL is the request URL, where it is not the target's own: a
+        variant's URL (schema.org `url`, an Offer's `url`) addresses the page showing that variant, so a request for
+        it is a request for the page with that variant selected (variants spec, "Shown variant")."""
+        if names_item(self.target, request_url):
+            return set()
+        units = [*self.graph.variants(self.target), *self.graph.offers(self.target)]
+        return {unit.id for unit in units if names_any(unit, (request_url,))}
 
     def _offers_of(self, units: set[str]) -> frozenset[str]:
         return frozenset(offer for unit in units for offer in self._unit_offers(unit))
@@ -146,10 +161,13 @@ def _names(candidate: Candidate, spec: FieldSpec, ids: Sequence[tuple[Candidate,
 _Stated = tuple[str, Candidate, FieldSpec]  # a variant or Offer, one sku or gtin candidate of it, and its field
 
 
-def _shown_units(stated: Sequence[_Stated], own: Sequence[tuple[Candidate, FieldSpec]]) -> set[str]:
-    """The variants and Offers whose sku or gtin is one of `own`, one per source, and the one of each other source
-    stating the same sku or gtin as them; none when a source names two (`_one_each`)."""
-    matched = {unit for unit, c, spec in stated if _names(c, spec, own)}
+def _shown_units(
+    stated: Sequence[_Stated], own: Sequence[tuple[Candidate, FieldSpec]], addressed: set[str]
+) -> set[str]:
+    """The variants and Offers whose sku or gtin is one of `own`, or that the request URL addresses, one per source,
+    and the one of each other source stating the same sku or gtin as them; none when a source names two
+    (`_one_each`)."""
+    matched = {unit for unit, c, spec in stated if _names(c, spec, own)} | addressed
     if not matched or _one_each(matched) != matched:
         return set()
     named = {source_of(unit) for unit in matched}

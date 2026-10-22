@@ -130,3 +130,9 @@ def names_any(entity: Entity, urls: Sequence[str]) -> bool:
     """Whether one of the entity's URLs is one of `urls`; URL equality is the url type's (schemas spec): equal after
     canonicalization."""
     return any(equal(own, url, _URL) for own in entity.urls for url in urls)
+
+
+def names_item(entity: Entity, url: str) -> bool:
+    """Whether `url` is one of the URLs naming the item itself (`Entity.item_urls`, not its offers'), by the url type's
+    equality."""
+    return any(equal(own, url, _URL) for own in entity.item_urls)
