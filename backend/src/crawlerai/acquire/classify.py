@@ -250,18 +250,23 @@ def _rest(url: SplitResult) -> str:
     return "/".join(segments)
 
 
-def interstitial(status: int, headers: HeaderList, text: str, url: str) -> bool:
-    """Whether a refusal at `url` is a document standing in for the page until it navigates on (D-1206, D-1262): its
-    status is one a page's own script may lift (`INTERSTITIAL_STATUS`), it can navigate itself (a refresh, or a
-    script) and it is no page of the site by structure: it declares a refresh, it is a shell or links nowhere (the
-    rules `classify` applies to a 2xx page), or no hyperlink leads to another page of its own host. A document with
-    neither a refresh nor a script can never replace itself, so waiting on it is time lost."""
-    if status not in INTERSTITIAL_STATUS or not is_html(headers):
+def interstitial(status: int, headers: HeaderList, text: str, url: str, *, rendered: bool = False) -> bool:
+    """Whether a document at `url` stands in for the page until it navigates on (D-1206, D-1262): it can navigate
+    itself (a refresh, or a script), and either its status is a refusal a page's own script may lift
+    (`INTERSTITIAL_STATUS`) and it is no page of the site by structure (it declares a refresh, it is a shell or links
+    nowhere, the rules `classify` applies to a 2xx page, or no hyperlink leads to another page of its own host), or,
+    `rendered` by the browser, it is a 2xx document that is a shell or links nowhere: a check served with success that
+    reloads once passed. Over HTTP no script runs, so a 2xx document never navigates on there. A document with neither
+    a refresh nor a script can never replace itself, so waiting on it is time lost."""
+    success = rendered and 200 <= status < 300
+    if not (success or status in INTERSTITIAL_STATUS) or not is_html(headers):
         return False
     tree = LexborHTMLParser(text)
     refresh = _refreshes(tree, headers)
     if not refresh and tree.css_first(_SCRIPT) is None:
         return False
+    if success:
+        return _no_site_page(tree) is not None
     return refresh or _no_site_page(tree) is not None or not _links_within(tree, url)
 
 

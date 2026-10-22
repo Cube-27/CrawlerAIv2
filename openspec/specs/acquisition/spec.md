@@ -203,10 +203,13 @@ The wait ends `READY_MAX_S` (3.5 s) after `load` whatever is still in flight (be
 ends it), and what is there is read; a document the main frame navigates
 to meanwhile (not a same-document navigation) starts it over, within 90% of `browser_timeout_s`, so the capture is the
 final document. A page step that changes the page is followed by the same wait for the data calls it started (3 s at
-most). A document
-`classify.interstitial` judges to stand in for the page (403, 429 or 503; a script or refresh; no page of the site) is
-first given up to 40% of `browser_timeout_s`, and at most 10 s, to navigate on, the wait ending at the main frame's
-next commit, with nothing clicked or typed. The browser reads a body's wire size before the body. The JSON rung
+most). A ready document
+`classify.interstitial` judges to stand in for the page (it can navigate itself, by a script or refresh, and is either
+a 403, 429 or 503 that is no page of the site, or a rendered 2xx document that is a shell or links nowhere: a check
+served with success that reloads once passed) is then given until 40% of `browser_timeout_s` from the fetch's start,
+and at most 10 s, to navigate on, the wait ending at the main frame's next commit, with nothing clicked or typed, and
+the document it navigates to read once ready. Over HTTP no script runs, so the 2xx case is the browser's only. A 2xx
+page that renders itself by script is judged as rendered; one that stays a shell costs that bound once. The browser reads a body's wire size before the body. The JSON rung
 (`fetch_json`, method `api`) SHALL send through the HTTP rung's client (`acquire/curl_client.py`: impersonation, guard,
 caps, cookie jar, proxy pools, reasons) the headers a page's `fetch()` sends: Fetch Metadata of a CORS request,
 `Referer`, `Origin`, in a `fetch()`'s order. Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50,
@@ -216,6 +219,9 @@ plan 2026-10-19 (crawl speed, P2 browser wait and blocking).
 #### Scenario: Interstitial that navigates on
 - **WHEN** a 403 document with no site structure replaces itself after more than 2 s
 - **THEN** the browser rung reads the document the navigation ends on
+#### Scenario: Check served with 200 that reloads
+- **WHEN** a 200 document with no links and little text, holding a script, navigates itself after the ready wait ended
+- **THEN** the browser rung waits for the navigation and reads the document it ends on
 #### Scenario: Refusal that cannot navigate
 - **WHEN** a 403 document has no script and no refresh
 - **THEN** the browser rung does not wait for a navigation
