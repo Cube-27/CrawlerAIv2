@@ -17,8 +17,10 @@ C4):
   to are the template's (a vendor's, an author's, a category's page: an item is listed once), and the block's item is
   the one other document its links lead to at the tag path where a quorum of the blocks link to one such document. A
   block without one such document is no row.
-- **name** (a row text field whose path names schema.org `name`, or JobPosting `title`): the shown content of the
-  block's first hyperlink to its item when that is one line of text (HTML Standard §4.5.1), the block's one heading
+- **name** (a row text field whose path names schema.org `name`, or JobPosting `title`): the shown content of a
+  hyperlink to the block's item when that is one line of text holding no typed value the block aligns (HTML Standard
+  §4.5.1; each such link of the block at its own place, so the image link's helper text and the title link's text are
+  rival sources), the block's one heading
   (HTML Standard §4.3.6, WAI-ARIA role `heading`), or the name the item's attributes state (`Stated`): an item link's
   `aria-labelledby`, `aria-label` or `title`, an image's `alt` (WAI-ARIA Accessible Name and Description Computation
   1.2), kept where the block shows it (WCAG 2.1 SC 2.5.3 Label in Name, over one or several whole lines, a line cut
@@ -32,7 +34,11 @@ C4):
   call to action), not an item's. A block the chosen rule gives no name reads the one line at the tag path the
   rule's names have in a quorum of blocks (DEPTA alignment: a sold-out card's extra heading, a stale `alt`); a child
   element of the name whose text every block repeats is the template's (screen-reader-only helper text) and is left
-  out of the name.
+  out of the name. A link's one line whose words run on from one element into the next with no white space between
+  (`ParsedPage.word_joins`: a title and a location set apart by layout alone) is not one name: its outermost elements
+  no join splits are the link's parts, each a place of its own, so the title is read alone. A link that shows its one
+  line itself is named by it, never by the name its attributes state (WAI-ARIA's `aria-labelledby` may point at text
+  the block hides, such as a price).
 - **image** (a row image_url field whose path names schema.org `image`): the block's first shown image that is not
   decorative (`collect.dom_images.image_source`, `collect.dom_images.decorative`).
 - **typed values** (a row money, date or datetime field, or an identifier under a scheme with a check digit): typed
@@ -42,7 +48,9 @@ C4):
   numbers, not one. Of an element and one inside it reading the same value, the inner one. Text the HTML Standard
   marks as no longer accurate (`s`, §4.5.4) or removed (`del`, §4.7.2), the obsolete `strike` and text an inline
   `line-through` decoration strikes (`collect.dom.struck`) is no current value: a struck-through former price, which
-  only a list price field reads; a money field reads by its price role (`collect.items.spot.reads`: no amount written
+  only a list price field reads; nor is an option of a drop-down `select` that is not selected (HTML Standard
+  §4.10.7: a box of one row shows only its selected option, an add-on's other prices); a money field reads by its price
+  role (`collect.items.spot.reads`: no amount written
   per unit or per period for the price). A place every block gives the same value at is the
   template's (a shipping threshold) when another place gives the field differing values. A block whose places give one
   value publishes it; one whose places give several (a price and an instalment) gives an `ambiguous_in_block`
@@ -59,8 +67,9 @@ destinations are the site's sections, not the page's items. A typed value (a pri
 section's link does not: a shop whose menu links its few products still lists them with their prices.
 
 Shown means rendered by the cleaned text's rules (`content.text.hidden`): a hidden subtree of a block is not read. The
-group whose blocks align the most fields is the listing's, the segment step's order breaking ties: profile cards align
-a name and a link but no price, a product grid all three. Each block with an item URL is an `item_block` entity, and
+group whose blocks align the most fields, of the segment step's first `_MAIN_GROUPS`, is the listing's, that order
+breaking ties: profile cards align a name and a link but no price, a product grid all three. Every other group that
+aligns follows, for the bind step's sections (a job board's many departments). Each block with an item URL is an `item_block` entity, and
 each of its values a `dom` candidate with the XPath of its element.
 """
 
@@ -96,15 +105,17 @@ from crawlerai.schemas.types import FieldSpec, FieldType, SchemaContent
 
 # The share of a group's blocks a place must give a field's value in, besides `MIN_ITEMS` (master plan §3.2).
 QUORUM_SHARE: Final = 0.6
-# The groups tried, in the segment step's order: the ones after them are a page's minor lists.
-_GROUPS_TRIED: Final = 8
+# The groups the listing's own is chosen among, in the segment step's order: the ones after them are a page's minor
+# lists or its further sections (a job board's departments), read only beside the listing's own (`collect.items.bind`).
+_MAIN_GROUPS: Final = 8
 # The reason of a block's typed field whose places give several values.
 AMBIGUOUS_IN_BLOCK: Final = "ambiguous_in_block"
 # schema.org Thing's `name` ("The name of the item"), JobPosting's `title` ("The title of the job"), Thing's `image`.
 _NAMES: Final = frozenset({"name", "title"})
 _IMAGE: Final = "image"
 # The places of the rules that read one value per block.
-_LINK, _LINK_NAME, _HEADING, _STATED, _PICTURE = "@link", "@link-name", "@heading", "@stated-name", "@image"
+_LINK, _LINK_NAME, _LINK_PART = "@link", "@link-name", "@link-part"
+_HEADING, _STATED, _PICTURE = "@heading", "@stated-name", "@image"
 
 
 Role = Literal["url", "name", "image", "typed"]
@@ -143,23 +154,23 @@ def quorum(blocks: int) -> int:
 
 
 def align(page: ParsedPage, schema: SchemaContent, ctx: Context) -> tuple[Items, ...]:
-    """Every group of the page's repeated items that aligns, as rows, best first (module docstring): the most fields
-    aligned, then the segment step's order. None for a detail schema, a schema without an item URL field, or a page
-    none of whose groups links its items."""
+    """Every group of the page's repeated items that aligns, as rows, best first (module docstring): of the first
+    `_MAIN_GROUPS` of the segment step's order, the most fields aligned, then that order; then the others, in that
+    order. None for a detail schema, a schema without an item URL field, or a page none of whose groups links its
+    items."""
     roles = field_roles(schema)
     if schema.page_kind != "listing" or "url" not in roles.values():
         return ()
-    groups = page.item_groups[:_GROUPS_TRIED]
     sublists = _sublist_links(page.item_groups)
     chrome = chrome_links(page.lxml_tree, ctx.base_url)
     aligned = [
-        a
-        for group in groups
+        (rank, a)
+        for rank, group in enumerate(page.item_groups)
         if (a := _Aligned.of(page, group, schema, roles, ctx, sublists)) is not None
         and not a.copies_navigation(roles, chrome)
     ]
-    order = sorted(range(len(aligned)), key=lambda i: (-len(aligned[i].fields), i))
-    return tuple(aligned[i].items(schema, ctx, number) for number, i in enumerate(order))
+    order = sorted(aligned, key=lambda found: (found[0] >= _MAIN_GROUPS, -len(found[1].fields), found[0]))
+    return tuple(a.items(schema, ctx, number) for number, (_, a) in enumerate(order))
 
 
 def _sublist_links(groups: Sequence[Group]) -> frozenset[HtmlElement]:
@@ -313,6 +324,8 @@ def _field(
     views: Sequence["_View"], role: Role, spec: FieldSpec, ctx: Context, needed: int
 ) -> list[tuple[Spot, ...]] | None:
     """Each block's spots of a field at its aligned places (module docstring); None when no place aligns."""
+    if role == "name":
+        _note_parts(views)
     found = [view.read(role, spec, ctx) for view in views]
     if role != "name":
         return _aligned(found, needed, spec, one_place=False)
@@ -325,6 +338,17 @@ def _field(
         return None
     named = _untemplated(views, _filled(views, kept, spec, ctx, needed), spec, ctx)
     return [view.continued(found, spec, ctx) for view, found in zip(views, named, strict=True)]
+
+
+def _note_parts(views: Sequence["_View"]) -> None:
+    """Note on each view the group's parts of an item link: the steps from a link to the parts of `MIN_ITEMS` or more
+    blocks' links that run two elements' words together (`_View.joined_parts`). One template renders every block, so
+    where it runs a title and a location together in some blocks, a layout the cleaned text does not apply sets them
+    apart in every block, also where a trailing space happens to separate them."""
+    counts = Counter(path for view in views for path in view.joined_parts())
+    paths = frozenset(path for path, n in counts.items() if n >= MIN_ITEMS)
+    for view in views:
+        view.part_paths = paths
 
 
 def _completed(found: tuple[Spot, ...], stated: Stated | None, spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
@@ -504,9 +528,10 @@ class _View:
     paths: dict[HtmlElement, str] = field(default_factory=dict)
     places: dict[HtmlElement, str] = field(default_factory=dict)
     struck: set[HtmlElement] = field(default_factory=set)
-    holding_struck: set[HtmlElement] = field(default_factory=set)
+    holding_unshown: set[HtmlElement] = field(default_factory=set)
     by_path: dict[str, HtmlElement] = field(default_factory=dict)
     values: list[tuple[int, int]] = field(default_factory=list)  # where the block's typed values are (`note_values`)
+    part_paths: frozenset[str] = frozenset()  # the group's parts of an item link (`_note_parts`)
 
     @classmethod
     def of(
@@ -524,27 +549,33 @@ class _View:
         return view
 
     def walk(self) -> None:
-        """The block's elements outside hidden subtrees, each with its XPath (as `text_path` writes it) and its tag
-        path from the block. Children are numbered among their same-tag siblings, hidden ones included."""
+        """The block's elements outside hidden subtrees and the options a drop-down list does not display
+        (`_undisplayed`), each with its XPath (as `text_path` writes it) and its tag path from the block. Children are
+        numbered among their same-tag siblings, hidden ones included."""
         stack: list[tuple[HtmlElement, str, str, bool]] = [(self.block, self.path, "", False)]
+        closed: set[HtmlElement] = set()
         while stack:
             element, path, place, struck = stack.pop()
-            if hidden(str(element.tag), dict(element.attrib)):
+            if element in closed or hidden(str(element.tag), dict(element.attrib)):
                 continue
+            for option in _undisplayed(element):
+                closed.add(option)
+                self._hold(option)
             struck = struck or is_struck(str(element.tag), dict(element.attrib))
             self.elements.append(element)
             self.paths[element] = path
             self.places[element] = place
             if struck:
                 self.struck.add(element)
-                self._hold_struck(element)
+                self._hold(element)
             stack.extend(reversed(_children(element, path, place, struck)))
 
-    def _hold_struck(self, element: HtmlElement) -> None:
-        """Note the ancestors of a struck element up to the block: their lines show its former value."""
+    def _hold(self, element: HtmlElement) -> None:
+        """Note the ancestors of a struck element or an undisplayed option up to the block: their lines show its text,
+        a former value or a choice."""
         node = element.getparent()
-        while node is not None and node not in self.holding_struck and node is not self.block.getparent():
-            self.holding_struck.add(node)
+        while node is not None and node not in self.holding_unshown and node is not self.block.getparent():
+            self.holding_unshown.add(node)
             node = node.getparent()
 
     def line(self, element: HtmlElement) -> str | None:
@@ -569,8 +600,66 @@ class _View:
         return self._typed(spec, ctx)
 
     def _link_name(self, spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
-        found = self.link_line()
-        return () if found is None else spots(found[1], spec, ctx, self.paths[found[0]], _LINK_NAME)
+        """Each shown item link's one-line content holding no typed value of the block, at a place of its own: its tag
+        path and its rank among the block's item links there. A link holding the group's link parts (`_note_parts`) is
+        read as those parts instead, each at a place of its own."""
+        found: list[Spot] = []
+        ranks: Counter[str] = Counter()
+        for anchor in self.anchors:
+            text = self.line(anchor) if anchor in self.paths else None
+            if text is None or self._holds_value(anchor):
+                continue
+            ranks[self.places[anchor]] += 1
+            place = f"{self.places[anchor]}#{ranks[self.places[anchor]]}"
+            parts = self._parts(anchor)
+            found.extend(spots(text, spec, ctx, self.paths[anchor], f"{_LINK_NAME}:{place}") if not parts else ())
+            for relative, element, part in parts:
+                found.extend(spots(part, spec, ctx, self.paths[element], f"{_LINK_PART}:{place}{relative}"))
+        return tuple(found)
+
+    def _holds_value(self, element: HtmlElement) -> bool:
+        """Whether the element's text holds a typed value read in the block (`note_values`): a name holds none."""
+        span = self.page.text_spans.get(self.paths[element])
+        return span is not None and any(_overlap(span, at) for at in self.values)
+
+    def joined_parts(self) -> set[str]:
+        """The XPath steps, from their link, of the parts of the block's item links whose one line runs two elements'
+        words together (`ParsedPage.word_joins`): the outermost shown elements inside such a link whose text no join
+        splits."""
+        joins = self.page.word_joins
+        found: set[str] = set()
+        for anchor in (a for a in self.anchors if a in self.paths and self.line(a) is not None):
+            if _joined(joins, self.page.text_spans[self.paths[anchor]]):
+                start = len(self.paths[anchor])
+                found.update(self.paths[element][start:] for element in self._unjoined(anchor, joins))
+        return found
+
+    def _unjoined(self, anchor: HtmlElement, joins: Sequence[int]) -> list[HtmlElement]:
+        """The outermost shown elements inside `anchor` whose text no join splits."""
+        found: list[HtmlElement] = []
+        inside: set[HtmlElement] = set()
+        for element in anchor.iterdescendants():
+            if element.getparent() in inside:
+                inside.add(element)
+                continue
+            at = self.page.text_spans.get(self.paths[element]) if element in self.paths else None
+            if at is not None and not _joined(joins, at):
+                inside.add(element)
+                found.append(element)
+        return found
+
+    def _parts(self, anchor: HtmlElement) -> list[tuple[str, HtmlElement, str]]:
+        """The link's elements at the group's link parts (`part_paths`) that show one line, with their steps from it."""
+        if not self.part_paths:
+            return []
+        start = len(self.paths[anchor])
+        return [
+            (relative, element, text)
+            for element in anchor.iterdescendants()
+            if element in self.paths
+            and (relative := self.paths[element][start:]) in self.part_paths
+            and (text := self.line(element)) is not None
+        ]
 
     def link_line(self) -> tuple[HtmlElement, str] | None:
         """The first shown hyperlink to the item whose content is one line, with that line (HTML Standard §4.5.1: an
@@ -615,7 +704,8 @@ class _View:
         alternative goes on with them (`_pictured`, `stated.continues`; WCAG 2.1 SC 2.5.3: the stated name holds the
         visible label): a model name in the link and its variant on the line below are the item's name. Unchanged
         otherwise."""
-        element = self.at(found[0].xpath) if len(found) == 1 and found[0].place == _LINK_NAME else None
+        whole = len(found) == 1 and found[0].place.startswith(f"{_LINK_NAME}:")
+        element = self.at(found[0].xpath) if whole else None
         span = None if element is None else self.page.text_spans.get(self.paths[element])
         block = self.page.text_spans.get(self.path)
         stated = self._pictured() if span is not None else []
@@ -633,9 +723,12 @@ class _View:
     def _stated_texts(self) -> list[tuple[str, HtmlElement]]:
         """The names the item's attributes state, with their elements: each shown item link's `aria-labelledby`,
         `aria-label` and `title` (Accessible Name Computation 1.2, steps 2B, 2C, 2I), then each shown image's `alt`
-        (HTML Standard §4.8.4.4: the image's text alternative), decorative ones aside."""
+        (HTML Standard §4.8.4.4: the image's text alternative), decorative ones aside. A link showing one line of its
+        own states none: its content is its label (HTML Standard §4.5.1), and the name its attributes state holds that
+        label (WCAG 2.1 SC 2.5.3) and what the link does not show (an `aria-labelledby` naming the card's hidden prices
+        too)."""
         texts: list[tuple[str, HtmlElement]] = []
-        for anchor in (a for a in self.anchors if a in self.paths):
+        for anchor in (a for a in self.anchors if a in self.paths and self.line(a) is None):
             stated = (self._labelled_by(anchor), anchor.get("aria-label"), anchor.get("title"))
             texts.extend((text, anchor) for value in stated if (text := _squeezed_text(value)))
         images = (e for e in self.elements if e.tag == "img" and not decorative(dict(e.attrib)))
@@ -734,30 +827,48 @@ class _View:
 
     def _typed_texts(self, element: HtmlElement) -> list[tuple[str, str]]:
         """The texts of an element a typed value is read from, with their places: its line, unless it shows a struck
-        element's text or runs two elements' digits together (`ParsedPage.digit_joins`: `$12` and a `20` badge are not
-        `$1220`); and, for an element holding other elements, each of its own text nodes (`ab 12 €` after a child's
-        former price)."""
+        element's or an undisplayed option's text or runs two elements' digits together (`ParsedPage.digit_joins`:
+        `$12` and a `20` badge are not `$1220`); and, for an element holding other elements, each of its own text nodes
+        (`ab 12 €` after a child's former price)."""
         path = self.paths[element]
         texts: list[tuple[str, str]] = []
-        span = None if element in self.holding_struck else self.page.text_spans.get(path)
-        if span is not None and not _joins_digits(self.page.digit_joins, span) and (line := self.line(element)):
+        span = None if element in self.holding_unshown else self.page.text_spans.get(path)
+        if span is not None and not _joined(self.page.digit_joins, span) and (line := self.line(element)):
             texts.append((line, self.places[element]))
         if len(element):
             text = self.page.cleaned_text.text
             own = (collapse(text[start:end]) for start, end in self.page.own_runs.get(path, ()))
-            # The runs are keyed by the selectolax tree's paths; a run is this element's only if its lxml text holds it
-            # (the two parsers repair malformed markup differently).
-            written = collapse(" ".join(t for t in (element.text, *(c.tail for c in element)) if t))
-            texts.extend((run, f"{self.places[element]}/text()") for run in own if run and run in written)
+            texts.extend((run, f"{self.places[element]}/text()") for run in own if run)
         return texts
+
+
+def _undisplayed(element: HtmlElement) -> set[HtmlElement]:
+    """The options of a `select` that it does not display: a select without `multiple` whose display size is 1 renders
+    as a drop-down box showing only its selected option, the last one marked `selected`, else its first option that is
+    not disabled (HTML Standard §4.10.7, the selectedness setting algorithm; Rendering §15.5.15); the others are a
+    form control's choices (an add-on plan, a gift box), not what the block shows. None for any other element."""
+    if element.tag != "select" or element.get("multiple") is not None or _display_size(element) != 1:
+        return set()
+    options = list(element.iter("option"))
+    selected = [option for option in options if option.get("selected") is not None]
+    enabled = [option for option in options if option.get("disabled") is None]
+    shown = selected[-1:] or enabled[:1] or options[:1]
+    return set(options) - set(shown)
+
+
+def _display_size(select: HtmlElement) -> int:
+    """A `select`'s display size (HTML Standard §4.10.7): its `size` when that is a valid non-negative integer above
+    zero, else 1."""
+    size = (select.get("size") or "").strip()
+    return int(size) if size.isdigit() and int(size) > 0 else 1
 
 
 def _overlap(a: tuple[int, int], b: tuple[int, int]) -> bool:
     return a[0] < b[1] and b[0] < a[1]
 
 
-def _joins_digits(joins: Sequence[int], span: tuple[int, int]) -> bool:
-    """Whether a digit join (`ParsedPage.digit_joins`, sorted) lies inside the span."""
+def _joined(joins: Sequence[int], span: tuple[int, int]) -> bool:
+    """Whether a join (`ParsedPage.digit_joins`, `ParsedPage.word_joins`; sorted) lies inside the span."""
     at = bisect.bisect_right(joins, span[0])
     return at < len(joins) and joins[at] < span[1]
 

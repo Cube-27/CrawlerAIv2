@@ -38,8 +38,11 @@ a place shared by a quorum of the blocks whose value its normalizer accepts: the
 links lead to, not the page in another state, an image file or an item's own nested list; for a block linking to
 several, else, at group level, the one document no other block links to at the tag path where a quorum of the blocks
 link to such a document, a path whose link holds an image before the first other one: documents two or more blocks
-link to, a vendor's, an author's or a category's page, are the template's), the name (the item link's
-one-line content, the block's heading, or the name the item's attributes state, `aria-labelledby`/`aria-label`/`title`
+link to, a vendor's, an author's or a category's page, are the template's), the name (an item link's
+one-line content holding no typed value the block aligns, each such link at its own place, and, where that line runs
+one element's words into the next with no white space (a title and a location set apart by layout alone), the link's
+outermost parts no such join splits, each at its own place; a link showing its own line is named by it, never by the
+name its attributes state; the block's heading, or the name the item's attributes state, `aria-labelledby`/`aria-label`/`title`
 or an image's `alt`, kept where the block shows it over one or several whole lines in order, WCAG label in name (leading words the
 block shows as lines of their own apart from the rest, a designer line above a size line, are no part of it), a line
 cut by an ellipsis standing for the rest, its unshown leading or trailing words dropped when every block states the
@@ -48,9 +51,10 @@ read from the item link's content runs on over the block's next whole lines whil
 included, goes on with them; the item's links are those leading to its URL or, for a URL without a query, to it with
 one; never a URL; text every block repeats is the template's, also a child element of the name every block shows alike;
 a block the chosen rule leaves unnamed reads the one line at the tag path a quorum of its names have), the image, and typed value spotting for money, dates and check-digit identifiers (text in `s`/`del`
-excluded, also from the lines of the elements holding it; an element's line is not read where two text nodes run digits
+and the options a drop-down `select` does not show, those not selected (HTML §4.10.7), excluded, also from the lines of the elements holding it; an element's line is not read where two text nodes run digits
 together, a token boundary the text does not show; an element holding others is also read in each of its own text
-nodes). Values are `dom` candidates with locators; the group aligning most fields is first. A group one of whose blocks
+nodes). Values are `dom` candidates with locators; of the segment step's first eight groups, the one aligning most
+fields is first, and every other group that aligns follows, for the sections bind reads. A group one of whose blocks
 stands for the page itself (a link marked `aria-current="page"`, or links to this very URL only) is the site's
 navigation and gives no rows; so is a group that aligns no typed value and more than half of whose blocks lead to
 documents a hyperlink of the site's chrome (as "Item groups" names it) outside the group leads to: the site's sections
@@ -78,6 +82,16 @@ list alike); the different lists a page's sections hold are no item's. Refs: own
 #### Scenario: Helper text in the name link
 - **WHEN** every card's name link holds `<span>View product</span>` before the item's name
 - **THEN** the names leave `View product` out
+#### Scenario: A title link labelled by its price
+- **WHEN** each card's image link shows only `Item 1 of 7` to screen readers, and its title link shows `Kit 1` and has
+  `aria-labelledby` pointing at a hidden element reading `Kit 1 $10.00`
+- **THEN** each card's name is `Kit 1`
+#### Scenario: Title and location run together
+- **WHEN** each card's link holds `<span>Engineer 1</span><span>Berlin</span>`, set on two lines by a class
+- **THEN** each card's name is `Engineer 1`
+#### Scenario: Add-on prices in a drop-down
+- **WHEN** a card shows `$20.00` and a one-row `select` of add-on plans whose unselected options read `$3.00` and `$5.00`
+- **THEN** its price is `$20.00`
 #### Scenario: A card with a second heading
 - **WHEN** one card of a grid named by its `h3` adds an `h2` `Sold out`
 - **THEN** that card is named by its `h3`
@@ -104,7 +118,8 @@ list alike); the different lists a page's sections hold are no item's. Refs: own
 ### Requirement: Stated rows and blocks (bind)
 The stated rows SHALL be structured data's (`resolve/listing.py`), else the active config's, else the captured calls'.
 The blocks are those of the group the stated rows name most and of every other section read with it: an aligned group
-of its row shape (or holding every required field it aligns and a field beyond the item URL) whose blocks lead, a quorum of them, to
+of its row shape (or holding every required field it aligns and a field beyond the item URL), inner groups first (a
+department's jobs before the departments holding them), whose blocks lead, a quorum of them, to
 documents of the kind its blocks lead to (host, path depth, first segment), apart from blocks already read, fewer than
 half of whose blocks lead to items the chosen group lists (else it is a featured or recently viewed copy) and not
 starting after the chosen group's `rel=next` link (past the listing's end); an item two sections show is one block

@@ -1,7 +1,8 @@
 """One parsed page per capture (INV-26; extraction spec).
 
-The body is decoded once and parsed at most once per parser: selectolax on first use, lxml only when an XPath step or
-trafilatura asks for it. The script blocks, their JSON-LD documents, the cleaned text and the visibility index are
+The body is decoded once and parsed once, by selectolax (lexbor, the HTML Standard's parsing algorithm) on first use;
+the lxml tree an XPath step or trafilatura reads is a copy of that parse (`acquire.items.lxml_of`), so an element has
+one path in both. The script blocks, their JSON-LD documents, the cleaned text and the visibility index are
 derived once from the selectolax tree; the captured network bodies are kept as the bundle holds them. Every consumer
 (collectors, content formats, pagination, the engine executor) takes a `ParsedPage`, never the raw body.
 """
@@ -16,7 +17,7 @@ from lxml import html as lxml_html
 from pydantic import JsonValue
 from selectolax import lexbor
 
-from crawlerai.acquire.items import Group, item_groups, lxml_root
+from crawlerai.acquire.items import Group, item_groups, lxml_of
 from crawlerai.content.attr_json import DOCUMENTED, SELECTOR
 from crawlerai.content.fragments import FRAME_HEADER, Answers, append, declares_frames, include, is_partial
 from crawlerai.content.segment import rank
@@ -39,7 +40,7 @@ _OPEN, _CLOSE = "$", "/$"
 @dataclass(frozen=True)
 class ScriptBlock:
     """An inline `<script>`: its type's MIME essence (`""` when absent), its raw text, and its XPath 1.0 path in the
-    selectolax tree (not guaranteed to resolve in `lxml_tree`: libxml2 builds HTML trees differently)."""
+    selectolax tree (the same element's in `lxml_tree`)."""
 
     type: str
     text: str
@@ -121,7 +122,7 @@ class ParsedPage:
 
     @cached_property
     def lxml_tree(self) -> lxml_html.HtmlElement:
-        return lxml_root(self.html)
+        return lxml_of(self.tree)
 
     @cached_property
     def scripts(self) -> tuple[ScriptBlock, ...]:
@@ -208,6 +209,22 @@ class ParsedPage:
             if left.end == right.start and text[left.end - 1 : left.end].isdigit() and text[right.start].isdigit()
         )
 
+    @cached_property
+    def word_joins(self) -> tuple[int, ...]:
+        """The offsets of the cleaned text where the text runs of two elements, neither holding the other, meet with a
+        letter or digit on each side and nothing between them (`<span>Engineer</span><span>Paris</span>`): CSS Text 3
+        renders adjacent inline boxes without a space, so a template running two of its fields' words together sets
+        them apart by a layout the cleaned text does not apply (each a line of its own)."""
+        text, runs = self.cleaned_text.text, self.cleaned_text.offsets
+        return tuple(
+            right.start
+            for left, right in itertools.pairwise(runs)
+            if left.end == right.start
+            and text[left.end - 1 : left.end].isalnum()
+            and text[right.start].isalnum()
+            and not _nested(left.node_path, right.node_path)
+        )
+
     @property
     def cleaned_text(self) -> CleanedText:
         return self._rendered[0]
@@ -222,6 +239,11 @@ class ParsedPage:
         if root is None:
             raise RuntimeError("the HTML parser creates an `html` element in every document")
         return render(root)
+
+
+def _nested(a: str, b: str) -> bool:
+    """Whether one of two node paths is the other's or an ancestor's."""
+    return a == b or a.startswith(f"{b}/") or b.startswith(f"{a}/")
 
 
 def node_xpath(node: lexbor.LexborNode) -> str:

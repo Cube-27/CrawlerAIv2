@@ -15,12 +15,14 @@ group, in document order, however few items a section holds, when two or more se
 (a part each item shows once, the wrapper of its title or its image, is no section's run).
 """
 
+import re
 from collections import Counter
 from typing import Final
 
 from lxml import etree
 from lxml import html as lxml_html
 from lxml.html import HtmlElement
+from selectolax import lexbor
 
 # A listing shows at least this many items; resolution takes as many top-level entities for a listing's rows
 # (`resolve.listing.MIN_TOP_LEVEL_ROWS`): fewer is what a detail page's related items look like.
@@ -34,19 +36,97 @@ _CHROME_TAGS: Final = frozenset({"nav", "header", "footer", "aside", "search"})
 _CHROME_ROLES: Final = frozenset({"navigation", "banner", "contentinfo", "complementary", "search", "menubar", "menu"})
 # HTML Standard §4.6.1: `a` and `area` elements with an `href` are hyperlinks.
 LINKS: Final = ("a", "area")
+# The HTML parser whose element classes the tree's copy is built of (`lxml_of`).
+_PARSER: Final = lxml_html.HTMLParser()
+# What XML 1.0 §2.2 does not allow in a document: NUL, the C0 controls but tab, newline and return, lone surrogates.
+_XML_CHARS: Final = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+
+_DASHES: Final = re.compile("-(?=-)")
 
 # A group of repeated items, in document order.
 Group = tuple[HtmlElement, ...]
 
 
 def lxml_root(text: str) -> HtmlElement:
-    """The lxml tree of a decoded document. lxml refuses a str that carries an XML encoding declaration, so it reads
-    the text again as UTF-8 with the encoding named, and the declaration is ignored: both parsers read the same
-    characters."""
+    """The lxml tree of a decoded document (`lxml_of`)."""
+    return lxml_of(lexbor.LexborHTMLParser(text))
+
+
+def lxml_of(tree: lexbor.LexborHTMLParser) -> HtmlElement:
+    """The lxml copy of a document's HTML Standard parse (§13.2, lexbor's tree): the same elements, attributes, text
+    and comments, in the same places. libxml2's own HTML parser repairs malformed markup by other rules (a hyperlink
+    inside a hyperlink, a `p` around a `div`), so its tree and the cleaned text's (`content.text`), keyed by the
+    lexbor tree's paths, would locate the same element at different paths. A template's contents are a separate
+    document fragment (§4.12.3), not its children. Characters XML refuses (NUL, C0 controls) are left out of the
+    copy's strings; a name lxml refuses (none the tokenizer produces but white space) leaves its element or attribute
+    out."""
+    root = tree.root
+    top = None if root is None else _element(root)
+    if root is None or top is None:
+        return _PARSER.makeelement("html")
+    stack = [(root, top)]
+    while stack:
+        node, element = stack.pop()
+        last: HtmlElement | None = None
+        child = node.child
+        while child is not None:
+            last = _copied(child, element, last, stack)
+            child = child.next
+    return top
+
+
+def _copied(
+    node: lexbor.LexborNode,
+    parent: HtmlElement,
+    last: HtmlElement | None,
+    stack: list[tuple[lexbor.LexborNode, HtmlElement]],
+) -> HtmlElement | None:
+    """Append `node` to `parent`, after its last child `last`; return the new last child."""
+    if node.is_text_node:
+        text = _XML_CHARS.sub("", node.text_content or "")
+        if last is None:
+            parent.text = (parent.text or "") + text
+        else:
+            last.tail = (last.tail or "") + text
+        return last
+    if node.is_comment_node:
+        comment = _comment(node.comment_content or "")
+        parent.append(comment)  # type: ignore[arg-type]
+        return comment  # type: ignore[return-value]
+    if not node.is_element_node:
+        return last
+    element = _element(node)
+    if element is None:
+        return last
+    parent.append(element)
+    stack.append((node, element))
+    return element
+
+
+def _element(node: lexbor.LexborNode) -> HtmlElement | None:
+    """A copy of the element `node` without its children; an attribute whose name lxml refuses is left out."""
+    attributes = {name: _XML_CHARS.sub("", value or "") for name, value in node.attributes.items()}
     try:
-        return lxml_html.document_fromstring(text.encode("utf-8"), parser=lxml_html.HTMLParser(encoding="utf-8"))
-    except etree.ParserError:  # an empty or all-whitespace document has no root element
-        return lxml_html.Element("html")
+        return _PARSER.makeelement(str(node.tag), attributes)
+    except ValueError:
+        pass
+    try:
+        return _PARSER.makeelement(str(node.tag), {name: value for name, value in attributes.items() if _named(name)})
+    except ValueError:
+        return None
+
+
+def _named(name: str) -> bool:
+    try:
+        _PARSER.makeelement("span", {name: ""})
+    except ValueError:
+        return False
+    return True
+
+
+def _comment(text: str) -> etree._Comment:
+    """A comment of `text`; XML forbids `--` inside one and `-` at its end."""
+    return etree.Comment(_DASHES.sub("- ", _XML_CHARS.sub("", text)).removesuffix("-"))
 
 
 def is_hyperlink(element: HtmlElement) -> bool:

@@ -6,7 +6,7 @@ style sheet) decide which elements are hidden and which start a line, and inline
 `hidden`/`aria-hidden` attributes hide what the page hides itself. Style sheets and scripts are not evaluated.
 
 Node paths address the selectolax tree, which HTML tree construction builds (implied `tbody`, reparented
-misnested tags). The lxml tree comes from libxml2's own HTML parser, so a path is not guaranteed to resolve there.
+misnested tags). The lxml tree is a copy of that tree (`acquire.items.lxml_of`), so a path resolves there too.
 """
 
 import re

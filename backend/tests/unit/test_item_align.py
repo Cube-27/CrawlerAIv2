@@ -171,6 +171,47 @@ def test_a_stated_name_running_over_the_price_is_the_cards_text_and_a_link_name_
     assert [row["title"] for row in _rows(button)] == [f"Big Mug {i}" for i in range(4)]
 
 
+def test_a_link_showing_its_label_is_named_by_it_and_a_link_running_two_fields_together_by_its_parts() -> None:
+    # HTML Standard §4.5.1: a link's content is its label; its `aria-labelledby` naming the card's hidden prices too
+    # (WCAG 2.1 SC 2.5.3: the stated name holds the label) is not its name.
+    labelled = (
+        '<li class="c"><a href="/p/{i}" aria-labelledby="p{i}"><span>Sofa {i}</span></a>'
+        '<div id="p{i}" aria-hidden="true">Sofa {i}. Offer 1{i}.00 EUR</div></li>'
+    )
+    # CSS Text 3: adjacent inline boxes render without a space, so a title and a location run together are two lines a
+    # layout sets apart, in every card of the template (here also the last, where a trailing space separates them).
+    joined = '<li class="c"><a href="/job/{i}"><span><span>Job {i}{gap}</span><span>City {c}</span></span></a></li>'
+    jobs = "<ul>" + "".join(joined.format(i=i, c=i % 2, gap=" " if i == 3 else "") for i in range(4)) + "</ul>"
+
+    assert [row["title"] for row in _rows(_repeat(labelled))] == [f"Sofa {i}" for i in range(4)]
+    assert [row["title"] for row in _rows(jobs)] == [f"Job {i}" for i in range(4)]
+
+
+def test_a_card_that_is_a_link_holding_another_link_is_read_as_the_html_parser_builds_it() -> None:
+    # HTML Standard §13.2.6.4.7, the adoption agency algorithm: the inner `a` closes the outer one, which is reopened
+    # inside the block; the block's elements and the cleaned text's runs share that one tree.
+    card = (
+        '<a class="c" href="/job/{i}"><div><h4>Job {i}</h4><p>Posted {i}</p>'
+        '<div>Pay {i}<br>Hours {i} <a href="/job/{i}">See more</a></div></div></a>'
+    )
+
+    assert [row["title"] for row in _rows("<div>" + "".join(card.format(i=i) for i in range(4)) + "</div>")] == [
+        f"Job {i}" for i in range(4)
+    ]
+
+
+def test_options_a_drop_down_list_does_not_display_are_not_the_cards_values() -> None:
+    # HTML Standard §4.10.7: a drop-down `select` shows its selected option only; the others are choices (add-ons).
+    card = (
+        '<li class="c"><a href="/p/{i}">Lamp {i}</a><span>1{i}.00 EUR</span><select>'
+        "<option selected>No plan</option><option>Plan 4{i}.95 EUR</option></select></li>"
+    )
+
+    assert [row["price"] for row in _rows(_repeat(card))] == [
+        {"amount": f"1{i}.00", "currency": "EUR"} for i in range(4)
+    ]
+
+
 def test_helper_text_every_card_repeats_inside_the_name_is_the_templates() -> None:
     # DEPTA: a node whose value never varies across the records is the template's (a screen-reader-only phrase).
     card = '<li class="c"><a href="/p/{i}"><span class="sr">View product</span> Boot {i}</a><b>1{i}.00 EUR</b></li>'

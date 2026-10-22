@@ -10,8 +10,8 @@ written, a later batch a call loaded).
 
 **Sections.** A listing split into sections reads them all: beside the chosen group, each aligned group of its row
 shape (or holding every required field it aligns and a field beyond the item URL), whose blocks lead to documents of
-the kind its blocks lead to and lie apart from the blocks already read (`_sections`); one item two sections show is
-one block. A group half or more of whose blocks lead to items the chosen group lists repeats the listing (a featured,
+the kind its blocks lead to and lie apart from the blocks already read (`_sections`), inner groups first (a department's jobs before the
+departments); one item two sections show is one block. A group half or more of whose blocks lead to items the chosen group lists repeats the listing (a featured,
 trending or recently viewed strip), and a group after the chosen group's next-page link (`rel=next`) lies past the
 listing's end (a "you may also like" strip): neither is a section, so none of its blocks is read.
 
@@ -190,7 +190,9 @@ def _sections(listing: Listing, chosen: Items) -> Items:
     featured copy)."""
     section = _Section.of(listing, chosen)
     groups = [chosen]
-    for group in listing.items:
+    # Inner groups first: a group whose blocks hold another group's blocks is a list of sections (a department and its
+    # jobs), whose items are the inner blocks.
+    for group in sorted(listing.items, key=lambda items: -_depth(items)):
         if group is not chosen and section.admits(group):
             groups.append(group)
             section.elements.update(block.element for block in group.blocks)
@@ -258,6 +260,11 @@ class _Section:
         listing ends at its pager, so what follows it (a "you may also like" strip) is not one of its sections."""
         start = min((self.position.get(block.element, -1) for block in group.blocks), default=-1)
         return self.end is not None and start > self.end
+
+
+def _depth(items: Items) -> int:
+    """How deep in the document the group's blocks lie: the fewest ancestors one of them has."""
+    return min((sum(1 for _ in block.element.iterancestors()) for block in items.blocks), default=0)
 
 
 def _next_link(anchor: HtmlElement) -> bool:

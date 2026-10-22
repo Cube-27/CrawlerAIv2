@@ -435,11 +435,12 @@ async def test_formats_and_records_read_one_parse_of_the_page(
     result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}, *formats), data=engine_data)
 
     assert result.outcome == "extracted"
-    # INV-26: every format and the records read one selectolax parse and one lxml parse of the page. trafilatura's
+    # INV-26: every format and the records read one selectolax parse of the page; the lxml tree is its copy, not a
+    # parse of its own. trafilatura's
     # readability fallback parses its own output, a new document without the `<head>`, so a parse of the page is one
     # whose input still holds the head's JSON-LD block.
     body_parses = {name: sum(map(_holds_head_script, counter.inputs)) for name, counter in parses.items()}
-    assert body_parses == {"selectolax": 1, "lxml": 1}
+    assert body_parses == {"selectolax": 1, "lxml": 0}
 
 
 async def test_an_inline_schema_is_stored_once_and_reused(
