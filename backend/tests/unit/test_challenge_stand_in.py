@@ -11,6 +11,8 @@ _HTML = (("content-type", "text/html"),)
 _LINKS = "".join(f'<a href="/item/{i}">Item {i}</a>' for i in range(8))
 _STAND_INS = [s for s in SIGNATURES if s.stand_in_markers]
 URL = "https://shop.example.test/item/1"
+# The vendor whose markers include a pattern: the edge that prints an error reference id.
+_EDGE_REFERENCE_VENDOR = next(s.vendor for s in SIGNATURES if any(not isinstance(m, str) for m in s.stand_in_markers))
 
 
 def _page(extra: str = "") -> str:
@@ -25,6 +27,20 @@ def test_a_2xx_page_showing_a_stand_in_marker_is_blocked_and_labelled(sig: Chall
 
     assert block_class_of(status, _HTML, body) == "blocked"
     assert challenge_label(status, _HTML, body, URL) == sig.vendor
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "Reference&#32;&#35;18&#46;1a2b3c4d&#46;1700000000&#46;5e6f7a8b",  # the edge's own template
+        '<div class="note">Reference ERR: 0.1a2b3c4d.1700000000.5e6f7a8b</div>',  # a customer template printing it
+    ],
+)
+def test_a_2xx_page_printing_the_edge_error_reference_is_blocked(reference: str) -> None:
+    body = _page(reference)
+
+    assert block_class_of(200, _HTML, body) == "blocked"
+    assert challenge_label(200, _HTML, body, URL) == _EDGE_REFERENCE_VENDOR
 
 
 @pytest.mark.parametrize("signature", [s for s in SIGNATURES if s.cookie_prefixes or s.script_paths])
