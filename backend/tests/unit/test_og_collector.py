@@ -100,6 +100,14 @@ def test_each_ogp_property_maps_to_the_field_of_its_role() -> None:
     )
 
 
+def test_og_title_fills_a_job_postings_title() -> None:
+    job = _schema(title=_field(FieldType.TEXT, "JobPosting.title"))
+
+    assert _collect(("og:title", "Synthetic Engineer"), schema=job).candidates == (
+        _og("title", "Synthetic Engineer", Ok("Synthetic Engineer"), "meta:og:title"),
+    )
+
+
 DESCRIBED = _schema(
     **SCHEMA.fields,
     description=_field(FieldType.LONG_TEXT, "Product.description"),

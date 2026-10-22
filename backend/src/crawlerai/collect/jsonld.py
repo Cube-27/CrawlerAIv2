@@ -4,7 +4,8 @@ Each block is parsed as JSON, accepting raw control characters inside strings an
 zeros, read as its digits (RFC 8259 §9; `core.json_text.parse`); a block that is still invalid is skipped with a
 diagnostic, never repaired. Every JSON object in it
 is a node; `@graph` and nesting need no special case, since the walk visits every object in document order. A node
-whose `@type` is a schema.org type in the vocabulary is an entity. A node reference (an object holding only `@id`,
+whose `@type` is a schema.org type in the vocabulary is an entity, and so is an untyped node that is a value of a
+Product's `offers`, an Offer (`_implied`). A node reference (an object holding only `@id`,
 JSON-LD 1.1 §9.5) stands for the node defined with that `@id` anywhere on the page.
 
 Entities and locators are addressed as `jsonld:<block>:<path>`, where the path is the RFC 9535 normalized path of
@@ -37,6 +38,10 @@ _VALUE: Final = "@value"
 # A context naming schema.org by its namespace, with or without the trailing slash (schema.org's published form).
 _CONTEXTS = frozenset(n.rstrip("/") for n in NAMESPACES)
 _CONTEXT_KEY = "@context"  # JSON-LD 1.1 §3.1
+# schema.org: the `offers` property, the Product type and the Offer type (`_implied`).
+_OFFERS: Final = "offers"
+_PRODUCT: Final = "Product"
+_OFFER: Final = "Offer"
 # A reference to a node: the entity it is nested in, and that entity's property it is under.
 _Reference = tuple[str, str | None]
 
@@ -197,25 +202,41 @@ class JsonLdCollector:
     def _walk(self, block: int, document: JsonValue) -> Iterator[_Object]:
         """Every object of `document` in document order. Iterative, so that nesting depth is bounded by what the JSON
         parser accepts rather than by the call stack."""
-        stack: list[tuple[JsonValue, str, bool, str | None, str | None]] = [(document, "$", False, None, None)]
+        stack: list[tuple[JsonValue, str, bool, str | None, str | None, tuple[str, ...]]] = [
+            (document, "$", False, None, None, ())
+        ]
         while stack:
-            value, path, in_schema, enclosing, via = stack.pop()
+            value, path, in_schema, enclosing, via, implied = stack.pop()
             if isinstance(value, list):
                 items = reversed(list(enumerate(value)))
-                stack.extend((item, f"{path}[{i}]", in_schema, enclosing, via) for i, item in items)
+                stack.extend((item, f"{path}[{i}]", in_schema, enclosing, via, implied) for i, item in items)
                 continue
             if not isinstance(value, dict):
                 continue
             if _CONTEXT_KEY in value:
                 in_schema = _in_schema(value[_CONTEXT_KEY], in_schema)
-            found = _Object(value, block, path, in_schema, self._types(value.get("@type"), in_schema), enclosing, via)
+            found = _Object(value, block, path, in_schema, self._node_types(value, in_schema, implied), enclosing, via)
             yield found
             inner = found.id if found.types else enclosing
             stack.extend(
-                (child, member(path, key), in_schema, inner, _member_via(found, key, via))
+                (child, member(path, key), in_schema, inner, _member_via(found, key, via), self._implied(found, key))
                 for key, child in reversed(value.items())
                 if key != _CONTEXT_KEY
             )
+
+    def _node_types(self, value: Mapping[str, JsonValue], in_schema: bool, implied: tuple[str, ...]) -> tuple[str, ...]:
+        """The node's declared types; for a node declaring none, not a node reference, the `implied` ones."""
+        if "@type" not in value and value.keys() != {"@id"}:
+            return implied
+        return self._types(value.get("@type"), in_schema)
+
+    def _implied(self, holder: _Object, key: str) -> tuple[str, ...]:
+        """The type of an untyped node that is the value of `key` on `holder`: schema.org `offers` expects an Offer or
+        a Demand, and a product's offer is an Offer, so an untyped value of a Product's `offers` is an Offer. No other
+        property's value is typed by what it is under."""
+        if _term(holder, key) == _OFFERS and any(self.vocabulary.is_a(t, _PRODUCT) for t in holder.types):
+            return (_OFFER,)
+        return ()
 
     def _types(self, declared: JsonValue, in_schema: bool) -> tuple[str, ...]:
         names: list[str] = []

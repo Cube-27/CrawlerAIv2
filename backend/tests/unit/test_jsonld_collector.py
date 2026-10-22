@@ -117,6 +117,19 @@ def test_a_product_with_a_nested_offer() -> None:
     assert result.diagnostics == ()
 
 
+def test_an_untyped_node_under_a_products_offers_is_an_offer() -> None:
+    offer = {"price": "10.50", "priceCurrency": "EUR"}
+    result = _collect(
+        {"@context": SCHEMA_ORG, "@type": "Product", "name": "Widget 9", "offers": [offer], "brand": {"name": "x"}}
+    )
+
+    assert [(e.id, e.types, e.via) for e in result.entities] == [
+        ("jsonld:0:$", ("Product",), None),
+        ("jsonld:0:$['offers'][0]", ("Offer",), "offers"),
+    ]
+    assert [c.field for c in result.candidates] == ["title", "brand", "price"]
+
+
 def test_graph_nodes_and_id_references() -> None:
     result = _collect(
         {

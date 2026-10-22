@@ -68,6 +68,8 @@ _COLON = re.compile(r"\s*[:\uff1a]")
 # The structures a pair is read from: rows and description lists (HTML Standard §4.9, §4.4.9), `Label: value` lines,
 # and sibling containers of one shape.
 _TABLE, _LINE, _SIBLINGS = "table", "line", "siblings"
+# HTML Standard §4.3.6: the heading elements.
+_HEADINGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
 _REPEATING = (_LINE, _SIBLINGS)
 # HTML Standard §4.9 (tables) and §4.4.9 (description lists): the elements whose rows and groups `_pairs` reads itself.
 _TABULAR = frozenset({"table", "thead", "tbody", "tfoot", "tr", "dl"})
@@ -114,11 +116,10 @@ class DomCollector:
         labels = field_labels(schema)
         pairs = content.pairs(page) if content is not None else []
         listed = content.listed_pairs(page) if content is not None else []
-        unlabelled = [pair for pair in pairs if words(pair[0]) not in labels]
         for name, raw, xpath, read in (
             *_pairs_found(page, pairs, labels, schema, content),
             *_pairs_found(page, listed, field_labels(lists := _list_fields(schema)), lists, content),
-            *_typed_found(page, schema, ctx, content, unlabelled),
+            *_typed_found(page, schema, ctx, content, pairs, labels),
             *image_found(page, schema, ctx, self.outside, self.primary),
         ):
             locator = format_locator("dom", xpath)
@@ -436,13 +437,17 @@ def _groups(dl: LexborNode) -> Iterator[tuple[LexborNode, LexborNode]]:
 def _colon_line(element: LexborNode) -> Iterator[Pair]:
     """An element whose text starts with a label and a colon, in its first non-blank child (`Model: <span>x</span>`, a
     label element and a value element, `<b>Model:</b> x`): the label is the text before the colon, the value what
-    follows it. A value with another colon in it holds another label (`Brand: x SKU: y`): nothing is read."""
-    first = None if _structured(element) else next((c for c in element.iter(include_text=True) if _text(c)), None)
-    if first is None or _structured(first):
+    follows it. A value with another colon in it holds another label (`Brand: x SKU: y`): nothing is read. Without a
+    colon, an element holding only a text and then one element (`Item no. <span>x</span>`) is a label and its value,
+    unless it is a heading, which titles its section (HTML Standard §4.3.6: `<h4>Product <b>Specs</b></h4>`)."""
+    parts = [] if _structured(element) else [c for c in element.iter(include_text=True) if _text(c)]
+    if not parts or _structured(first := parts[0]):
         return
     lead, full = _text(first), _text(element)
     cut = _COLON.search(full)
     if cut is None or cut.start() > len(lead):
+        if len(parts) == 2 and not first.is_element_node and parts[1].is_element_node and element.tag not in _HEADINGS:
+            yield lead, parts[1], _text(parts[1]), _LINE
         return
     value = _line_value(element, first, full[cut.end() :].strip(), lead[cut.end() :].strip())
     if value is not None and not _COLON.search(value[1]):
@@ -482,22 +487,33 @@ def _repeated_pairs(parent: LexborNode) -> Iterator[Pair]:
 
 
 def _typed_found(
-    page: ParsedPage, schema: SchemaDef, ctx: Context, content: _Content | None, unlabelled: Sequence[Pair]
+    page: ParsedPage,
+    schema: SchemaDef,
+    ctx: Context,
+    content: _Content | None,
+    pairs: Sequence[Pair],
+    labels: Mapping[Words, Sequence[str]],
 ) -> Iterator[Found]:
     """A money or checked-identifier field's value the main region shows once: the elements whose own text the field's
     normalizer parses (`items.spot`), not set apart and shown, current (not struck) unless the field is a list price
     (`items.spot.reads`); for an identifier, also the value of a pair whose label names no field (`EAN: <digits>`),
-    outside hyperlinks to other documents. A check digit (GS1, ISO 2108) makes the syntax checkable; an identifier
-    without one needs a label (`_pairs_found`). Several distinct values are ambiguous (a price among related products'
-    prices): nothing is read."""
+    outside hyperlinks to other documents, and never a value a pair's label gives to other fields only (`Item no.
+    <digits>` is a sku, though its digits pass a GTIN check digit). A check digit (GS1, ISO 2108) makes the syntax
+    checkable; an identifier without one needs a label (`_pairs_found`). Several distinct values are ambiguous (a
+    price among related products' prices): nothing is read."""
     fields = [n for n, spec in schema.fields.items() if is_typed(spec) and spec.type in _SPOTTED_TYPES]
     if not fields or content is None or main_region(page) is None:
         return
     shorts = _short_texts(content.region, content.apart)
     struck = struck_ids(content.region)
+    named: dict[int, set[str]] = {}  # the fields pairs' labels give each value element
+    for label, value, _, _ in pairs:
+        named.setdefault(value.mem_id, set()).update(labels.get(words(label), ()))
     for name in fields:
         spec = schema.fields[name]
-        shown_texts = _identifier_texts(shorts, unlabelled, content) if spec.type is FieldType.IDENTIFIER else shorts
+        shown_texts = (
+            _identifier_texts(shorts, pairs, named, name, content) if spec.type is FieldType.IDENTIFIER else shorts
+        )
         texts = [(e, text) for e, text in shown_texts if reads(spec, text, ctx, struck=e.mem_id in struck)]
         if (one := _one_value(texts, spec, ctx)) is not None:
             yield name, *one, None
@@ -512,12 +528,20 @@ def _one_value(texts: Sequence[tuple[LexborNode, str]], spec: FieldSpec, ctx: Co
 
 
 def _identifier_texts(
-    shorts: Sequence[tuple[LexborNode, str]], unlabelled: Sequence[Pair], content: _Content
+    shorts: Sequence[tuple[LexborNode, str]],
+    pairs: Sequence[Pair],
+    named: Mapping[int, set[str]],
+    name: str,
+    content: _Content,
 ) -> list[tuple[LexborNode, str]]:
     """The short texts and the short values of pairs no field's label names, neither in nor holding hyperlinks to
-    other documents."""
-    values = ((value, raw) for _, value, raw, _ in unlabelled if len(raw) <= _SPOT_LENGTH)
-    return [(element, text) for element, text in (*shorts, *values) if not content.links_out(element)]
+    other documents nor values labels give to other fields than `name` only."""
+    values = ((value, raw) for _, value, raw, _ in pairs if not named[value.mem_id] and len(raw) <= _SPOT_LENGTH)
+    return [
+        (element, text)
+        for element, text in (*shorts, *values)
+        if not content.links_out(element) and (not (fields := named.get(element.mem_id)) or name in fields)
+    ]
 
 
 def _short_texts(region: LexborNode, excluded: frozenset[int]) -> list[tuple[LexborNode, str]]:

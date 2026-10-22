@@ -8,7 +8,9 @@ each field's normalizer, the only filter, and becomes a candidate only when:
   never counts toward `agreed` (§10);
 - the field has no candidate from another source kind, its type has a syntax the normalizer checks
   (`normalize.dispatch.checkable`: money, enum, date, range, a check-digit identifier, an absolute URL), and the value
-  is visible in the page text. It is then owned by the page, like other page-level values, and is independent. Text,
+  is visible in the page text. It is then owned by the page, like other page-level values, and is independent. An
+  identifier another source kind gives to another identifier field is that field's (a sku whose digits pass a GTIN
+  check digit is no GTIN): it is not admitted this way. Text,
   location and other opaque types admit by equality only: any visible string normalizes as text or as a location's
   text, so visibility alone says nothing of which field a leaf is (owner, accuracy Q2 option a).
 
@@ -42,7 +44,7 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context, Ok, raw_key
 from crawlerai.normalize.dispatch import checkable, equal, equality_key, normalize
 from crawlerai.normalize.url import media_type
-from crawlerai.schemas.types import FieldSpec, SchemaDef
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 StateKind = Literal["js_state", "xhr"]
 
@@ -338,9 +340,25 @@ def _readings(
     for name, spec in schema.fields.items():
         own = anchors.get(name)
         normalized = _normalized(raw, spec, ctx, visible, own)
-        if normalized is not None:
-            for owner, independent in _owners(normalized.value, spec, own):
-                yield _Reading(name, normalized, owner, independent)
+        if normalized is None or (own is None and _identifies_other(raw, name, schema, ctx, anchors)):
+            continue
+        for owner, independent in _owners(normalized.value, spec, own):
+            yield _Reading(name, normalized, owner, independent)
+
+
+def _identifies_other(
+    raw: str | int | float, name: str, schema: SchemaDef, ctx: Context, anchors: Mapping[str, FieldAnchors]
+) -> bool:
+    """Whether `name` is an identifier field and another identifier field has a candidate from another source kind
+    equal to `raw`."""
+    if schema.fields[name].type is not FieldType.IDENTIFIER:
+        return False
+    for other, spec in schema.fields.items():
+        if other == name or spec.type is not FieldType.IDENTIFIER or (own := anchors.get(other)) is None:
+            continue
+        if isinstance(normalized := normalize(raw, spec, ctx), Ok) and own.owners(normalized.value, spec):
+            return True
+    return False
 
 
 def admits(

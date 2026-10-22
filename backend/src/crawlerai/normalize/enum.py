@@ -6,8 +6,8 @@
   reference (`//schema.org/InStock`), with its scheme or host in any case, or the member name in another case
   (`http://schema.org/instock`) when exactly one member has that name. Other text, not an IRI, is read as the
   `type:` path reads it, against each type vocabulary whose codes are all members of the enumeration
-  (`type:availability` for `ItemAvailability`), and a member name in any case also counts (`instock`), so a page
-  that states "In stock (5 available)" gives `InStock`.
+  (`type:availability` for `ItemAvailability`, `type:condition` for `OfferItemCondition`), and a member name in any
+  case also counts (`instock`), so a page that states "In stock (5 available)" gives `InStock`.
 - `type:<name>`: the input is a string; it states a code when the tokens of its first clause are exactly one of the
   code's phrases (`crawlerai.normalize.vocab`), and no other code's phrase appears later in it. "Not in stock" states
   nothing (D-0782).
