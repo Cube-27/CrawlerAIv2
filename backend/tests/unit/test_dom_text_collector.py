@@ -104,6 +104,14 @@ def test_a_legend_is_no_main_text() -> None:
     assert _read(body) == {"description": FIRST}
 
 
+def test_a_one_sentence_line_is_no_main_text() -> None:
+    # An image overlay's hint or a stock notice is the longest block of some buy regions: one line is no running text.
+    assert (
+        _read("<main><h1>Kettle</h1><p>Pick a size to see if it is in stock nearby.</p><p>Tap to enlarge</p></main>")
+        == {}
+    )
+
+
 def test_a_section_panel_holding_a_control_gives_its_prose() -> None:
     # A disclosure panel's "more" button beside the prose: the section's text is the panel's prose.
     body = (

@@ -1,10 +1,11 @@
 """The text forms every layer compares in (normalization spec, "One module per type"): composed, white space collapsed
-or set aside, cut short by an ellipsis, and folded to words.
+or set aside, cut short by an ellipsis, split into sentences, and folded to words.
 
 Folding is for comparison only: a published value keeps the form the page states (`compose` and `collapse` are the
 text normalization's own steps). A text is cut only where a caller's spec already cuts it.
 """
 
+import re
 import unicodedata
 from typing import Final
 
@@ -14,6 +15,10 @@ ELLIPSES: Final = ("…", "...")
 # Unicode general category Cc (U+0000 to U+001F, U+007F to U+009F): control characters are not text. Those that are
 # Unicode White_Space (tab, line breaks, NEL) are kept for the whitespace collapse; the rest are removed.
 _CONTROLS = dict.fromkeys(c for c in [*range(0x20), *range(0x7F, 0xA0)] if not chr(c).isspace())
+# CJK sentences end without a following space (Unicode Sentence_Break=STerm: U+3002, U+FF01, U+FF1F).
+_IDEOGRAPHIC_END = r"[\u3002\uff01\uff1f]"
+_TERMINATED = re.compile(rf"[.!?\u2026]+[\"')\]]*(?=\s)|{_IDEOGRAPHIC_END}")
+_IDEOGRAPHIC = re.compile(_IDEOGRAPHIC_END)
 
 
 def compose(s: str) -> str:
@@ -57,6 +62,20 @@ def is_cut_of(short: str, long: str, *, word_boundary: bool) -> bool:
         left -= not long[end].isspace()
         end += 1
     return not (end < len(long) and cut[-1].isalnum() and long[end].isalnum())
+
+
+def sentences(text: str) -> list[str]:
+    """The sentences of `text`, in order (UAX #29 sentence boundaries, approximated): each ends at a full stop, `!`,
+    `?` or ellipsis followed by white space and not by a lower-case letter, or at an ideographic full stop."""
+    found: list[str] = []
+    start = 0
+    for match in _TERMINATED.finditer(text):
+        rest = text[match.end() :].lstrip()
+        if (rest and not rest[0].islower()) or _IDEOGRAPHIC.fullmatch(match.group()):
+            found.append(text[start : match.end()].strip())
+            start = match.end()
+    found.append(text[start:].strip())
+    return [sentence for sentence in found if sentence]
 
 
 def fold_words(text: str, *, digits: bool = True, marks: bool = True) -> list[str]:
