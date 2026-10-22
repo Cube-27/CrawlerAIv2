@@ -21,6 +21,9 @@ from crawlerai.normalize.url_key import document_key, item_key
 # HTML Standard §4.3.6: heading content; WAI-ARIA 1.2 role `heading`.
 _HEADINGS: Final = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
 _HEADING_ROLE: Final = "heading"
+# A hyperlink's place in its block: its tag path and its parent's rank among those of the block's hyperlinks at that
+# path (`_link_places`).
+Place = tuple[str, int]
 # WAI-ARIA 1.2 `aria-current` token: "represents the current page within a set of pages".
 _CURRENT_PAGE: Final = "page"
 
@@ -131,26 +134,44 @@ def item_links(
 
 def _placed_targets(
     block: HtmlElement, base: str | None, here: str | None, sublists: frozenset[HtmlElement]
-) -> dict[str, dict[str, str]]:
-    """The documents the block's hyperlinks lead to (`link_targets`) by the links' tag paths from the block, each with
+) -> dict[Place, dict[str, str]]:
+    """The documents the block's hyperlinks lead to (`link_targets`) by the links' places (`_link_places`), each with
     its first `href`, places in document order."""
-    placed: dict[str, dict[str, str]] = {}
-    for anchor in hyperlinks(block):
-        if anchor in sublists:
-            continue
+    placed: dict[Place, dict[str, str]] = {}
+    for place, anchor in _link_places(block, sublists):
         for url, (href, _) in link_targets((anchor,), base, here).items():
-            placed.setdefault(tag_path(block, anchor), {}).setdefault(url, href)
+            placed.setdefault(place, {}).setdefault(url, href)
     return placed
 
 
-def _shared_targets(placed: Sequence[Mapping[str, Mapping[str, str]]]) -> frozenset[str]:
+def _link_places(block: HtmlElement, sublists: frozenset[HtmlElement]) -> list[tuple[Place, HtmlElement]]:
+    """The block's hyperlinks, those of its own lists aside, each at its place: its tag path from the block and the
+    rank of its parent among the parents of the block's hyperlinks at that path, in document order. One template
+    writes a card's title, author and "more" links into like elements, so their tag paths, positions aside, are one;
+    the order of those elements tells them apart (DEPTA aligns the sibling records of a template in order). Links in
+    one element share its place: inline in one run of text (HTML Standard §3.2.5.2.5, phrasing content), they are
+    that text's, as the links of a paragraph are."""
+    parents: dict[str, list[HtmlElement | None]] = {}
+    places: list[tuple[Place, HtmlElement]] = []
+    for anchor in hyperlinks(block):
+        if anchor in sublists:
+            continue
+        path, parent = tag_path(block, anchor), anchor.getparent()
+        seen = parents.setdefault(path, [])
+        if parent not in seen:
+            seen.append(parent)
+        places.append(((path, seen.index(parent)), anchor))
+    return places
+
+
+def _shared_targets(placed: Sequence[Mapping[Place, Mapping[str, str]]]) -> frozenset[str]:
     """The documents two or more blocks link to: the template's (a vendor's, an author's, a category's page), as an
     item is listed once (DEPTA: what repeats across records is the template, not a record's data)."""
     counts = Counter(url for block in placed for url in {u for targets in block.values() for u in targets})
     return frozenset(url for url, count in counts.items() if count >= 2)
 
 
-def _without(placed: Mapping[str, Mapping[str, str]], shared: frozenset[str]) -> dict[str, dict[str, str]]:
+def _without(placed: Mapping[Place, Mapping[str, str]], shared: frozenset[str]) -> dict[Place, dict[str, str]]:
     """The block's placed targets without the `shared` ones, places left with none dropped."""
     kept = {
         place: {url: href for url, href in targets.items() if url not in shared} for place, targets in placed.items()
@@ -159,12 +180,13 @@ def _without(placed: Mapping[str, Mapping[str, str]], shared: frozenset[str]) ->
 
 
 def _group_place(
-    own: Sequence[Mapping[str, Mapping[str, str]]], pictured: Sequence[set[str]], needed: int
-) -> str | None:
-    """The tag path at which a quorum of the blocks link to one document no other block links to: the group's item
-    link place, where the template puts each item's link (DEPTA alignment). Of several, the one that comes first in
-    the most blocks, a place whose link holds an image before the others (HTML Standard §4.8.4: an `img` in a
-    hyperlink is the link's content; a card pictures its item, not its author or seller); None when no place does."""
+    own: Sequence[Mapping[Place, Mapping[str, str]]], pictured: Sequence[set[Place]], needed: int
+) -> Place | None:
+    """The place (`_link_places`) at which a quorum of the blocks link to one document no other block links to: the
+    group's item link place, where the template puts each item's link (DEPTA alignment). Of several, the one that
+    comes first in the most blocks, a place whose link holds an image before the others (HTML Standard §4.8.4: an
+    `img` in a hyperlink is the link's content; a card pictures its item, not its author or seller); None when no
+    place does."""
     counts = Counter(place for block in own for place, targets in block.items() if len(targets) == 1)
     qualified = {place for place, count in counts.items() if count >= needed}
     firsts = Counter(_first_place(block, held, qualified) for block, held in zip(own, pictured, strict=True))
@@ -172,20 +194,16 @@ def _group_place(
     return firsts.most_common(1)[0][0] if firsts else None
 
 
-def _first_place(places: Iterable[str], pictured: set[str], qualified: set[str]) -> str | None:
+def _first_place(places: Iterable[Place], pictured: set[Place], qualified: set[Place]) -> Place | None:
     """The block's first qualified place, those whose link holds an image first."""
     return next(
         (place for place in sorted(places, key=lambda place: place not in pictured) if place in qualified), None
     )
 
 
-def _pictured_places(block: HtmlElement, sublists: frozenset[HtmlElement]) -> set[str]:
-    """The tag paths of the block's hyperlinks that hold an image."""
-    return {
-        tag_path(block, anchor)
-        for anchor in hyperlinks(block)
-        if anchor not in sublists and next(anchor.iter("img"), None) is not None
-    }
+def _pictured_places(block: HtmlElement, sublists: frozenset[HtmlElement]) -> set[Place]:
+    """The places of the block's hyperlinks that hold an image."""
+    return {place for place, anchor in _link_places(block, sublists) if next(anchor.iter("img"), None) is not None}
 
 
 def tag_path(block: HtmlElement, element: HtmlElement) -> str:

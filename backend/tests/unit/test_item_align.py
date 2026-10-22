@@ -260,6 +260,17 @@ def test_a_card_linking_its_item_its_author_and_a_shared_vendor_takes_the_item_a
     assert [row["url"] for row in _rows(body)] == [_url(f"/p/{i}") for i in range(4)]
 
 
+def test_a_card_whose_item_author_and_more_links_share_one_tag_path_takes_the_first_of_them() -> None:
+    # DEPTA alignment: like elements of one template keep their order, so the title link, the author link and the
+    # "more" link written into like elements are three places.
+    body = _repeat(
+        '<li class="c"><div><div><a href="/p/{i}?r=x">Book {i}</a></div><div>by <a href="/author/{i}">A {i}</a></div>'
+        '</div><span>1{i}.50 EUR</span><div><div><a href="/p/{i}/all?r=x">All editions</a></div></div></li>'
+    )
+
+    assert [row["url"] for row in _rows(body)] == [_url(f"/p/{i}?r=x") for i in range(4)]
+
+
 @pytest.mark.parametrize("current", ['href="/search"', 'href="/c/0" aria-current="page"'])
 def test_a_group_holding_the_current_page_is_navigation_not_rows(current: str) -> None:
     # WAI-ARIA 1.2 `aria-current="page"`; a link to this very URL: the group lists the page among its documents.
