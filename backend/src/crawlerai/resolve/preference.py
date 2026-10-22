@@ -146,16 +146,7 @@ class Resolver:
         # In schema order: the anchor takes the first Offer seen on a tie.
         offer_fields = [name for name, spec in fields.items() if self.target_offers.is_offer_field(spec)]
         offers = self._page_offers(fields, candidates, screened, offer_fields)
-        bounds = _range_bounds(fields, screened) | self._stated_ranges()
-        if bounds:
-            screened = {
-                name: self._without_bounds(fields[name], *found, bounds, offers)
-                if price_role(fields[name]) == "price"
-                else found
-                for name, found in screened.items()
-            }
-            # The anchor is the Offer holding the most of what is left: a bound is no Offer's own value.
-            offers = self._page_offers(fields, candidates, screened, offer_fields)
+        screened, offers = self._bounded(fields, candidates, screened, offer_fields, offers)
         chosen = {
             name: self._choose(spec, *screened[name], offers=offers, offer_field=name in offer_fields)
             for name, spec in fields.items()
@@ -302,6 +293,28 @@ class Resolver:
             return OWN if not offers.anchor or offer is None or offer in offers.anchor else OTHER_OFFER
 
         return scope
+
+    def _bounded(
+        self,
+        fields: Mapping[str, FieldSpec],
+        candidates: Sequence[Candidate],
+        screened: dict[str, tuple[list[Candidate], list[Rejection]]],
+        offer_fields: Sequence[str],
+        offers: PageOffers,
+    ) -> tuple[dict[str, tuple[list[Candidate], list[Rejection]]], PageOffers]:
+        """The screened candidates without the active prices' range bounds (`_without_bounds`), and the page's Offers
+        read again from what is left: a bound is no Offer's own value, so the anchor is the Offer holding the most of
+        the rest."""
+        bounds = _range_bounds(fields, screened) | self._stated_ranges()
+        if not bounds:
+            return screened, offers
+        screened = {
+            name: self._without_bounds(fields[name], *found, bounds, offers)
+            if price_role(fields[name]) == "price"
+            else found
+            for name, found in screened.items()
+        }
+        return screened, self._page_offers(fields, candidates, screened, offer_fields)
 
     def _stated_ranges(self) -> frozenset[_Bound]:
         """The bounds of the price ranges the target's AggregateOffers state (`Entity.price_range`), each with its

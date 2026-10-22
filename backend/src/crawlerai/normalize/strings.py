@@ -17,7 +17,10 @@ ELLIPSES: Final = ("…", "...")
 _CONTROLS = dict.fromkeys(c for c in [*range(0x20), *range(0x7F, 0xA0)] if not chr(c).isspace())
 # CJK sentences end without a following space (Unicode Sentence_Break=STerm: U+3002, U+FF01, U+FF1F).
 _IDEOGRAPHIC_END = r"[\u3002\uff01\uff1f]"
-_TERMINATED = re.compile(rf"[.!?\u2026]+[\"')\]]*(?=\s)|{_IDEOGRAPHIC_END}")
+# The closing punctuation a sentence's terminator may be followed by (UAX #29 Sentence_Break=Close: quotation marks
+# and closing brackets, among them U+201D, U+2019, U+00BB, U+203A).
+_CLOSE = "\"')\\]\u2019\u201d\u00bb\u203a"
+_TERMINATED = re.compile(rf"[.!?\u2026]+[{_CLOSE}]*(?=\s)|{_IDEOGRAPHIC_END}")
 _IDEOGRAPHIC = re.compile(_IDEOGRAPHIC_END)
 
 

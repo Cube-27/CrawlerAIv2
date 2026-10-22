@@ -2,7 +2,7 @@
 
 import pytest
 
-from crawlerai.normalize.strings import collapse, compose, fold_words, is_cut_of, uncut
+from crawlerai.normalize.strings import collapse, compose, fold_words, is_cut_of, sentences, uncut
 
 
 @pytest.mark.parametrize(
@@ -47,3 +47,12 @@ def test_collapse_of_compose(text: str, expected: str) -> None:
 
 def test_uncut_drops_one_ending_ellipsis() -> None:
     assert [uncut(s) for s in ("a…", "a...", "a....", "a")] == ["a", "a", "a.", "a"]
+
+
+def test_a_sentence_ends_after_the_quotation_mark_or_bracket_closing_it() -> None:
+    # UAX #29 SB9: a terminator's closing punctuation (Sentence_Break=Close) stays in its sentence.
+    assert sentences("It said “boils fast.” It pours (well.) Again") == [
+        "It said “boils fast.”",
+        "It pours (well.)",
+        "Again",
+    ]

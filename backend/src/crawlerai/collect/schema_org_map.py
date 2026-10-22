@@ -530,12 +530,12 @@ def entity(typed: Typed, ctx: Context, vocabulary: Vocabulary, *, parent: str | 
 
 
 def price_range(typed: Typed, vocabulary: Vocabulary) -> tuple[Decimal, Decimal, str | None] | None:
-    """An AggregateOffer's `lowPrice` and `highPrice`, each its one number, when they differ, with its one
+    """An AggregateOffer's `lowPrice` and `highPrice`, each its one number, when the low is below the high, with its one
     `priceCurrency` (None when it states none or several); None for another node, or one stating no such range."""
     if not any(vocabulary.is_a(t, _AGGREGATE_OFFER) for t in typed.types):
         return None
     low, high = _number(typed.node, _LOW_PRICE), _number(typed.node, _HIGH_PRICE)
-    if low is None or high is None or low == high:
+    if low is None or high is None or low >= high:  # equal bounds state one price; a low above the high, no range
         return None
     currencies = list(dict.fromkeys(_scalar_texts(typed.node, _CURRENCY)))
     return low, high, currencies[0] if len(currencies) == 1 else None
