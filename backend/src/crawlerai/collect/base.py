@@ -73,6 +73,9 @@ class Candidate(_Model):
     normalized: NormalizeResult
     locator: LocatorText
     independent: bool  # False for js_state/xhr values admitted only by equality to another candidate (§8.1)
+    # A platform's record standing in for the property, not the page's statement of it (`Shape.fallbacks`): any value
+    # the page states outweighs it (resolution spec, "Candidate score").
+    fallback: bool = False
 
 
 def is_visible_amount(c: Candidate, spec: FieldSpec) -> bool:

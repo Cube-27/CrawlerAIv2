@@ -7,7 +7,9 @@ score (`resolve.preference`); this module only scores.
   the first kind weighs 1, each later place 1/n less, a kind outside the order 0; a fragment of another candidate's
   value (`supersede`) weighs 0. For money it is the strength of the currency evidence (normalization spec, `Ok.basis`):
   a stated currency weighs 1, each weaker basis of `BASES` 1/(len(BASES)+1) less. Every other type has no measured
-  order between kinds, so every kind weighs 1.
+  order between kinds, so every kind weighs 1. A fallback (`Candidate.fallback`: a platform's own record standing in
+  for the property, not the page's statement of it) weighs 0 beside an independent candidate that is none: it fills
+  the field only where the page states no value, and lends no agreement to a value the page states.
 - Scope match: whether the candidate is the requested product's own (`resolve.preference` passes it): 1 for the
   target's own values and its anchor Offer's, `OTHER_OFFER` for another Offer of the target or of its variants.
 - Agreement: the share of the field's independent evidence that states the candidate's value: per source kind the
@@ -99,6 +101,13 @@ def rank(spec: FieldSpec, kept: Sequence[Candidate], scope: Scope, order: Sequen
 
 def source_weights(spec: FieldSpec, kept: Sequence[Candidate], order: Sequence[SourceKind]) -> dict[int, Fraction]:
     """Each kept candidate's source weight, by `id` (module docstring)."""
+    weights = _kind_weights(spec, kept, order)
+    if any(c.independent and not c.fallback for c in kept):
+        return {id(c): _NONE if c.fallback else weights[id(c)] for c in kept}
+    return weights
+
+
+def _kind_weights(spec: FieldSpec, kept: Sequence[Candidate], order: Sequence[SourceKind]) -> dict[int, Fraction]:
     type_ = rule_type(spec)
     if type_ in PRECEDENCE_TYPES:
         fragments = {id(c) for c in superseded(spec, kept)}

@@ -111,7 +111,9 @@ Collection items SHALL read as schema.org products (variants under `hasVariant`,
 [variants](../variants/spec.md)), with prices only when the shop presents exactly one currency, never inferred from
 the URL (C7); a stored answer of a shop of several currencies reads without prices. The Online Store's documented
 product JSON (`/products/{handle}.js`, a data call; `adapters/platforms.py` `answer_shape`) SHALL read as a Product
-with `description` (its HTML body) as `description`, every `images[]` URL as `image` (the featured image first), and
+with `description` (its HTML body) as `description`, `vendor` as `brand`, a fallback only (the name the merchant files
+the product under, a brand or any other label: a brand the page states outranks it; resolution spec, "Candidate
+score"), every `images[]` URL as `image` (the featured image first), and
 one Offer per `variants[]` member: `title` as `name`, `sku`, `barcode` as `gtin`, `price` in cents for every
 currency (×100), `available: false` as `OutOfStock` (`Shape.booleans`; `true`, it can be bought, names no one schema.org
 ItemAvailability: a variant on pre-order or back order can be bought too, so the page states which), so the variants

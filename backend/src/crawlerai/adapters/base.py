@@ -58,7 +58,10 @@ class Shape:
     one value of the property (a variant's `available`: `true`, it can be bought, is any purchasable schema.org
     ItemAvailability, `InStock` as well as `PreOrder` or `BackOrder`; `false` is `OutOfStock`). `sections` gives a
     property the API states as parts of one rich text (a posting's body, its lists, its closing remarks) those parts in
-    the order the platform's page shows them: its one value is the HTML text of them all (`Section`)."""
+    the order the platform's page shows them: its one value is the HTML text of them all (`Section`). `fallbacks` names
+    the properties the API fills from the platform's own record of the item, not from what the item's page states
+    (Shopify's `vendor`, the name the merchant files a product under: its brand or any other label): their values
+    stand in only where the page states none (resolution spec, "Candidate score": a fallback)."""
 
     type: str
     at: Members = ()
@@ -70,6 +73,7 @@ class Shape:
     minor_units: Mapping[str, int | Members] = field(default_factory=dict)
     booleans: Mapping[str, Booleans] = field(default_factory=dict)
     sections: Mapping[str, tuple["Section", ...]] = field(default_factory=dict)
+    fallbacks: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)

@@ -90,7 +90,10 @@ def read_shapes(
     candidates = field_candidates(
         typed, schema, ctx, vocabulary=vocabulary, source_kind="adapter", diagnostics=diagnostics
     )
-    return CollectResult(entities=entities, candidates=tuple(candidates), diagnostics=tuple(diagnostics))
+    # A value of a property the platform fills from its own record (`Shape.fallbacks`) is a fallback, at its locator.
+    records = {v.locator for n in nodes for prop in n.shape.fallbacks for v in n.values(prop)}
+    marked = (c.model_copy(update={"fallback": True}) if c.locator in records else c for c in candidates)
+    return CollectResult(entities=entities, candidates=tuple(marked), diagnostics=tuple(diagnostics))
 
 
 @dataclass(frozen=True, slots=True)
