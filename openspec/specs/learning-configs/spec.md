@@ -172,8 +172,9 @@ platform's config format is known, `archive/OPEN_QUESTIONS.md` #1) with the rele
 
 ### Requirement: Release check (INV-20)
 An exported field SHALL reproduce the engine's value on every held-out page while fewer than 10, and on ≥ 95% from 10
-on, or be marked `manual` (INV-20). The release executor imports nothing from `crawlerai` but the IR model and is the
-one allowed second parse (INV-26). Enforced by: `tests/unit/test_release_check.py`, `test_release_executor.py`
+on, or be marked `manual` (INV-20). The release executor imports nothing from `crawlerai` but the IR model, the state
+decoders and the engine's HTML parse (the HTML Standard's, so an exported XPath names the same element), and is the one
+allowed second parse (INV-26). Enforced by: `tests/unit/test_release_check.py`, `test_release_executor.py`
 (unit and property); active. Refs: §12.3, D-0527, D-0605.
 #### Scenario: 94% of 20 pages
 - **WHEN** a field reproduces on 18 of 20 held-out pages

@@ -10,10 +10,11 @@ written, a later batch a call loaded).
 
 **Sections.** A listing split into sections reads them all: beside the chosen group, each aligned group of its row
 shape (or holding every required field it aligns and a field beyond the item URL), whose blocks lead to documents of
-the kind its blocks lead to and lie apart from the blocks already read (`_sections`), inner groups first (a department's jobs before the
-departments); one item two sections show is one block. A group half or more of whose blocks lead to items the chosen group lists repeats the listing (a featured,
-trending or recently viewed strip), and a group after the chosen group's next-page link (`rel=next`) lies past the
-listing's end (a "you may also like" strip): neither is a section, so none of its blocks is read.
+the kind its blocks lead to and lie apart from the blocks already read (`_sections`), inner groups first (a
+department's jobs before the departments); one item two sections show is one block. A group half or more of whose blocks
+lead to items the chosen group lists repeats the listing (a featured, trending or recently viewed strip), and a
+group after the chosen group's next-page link (`rel=next`) lies past the listing's end (a "you may also like" strip):
+neither is a section, so none of its blocks is read.
 
 **Binding.** A row and a block are one item when the row names the block's item URL, and neither names another's (one
 to one, else neither binds: C7). URLs are compared as the page's links name items: without the page's session
@@ -152,9 +153,11 @@ def _chosen(listing: Listing, row_urls: _RowUrls) -> Items:
     urls = [url for row in listing.stated for url in row_urls.of(row)]
     if not urls:
         return listing.items[0]
+    # Only a main group may be the listing's own (`Items.main`): a late group is a section or a minor list.
+    groups = [group for group in listing.items if group.main]
     session = session_parameters([b.link for group in listing.items for b in group.blocks], listing.page_urls)
-    bound = [len(_Index([(b.entity.id, b.link) for b in group.blocks], session).find(urls)) for group in listing.items]
-    return listing.items[max(range(len(bound)), key=lambda i: (bound[i], -i))]
+    bound = [len(_Index([(b.entity.id, b.link) for b in group.blocks], session).find(urls)) for group in groups]
+    return groups[max(range(len(bound)), key=lambda i: (bound[i], -i))]
 
 
 def _grid_lists(listing: Listing, chosen: Items, row_urls: _RowUrls) -> tuple[Listing, list[str]]:

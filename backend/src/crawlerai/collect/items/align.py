@@ -69,8 +69,8 @@ section's link does not: a shop whose menu links its few products still lists th
 Shown means rendered by the cleaned text's rules (`content.text.hidden`): a hidden subtree of a block is not read. The
 group whose blocks align the most fields, of the segment step's first `_MAIN_GROUPS`, is the listing's, that order
 breaking ties: profile cards align a name and a link but no price, a product grid all three. Every other group that
-aligns follows, for the bind step's sections (a job board's many departments). Each block with an item URL is an `item_block` entity, and
-each of its values a `dom` candidate with the XPath of its element.
+aligns follows, for the bind step's sections (a job board's many departments). Each block with an item URL is an
+`item_block` entity, and each of its values a `dom` candidate with the XPath of its element.
 """
 
 import bisect
@@ -135,13 +135,15 @@ class Block:
 @dataclass(frozen=True, slots=True)
 class Items:
     """The listing's blocks, the candidates their values give (owned by their `item_block` entities), the group they
-    are of, the fields it aligns and what the step reports."""
+    are of, the fields it aligns, what the step reports and whether the group may be the listing's own (one of the
+    segment step's first `_MAIN_GROUPS`; the others are read only as its further sections)."""
 
     blocks: tuple[Block, ...] = ()
     candidates: tuple[Candidate, ...] = ()
     group: Group = ()
     diagnostics: tuple[str, ...] = ()
     fields: frozenset[str] = frozenset()
+    main: bool = True
 
     @property
     def entities(self) -> tuple[Entity, ...]:
@@ -156,8 +158,8 @@ def quorum(blocks: int) -> int:
 def align(page: ParsedPage, schema: SchemaContent, ctx: Context) -> tuple[Items, ...]:
     """Every group of the page's repeated items that aligns, as rows, best first (module docstring): of the first
     `_MAIN_GROUPS` of the segment step's order, the most fields aligned, then that order; then the others, in that
-    order. None for a detail schema, a schema without an item URL field, or a page none of whose groups links its
-    items."""
+    order. None for a detail schema, a schema without an item URL field, or a page none of whose first `_MAIN_GROUPS`
+    groups links its items."""
     roles = field_roles(schema)
     if schema.page_kind != "listing" or "url" not in roles.values():
         return ()
@@ -170,7 +172,9 @@ def align(page: ParsedPage, schema: SchemaContent, ctx: Context) -> tuple[Items,
         and not a.copies_navigation(roles, chrome)
     ]
     order = sorted(aligned, key=lambda found: (found[0] >= _MAIN_GROUPS, -len(found[1].fields), found[0]))
-    return tuple(a.items(schema, ctx, number) for number, (_, a) in enumerate(order))
+    if not order or order[0][0] >= _MAIN_GROUPS:
+        return ()
+    return tuple(a.items(schema, ctx, number, rank < _MAIN_GROUPS) for number, (rank, a) in enumerate(order))
 
 
 def _sublist_links(groups: Sequence[Group]) -> frozenset[HtmlElement]:
@@ -278,8 +282,9 @@ class _Aligned:
         led = {url for anchor, url in chrome if anchor not in blocks and blocks.isdisjoint(anchor.iterancestors())}
         return 2 * sum(view.link in led for view in self.views) > len(self.group)
 
-    def items(self, schema: SchemaContent, ctx: Context, number: int) -> Items:
-        """The group's rows, its entities numbered `item_block:<number>:<block>`."""
+    def items(self, schema: SchemaContent, ctx: Context, number: int, main: bool) -> Items:
+        """The group's rows, its entities numbered `item_block:<number>:<block>`; `main`: it may be the listing's own
+        (`Items.main`)."""
         blocks: list[Block] = []
         candidates: list[Candidate] = []
         diagnostics: list[str] = []
@@ -302,7 +307,7 @@ class _Aligned:
         diagnostics.extend(
             f"item layer: {name}: {AMBIGUOUS_IN_BLOCK} in {n} rows" for name, n in ambiguous.items() if n
         )
-        return Items(tuple(blocks), tuple(candidates), self.group, tuple(diagnostics), frozenset(self.fields))
+        return Items(tuple(blocks), tuple(candidates), self.group, tuple(diagnostics), frozenset(self.fields), main)
 
 
 def _fields(
@@ -845,15 +850,23 @@ class _View:
 def _undisplayed(element: HtmlElement) -> set[HtmlElement]:
     """The options of a `select` that it does not display: a select without `multiple` whose display size is 1 renders
     as a drop-down box showing only its selected option, the last one marked `selected`, else its first option that is
-    not disabled (HTML Standard §4.10.7, the selectedness setting algorithm; Rendering §15.5.15); the others are a
-    form control's choices (an add-on plan, a gift box), not what the block shows. None for any other element."""
+    not disabled, by itself or its `optgroup` (HTML Standard §4.10.7, the selectedness setting algorithm; §4.10.10,
+    disabled options; Rendering §15.5.15); the others are a form control's choices (an add-on plan, a gift box), not
+    what the block shows. None for any other element."""
     if element.tag != "select" or element.get("multiple") is not None or _display_size(element) != 1:
         return set()
     options = list(element.iter("option"))
     selected = [option for option in options if option.get("selected") is not None]
-    enabled = [option for option in options if option.get("disabled") is None]
+    enabled = [option for option in options if not _disabled(option)]
     shown = selected[-1:] or enabled[:1] or options[:1]
     return set(options) - set(shown)
+
+
+def _disabled(option: HtmlElement) -> bool:
+    """An option is disabled by its `disabled` attribute or its parent `optgroup`'s (HTML Standard §4.10.10)."""
+    parent = option.getparent()
+    group_disabled = parent is not None and parent.tag == "optgroup" and parent.get("disabled") is not None
+    return option.get("disabled") is not None or group_disabled
 
 
 def _display_size(select: HtmlElement) -> int:
