@@ -83,6 +83,7 @@ def test_platform_draft_carries_every_step_in_order_as_xpath_regex_or_jsonpath()
     assert exported.model_dump(mode="json")["export"] == {
         "draft": True,
         "regex_flags": "u",
+        "xpath_document": "Dom\\HTMLDocument::createFromString($html, LIBXML_NOERROR | Dom\\HTML_NO_DEFAULT_NS)",
         "ir_version": "1",
         "site": "catalog.example.test",
         "schema": {"name": "synthetic", "digest": "0" * 64},

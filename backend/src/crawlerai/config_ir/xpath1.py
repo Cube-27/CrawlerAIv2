@@ -1,9 +1,10 @@
 """The XPath 1.0 check for config steps (learning-configs spec, D-0034).
 
-Exported configs run in PHP `DOMXPath` and in lxml, which both implement W3C XPath 1.0 through libxml2. libxml2
-compiles calls to functions it does not have and fails only when they run, so an expression passes here when lxml
-compiles it and its tokens (XPath 1.0 §3.7) call only the core function library (XPath 1.0 §4). Variable references
-and namespace prefixes need bindings a config cannot carry, so they are refused too.
+Exported configs run in PHP 8.4 `Dom\\XPath` and in lxml, which both evaluate W3C XPath 1.0 with libxml2's XPath
+engine, on the HTML Standard parse of the page (`exporters.platform_draft`, `release_executor`). libxml2 compiles calls
+to functions it does not have and fails only when they run, so an expression passes here when lxml compiles it and its
+tokens (XPath 1.0 §3.7) call only the core function library (XPath 1.0 §4). Variable references and namespace prefixes
+need bindings a config cannot carry, so they are refused too.
 """
 
 import re

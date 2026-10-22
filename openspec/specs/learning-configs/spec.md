@@ -164,7 +164,10 @@ else it is stored `draft` while the previous version serves (C5). Refs: §13.1, 
 
 ### Requirement: Config and record exporters
 `POST /v1/configs/{id}/export` SHALL return `json` (the IR) or `platform_draft` (`draft: true` until the external
-platform's config format is known, `archive/OPEN_QUESTIONS.md` #1) with the release-check report. Record exports (`exporters/records.py`) keep values as published (INV-27);
+platform's config format is known, `archive/OPEN_QUESTIONS.md` #1) with the release-check report. A `platform_draft`'s
+consumer is PHP 8.4 or later: its `xpath_document` names the document its XPath steps run on with `Dom\XPath`,
+`Dom\HTMLDocument::createFromString($html, LIBXML_NOERROR | Dom\HTML_NO_DEFAULT_NS)`, the HTML Standard parse (§13.2)
+the engine reads, with HTML elements in no namespace so an unprefixed name test matches them as in lxml. Record exports (`exporters/records.py`) keep values as published (INV-27);
 `csv_safe=true` prefixes `'` to formula-like cells, default unchanged. Refs: §12.2, D-0606, D-0879.
 #### Scenario: Formula-like cell
 - **WHEN** a published value is `=1+1`
@@ -172,9 +175,9 @@ platform's config format is known, `archive/OPEN_QUESTIONS.md` #1) with the rele
 
 ### Requirement: Release check (INV-20)
 An exported field SHALL reproduce the engine's value on every held-out page while fewer than 10, and on ≥ 95% from 10
-on, or be marked `manual` (INV-20). The release executor imports nothing from `crawlerai` but the IR model and is the
-one allowed second parse (INV-26): libxml2's HTML parser, as an export's consumer (PHP `DOMXPath`) parses, so a field
-whose XPath selects another element there than in the engine's HTML Standard tree is marked `manual`. Enforced by: `tests/unit/test_release_check.py`, `test_release_executor.py`
+on, or be marked `manual` (INV-20). The release executor imports nothing from `crawlerai` but the IR model and the
+shared state decoders, and reads the engine's one parse of the page (INV-26), the HTML Standard tree an export's
+consumer builds too (PHP 8.4 `Dom\HTMLDocument`). Enforced by: `tests/unit/test_release_check.py`, `test_release_executor.py`
 (unit and property); active. Refs: §12.3, D-0527, D-0605.
 #### Scenario: 94% of 20 pages
 - **WHEN** a field reproduces on 18 of 20 held-out pages

@@ -26,7 +26,7 @@ that a deterministic crawler can run.
   After a few pages, the system learns a per-site config (XPath, JSONPath or an API recipe) and validates it on
   held-out pages. Repeat crawls then run deterministically, with no per-page LLM calls.
 - **Exportable configs.** Learned configs export as portable JSON or as XPath 1.0 + regex drafts for other crawler
-  platforms. Each export is re-executed before release.
+  platforms (PHP 8.4 or later, on its HTML5 parser `Dom\HTMLDocument`). Each export is re-executed before release.
 - **Replayable.** Every record can be regenerated from its stored capture.
 
 ## Why v2 is built this way

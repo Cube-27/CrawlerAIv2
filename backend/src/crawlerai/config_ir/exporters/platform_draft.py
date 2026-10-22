@@ -8,8 +8,9 @@ of the context node: the row in a listing, the root element on a page. The relea
 way (a CSS step by its XPath, `attr` as the context node's attribute), so the release check of the IR is the check of
 the draft. A field the release check marks `manual` (§12.3) is exported with `manual: true`. An `api_recipe` is
 exported as stored, since held-out validation replayed it (adapters spec), and with its PHP code hint (`php_hint`).
-Regexes are in the portable subset (`portable_regex`) and run with PHP's `/u` modifier (`regex_flags`). Exports carry
-selectors only, never values (INV-27).
+XPath steps run in PHP 8.4 on the HTML Standard parse of the page (`xpath_document`). Regexes are in the portable
+subset (`portable_regex`) and run with PHP's `/u` modifier (`regex_flags`). Exports carry selectors only, never values
+(INV-27).
 """
 
 from collections.abc import Sequence
@@ -56,6 +57,13 @@ class PlatformDraft(_Model):
     # PHP PCRE pattern modifiers for every regex: `u`, UTF mode, in which `.` and classes match code points as in the
     # engine (`portable_regex`).
     regex_flags: Literal["u"] = "u"
+    # The PHP 8.4 document every XPath step runs on, with `new Dom\XPath($document)`: the HTML Standard parse (§13.2),
+    # the tree the engine and the release check read, so a step selects the same element there. `HTML_NO_DEFAULT_NS`
+    # leaves HTML elements in no namespace, as lxml has them, so an unprefixed name test (XPath 1.0 §2.3) matches them;
+    # `LIBXML_NOERROR` keeps parse errors, which the HTML Standard recovers from, out of PHP's warnings.
+    xpath_document: Literal["Dom\\HTMLDocument::createFromString($html, LIBXML_NOERROR | Dom\\HTML_NO_DEFAULT_NS)"] = (
+        "Dom\\HTMLDocument::createFromString($html, LIBXML_NOERROR | Dom\\HTML_NO_DEFAULT_NS)"
+    )
     ir_version: Literal["1"]
     site: str
     schema_: SchemaRef = Field(alias="schema")

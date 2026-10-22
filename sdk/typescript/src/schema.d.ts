@@ -2733,6 +2733,12 @@ export interface components {
             schema: components["schemas"]["SchemaRef"];
             /** Site */
             site: string;
+            /**
+             * Xpath Document
+             * @default Dom\HTMLDocument::createFromString($html, LIBXML_NOERROR | Dom\HTML_NO_DEFAULT_NS)
+             * @constant
+             */
+            xpath_document: "Dom\\HTMLDocument::createFromString($html, LIBXML_NOERROR | Dom\\HTML_NO_DEFAULT_NS)";
         };
         /** PressAction */
         PressAction: {
