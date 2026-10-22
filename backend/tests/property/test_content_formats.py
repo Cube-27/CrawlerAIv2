@@ -136,6 +136,19 @@ def test_markdown_is_the_main_content_with_its_links_and_images() -> None:
     )
 
 
+def test_markdown_reads_in_recall_mode_what_precision_mode_drops() -> None:
+    # trafilatura's precision mode drops a link-dense paragraph; a page whose only content it is still has content.
+    page = (
+        "<html><body><div><p><a href='/a'>Deep cleansing facial</a> with steam, <a href='/b'>extraction</a> and a"
+        " hydrating mask</p></div></body></html>"
+    )
+
+    assert markdown(ParsedPage(page), FINAL_URL) == (
+        "[Deep cleansing facial](https://shop.example.test/a) with steam,"
+        " [extraction](https://shop.example.test/b) and a hydrating mask"
+    )
+
+
 def _tile(i: int) -> str:
     return (
         f'<li class="tile"><a href="/p/{i}"><img src="/i/{i}.jpg" alt="Chair {i} photo"></a>'

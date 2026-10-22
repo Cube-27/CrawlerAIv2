@@ -374,7 +374,7 @@ The system SHALL produce `markdown`, `html`, `raw_html`, `links` and `metadata` 
 cleaning (`content/`); `markdown` is `""` when there is no main content, keeps the space after an inline element in a
 `div`, `td` or `li`, and a listing capture appends the first of the page's ranked repeated item groups
 (`ParsedPage.item_groups`, [listings](../listings/spec.md)) as a list, a listing without one being read in recall
-mode. A JSON body (an `api` capture's) is never read as HTML: its `links` are its absolute http(s) URL string values
+mode, as is any page whose precision-mode read finds no main content. A JSON body (an `api` capture's) is never read as HTML: its `links` are its absolute http(s) URL string values
 in document order, never markup inside a value; its `markdown` (and `markdown_fit`) is the answer pretty-printed in
 one fenced `json` code block; its `html` is `""`. Refs: §8.5, SPEC-07 §4.5, D-0401, D-0993, D-1275, D-1276, D-1277,
 D-1450, D-1473, D-1474;
@@ -382,6 +382,9 @@ endpoint in [rest-api](../rest-api/spec.md).
 #### Scenario: No main content
 - **WHEN** trafilatura finds no main content
 - **THEN** `markdown` is the empty string
+#### Scenario: Precision read finds nothing
+- **WHEN** precision mode keeps none of a page whose only content is a link-dense paragraph
+- **THEN** `markdown` is that paragraph, read in recall mode
 #### Scenario: Tag cloud beside a grid
 - **WHEN** a listing holds 30 bare tag links and 4 cards with an image, a link and a price
 - **THEN** the cards are the listed items

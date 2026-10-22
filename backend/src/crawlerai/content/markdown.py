@@ -15,7 +15,7 @@ trafilatura reads a listing's item grid as boilerplate (link-dense repeated bloc
 the items (the segment step's first group, `ParsedPage.item_groups`) are taken out of its copy of the tree and written
 as a Markdown list after the rest of the content (`_items`): each item's links, images and text, in document order. A
 listing page with no repeated items is read in recall mode, as precision mode keeps little of a page that is not an
-article (extraction spec, "Page content formats").
+article; so is any page whose precision read finds no main content (extraction spec, "Page content formats").
 
 trafilatura drops the space after an inline element that opens a `div`, `td` or `li`'s text ("**Warning!**This"), so
 each such run of inline content is wrapped in a `p` first (`_wrap_inline_runs`, D-1275).
@@ -74,16 +74,24 @@ def markdown(
     _wrap_inline_runs(tree)
     # A page with no repeated items is not an article either, so precision mode would keep only its prose blocks.
     recall = page_kind == "listing" and not items
-    extracted = trafilatura.extract(
-        tree,
-        output_format="markdown",
-        include_links=True,
-        include_images=True,
-        favor_precision=not recall,
-        favor_recall=recall,
-    )
+    extracted = _extract(tree, recall=recall) or ("" if recall else _extract(tree, recall=True))
     listed = "\n".join(f"- {line}" for line in map(_item, items) if line)
     return _tidy("\n\n".join(part for part in (extracted, listed) if part))
+
+
+def _extract(tree: HtmlElement, *, recall: bool) -> str:
+    """trafilatura's Markdown of the tree, in recall or precision mode; `""` when it finds no main content."""
+    return (
+        trafilatura.extract(
+            tree,
+            output_format="markdown",
+            include_links=True,
+            include_images=True,
+            favor_precision=not recall,
+            favor_recall=recall,
+        )
+        or ""
+    )
 
 
 def _copied(tree: HtmlElement, blocks: tuple[HtmlElement, ...]) -> list[HtmlElement]:
