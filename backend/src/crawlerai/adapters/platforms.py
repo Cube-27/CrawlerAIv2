@@ -201,12 +201,12 @@ def _store_api(scheme: str, netloc: str, path: str, markup: str) -> ProductJson 
 
 
 # Shopify Ajax API, "Product" (shopify.dev/docs/api/ajax/reference/product): the product's `title`, `url` (its route
-# on the shop), `description` (its HTML body), `images` (every image's URL, the featured one first), `vendor`, and
+# on the shop), `description` (its HTML body), `images` (every image's URL, the featured one first), `vendor` (the name
+# the merchant files the product under, its brand or any other label: a fallback for the brand, `Shape.fallbacks`), and
 # its `variants`, each with its `featured_image` (the image tied to the variant, its `src`), `title`, `sku`, `barcode`
-# (the GTIN, UPC
-# or ISBN), `available` (whether it can be bought: `true` names no one schema.org ItemAvailability, since a variant on
-# pre-order or back order can be bought too; `false` is `OutOfStock`) and `price`, an integer in cents for every
-# currency ("prices are in cents").
+# (the GTIN, UPC or ISBN), `available` (whether it can be bought: `true` names no one schema.org ItemAvailability,
+# since a variant on pre-order or back order can be bought too; `false` is `OutOfStock`) and `price`, an integer in
+# cents for every currency ("prices are in cents").
 _SHOPIFY_VARIANT: Final = Shape(
     type="Offer",
     at=("variants", ALL),
@@ -251,6 +251,7 @@ def _shopify_product(own: dict[str, Members], images: tuple[Members, ...] = (_SH
         properties=properties,
         also={"image": images[1:]},
         nodes={"offers": (_SHOPIFY_VARIANT, _SHOPIFY_RANGE)},
+        fallbacks=frozenset({"brand"}),
     )
 
 

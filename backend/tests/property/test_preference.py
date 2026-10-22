@@ -208,6 +208,31 @@ def test_the_best_scored_value_wins_and_a_fragment_weighs_nothing() -> None:
     assert fragment["title"] == Chosen(jsonld, (), ((decorated, "outscored"),), (decorated, jsonld))
 
 
+BRAND = FieldSpec(type=FieldType.TEXT, description="d", schema_org="Product.brand.name")
+_BRANDS = st.sampled_from(["Lumen", "Fall Edit", "Lumen Co"])
+
+
+@given(_BRANDS, _BRANDS, st.sampled_from(["jsonld", "microdata", "og"]))
+def test_a_fallback_fills_a_field_only_where_the_page_states_no_value(
+    record: str, stated: str, kind: SourceKind
+) -> None:
+    fallback = _candidate("brand", record, kind="adapter").model_copy(update={"fallback": True})
+    page = _candidate("brand", stated, PRODUCT if kind != "og" else PAGE, kind, n=1)
+    decorated = _candidate("brand", f"{record} | Shop", PRODUCT, "jsonld", n=2)
+
+    alone = _prefer(_schema(brand=BRAND), fallback)
+    beside = _prefer(_schema(brand=BRAND), fallback, page)
+    referenced = _prefer(_schema(brand=BRAND), fallback, decorated)
+
+    # A platform's record weighs 0 beside a value the page states: it neither wins, agrees nor flags the field.
+    assert alone["brand"] == Chosen(fallback, (), (), (fallback,))
+    assert isinstance(chosen := beside["brand"], Chosen)
+    assert (chosen.candidate, chosen.flag) == (page, None)
+    # Nor is it the reference that makes a stated value a fragment.
+    assert isinstance(fragment := referenced["brand"], Chosen)
+    assert fragment.candidate == decorated
+
+
 IMAGE = FieldSpec(type=FieldType.IMAGE_URL, description="d", schema_org="Product.image")
 
 

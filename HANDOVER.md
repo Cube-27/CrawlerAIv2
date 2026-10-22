@@ -145,9 +145,9 @@ Each is a working rule today; the owner may change it (`openspec/design/owner-de
   variant-fill rule); the owner may prefer a conflict (unpublished).
 - **Inline-state rating and count.** Admitted only when another source agrees (the documented admission rule).
 - **Client-side review widgets.** Decided: they count as "render needed"; no engine change.
+- **Shopify vendor as brand.** Decided (owner #81): a brand the page states outranks the platform vendor, which
+  fills `brand` only where the page states none.
 - **Role S label language tags.** Would change the public labels API; deferred.
-- **Shopify vendor as brand.** The platform vendor outranks the JSON-LD `brand`; on one S3 page the vendor is a
-  season name ("Fall 2026"). The owner may rank it below the JSON-LD brand.
 - **PHP export on an HTML5 parse.** The engine parses once with the HTML Standard parser (#431); the PHP export still
   runs XPaths on libxml2's parse, so the few fields whose paths differ export as `manual`. PHP 8.4's
   `Dom\HTMLDocument` would close the gap.

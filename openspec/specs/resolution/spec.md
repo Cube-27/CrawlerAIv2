@@ -32,7 +32,12 @@ its scope match times its value's agreement:
   kind, for an Open Graph list its first file only (Open Graph "Arrays": the first is preferred; a site default after it
   is no view)). For `money` the strength of the currency
   evidence ([normalization](../normalization/spec.md) `basis`): a stated currency 1, then `page`, `locale`, `url`,
-  `unknown` each 1/(number of bases + 1) less. Every other type weighs every kind 1 (no measured order).
+  `unknown` each 1/(number of bases + 1) less. Every other type weighs every kind 1 (no measured order). A fallback
+  (a value an adapter reads from the platform's own record of the item rather than from what its page states,
+  `Shape.fallbacks`: Shopify's `vendor` for the brand, [adapters](../adapters/spec.md)) weighs 0 beside any independent
+  candidate that is none, and is then no reference for another's fragment, so it fills the field only where the page
+  states no value and lends a stated value no agreement and no `agreed` evidence (owner 2026-10-22: a stated brand
+  outranks the platform vendor).
 - Scope match: 1 for the target's own values and its anchor Offer's, 0.5 for another Offer of the target or of its
   variants (Atomic offers); another item's values are not owned at all.
 - Agreement: of the field's independent candidates, per source kind its best weight, summed over the kinds stating
