@@ -15,8 +15,9 @@ C4):
   the block's headings link to, else the one whose links hold most of the block's text (`one_link`). Else, at
   group level (DEPTA alignment, `item_links`; both in `collect/items/links.py`): the documents two or more blocks link
   to are the template's (a vendor's, an author's, a category's page: an item is listed once), and the block's item is
-  the one other document its links lead to at the tag path where a quorum of the blocks link to one such document. A
-  block without one such document is no row.
+  the one other document its links lead to at the place where a quorum of the blocks link to one such document (a
+  link's place: its tag path and its parent's rank among those of the block's links at that path, `_link_places`).
+  A block without one such document is no row.
 - **name** (a row text field whose path names schema.org `name`, or JobPosting `title`): the shown content of a
   hyperlink to the block's item when that is one line of text holding no typed value the block aligns (HTML Standard
   §4.5.1; each such link of the block at its own place, so the image link's helper text and the title link's text are
