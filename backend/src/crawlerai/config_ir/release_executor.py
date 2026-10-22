@@ -315,8 +315,6 @@ def _jsonpath(query: str) -> Any:
     return parse_jsonpath(query)
 
 
-
-
 def _documents(source: JsonSource, page: ReleasePage, root: etree._Element) -> Iterator[Value]:
     """The JSON documents of `source`; one that is not JSON is skipped. Script state and attribute documents are
     decoded (`decode`), and the Flight stream's rows are its documents (`rsc`), each decoded."""
