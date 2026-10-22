@@ -4,6 +4,9 @@ stating them, each from a named function with its standard.
 A derivation fills a field only when preference left it missing: a published field keeps its value, and a conflict
 stays a conflict. Each value carries `derived_by`. Adding a derivation is a C2/C13 review item.
 
+A job page that holds its own application form (`collect.application`) is where a candidate applies: its final URL is
+the posting's apply link when the page states no other (owner decision 2026-10-22).
+
 The page-URL field's candidates are first held to the page: when it states one canonical link on its own site, a
 candidate naming another document is not the page's URL (`OTHER_DOCUMENT`), and preference decides among the rest.
 """
@@ -28,6 +31,8 @@ from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # Why a candidate of the page-URL field does not publish: it names another document than the page (`_held_to_page`).
 OTHER_DOCUMENT: Final = "other_document"
+# schema.org JobPosting `potentialAction`, an ApplyAction whose `target` is where a candidate applies.
+_APPLY_TARGET: Final = ("potentialAction", "target")
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +59,15 @@ def is_page_url_field(schema: SchemaDef, spec: FieldSpec, primary: frozenset[str
     return all(path.root in primary and names_item_url(path) for path in paths)
 
 
+def is_application_field(schema: SchemaDef, spec: FieldSpec) -> bool:
+    """Whether the field is a detail page's apply link: a url field whose path is `JobPosting.potentialAction.target`
+    in every alternative (`_APPLY_TARGET`)."""
+    if schema.page_kind != "detail" or spec.type is not FieldType.URL or spec.schema_org is None:
+        return False
+    paths = parse_paths(spec.schema_org)
+    return all(path.root == "JobPosting" and path.steps == _APPLY_TARGET and not path.joined for path in paths)
+
+
 def fill(
     spec: FieldSpec,
     preference: Preference,
@@ -64,12 +78,14 @@ def fill(
     canonical_url: str | None,
     canonical_href: str | None = None,
     page_url_field: bool,
+    application_url: str | None = None,
 ) -> Preference | Derived:
     """The field's derived value when preference left it missing (INV-07), else `preference`, the page-URL field's
     held to the page first (`_held_to_page`).
 
     A value from the field's own candidate comes first; the page URL only when the field is the page's
-    (`is_page_url_field`): the canonical link, then the final URL.
+    (`is_page_url_field`): the canonical link, then the final URL; or `application_url`, the final URL of a page that
+    holds the application, for the apply link (`is_application_field`).
     """
     own = _own_url(spec, canonical_url, ctx) if page_url_field else None
     if page_url_field:
@@ -85,6 +101,8 @@ def fill(
         derived = None
     if derived is None and page_url_field:
         derived = canonical_link(spec, canonical_url, ctx, canonical_href) or final_url(spec, ctx)
+    if derived is None and application_url is not None:
+        derived = application_form(spec, application_url, ctx)
     return preference if derived is None else replace(derived, rejected=preference.rejected)
 
 
@@ -163,6 +181,13 @@ def canonical_link(spec: FieldSpec, canonical_url: str | None, ctx: Context, hre
 def final_url(spec: FieldSpec, ctx: Context) -> Derived | None:
     """RFC 9110 §15.4: the URL the request ended at after redirects, which is the page's own: the context's page URL."""
     return _page_url(spec, ctx.page_url, ctx, "final_url")
+
+
+def application_form(spec: FieldSpec, url: str, ctx: Context) -> Derived | None:
+    """The final URL `url` (RFC 9110 §15.4) of a page that holds its posting's application form: the document a
+    candidate applies on (owner decision 2026-10-22). It names that document as fetched, with any query that selects
+    the posting (an embedded board's), never its canonical link."""
+    return _page_url(spec, url, ctx, "application_form")
 
 
 def _page_url(spec: FieldSpec, url: str | None, ctx: Context, derived_by: Derivation) -> Derived | None:

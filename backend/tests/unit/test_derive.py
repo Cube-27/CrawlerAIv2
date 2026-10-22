@@ -10,7 +10,7 @@ from crawlerai.core.ids import uuid7
 from crawlerai.db.models import PageKind, SchemaId, SourceKind
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.url import RELATIVE_WITHOUT_BASE
-from crawlerai.resolve.derive import Derived, fill, is_page_url_field
+from crawlerai.resolve.derive import Derived, fill, is_application_field, is_page_url_field
 from crawlerai.resolve.ownership import EntityGraph
 from crawlerai.resolve.preference import PRECEDENCE_TYPES, Chosen, PageFacts, Preference, Resolver
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
@@ -53,6 +53,7 @@ def _fill(
     canonical_url: str | None = CANONICAL,
     page_url_field: bool = True,
     ctx: Context = CTX,
+    application_url: str | None = None,
 ) -> Preference | Derived:
     return fill(
         spec,
@@ -62,6 +63,7 @@ def _fill(
         ctx,
         canonical_url=canonical_url,
         page_url_field=page_url_field,
+        application_url=application_url,
     )
 
 
@@ -141,3 +143,18 @@ def test_a_url_naming_another_document_than_the_canonical_link_is_rejected() -> 
     assert elsewhere.candidate is other
     assert isinstance(credentials, Chosen)  # RFC 9110 §4.2.4: a link with userinfo names no page
     assert credentials.candidate is og
+
+
+def test_a_page_holding_its_application_is_the_apply_link_as_fetched() -> None:
+    # Owner decision 2026-10-22: where a candidate applies on the page, its final URL (RFC 9110 §15.4), never its
+    # canonical link, is the apply link; only when the page states none, and only on a page that holds the form.
+    apply = FieldSpec(type=FieldType.URL, description="d", schema_org="JobPosting.potentialAction.target")
+    schema = _schema(url=URL.model_copy(update={"schema_org": "JobPosting.url"}), apply_url=apply)
+    missing = RESOLVER.prefer_field(apply, [])
+
+    derived = _fill(apply, missing, page_url_field=False, application_url=FINAL_URL)
+
+    assert [name for name, spec in schema.fields.items() if is_application_field(schema, spec)] == ["apply_url"]
+    assert isinstance(derived, Derived)
+    assert (derived.value, derived.derived_by) == (FINAL_URL, "application_form")
+    assert _fill(apply, missing, page_url_field=False) == missing
