@@ -439,13 +439,11 @@ class Resolver:
         when they agree (`_fill`); None otherwise."""
         members = self.graph.variants(self.target)
         pooled = [self._variant_kept(member, candidates) for member in members]
-        if not pooled or not all(pooled):
-            return None
         kept = [c for member_kept in pooled for c in member_kept]
-        if _one_value(spec, kept):
+        if pooled and all(pooled) and _one_value(spec, kept):
             return kept
         shown = [found for member, found in zip(members, pooled, strict=True) if self._shows(member, offers)]
-        return shown[0] if len(shown) == 1 and _one_value(spec, shown[0]) else None
+        return shown[0] if len(shown) == 1 and shown[0] and _one_value(spec, shown[0]) else None
 
     def _shows(self, member: Entity, offers: PageOffers) -> bool:
         """Whether the variant `member` is the one the target shows: its Offers are among the shown variant's."""
