@@ -193,17 +193,19 @@ class JsonLdCollector:
 
     def nodes(self, page: ParsedPage) -> Iterator[tuple[str, tuple[str, ...], Mapping[str, JsonValue]]]:
         """The page's schema.org nodes in document order, each with its locator (`jsonld:<block>:<path>`) and its
-        types, most specific first. Invalid blocks are skipped; `collect` reports them."""
+        types, most specific first. Invalid blocks are skipped; `collect` reports them. Only nodes declaring a type
+        are given: a learned config's `jsonld` step selects nodes by their `@type` (JSON-LD 1.1 §3.5), as every
+        executor of it reads them, so an Offer `_implied` by where it sits is none of them."""
         for index, document in blocks(page, []):
             for found in self._walk(index, document):
-                if found.types:
+                if found.types and "@type" in found.data:
                     yield found.id, found.types, found.data
 
     def _walk(self, block: int, document: JsonValue) -> Iterator[_Object]:
         """Every object of `document` in document order. Iterative, so that nesting depth is bounded by what the JSON
         parser accepts rather than by the call stack."""
-        stack: list[tuple[JsonValue, str, bool, str | None, str | None, tuple[str, ...]]] = [
-            (document, "$", False, None, None, ())
+        stack: list[tuple[JsonValue, str, bool, str | None, str | None, str | None]] = [
+            (document, "$", False, None, None, None)
         ]
         while stack:
             value, path, in_schema, enclosing, via, implied = stack.pop()
@@ -224,19 +226,19 @@ class JsonLdCollector:
                 if key != _CONTEXT_KEY
             )
 
-    def _node_types(self, value: Mapping[str, JsonValue], in_schema: bool, implied: tuple[str, ...]) -> tuple[str, ...]:
-        """The node's declared types; for a node declaring none, not a node reference, the `implied` ones."""
+    def _node_types(self, value: Mapping[str, JsonValue], in_schema: bool, implied: str | None) -> tuple[str, ...]:
+        """The node's declared types; for a node declaring none, not a node reference, the `implied` one."""
         if "@type" not in value and value.keys() != {"@id"}:
-            return implied
+            return () if implied is None else (implied,)
         return self._types(value.get("@type"), in_schema)
 
-    def _implied(self, holder: _Object, key: str) -> tuple[str, ...]:
+    def _implied(self, holder: _Object, key: str) -> str | None:
         """The type of an untyped node that is the value of `key` on `holder`: schema.org `offers` expects an Offer or
         a Demand, and a product's offer is an Offer, so an untyped value of a Product's `offers` is an Offer. No other
         property's value is typed by what it is under."""
         if _term(holder, key) == _OFFERS and any(self.vocabulary.is_a(t, _PRODUCT) for t in holder.types):
-            return (_OFFER,)
-        return ()
+            return _OFFER
+        return None
 
     def _types(self, declared: JsonValue, in_schema: bool) -> tuple[str, ...]:
         names: list[str] = []

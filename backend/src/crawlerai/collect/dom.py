@@ -506,9 +506,7 @@ def _typed_found(
         return
     shorts = _short_texts(content.region, content.apart)
     struck = struck_ids(content.region)
-    named: dict[int, set[str]] = {}  # the fields pairs' labels give each value element
-    for label, value, _, _ in pairs:
-        named.setdefault(value.mem_id, set()).update(labels.get(words(label), ()))
+    named = _named(pairs, labels)
     for name in fields:
         spec = schema.fields[name]
         shown_texts = (
@@ -517,6 +515,15 @@ def _typed_found(
         texts = [(e, text) for e, text in shown_texts if reads(spec, text, ctx, struck=e.mem_id in struck)]
         if (one := _one_value(texts, spec, ctx)) is not None:
             yield name, *one, None
+
+
+def _named(pairs: Sequence[Pair], labels: Mapping[Words, Sequence[str]]) -> dict[int, set[str]]:
+    """The fields pairs' labels give each value element and the elements it holds, by element."""
+    named: dict[int, set[str]] = {}
+    for label, value, _, _ in pairs:
+        for element in (value, *value.css("*")):
+            named.setdefault(element.mem_id, set()).update(labels.get(words(label), ()))
+    return named
 
 
 def _one_value(texts: Sequence[tuple[LexborNode, str]], spec: FieldSpec, ctx: Context) -> tuple[str, str] | None:

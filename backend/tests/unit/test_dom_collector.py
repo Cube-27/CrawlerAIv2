@@ -535,6 +535,8 @@ def test_a_label_without_a_colon_gives_its_value_to_its_field_and_not_to_a_check
 
     assert _values(body, MONEY_SCHEMA) == {"gtin": ["4006381333931"]}
     assert _values(body, drafted) == {"sku": ["4006381333931"]}
+    nested = "<main><table><tr><th>Item no.</th><td><span>4006381333931</span></td></tr></table></main>"
+    assert _values(nested, drafted) == {"sku": ["4006381333931"]}
 
 
 def test_a_checked_identifier_is_read_from_an_unlabelled_pair_but_not_from_other_items() -> None:
