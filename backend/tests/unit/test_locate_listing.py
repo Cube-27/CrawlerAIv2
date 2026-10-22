@@ -134,8 +134,8 @@ def test_rows_in_the_http_state_become_a_jsonpath_listing_read_by_both_executors
     assert asked == []  # the cheaper tier validated: no recipe is learned
     assert not fetch_plan(ActiveConfig(ExtractionConfigId(uuid7()), 1, EngineExecutor(ir, VOCABULARY)), "off").browser
     html, url = _html(7, state=True, cards=False), f"{SITE}/list/7"
-    _, ctx = read_bundle(_bundle(7, html, "http"))
-    released = release_run(ir, ReleasePage(html=html, base_url=url), release_rules(SCHEMA, ctx))
+    page, ctx = read_bundle(_bundle(7, html, "http"))
+    released = release_run(ir, ReleasePage(page, url), release_rules(SCHEMA, ctx))
     assert released.rows[1] == {"title": "Item 7-1", "url": "/p/7-1"}  # as the state writes it
 
 

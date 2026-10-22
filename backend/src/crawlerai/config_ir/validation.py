@@ -240,8 +240,7 @@ def small_n_rule(pages: int, agreeing: int, *, minimum: int, share: Fraction) ->
 
 def release_on(ir: ExtractionConfigIR, schema: SchemaDef, page: HeldOutPage) -> Released:
     """The release executor's run of `ir` on a held-out page, with the schema's rules (D-0527)."""
-    release_page = ReleasePage(page.page.html, page.page.network, page.ctx.base_url)
-    return release_run(ir, release_page, release_rules(schema, page.ctx))
+    return release_run(ir, ReleasePage(page.page, page.ctx.base_url), release_rules(schema, page.ctx))
 
 
 # --- one page -------------------------------------------------------------------------------------------------------

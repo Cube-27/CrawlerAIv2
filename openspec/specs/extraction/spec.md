@@ -12,8 +12,8 @@ page content formats; a listing's rows are in [listings](../listings/spec.md), a
 Within one pipeline run or `scrape` request the system SHALL decode each capture body once and parse it once, by the
 HTML Standard's parsing algorithm (selectolax/lexbor), into one shared `ParsedPage` (`content/page.py`); the lxml tree
 is a copy of that parse built lazily, so an element has one path in both (libxml2's own HTML parser repairs malformed
-markup by other rules). Collectors, text, formats, pagination and the config executor read it, never the raw body (the
-release executor, INV-20, excepted). Refs: §8, D-0281.
+markup by other rules). Collectors, text, formats, pagination and the engine and release executors read it, never the
+raw body. Refs: §8, D-0281.
 Enforced by: a test counting parser constructions in `extract_page` and `scrape`; active.
 #### Scenario: Scrape with records and formats
 - **WHEN** a `scrape` request asks for records, `markdown` and `html` of one capture

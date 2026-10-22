@@ -4,16 +4,14 @@ the release check on held-out pages.
 It shares no code with the engine executor beyond the IR model and the shared decoders of state documents
 (`.importlinter`), so a field on which the two agree is evidence that the exported config reproduces the engine
 (INV-20).
-It parses the page body itself, the one exception to INV-26, as an exported config's consumer does: with libxml2's
-HTML parser (PHP `DOMXPath`, `config_ir.xpath1`), not the HTML Standard's parse the engine's tree copies
-(`acquire.items.lxml_of`). The two repair malformed markup differently, so a field whose XPath selects another element
-in libxml2's tree fails the check and is exported `manual` rather than silently wrong. It reads the page with lxml
-(XPath 1.0), `re`, `json` and
-jsonpath-ng: no collector, normalizer or vocabulary. A state document is read as the engine reads it, through the one
-decode of serializer formats (`content.state_decoders`: devalue flat arrays, normalized caches, Astro island props) and
-the one RSC Flight reader (`content.state.flight_rows`, `content.rsc`), never a second mechanism. What
-it knows of the schema comes from the caller as one `FieldRule` per field. Selectors are data interpreted by lxml and
-jsonpath-ng, never code (INV-17).
+It reads the engine's one parse of the page (INV-26): the lxml copy of its HTML Standard tree (`acquire.items.lxml_of`),
+the tree an exported config's consumer builds too (PHP 8.4 `Dom\\HTMLDocument`, `exporters.platform_draft`), so an
+XPath selects the same element in the engine, here and in an export. It reads the page with lxml (XPath 1.0), `re`,
+`json` and jsonpath-ng: no collector, normalizer or vocabulary. A state document is read as the engine reads it,
+through the one decode of serializer formats (`content.state_decoders`: devalue flat arrays, normalized caches, Astro
+island props) and the one RSC Flight reader (`content.state.flight_rows`, `content.rsc`), never a second mechanism.
+What it knows of the schema comes from the caller as one `FieldRule` per field. Selectors are data interpreted by lxml
+and jsonpath-ng, never code (INV-17).
 """
 
 import json
@@ -28,7 +26,6 @@ from urllib.parse import urljoin
 from jsonpath_ng import parse as parse_jsonpath  # type: ignore[import-untyped]
 from jsonpath_ng.exceptions import JsonPathLexerError, JsonPathParserError  # type: ignore[import-untyped]
 from lxml import etree
-from lxml import html as lxml_html
 
 from crawlerai.config_ir.model import (
     NEXT_PAGE_FIELD,
@@ -49,7 +46,7 @@ from crawlerai.config_ir.model import (
     TrimOp,
     XPathStep,
 )
-from crawlerai.content.page import ScriptBlock
+from crawlerai.content.page import ParsedPage, ScriptBlock
 from crawlerai.content.rsc import model_rows
 from crawlerai.content.state import flight_rows
 from crawlerai.content.state_decoders import decode, revive_astro_props
@@ -106,10 +103,9 @@ class FieldRule:
 
 @dataclass(frozen=True, slots=True)
 class ReleasePage:
-    """A held-out page: its decoded body, its captured network bodies in request order, and its base URL."""
+    """A held-out page: its one parse (with its captured network bodies in request order) and its base URL."""
 
-    html: str
-    network: Sequence[bytes] = ()
+    page: ParsedPage
     base_url: str | None = None
 
 
@@ -126,7 +122,7 @@ class Released:
 def release_run(ir: ExtractionConfigIR, page: ReleasePage, rules: Mapping[str, FieldRule]) -> Released:
     """The IR's values on `page`. In each field the first step whose value passes its post ops and the field's rule
     wins (§12.1); a field without a rule, or `suspended`, does not run."""
-    run = _Run(page, _parse(page.html), rules)
+    run = _Run(page, page.page.lxml_tree, rules)
     fields = run.fields(ir.fields, run.root, in_row=False)
     rows: tuple[dict[str, Value], ...] = ()
     if ir.listing is not None:
@@ -201,7 +197,7 @@ class _Run:
                 found = node.get(step.attr)
                 return [] if found is None else [str(found)]
             case RegexStep():
-                return _regex(step.regex, self.page.html)
+                return _regex(step.regex, self.page.page.html)
             case JsonLdStep():
                 nodes = [typed for document in self.json("jsonld") for typed in _typed(document, step.when_type)]
                 return _query(step.jsonld, nodes)
@@ -317,14 +313,6 @@ def _jsonpath(query: str) -> Any:
     return parse_jsonpath(query)
 
 
-def _parse(html: str) -> etree._Element:
-    # Parsed from UTF-8 with the encoding named, so that an XML encoding declaration in the text is ignored.
-    try:
-        return lxml_html.document_fromstring(html.encode("utf-8"), parser=lxml_html.HTMLParser(encoding="utf-8"))
-    except etree.ParserError:  # an empty or all-whitespace body has no root element
-        return lxml_html.Element("html")
-
-
 def _documents(source: JsonSource, page: ReleasePage, root: etree._Element) -> Iterator[Value]:
     """The JSON documents of `source`; one that is not JSON is skipped. Script state and attribute documents are
     decoded (`decode`), and the Flight stream's rows are its documents (`rsc`), each decoded."""
@@ -342,7 +330,7 @@ def _documents(source: JsonSource, page: ReleasePage, root: etree._Element) -> I
         case "rsc":
             yield from _flight_rows(root)
         case "xhr":
-            for body in page.network:
+            for body in page.page.network:
                 yield from _loads(body)
         case "api":
             raise _Unreadable("an api source is read through adapters spec's api recipe executor")

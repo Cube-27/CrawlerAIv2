@@ -111,8 +111,10 @@ def _context(base: bool) -> Context:
     return Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=url, page_url=url)
 
 
-def _run(fields: dict[str, Any], html: str, rules: dict[str, FieldRule] | None = None, **page: Any) -> Released:
-    return release_run(_ir("detail", fields), ReleasePage(html, **page), rules or {"title": TEXT_RULE})
+def _run(
+    fields: dict[str, Any], html: str, rules: dict[str, FieldRule] | None = None, network: tuple[bytes, ...] = ()
+) -> Released:
+    return release_run(_ir("detail", fields), ReleasePage(ParsedPage(html, network)), rules or {"title": TEXT_RULE})
 
 
 # Each example parses the page and runs both executors; its time depends on the machine, not on the property.
@@ -153,7 +155,7 @@ def test_the_executors_agree_on_page_fields(
     html, network = page
     ir, schema, ctx = _ir("detail", fields), _schema("detail", DETAIL_FIELDS), _context(base)
     engine = _engine_values(EngineExecutor(ir, VOCABULARY), ParsedPage(html, network), schema, ctx)
-    released = release_run(ir, ReleasePage(html, network, ctx.base_url), release_rules(schema, ctx))
+    released = release_run(ir, ReleasePage(ParsedPage(html, network), ctx.base_url), release_rules(schema, ctx))
     assert released.fields == {name: value for (owner, name), value in engine.items() if owner == PAGE}
 
 
@@ -187,7 +189,7 @@ def test_the_executors_agree_on_listing_rows_and_the_next_page(page: str, fields
     }
     ir, schema, ctx = _ir("listing", {}, listing), _schema("listing", LISTING_FIELDS), _context(base)
     engine = _engine_values(EngineExecutor(ir, VOCABULARY), ParsedPage(page), schema, ctx)
-    released = release_run(ir, ReleasePage(page, (), ctx.base_url), release_rules(schema, ctx))
+    released = release_run(ir, ReleasePage(ParsedPage(page), ctx.base_url), release_rules(schema, ctx))
     rows = [
         {name: value for (owner, name), value in engine.items() if owner == row_id(n)}
         for n in range(len(released.rows))
@@ -259,7 +261,7 @@ def test_a_listing_gives_one_mapping_per_row_and_the_next_page_url() -> None:
         "next": {"xpath": "//a[@rel='next']/@href", "post": [{"absolutize_url": {}}]},
     }
     rules = {"title": TEXT_RULE, "key": TEXT_RULE, "next_page_url": TEXT_RULE}
-    result = release_run(_ir("listing", {}, listing), ReleasePage(html, base_url=PAGE_URL), rules)
+    result = release_run(_ir("listing", {}, listing), ReleasePage(ParsedPage(html), PAGE_URL), rules)
     assert result.rows == ({"title": "One", "key": "k1"}, {}, {"key": "k3"})
     assert result.fields == {"next_page_url": "https://shop.example.test/p/1?page=2"}
     assert result.diagnostics[0] == "key:0: regex, jsonld and jsonpath steps read the whole page, not a row"

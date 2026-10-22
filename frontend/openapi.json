@@ -4943,6 +4943,12 @@
           "site": {
             "title": "Site",
             "type": "string"
+          },
+          "xpath_document": {
+            "const": "Dom\\HTMLDocument::createFromString($html, LIBXML_NOERROR | Dom\\HTML_NO_DEFAULT_NS)",
+            "default": "Dom\\HTMLDocument::createFromString($html, LIBXML_NOERROR | Dom\\HTML_NO_DEFAULT_NS)",
+            "title": "Xpath Document",
+            "type": "string"
           }
         },
         "required": [

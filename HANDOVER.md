@@ -148,9 +148,6 @@ Each is a working rule today; the owner may change it (`openspec/design/owner-de
 - **Shopify vendor as brand.** Decided (owner #81): a brand the page states outranks the platform vendor, which
   fills `brand` only where the page states none.
 - **Role S label language tags.** Would change the public labels API; deferred.
-- **PHP export on an HTML5 parse.** The engine parses once with the HTML Standard parser (#431); the PHP export still
-  runs XPaths on libxml2's parse, so the few fields whose paths differ export as `manual`. PHP 8.4's
-  `Dom\HTMLDocument` would close the gap.
 - **og:title as a job title.** Not mapped: on S3 it gave 3 right and 3 wrong titles (site wording, generic titles).
 
 ## Open items (known, not fixed)

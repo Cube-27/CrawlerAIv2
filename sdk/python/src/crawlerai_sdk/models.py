@@ -2209,6 +2209,12 @@ class PlatformDraft(BaseModel):
     regex_flags: Annotated[Literal["u"], Field(title="Regex Flags")] = "u"
     schema_: Annotated[SchemaRef, Field(alias="schema")]
     site: Annotated[str, Field(title="Site")]
+    xpath_document: Annotated[
+        Literal[
+            "Dom\\HTMLDocument::createFromString($html, LIBXML_NOERROR | Dom\\HTML_NO_DEFAULT_NS)"
+        ],
+        Field(title="Xpath Document"),
+    ] = "Dom\\HTMLDocument::createFromString($html, LIBXML_NOERROR | Dom\\HTML_NO_DEFAULT_NS)"
 
 
 class RecordPage(BaseModel):
