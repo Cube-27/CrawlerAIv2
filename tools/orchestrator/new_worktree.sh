@@ -28,6 +28,7 @@ for data in schemaorg publicsuffix; do
   [[ -d $main/backend/data/$data ]] && cp -r "$main/backend/data/$data" "$dir/backend/data/$data"
 done
 if [[ -f $dir/backend/pyproject.toml ]]; then
-  (cd "$dir/backend" && uv sync -q --no-build) >&2 || err "uv sync failed in $dir/backend"
+  # Dependencies from the lockfile's wheels only, as CI installs them; the project itself is built (editable).
+  (cd "$dir/backend" && uv sync -q --no-build --no-binary-package crawlerai) >&2 || err "uv sync failed in $dir/backend"
 fi
 echo "$dir"
