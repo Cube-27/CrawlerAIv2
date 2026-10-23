@@ -22,6 +22,7 @@ from ipaddress import IPv4Address, ip_address
 from urllib.parse import urlsplit
 
 import pytest
+from lxml import html as lxml_html
 from patchright.async_api import Error as PlaywrightError
 
 from crawlerai.acquire.browser import fetch_browser
@@ -92,8 +93,17 @@ _UNENDING_CALL = (
     + b"A page whose content is static while one of its data calls never ends. " * 4
     + b"</p><script>fetch('/api/unending'); fetch('/api/items');</script></body></html>"
 )
-# A page that starts a dedicated worker (HTML Standard §10.2.6), which makes a request of its own.
-_WITH_WORKER = b"""<html><body><p>Worker page</p><script>new Worker('/worker.js');</script></body></html>"""
+# A page that starts a dedicated worker (HTML Standard §10.2.6), which makes a request of its own, holds a frame of
+# another site (`localhost`: a cross-site frame renders in a process of its own), and writes the client hints it reads.
+# 127.0.0.1 and localhost are potentially trustworthy origins (W3C Secure Contexts §3.2), to which client hints go.
+_WITH_WORKER = """<html><body><p>Worker page</p><iframe src="http://localhost:{port}/framed"></iframe><script>
+new Worker('/worker.js');
+navigator.userAgentData.getHighEntropyValues({hints}).then(h => {{
+  const pre = document.createElement('pre'); pre.setAttribute('id', 'hints'); pre.textContent = JSON.stringify(h);
+  document.body.append(pre);
+}});
+</script></body></html>"""
+_FRAMED = b"<html><body><p>Framed</p><script>fetch('/api/n/8');</script></body></html>"
 
 # A 403 document that stands in for the page and never navigates on within the fetch (a challenge it cannot pass).
 # A 403 document that is a site page: enough text and hyperlinks (`acquire/classify.py`).
@@ -204,7 +214,7 @@ def server() -> Iterator[Server]:
             "/heavy": Reply(body=_HEAVY),
             "/unending-call": Reply(body=_UNENDING_CALL),
             "/api/unending": Reply(content_type=_JSON, body=b'{"never": "complete"}', hold_s=30),
-            "/with-worker": Reply(body=_WITH_WORKER),
+            "/framed": Reply(body=_FRAMED),
             "/worker.js": Reply(content_type="text/javascript", body=b"fetch('/api/n/7');"),
             "/refusal": Reply(403, body=_REFUSAL_PAGE),
             "/stall": Reply(body=b"<html></html>", delay_s=8),
@@ -221,8 +231,8 @@ def server() -> Iterator[Server]:
 
 
 class LocalConnector(SafeConnector):
-    """Admits `.test` hosts and 127.0.0.1 at the server's port, pinned to 127.0.0.1; everything else goes through
-    the real guard, where `internal.example.com` resolves to a private address."""
+    """Admits `.test` hosts, 127.0.0.1 and localhost at the server's port, pinned to 127.0.0.1; everything else goes
+    through the real guard, where `internal.example.com` resolves to a private address."""
 
     def __init__(self, port: int) -> None:
         async def resolve(host: str) -> list[IPAddress]:
@@ -238,7 +248,7 @@ class LocalConnector(SafeConnector):
     async def check(self, url: str) -> Target:
         parts = urlsplit(url)
         host = parts.hostname or ""
-        if (host.endswith(".test") or host == "127.0.0.1") and parts.port == self._port:
+        if (host.endswith(".test") or host in ("127.0.0.1", "localhost")) and parts.port == self._port:
             return Target(url=url, host=host, port=self._port, ip=IPv4Address("127.0.0.1"))
         try:
             return await super().check(url)
@@ -318,6 +328,31 @@ def test_a_data_call_whose_body_never_ends_is_left_out_and_the_page_kept(browser
 
     assert (result.block_class, result.attempts[-1].error) == ("ok", None)
     assert [e.url for e in result.bundle.manifest.network_bodies] == [server.url("/api/items")]
+
+
+def test_the_probe_reads_what_every_request_of_a_page_its_frame_and_worker_presents(
+    browser: Browser, server: Server
+) -> None:
+    """Owner 2026-10-23: the identity read at startup (`browser_identity`), which the HTTP and JSON rungs send, names no
+    headless mode, and is what the page, a cross-site frame and a dedicated worker send and report."""
+    identity = browser.session.identity
+    hints = ["architecture", "bitness", "fullVersionList", "model", "platformVersion", "wow64"]
+    server.routes["/with-worker"] = Reply(body=_WITH_WORKER.format(port=server.port, hints=json.dumps(hints)).encode())
+    seen = len(server.requests)
+
+    result = browser.fetch(server.url("/with-worker", host="127.0.0.1"))
+
+    assert "headless" not in json.dumps([identity.headers, identity.metadata]).lower()
+    sent = {
+        path: {name.lower(): value for name, value in headers.items()} for _, path, headers in server.requests[seen:]
+    }
+    assert set(sent) >= {"/with-worker", "/framed", "/worker.js", "/api/n/7", "/api/n/8"}
+    assert {headers["user-agent"] for headers in sent.values()} == {identity.agent}
+    named = dict(identity.headers)
+    for document in ("/with-worker", "/framed"):
+        assert {name: sent[document].get(name) for name in named} == named
+    reported = json.loads(lxml_html.fromstring(result.bundle.body).get_element_by_id("hints").text_content())
+    assert {name: reported[name] for name in hints} == {name: identity.metadata[name] for name in hints}
 
 
 @pytest.fixture(scope="module")

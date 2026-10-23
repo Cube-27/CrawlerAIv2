@@ -20,7 +20,7 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest, fetch_json
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.storage.capture_bundle import HeaderList
-from tests.stand_in import IMPERSONATE, handler_transport
+from tests.stand_in import IMPERSONATE, STAND_IN_BROWSER, handler_transport
 
 settings.register_profile("ci", max_examples=200)
 # The verify-* skills' one command (`.claude/skills/verify-*/SKILL.md`) asks for more examples, with no per-example
@@ -36,8 +36,8 @@ _TEST_DATABASE_PREFIX = "CRAWLERAI_TEST_"
 def _hermetic_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """Every `CRAWLERAI_*` variable of the process is removed while a test runs: `make check` exports the developer's
     `.env` (keys, model ids), and settings a test builds read the environment. A test sets what it needs. No Chrome
-    starts to read the browser rung's headers (`acquire.impersonate`): the rungs impersonate the default target with
-    its own headers."""
+    starts to read the browser rung's headers (`acquire.impersonate`): the rungs send a stand-in Chrome's user agent
+    over the default target."""
     for name in list(os.environ):
         upper = name.upper()
         if upper.startswith("CRAWLERAI_") and not upper.startswith(_TEST_DATABASE_PREFIX):
@@ -46,7 +46,7 @@ def _hermetic_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 async def _no_browser() -> HeaderList:
-    return ()
+    return STAND_IN_BROWSER
 
 
 class ParserCounter:

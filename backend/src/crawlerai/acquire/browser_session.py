@@ -3,21 +3,22 @@
 the site's own, not an incognito one). Every connection a profile's browser opens goes through its `SocksGuard`, which
 applies the SSRF guard to every redirect hop, frame and worker (§4.5). The caller's cookies (`RequestContext`) are added
 to the context before the navigation, as host-only cookies of the URL's host; the caller's headers are never set in the
-browser (INV-44).
+browser (INV-44). Every page, cross-site frame and popup presents the browser's own identity (`present`).
 """
 
 import asyncio
 import contextlib
+import json
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, cast
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
-from patchright._impl._api_structures import SetCookieParam, ViewportSize
-from patchright.async_api import BrowserContext, Playwright, Route, async_playwright
+from patchright._impl._api_structures import ProxySettings, SetCookieParam, ViewportSize
+from patchright.async_api import BrowserContext, Frame, Page, Playwright, async_playwright
 from patchright.async_api import Error as PlaywrightError
 
 from crawlerai.acquire.browser_profiles import Profile, discard_profile, open_profile, profile_name
@@ -35,12 +36,15 @@ from crawlerai.storage.capture_bundle import HeaderList
 __all__ = [
     "BrowserSession",
     "Failed",
-    "browser_headers",
+    "HeadlessIdentity",
+    "Identity",
+    "browser_identity",
     "context_cookies",
     "context_key",
     "context_locality",
     "open_browser",
     "open_context",
+    "present",
 ]
 
 # Patchright's documented setup (D-1204, D-1205, owner 2026-10-23): Google Chrome stable (`chrome`, installed with
@@ -50,23 +54,54 @@ __all__ = [
 # argument: WebRTC's proxy policy is a profile preference (`acquire.browser_profiles`).
 _CHANNEL = "chrome"
 _VIEWPORT: Final = ViewportSize(width=1280, height=720)
-# The one change to the browser's identity (owner #71 as amended 2026-10-21, INV-44): its own user agent, read from the
-# browser, with the token headless mode adds (`HeadlessChrome/`) named as a headed browser names it. Set as the
-# context's user agent, never the `--user-agent` launch switch.
+# The one change to the browser's identity (owner #71 as amended 2026-10-21 and 2026-10-23, INV-44): its own user
+# agent, read from the browser, with the token headless mode adds (`HeadlessChrome/`) named as a headed browser names
+# it, and its own User-Agent Client Hints. Set as the context's user agent and through Chrome's user agent override
+# (`present`), never the `--user-agent` launch switch. Nothing the browser presents may still name headless mode
+# (`_HEADLESS`, case-insensitive): the process refuses to start rather than send it.
 _HEADLESS_PRODUCT: Final = "HeadlessChrome/"
 _HEADED_PRODUCT: Final = "Chrome/"
+_HEADLESS: Final = "headless"
 _USER_AGENT: Final = "user-agent"
-# The browser started only to read the headers it sends (`browser_headers`) loads no page of any site; anything it
+# The browser started only to read the identity it presents (`browser_identity`) loads no page of any site; anything it
 # requests in the background goes to this closed loopback port and fails, rather than around the guard (INV-16).
 _NOWHERE: Final = "socks5://127.0.0.1:9"
-# The document that browser navigates to, answered in the browser itself: `.invalid` names no host (RFC 2606 §2).
-_NO_SITE: Final = "https://browser.invalid/"
+# The page that browser navigates to, the one address its proxy bypasses: a listener of this process on the loopback
+# address (RFC 6890 §2.2.2), which reads the request as the browser's network stack sends it (Playwright's request
+# routing sees it before that stack adds `Accept-Language`) and answers an empty page. A loopback origin is potentially
+# trustworthy (W3C Secure Contexts §3.2): client hints go to it, and its page reads them.
+_LOOPBACK: Final = "127.0.0.1"
+_EMPTY_PAGE: Final = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
 # The headers of a navigation that name the browser (RFC 9110 §10.1.5 `User-Agent`, RFC 8942 client hints, the
-# User-Agent Client Hints low-entropy set) and what it asks for (RFC 9110 §12.5.1 `Accept`, Upgrade Insecure Requests
-# §3.2.1). The HTTP and JSON rungs send them in place of their impersonation's (`acquire.impersonate`).
+# User-Agent Client Hints low-entropy set) and what it asks for (RFC 9110 §12.5.1 `Accept`, §12.5.4 `Accept-Language`
+# as a context without a locale sends it, Upgrade Insecure Requests §3.2.1). The HTTP and JSON rungs send them in place
+# of their impersonation's (`acquire.impersonate`).
 _NAMING_HEADERS: Final = frozenset(
-    {_USER_AGENT, "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "accept", "upgrade-insecure-requests"}
+    {
+        _USER_AGENT,
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "accept",
+        "accept-language",
+        "upgrade-insecure-requests",
+    }
 )
+# The browser's User-Agent Client Hints as it reports them itself (User-Agent Client Hints §3.3
+# `getHighEntropyValues`), every hint CDP's `Emulation.UserAgentMetadata` carries; `uaFullVersion` is its
+# `fullVersion`.
+_HINTS: Final = (
+    "architecture",
+    "bitness",
+    "formFactors",
+    "fullVersionList",
+    "model",
+    "platformVersion",
+    "uaFullVersion",
+    "wow64",
+)
+_HINTS_JS: Final = f"() => navigator.userAgentData.getHighEntropyValues({list(_HINTS)!r})"
+_HINT_FIELDS: Final = {"uaFullVersion": "fullVersion"}
 # Chromium's implicit proxy-bypass rules (`ProxyBypassRules`, net/proxy_resolution) send `localhost`, 127.0.0.0/8,
 # [::1], 169.254.0.0/16 and fe80::/10 around any proxy; 169.254.169.254 is the cloud metadata address. The bypass rule
 # `<-loopback>` removes those implicit rules, so they too go through the guard (INV-16). Playwright adds it itself
@@ -77,9 +112,28 @@ _PROXY_ALL_LOOPBACK = "<-loopback>"
 # in a job usually comes within seconds.
 _OPEN_PROFILES: Final = BROWSER_CONTEXTS
 _PROFILE_IDLE_S = 60.0
-# The browser's naming headers (`browser_headers`), read once per process: the installed Chrome does not change while
-# the process runs.
-_HEADERS: dict[str, HeaderList] = {}
+# The browser's identity (`browser_identity`), read once per process: the installed Chrome does not change while the
+# process runs.
+_IDENTITY: dict[str, "Identity"] = {}
+
+
+class HeadlessIdentity(RuntimeError):
+    """What the browser presents still names headless mode: the process does not start (owner 2026-10-23)."""
+
+
+@dataclass(frozen=True)
+class Identity:
+    """The browser rung's Chrome as its profiles present it: the headers that name it on a navigation
+    (`_NAMING_HEADERS`, its user agent's headless token renamed), which the HTTP and JSON rungs send too, and its
+    User-Agent Client Hints as the browser reports them (CDP's `Emulation.UserAgentMetadata`), which `present` sets
+    with that user agent."""
+
+    headers: HeaderList
+    metadata: Mapping[str, object]
+
+    @property
+    def agent(self) -> str:
+        return next((value for name, value in self.headers if name == _USER_AGENT), "")
 
 
 class Failed(Exception):
@@ -224,12 +278,12 @@ class _Profiles:
 
 @dataclass(frozen=True)
 class BrowserSession:
-    """A Playwright driver, shared by the fetches of one worker process, the user agent its profiles send (the
-    browser's own, its headless token renamed), the site profiles it keeps open, and the country this machine's direct
-    fetches go out from (`CRAWLERAI_EGRESS_COUNTRY`; None: undeclared)."""
+    """A Playwright driver, shared by the fetches of one worker process, the identity its profiles present (`Identity`),
+    the site profiles it keeps open, and the country this machine's direct fetches go out from
+    (`CRAWLERAI_EGRESS_COUNTRY`; None: undeclared)."""
 
     playwright: Playwright
-    agent: str
+    identity: Identity
     profiles: _Profiles = field(default_factory=_Profiles)
     country: str | None = None
 
@@ -254,42 +308,96 @@ async def open_browser(profiles: Path | None = None, country: str | None = None)
     profiles are kept under `profiles` (`CRAWLERAI_BROWSER_PROFILES`); without it, each lasts while it is open.
     `country` is the machine's declared egress country, whose zone a direct render's context takes."""
     async with async_playwright() as playwright:
-        headers = await browser_headers(playwright)
-        agent = next(value for name, value in headers if name == _USER_AGENT)
-        session = BrowserSession(playwright, agent, _Profiles(profiles), country)
+        session = BrowserSession(playwright, await browser_identity(playwright), _Profiles(profiles), country)
         try:
             yield session
         finally:
             await session.profiles.aclose()
 
 
-async def browser_headers(playwright: Playwright) -> HeaderList:
-    """The headers that name the browser (`_NAMING_HEADERS`) as its profiles send them on a navigation, its user
-    agent's headless token renamed; read once per process (`_HEADERS`) from a browser started for it alone, whose
-    navigation to `_NO_SITE` is answered inside the browser (Playwright's request routing, used here and nowhere a page
-    loads), so the request is read and nothing is sent."""
-    if (known := _HEADERS.get(_CHANNEL)) is not None:
+async def browser_identity(playwright: Playwright) -> Identity:
+    """The browser's identity: the headers that name it (`_NAMING_HEADERS`) as its navigation sends them, its user
+    agent's headless token renamed, and the client hints its page reports (`_HINTS`, read in Patchright's isolated
+    world); read once per process (`_IDENTITY`) from a browser started for it alone, whose one navigation goes to a
+    listener of this process (`_LOOPBACK`), so nothing is sent beyond the machine. Raises `HeadlessIdentity` when any
+    of it still names headless mode."""
+    if (known := _IDENTITY.get(_CHANNEL)) is not None:
         return known
     sent: dict[str, str] = {}
-
-    async def answer(route: Route) -> None:
-        sent.update(await route.request.all_headers())
-        await route.fulfill(body="", content_type="text/html")
-
-    browser = await playwright.chromium.launch(channel=_CHANNEL, headless=True, proxy={"server": _NOWHERE})
-    try:
-        page = await browser.new_page()
-        await page.route(_NO_SITE, answer)
-        await page.goto(_NO_SITE)
-    finally:
-        await browser.close()
+    async with _listening(sent) as url:
+        proxy = ProxySettings(server=_NOWHERE, bypass=_LOOPBACK)
+        browser = await playwright.chromium.launch(channel=_CHANNEL, headless=True, proxy=proxy)
+        try:
+            page = await browser.new_page()
+            await page.goto(url)
+            hints = cast(dict[str, object], await page.evaluate(_HINTS_JS))
+        finally:
+            await browser.close()
     headers = tuple(
         (name, value.replace(_HEADLESS_PRODUCT, _HEADED_PRODUCT, 1) if name == _USER_AGENT else value)
         for name, value in sent.items()
         if name in _NAMING_HEADERS
     )
-    _HEADERS[_CHANNEL] = headers
-    return headers
+    identity = Identity(headers, {_HINT_FIELDS.get(name, name): value for name, value in hints.items()})
+    if _HEADLESS in json.dumps([identity.headers, identity.metadata]).lower():
+        raise HeadlessIdentity("the browser rung's Chrome still names headless mode in its headers or client hints")
+    _IDENTITY[_CHANNEL] = identity
+    return identity
+
+
+@asynccontextmanager
+async def _listening(sent: dict[str, str]) -> AsyncIterator[str]:
+    """A listener on the loopback address that records the header fields of the first request it reads into `sent`
+    (RFC 9112 §5, names in lowercase) and answers each request with an empty page; the URL to navigate to."""
+
+    async def serve(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        with contextlib.suppress(OSError, asyncio.IncompleteReadError, asyncio.LimitOverrunError):
+            head = await reader.readuntil(b"\r\n\r\n")
+            if not sent:
+                for line in head.decode("latin-1").split("\r\n")[1:]:
+                    name, colon, value = line.partition(":")
+                    if colon:
+                        sent[name.strip().lower()] = value.strip()
+            writer.write(_EMPTY_PAGE)
+            await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(serve, _LOOPBACK, 0)
+    async with server:
+        # Plain HTTP to the loopback address: the listener is this process, and a loopback origin is potentially
+        # trustworthy (W3C Secure Contexts §3.2) without TLS.
+        yield urlunsplit(("http", f"{_LOOPBACK}:{server.sockets[0].getsockname()[1]}", "/", "", ""))
+
+
+async def present(page: Page, identity: Identity) -> None:
+    """Set `identity` on `page` before it navigates, then on each cross-site frame and popup it opens: Chrome's user
+    agent override (the CDP Emulation domain's, owner 2026-10-23) with the browser's own client hints, in
+    place of those Playwright derives from the user agent string alone (`platformVersion` from the frozen reduced user
+    agent, `architecture` x86 unless the string names ARM). A dedicated worker takes its page's. A cross-site frame,
+    which renders in a process of its own, and a popup take it once Playwright reports them, so their first requests
+    may carry Playwright's; a service or shared worker is out of reach (known gaps)."""
+    await _override(page, identity)
+    page.on("framenavigated", lambda frame: _present_frame(frame, identity))
+    page.on("popup", lambda popup: _present_popup(popup, identity))
+
+
+async def _override(target: Page | Frame, identity: Identity) -> None:
+    owner = target if isinstance(target, Page) else target.page
+    override = {"userAgent": identity.agent, "userAgentMetadata": dict(identity.metadata)}
+    session = await owner.context.new_cdp_session(target)
+    await session.send("Emulation.setUserAgentOverride", override)
+
+
+async def _present_frame(frame: Frame, identity: Identity) -> None:
+    # The page's own frames share its session: Playwright refuses a session for one; a frame may also be gone.
+    if frame.parent_frame is not None:
+        with contextlib.suppress(PlaywrightError):
+            await _override(frame, identity)
+
+
+async def _present_popup(popup: Page, identity: Identity) -> None:
+    with contextlib.suppress(PlaywrightError):  # the popup closed
+        await present(popup, identity)
 
 
 def context_locality(policy: FetchPolicy, session: BrowserSession, pool: ProxyPool | None) -> Locality:
@@ -330,7 +438,7 @@ async def open_context(
             channel=_CHANNEL,
             headless=True,
             viewport=_VIEWPORT,
-            user_agent=session.agent,
+            user_agent=session.identity.agent,
             proxy={"server": guard.url, "bypass": _PROXY_ALL_LOOPBACK},
             accept_downloads=False,
             **locale,

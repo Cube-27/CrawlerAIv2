@@ -45,6 +45,7 @@ from crawlerai.acquire.browser_session import (
     context_key,
     context_locality,
     open_context,
+    present,
 )
 from crawlerai.acquire.browser_wait import STEP_QUIET_S, MainFrame, called, ms_until, settle, until
 from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_label, count
@@ -290,6 +291,7 @@ async def rendered(
     try:
         page = await held.context.new_page()
         try:
+            await _presented(page, session)
             shown = await _navigate(page, url, first, policy, held.guard, run.started)
             shown.temporary = held.profile.lock is None
             yield shown
@@ -307,6 +309,15 @@ async def rendered(
             await session.profiles.keep(key, held)
         else:
             await session.profiles.release(held)
+
+
+async def _presented(page: Page, session: BrowserSession) -> None:
+    """The browser's identity set on the new tab before it navigates (`present`); a tab that cannot take it is not
+    rendered."""
+    try:
+        await present(page, session.identity)
+    except PlaywrightError as e:
+        raise Failed("render_error", None) from e
 
 
 async def _navigate(

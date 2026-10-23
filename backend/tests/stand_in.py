@@ -12,10 +12,13 @@ from crawlerai.acquire.impersonate import Impersonation
 from crawlerai.acquire.ssrf import Target
 from crawlerai.core.settings import IMPERSONATE_DEFAULT
 
-__all__ = ["CONNECT_FAILED", "IMPERSONATE", "handler_transport"]
+__all__ = ["CONNECT_FAILED", "IMPERSONATE", "STAND_IN_BROWSER", "handler_transport"]
 
 # The default target with its own headers, as when the browser rung's Chrome is not read.
 IMPERSONATE = Impersonation(IMPERSONATE_DEFAULT)
+# What a process's startup reads in place of the browser rung's Chrome where no browser starts: a user agent naming the
+# Chrome of the default target (synthetic).
+STAND_IN_BROWSER = (("user-agent", f"Mozilla/5.0 (X11; Linux x86_64) Chrome/{IMPERSONATE_DEFAULT[6:]}.0.0.0"),)
 # The reason of a connection the server refused: curl's CURLE_COULDNT_CONNECT, which a handler's `ConnectError` stands
 # for.
 CONNECT_FAILED = "network_error: curl 7"

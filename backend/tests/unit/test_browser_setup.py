@@ -2,7 +2,8 @@
 Google Chrome stable in headless mode, in a persistent profile with a fixed 1280x720 viewport and no launch argument,
 the WebRTC policy the guard needs in the profile's preferences, its own user agent with only its headless token renamed
 (owner #71 as amended), and no client hints or headers. The context's zone is the egress country's, else the request
-locale's region's. A fake Playwright records what `open_browser` and `fetch_browser` ask for; no browser runs.
+locale's region's. A fake Playwright records what `open_browser` and `fetch_browser` ask for; no browser runs (what the
+real probe reads, and what pages present on the wire: `test_browser_fetch.py`).
 """
 
 import asyncio
@@ -12,6 +13,7 @@ from contextlib import asynccontextmanager
 from ipaddress import IPv4Address
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 import pytest
 from patchright.async_api import Playwright
@@ -19,7 +21,7 @@ from patchright.async_api import Playwright
 import crawlerai
 from crawlerai.acquire import browser_session
 from crawlerai.acquire.browser import fetch_browser
-from crawlerai.acquire.browser_session import BrowserSession, browser_headers, open_browser
+from crawlerai.acquire.browser_session import BrowserSession, HeadlessIdentity, browser_identity, open_browser
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.core.engine_version import ENGINE_VERSION
@@ -54,41 +56,36 @@ class _Context:
 _OWN_UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36"
 )
-# What the browser's navigation carries as Playwright's routing reads it (synthetic values); `priority` names nothing.
+# What the browser's navigation sends, and its page's client hints (synthetic values); `priority` names nothing.
+_HINTS = {"platform": "Linux", "platformVersion": "", "uaFullVersion": "156.0.0.1"}
 _SENT = {
     "user-agent": _OWN_UA,
     "sec-ch-ua": '"Chromium";v="156", "Google Chrome";v="156", "Not.A/Brand";v="99"',
     "sec-ch-ua-mobile": "?0",
     "sec-ch-ua-platform": '"Linux"',
     "accept": "text/html,*/*;q=0.8",
+    "accept-language": "en-US,en;q=0.9",
     "upgrade-insecure-requests": "1",
     "priority": "u=0, i",
 }
 
 
-class _Request:
-    async def all_headers(self) -> dict[str, str]:
-        return _SENT
-
-
-class _Route:
-    request = _Request()
-
-    async def fulfill(self, **_options: Any) -> None:
-        return None
-
-
 class _Page:
     def __init__(self, recorder: _Recorder) -> None:
         self._recorder = recorder
-        self._handlers: dict[str, Any] = {}
-
-    async def route(self, url: str, handler: Any) -> None:
-        self._handlers[url] = handler
 
     async def goto(self, url: str) -> None:
+        """Send `_SENT` to `url` as the browser's navigation would, over a real connection."""
         self._recorder.navigated.append(url)
-        await self._handlers[url](_Route())
+        parts = urlsplit(url)
+        reader, writer = await asyncio.open_connection(parts.hostname, parts.port)
+        fields = "".join(f"{name}: {value}\r\n" for name, value in _SENT.items())
+        writer.write(f"GET / HTTP/1.1\r\nHost: {parts.netloc}\r\n{fields}\r\n".encode())
+        await reader.read()
+        writer.close()
+
+    async def evaluate(self, _expression: str) -> dict[str, str]:
+        return _HINTS
 
 
 class _Browser:
@@ -136,7 +133,7 @@ def recorder(monkeypatch: pytest.MonkeyPatch) -> _Recorder:
         yield _Playwright(recorded)
 
     monkeypatch.setattr(browser_session, "async_playwright", fake_playwright)
-    monkeypatch.setattr(browser_session, "_HEADERS", {})  # the headers are read once per process
+    monkeypatch.setattr(browser_session, "_IDENTITY", {})  # the identity is read once per process
     return recorded
 
 
@@ -167,8 +164,10 @@ def test_inv42_inv43_chrome_headless_in_a_profile_with_the_guards_webrtc_policy(
         "accept_downloads": False,
     }
     # The browser started to read its headers is the same build, loads no site and sends nothing around the guard.
-    assert recorder.probe == {"channel": "chrome", "headless": True, "proxy": {"server": "socks5://127.0.0.1:9"}}
-    assert recorder.navigated == ["https://browser.invalid/"]
+    # It goes only to a listener of this process on 127.0.0.1, the one address its proxy bypasses.
+    proxy = {"server": "socks5://127.0.0.1:9", "bypass": "127.0.0.1"}
+    assert recorder.probe == {"channel": "chrome", "headless": True, "proxy": proxy}
+    assert [urlsplit(url).hostname for url in recorder.navigated] == ["127.0.0.1"]
     # Read once per process: a session opened again (a restart) starts no second browser.
     with pytest.raises(_Stop):
         asyncio.run(_fetch_once())
@@ -181,8 +180,9 @@ def test_inv42_inv43_chrome_headless_in_a_profile_with_the_guards_webrtc_policy(
 
 
 # Calls that change the browser's identity or run code in the page's main world (Patchright README: no custom
-# user agent or headers; evaluate runs in an isolated world). Matched in source, so a new call site fails here; the one
-# allowed is the profile's own user agent with its headless token renamed (owner #71 as amended).
+# user agent or headers; evaluate runs in an isolated world). Matched in source, so a new call site fails here; the ones
+# allowed set the browser's own user agent with its headless token renamed (owner #71 as amended) and, through Chrome's
+# override, its own client hints (owner 2026-10-23).
 _IDENTITY_CALLS = re.compile(
     r"user_agent|extra_http_headers|setUserAgentOverride|add_init_script"
     r"|new_cdp_session|isolated_context=False|--enable-automation|--disable-blink-features"
@@ -197,20 +197,34 @@ def test_inv44_no_source_file_changes_the_browser_identity() -> None:
         if _IDENTITY_CALLS.search(line)
     ]
 
-    assert offenders == ["acquire/browser_session.py:" + str(_line_of("user_agent=session.agent,"))]
+    # The profile's user agent, and Chrome's user agent override with the browser's own client hints (`present`).
+    assert offenders == [
+        f"acquire/browser_session.py:{_line_of(line)}"
+        for line in ("new_cdp_session(target)", '"Emulation.setUserAgentOverride", override', "user_agent=session")
+    ]
 
 
 def _line_of(text: str) -> int:
+    """The one line of the browser session's source holding `text`."""
     lines = (_SRC / "acquire" / "browser_session.py").read_text(encoding="utf-8").splitlines()
-    return next(number for number, line in enumerate(lines, 1) if line.strip() == text)
+    (number,) = (number for number, line in enumerate(lines, 1) if text in line)
+    return number
 
 
-def test_the_http_rungs_read_the_naming_headers_with_the_user_agent_renamed(recorder: _Recorder) -> None:
-    headers = asyncio.run(browser_headers(cast(Playwright, _Playwright(recorder))))
+@pytest.mark.parametrize(
+    ("read", "value"),
+    [(_SENT, '"HeadlessChrome";v="156", "Chromium";v="156"'), (_HINTS, "HeadlessChrome 156")],
+    ids=["header", "client-hint"],
+)
+def test_a_browser_that_still_names_headless_mode_is_refused_at_startup(
+    recorder: _Recorder, monkeypatch: pytest.MonkeyPatch, read: dict[str, str], value: str
+) -> None:
+    # Owner 2026-10-23: nothing the browser presents, and so nothing the HTTP rungs send, may name headless mode.
+    monkeypatch.setitem(read, "sec-ch-ua" if read is _SENT else "model", value)
+    probing = browser_identity(cast(Playwright, _Playwright(recorder)))
 
-    # What the profiles send, so the HTTP and JSON rungs name the same browser (`acquire.impersonate`).
-    named = {name: value for name, value in _SENT.items() if name != "priority"}
-    assert headers == tuple({**named, "user-agent": _OWN_UA.replace("HeadlessChrome/", "Chrome/")}.items())
+    with pytest.raises(HeadlessIdentity):
+        asyncio.run(probing)
 
 
 def test_open_shadow_roots_are_serialized_by_get_html_in_the_isolated_world_only() -> None:
