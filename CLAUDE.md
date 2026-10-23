@@ -46,6 +46,13 @@ make check          # every CI check locally (`make check-backend`, ... per job)
   manages one per worktree.
 - Run only the test files you touched, one at a time; never the full suite or `pytest -n` locally.
 
+### Keep tool output short
+
+- Pipe long command output through `tail -n 50`, `head` or `grep`.
+- Read large files with Read's `offset`/`limit` (or `sed -n 'a,bp'`), never `cat` them whole.
+- Use quiet flags: `uv sync -q`, `pnpm i --silent`, `pytest -q`, `git log --oneline -20`.
+- Show only test failures, e.g. `uv run pytest -q tests/unit/test_x.py 2>&1 | tail -40`.
+
 ## Contract (binding; `docs/rules.md`)
 
 A bug fix repairs the layer whose rule failed, for the whole class of pages. Data the page does not state stays
