@@ -1601,6 +1601,8 @@ export interface components {
         ConfigDetail: {
             /** Custom */
             custom: boolean;
+            /** Drifting */
+            drifting: string[];
             /** Field Status */
             field_status: {
                 [key: string]: "corroborated" | "uncorroborated" | "operator" | "suspended" | "absent";
@@ -1623,8 +1625,12 @@ export interface components {
             page_kind: "detail" | "listing";
             /** Patterns */
             patterns: string[];
+            /** Pending Repair */
+            pending_repair: string | null;
             /** Renders */
             renders: string[];
+            /** Repair Changes */
+            repair_changes: components["schemas"]["RecipeChange"][] | null;
             /**
              * Schema Id
              * Format: uuid
@@ -1672,6 +1678,8 @@ export interface components {
         ConfigSummary: {
             /** Custom */
             custom: boolean;
+            /** Drifting */
+            drifting: string[];
             /** Field Status */
             field_status: {
                 [key: string]: "corroborated" | "uncorroborated" | "operator" | "suspended" | "absent";
@@ -1693,6 +1701,8 @@ export interface components {
             page_kind: "detail" | "listing";
             /** Patterns */
             patterns: string[];
+            /** Pending Repair */
+            pending_repair: string | null;
             /** Renders */
             renders: string[];
             /**
@@ -3721,6 +3731,17 @@ export interface components {
             origin: "adapter" | "induced" | "llm_synth" | "operator" | "located";
             /** Validated On */
             validated_on: string[];
+        };
+        /**
+         * RecipeChange
+         * @description One part of a recipe a repair changes: its dotted path in the recipe (`main.map.title`, `main.url`,
+         *     `calls.stock`), and its value before and after (None where it is not there).
+         */
+        RecipeChange: {
+            after: components["schemas"]["JsonValue"];
+            before: components["schemas"]["JsonValue"];
+            /** Part */
+            part: string;
         };
         /**
          * RecipeFieldReport

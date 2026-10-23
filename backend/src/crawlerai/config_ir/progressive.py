@@ -18,7 +18,9 @@ which ends the run with `learning_activated`, `learning_awaits_approval` or `lea
 A state is also a surface's render setting (`render_mode`): the last `render.mode` a job
 set for it, which a job submitted without one inherits. A job whose mode is `locate` or `always` starts the surface's
 locate run once, as a forced `learn` job whose request names the job and the
-fields it asked for (`request_locate`).
+fields it asked for (`request_locate`). A custom recipe's drift starts its repair run, a forced `learn` job whose
+request names the recipe (`repair`); it ends as a run awaiting approval does, its proposal stored apart from the
+learned config.
 """
 
 from collections.abc import Mapping
@@ -119,6 +121,8 @@ class _LearnRequest(BaseModel):
     schema_id: UUID
     page_kind: PageKind
     locate: LocateRequest | None = None
+    # A repair run's: the custom recipe whose drift it repairs.
+    repair: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -134,6 +138,12 @@ class StateKey:
     def locate_of(request: Mapping[str, Any]) -> LocateRequest | None:
         """The locate run a `learn` job's `request` asks for, if any."""
         return _LearnRequest.model_validate(request).locate
+
+    @staticmethod
+    def repair_of(request: Mapping[str, Any]) -> ExtractionConfigId | None:
+        """The custom recipe a `learn` job's `request` repairs, if any."""
+        repair = _LearnRequest.model_validate(request).repair
+        return None if repair is None else ExtractionConfigId(repair)
 
     @classmethod
     def from_request(cls, request: Mapping[str, Any]) -> "StateKey":
@@ -166,6 +176,7 @@ async def trigger_learning(conn: AsyncConnection, *, batch: int) -> int:
         configs.schema_id == state.schema_id,
         configs.page_kind == state.page_kind,
         configs.status == "pending_approval",
+        configs.pattern_shape == "",  # a recipe's repair waits apart from the learned config
     )
     recorded = select(Record.id).where(Record.site_id == state.site_id, Record.schema_id == state.schema_id)
     due = (
@@ -186,11 +197,16 @@ async def trigger_learning(conn: AsyncConnection, *, batch: int) -> int:
 
 
 async def request_learning(
-    conn: AsyncConnection, key: StateKey, *, force: bool = False, locate: LocateRequest | None = None
+    conn: AsyncConnection,
+    key: StateKey,
+    *,
+    force: bool = False,
+    locate: LocateRequest | None = None,
+    repair: ExtractionConfigId | None = None,
 ) -> JobId | None:
     """Start a learning run for `key`, a state created cold if there is none yet, and return its `learn` job; None
     when a run is already in flight, or the state is active and `force` is not set. With `locate`, the run is the
-    surface's locate run too."""
+    surface's locate run too; with `repair`, it repairs that custom recipe instead of learning the learned config."""
     await conn.execute(pg_insert(ProgressiveState).values(**key.columns()).on_conflict_do_nothing())
     event: LearnEvent = "start_forced" if force else "start"
     if not await _move(conn, key.where(), event, learning_started_at=func.now()):
@@ -199,6 +215,8 @@ async def request_learning(
     request = {**key.columns(), "site_id": str(key.site_id), "schema_id": str(key.schema_id), "force": force}
     if locate is not None:
         request["locate"] = locate.model_dump(mode="json")
+    if repair is not None:
+        request["repair"] = str(repair)
     job_id: JobId = (
         await conn.execute(
             insert(Job)

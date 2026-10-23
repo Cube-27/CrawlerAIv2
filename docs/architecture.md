@@ -85,6 +85,14 @@ their patterns match (`url_pattern.py`: host and path template, `{name}`, `*`, t
 progressive state names the learned config only. Selection (`active.py`): the recipe whose pattern matches the URL
 most specifically, else the learned config; a job pins every active config of a host and picks per URL.
 
+Learning leaves recipes alone: a learning run samples only the pages no active recipe's pattern matches
+(`held_out.load_pages(keep=)`) and only ever replaces the learned config. A recipe's drift (`drift.py`) suspends the
+field as for a learned config and starts a repair run (`learn_job.py`, `repair.py`), one learn job of the scope: API
+recipe learning over the pages the recipe's patterns match, its own endpoint preferred, gives the recipe's next version
+with the repaired path, call or parameter, stored `pending_approval` against its pattern shape; approving it suspends
+only the version it repairs. Config summaries name the drifting fields and a recipe's pending repair, whose detail
+lists what it changes (`repair.changes`).
+
 ## Jobs and data
 
 `db/models.py` is the schema (one baseline migration in `backend/migrations/`). Crawl frontier: `crawl/frontier.py`;

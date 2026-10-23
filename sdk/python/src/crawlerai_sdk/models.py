@@ -289,6 +289,10 @@ class ClickActionOutput(BaseModel):
     xpath: Annotated[str | None, Field(title="Xpath")] = None
 
 
+class DriftingItem(RootModel[str]):
+    root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,63}$")]
+
+
 class FieldStatus(Enum):
     corroborated = "corroborated"
     uncorroborated = "uncorroborated"
@@ -1028,6 +1032,15 @@ class Provenance(BaseModel):
     validated_on: Annotated[list[UUID], Field(title="Validated On")]
 
 
+class RecipeChange(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    after: JsonValue
+    before: JsonValue
+    part: Annotated[str, Field(title="Part")]
+
+
 class RecipeFieldReport(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1658,11 +1671,13 @@ class ConfigSummary(BaseModel):
         extra="forbid",
     )
     custom: Annotated[bool, Field(title="Custom")]
+    drifting: Annotated[list[DriftingItem], Field(title="Drifting")]
     field_status: Annotated[dict[str, FieldStatus], Field(title="Field Status")]
     id: Annotated[UUID, Field(title="Id")]
     origin: Annotated[Origin, Field(title="Origin")]
     page_kind: Annotated[PageKind, Field(title="Page Kind")]
     patterns: Annotated[list[str], Field(title="Patterns")]
+    pending_repair: Annotated[UUID | None, Field(title="Pending Repair")] = None
     renders: Annotated[list[str], Field(title="Renders")]
     schema_id: Annotated[UUID, Field(title="Schema Id")]
     sent_by: Annotated[SentBy, Field(title="Sent By")]
@@ -2874,13 +2889,18 @@ class ConfigDetail(BaseModel):
         extra="forbid",
     )
     custom: Annotated[bool, Field(title="Custom")]
+    drifting: Annotated[list[DriftingItem], Field(title="Drifting")]
     field_status: Annotated[dict[str, FieldStatus], Field(title="Field Status")]
     id: Annotated[UUID, Field(title="Id")]
     ir: ExtractionConfigIR
     origin: Annotated[Origin, Field(title="Origin")]
     page_kind: Annotated[PageKind, Field(title="Page Kind")]
     patterns: Annotated[list[str], Field(title="Patterns")]
+    pending_repair: Annotated[UUID | None, Field(title="Pending Repair")] = None
     renders: Annotated[list[str], Field(title="Renders")]
+    repair_changes: Annotated[
+        list[RecipeChange] | None, Field(title="Repair Changes")
+    ] = None
     schema_id: Annotated[UUID, Field(title="Schema Id")]
     sent_by: Annotated[SentBy, Field(title="Sent By")]
     site: Annotated[str, Field(title="Site")]

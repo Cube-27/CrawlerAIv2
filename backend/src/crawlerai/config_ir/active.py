@@ -163,8 +163,7 @@ def _bound(config_id: ExtractionConfigId, version: int, ir: ExtractionConfigIR, 
     if custom is not None and custom.page_fields:
         page = EngineExecutor(ir.model_copy(update={"fields": _page_fields(ir)}), vocabulary)
     api = None if recipe is None else RecipeExecutor.of(recipe, str(config_id), executor.field_status, custom, page)
-    # A custom recipe's pages join no drift window: drift relearns the learned config, never an engineer's recipe.
-    return ActiveConfig(config_id, version, executor, api, drifts=not ir.patterns, patterns=tuple(ir.patterns))
+    return ActiveConfig(config_id, version, executor, api, patterns=tuple(ir.patterns))
 
 
 async def record_page(
