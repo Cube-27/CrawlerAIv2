@@ -43,7 +43,7 @@ class KindTraits:
     # Its tasks are queued for the workers, each run by the worker's handler of the kind (`worker/handlers/table`).
     queued_tasks: bool = False
     # A process runs it while its caller waits, with no task for a while or ever: failed once it has none for longer
-    # than a lease (`db.queue.fail_stalled_jobs`).
+    # than a lease (`fail_stalled_jobs` in `db/queue`).
     inline: bool = False
     # It has no tasks: a started run ends itself on `cancel_requested`, so a cancel never settles it.
     ends_itself: bool = False
