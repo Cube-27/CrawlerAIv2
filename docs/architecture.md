@@ -37,6 +37,21 @@ handler of the job kind (`worker/handlers/`); `scheduler/loop.py` enqueues sched
 7. **Outputs**. Records with per-field evidence, confidence, locator (`services/records.py`, `services/page_store.py`);
    `llms.txt` views; configs export (`config_ir/exporters`).
 
+## Proxies
+
+`CRAWLERAI_PROXY_POOLS` (`core/proxy.py`) maps a pool name to a proxy URL or to
+`{"endpoints": [url, ...], "mode": "rotate"|"sticky", "country"?, "timezone"?, "locale"?}`; a request's
+`fetch.proxy_pool` names one, else the fetch is direct, from the place `CRAWLERAI_EGRESS_COUNTRY`, `_TIMEZONE` and
+`_LOCALE` declare. `rotate` takes endpoints in turn, `sticky` keeps a site on one endpoint. An endpoint whose username or
+password holds `{session}` is a provider gateway with sticky exits: each site (registrable domain) gets a session id
+there, so its HTTP, JSON and browser fetches leave from one address; the exit ends after `SESSION_TTL` or
+`SESSION_FETCHES` (as cookie sessions do, `acquire/session.py`) or at a failure through it (block, no answer), and the
+next fetch mints another. The exit is part of the browser profile key (`context_key`, profiles of an exit live only
+in this process), and a cookie session earned through it ends with it. Timezone rule (`acquire/locality.py`): the
+exit's declared IANA zone, else the one zone of its declared country, else the request locale's region's; a country of
+several zones and no declared zone sets none (the machine's), which startup logs once (`check_places`). The locale is
+the request's, else the exit's declared one, and the HTTP and JSON rungs send it as `Accept-Language` too.
+
 ## Learned configs
 
 `config_ir/` holds the IR (`model.py`), learning (`learning.py`, `induction.py`, `listing_induction.py`, `synthesis.py`),

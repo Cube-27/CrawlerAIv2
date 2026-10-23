@@ -116,6 +116,11 @@ class SuffixCookiePolicy(DefaultCookiePolicy):
         return super().set_ok_domain(cookie, request)
 
 
+def site_of(url: str) -> str:
+    """The site of `url`'s host (`site` above), by the default list."""
+    return default_suffixes().site(urlsplit(url).hostname or "")
+
+
 @cache
 def default_suffixes() -> PublicSuffixes:
     """The list in the engine directory's `data/`, read once; empty when it has not been fetched."""

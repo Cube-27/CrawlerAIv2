@@ -37,6 +37,10 @@ Reasoning for a single change goes in its PR body.
 - **Viewport per site profile** (one common desktop screen per profile). **Stay headless.**
 - **Cookies are plain cookies.** Earned clearance cookies are kept and replayed like any other, in the site profile and session.
 - **Proxy framework built, not live-tested.** Our own runs go without proxies; no CAPTCHA solving.
+- **Exits declare their place.** A proxy pool states its country, timezone and locale, so the browser's zone and
+  `Accept-Language` match the address the site sees. Why: one coherent identity per fetch.
+- **Sticky exits per site.** A `{session}` gateway gives each site one exit address across its HTTP, JSON and browser
+  fetches until the session ages out or a fetch through it fails. Why: a site must not see one visitor from many places.
 - **Parse once.** Every consumer reads one shared parse of a capture; captures replay through the same `extract_page`.
 - **Documented platform product JSON** (Shopify Ajax, WooCommerce Store API) is one companion request per detail page.
 

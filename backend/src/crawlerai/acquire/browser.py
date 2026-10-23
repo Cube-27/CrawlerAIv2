@@ -53,6 +53,7 @@ from crawlerai.acquire.classify import Redirect
 from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
 from crawlerai.acquire.page_steps import run_steps, steps_budget_s
+from crawlerai.acquire.public_suffix import site_of
 from crawlerai.acquire.session import CookieExport, SessionCookie, SiteSessions
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target
@@ -100,7 +101,7 @@ class Render:
         except UnknownProxyPool as unknown:
             self.failed(str(unknown))
             return False
-        self.proxy = pool_endpoint(self.pool, self.url)
+        self.proxy = pool_endpoint(self.pool, site_of(self.url))
         return True
 
     async def read(self, page: "Rendered") -> None:

@@ -24,12 +24,12 @@ from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_la
 from crawlerai.acquire.classify import Redirect, unread_media
 from crawlerai.acquire.curl_client import BODY_CAP, Hop, pinned, reason, send
 from crawlerai.acquire.impersonate import Impersonation
-from crawlerai.acquire.locality import language_headers
+from crawlerai.acquire.locality import exit_place, language_headers
 from crawlerai.acquire.outcome import Content, fetch_result, report_proxy
 from crawlerai.acquire.session import SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
-from crawlerai.core.proxy import ProxyPool
+from crawlerai.core.proxy import UNDECLARED, ExitPlace, ProxyPool
 from crawlerai.storage.capture_bundle import decode_html
 
 
@@ -42,8 +42,10 @@ async def fetch_http(
     connector: SafeConnector | None = None,
     pools: Mapping[str, ProxyPool] | None = None,
     sessions: SiteSessions | None = None,
+    direct: ExitPlace = UNDECLARED,
 ) -> FetchResult:
-    """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every request. `sessions`
+    """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every request, from its place
+    (`direct` without a pool: the machine's), whose locale the request's language falls back to. `sessions`
     are this process's site sessions: the site's, if any, goes with the fetch, and is dropped when it is `blocked`; a
     fetch with the caller's own context takes none."""
     fetched_at = datetime.now(UTC)
@@ -53,7 +55,7 @@ async def fetch_http(
     session = None if sessions is None else sessions.take(url, url, policy.proxy_pool)
     sent = await send(
         url,
-        Hop("GET", language_headers(policy.locale_hint)),
+        Hop("GET", language_headers(policy.locale_hint, exit_place(policy.proxy_pool, pools, direct))),
         policy,
         impersonate=impersonate,
         connector=connector or SafeConnector(),
@@ -81,7 +83,7 @@ async def fetch_http(
             served = last.exchange.url
             challenge = await asyncio.to_thread(challenge_label, last.status, last.response_headers, text, served)
     elif sent.error == BODY_CAP and last is not None and unread_media(last.status, last.response_headers):
-        # Stopped the body, which no page reader would read: its status and media type class the answer.
+        # The body was stopped, which no page reader would read: its status and media type class the answer.
         block_class = "unsupported_media"
     count(challenge, "http")
     result = fetch_result(

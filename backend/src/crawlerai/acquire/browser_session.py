@@ -26,13 +26,13 @@ from crawlerai.acquire.browser_profiles import Profile, discard_profile, open_pr
 from crawlerai.acquire.desktop_screen import desktop_screen
 from crawlerai.acquire.locality import Locality, locality
 from crawlerai.acquire.outcome import Exchange, Traffic
-from crawlerai.acquire.public_suffix import default_suffixes
+from crawlerai.acquire.public_suffix import site_of
 from crawlerai.acquire.session import SessionCookie, SiteSessions, browser_cookies
 from crawlerai.acquire.shared_browser import BROWSER_CONTEXTS
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import FetchPolicy, RequestContext
-from crawlerai.core.proxy import ProxyEndpoint, ProxyPool
+from crawlerai.core.proxy import UNDECLARED, ExitPlace, ProxyEndpoint, ProxyPool
 from crawlerai.storage.capture_bundle import HeaderList
 
 __all__ = [
@@ -50,11 +50,11 @@ __all__ = [
     "present_workers",
 ]
 
-# Patchright's documented setup (owner 2026-10-23): Google Chrome stable (`chrome`, installed with
+# Patchright's documented setup: Google Chrome stable (`chrome`, installed with
 # `patchright install chrome`), the build the Patchright README recommends, run headless, with its own client hints and
 # no custom headers. Each browser runs in a persistent profile, with the README's `no_viewport`, and two kinds of launch
-# argument: its user agent (`_USER_AGENT_SWITCH`), and the window and screen of the profile (`acquire.desktop_screen`,
-# owner 2026-10-23). WebRTC's proxy policy is a profile preference (`acquire.browser_profiles`).
+# argument: its user agent (`_USER_AGENT_SWITCH`), and the window and screen of the profile (`acquire.desktop_screen`).
+# WebRTC's proxy policy is a profile preference (`acquire.browser_profiles`).
 _CHANNEL = "chrome"
 # The one change to the browser's identity: its own user
 # agent, read from the browser, with the token headless mode adds (`HeadlessChrome/`) named as a headed browser names
@@ -128,7 +128,7 @@ _IDENTITY: dict[str, "Identity"] = {}
 
 
 class HeadlessIdentity(RuntimeError):
-    """What the browser presents still names headless mode: the process does not start (owner 2026-10-23)."""
+    """What the browser presents still names headless mode: the process does not start."""
 
 
 @dataclass(frozen=True)
@@ -181,6 +181,12 @@ class _Context:
 type ContextKey = tuple[str, str | None, ProxyEndpoint | None]
 
 
+def _exit_bound(key: ContextKey) -> bool:
+    """A profile of a sticky exit (`core.proxy`), which lives in this process alone: it lasts while it is open, in a
+    temporary directory, and is never kept on disk for a later process, whose exits are new."""
+    return key[2] is not None and key[2].gateway is not None
+
+
 @dataclass
 class _Profiles:
     """The site profiles open in this process: a site's next page, in any job, opens
@@ -188,7 +194,8 @@ class _Profiles:
     browser. A profile is taken while a page renders in it, so no two pages share one at once (a second page of the
     site gets a temporary profile, `acquire.browser_profiles`); at most `_OPEN_PROFILES` are open, the least recently
     used idle one closed first, an idle one closes after `_PROFILE_IDLE_S`, and all close with the session. A profile
-    whose browser closed unasked is dropped alone (`forget`): the other profiles' renders go on."""
+    whose browser closed unasked is dropped alone (`forget`): the other profiles' renders go on. A sticky exit's
+    profile is a temporary one kept idle like the rest (`_exit_bound`)."""
 
     root: Path | None = None
     idle: OrderedDict[ContextKey, _Context] = field(default_factory=OrderedDict)
@@ -220,7 +227,7 @@ class _Profiles:
         """`context` stops rendering and is kept idle for the site's next page; a temporary profile opened because the
         site's own was held, or one whose browser is gone, is closed instead, so it never stands in for the site's
         profile."""
-        if context.gone or (self.root is not None and context.profile.lock is None):
+        if context.gone or (self.root is not None and context.profile.lock is None and not _exit_bound(key)):
             await self.release(context)
             return
         self.busy -= 1
@@ -238,7 +245,8 @@ class _Profiles:
         self._stop_timer(key)
         held = self.idle.pop(key, None)
         if held is None:
-            discard_profile(self.root, profile_name(*key))
+            if not _exit_bound(key):
+                discard_profile(self.root, profile_name(*key))
             return
         held.profile.discarded = True
         await held.close()
@@ -289,13 +297,13 @@ class _Profiles:
 @dataclass(frozen=True)
 class BrowserSession:
     """A Playwright driver, shared by the fetches of one worker process, the identity its profiles present (`Identity`),
-    the site profiles it keeps open, and the country this machine's direct fetches go out from
-    (`CRAWLERAI_EGRESS_COUNTRY`; None: undeclared)."""
+    the site profiles it keeps open, and the place this machine's direct fetches go out from
+    (`CRAWLERAI_EGRESS_*`, the settings' `direct`)."""
 
     playwright: Playwright
     identity: Identity
     profiles: _Profiles = field(default_factory=_Profiles)
-    country: str | None = None
+    direct: ExitPlace = UNDECLARED
 
     @property
     def alive(self) -> bool:
@@ -313,12 +321,12 @@ def _driver_connected(playwright: Playwright) -> bool:
 
 
 @asynccontextmanager
-async def open_browser(profiles: Path | None = None, country: str | None = None) -> AsyncIterator[BrowserSession]:
+async def open_browser(profiles: Path | None = None, direct: ExitPlace = UNDECLARED) -> AsyncIterator[BrowserSession]:
     """The driver runs until the block ends; leaving it closes its profiles' browsers and the driver process. Site
     profiles are kept under `profiles` (`CRAWLERAI_BROWSER_PROFILES`); without it, each lasts while it is open.
-    `country` is the machine's declared egress country, whose zone a direct render's context takes."""
+    `direct` is the place the machine's direct fetches go out from, whose locality a direct render's context takes."""
     async with async_playwright() as playwright:
-        session = BrowserSession(playwright, await browser_identity(playwright), _Profiles(profiles), country)
+        session = BrowserSession(playwright, await browser_identity(playwright), _Profiles(profiles), direct)
         try:
             yield session
         finally:
@@ -381,7 +389,7 @@ async def _listening(sent: dict[str, str]) -> AsyncIterator[str]:
 
 async def present(page: Page, identity: Identity) -> None:
     """Set `identity` on `page` before it navigates, then on each cross-site frame and popup it opens: Chrome's user
-    agent override (the CDP Emulation domain's, owner 2026-10-23) with the browser's own client hints, which Chrome
+    agent override (the CDP Emulation domain's) with the browser's own client hints, which Chrome
     does not report itself under the `--user-agent` switch (`_USER_AGENT_SWITCH`). A dedicated worker takes its
     page's. A cross-site frame, which renders in a process of its own, and a popup take it once Playwright reports
     them, so their first requests carry the browser's default: the same user agent and brands, without the
@@ -438,11 +446,10 @@ async def _present_popup(popup: Page, identity: Identity) -> None:
 
 
 def context_locality(policy: FetchPolicy, session: BrowserSession, pool: ProxyPool | None) -> Locality:
-    """The context's locality (`acquire.locality`): the request's locale, and the zone of the country the render goes
-    out from, the pool's declared country through a pool, else the machine's; a
-    pool that declares none is not the machine's."""
-    country = session.country if pool is None else pool.country
-    return locality(policy.locale_hint, country)
+    """The context's locality (`acquire.locality`) for the request's locale through the place the render goes out
+    from: the pool's declared place through a pool, else the machine's; a pool
+    that declares none is not the machine's."""
+    return locality(policy.locale_hint, session.direct if pool is None else pool.place)
 
 
 async def open_context(
@@ -467,7 +474,7 @@ async def open_context(
     traffic = Traffic()
     site = key or _site_key(url, policy, proxy)
     try:
-        profile = open_profile(session.profiles.root, None if key is None else profile_name(*key))
+        profile = open_profile(session.profiles.root, None if key is None or _exit_bound(key) else profile_name(*key))
         stack.callback(profile.close)  # after the browser has closed, so its last writes are in the profile
         guard = await stack.enter_async_context(
             SocksGuard(connector, checked=(first,), upstream=proxy, traffic=traffic)
@@ -508,8 +515,8 @@ def _closed(session: BrowserSession, held: _Context) -> None:
 
 def context_key(url: str, policy: FetchPolicy, proxy: ProxyEndpoint | None) -> ContextKey | None:
     """The profile a page renders in (`acquire.browser_profiles`): the page's site (HTML Standard §7.1.1) and the
-    proxy pool and endpoint its guard goes through. None for a fetch with the caller's own cookies, which are no
-    site's state: it gets a temporary profile, never kept."""
+    proxy pool and endpoint its guard goes through, a sticky exit's session id included (`core.proxy`). None for a
+    fetch with the caller's own cookies, which are no site's state: it gets a temporary profile, never kept."""
     if policy.context is not None or urlsplit(url).hostname is None:
         return None
     return _site_key(url, policy, proxy)
@@ -517,7 +524,7 @@ def context_key(url: str, policy: FetchPolicy, proxy: ProxyEndpoint | None) -> C
 
 def _site_key(url: str, policy: FetchPolicy, proxy: ProxyEndpoint | None) -> ContextKey:
     """The site, proxy pool and endpoint of a page: its profile's key, and the screen of a temporary profile."""
-    return (default_suffixes().site(urlsplit(url).hostname or ""), policy.proxy_pool, proxy)
+    return (site_of(url), policy.proxy_pool, proxy)
 
 
 def caller_cookies(url: str, context: RequestContext) -> list[SetCookieParam]:

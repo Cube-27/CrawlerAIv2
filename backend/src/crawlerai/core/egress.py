@@ -42,4 +42,8 @@ class Egresses:
         if pool is None:
             return UNKNOWN if self.machine_country is None else Egress(self.machine_country, "machine")
         configured = self.pools.get(pool)
-        return UNKNOWN if configured is None or configured.country is None else Egress(configured.country, "pool")
+        return (
+            UNKNOWN
+            if configured is None or configured.place.country is None
+            else Egress(configured.place.country, "pool")
+        )
