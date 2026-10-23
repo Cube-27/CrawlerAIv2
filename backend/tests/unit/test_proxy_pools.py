@@ -29,7 +29,8 @@ from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.egress import UNKNOWN, Egress, Egresses
 from crawlerai.core.proxy import PoolMode, ProxyEndpoint, ProxyPool
-from crawlerai.core.settings import IMPERSONATE_DEFAULT, AcquireSettings
+from crawlerai.core.settings import AcquireSettings
+from tests.stand_in import IMPERSONATE
 
 _LINKS = "".join(f'<a href="/item/{i}">Item {i}</a>' for i in range(8))
 _PAGE = f"<html><body><h1>Catalogue</h1>{_LINKS}</body></html>".encode()
@@ -205,7 +206,7 @@ def _fetch(
             url,
             FetchPolicy(proxy_pool=pool, timeout_s=5),
             engine_version="test",
-            impersonate=IMPERSONATE_DEFAULT,
+            impersonate=IMPERSONATE,
             connector=StubConnector(),
             pools=pools,
             sessions=sessions,
@@ -347,7 +348,7 @@ def _fetch_json(url: str, pools: dict[str, ProxyPool], pool: str | None = "dc") 
             request,
             FetchPolicy(proxy_pool=pool, timeout_s=5),
             engine_version="test",
-            impersonate=IMPERSONATE_DEFAULT,
+            impersonate=IMPERSONATE,
             connector=StubConnector(),
             pools=pools,
         )
@@ -385,9 +386,9 @@ def test_a_browser_fetch_naming_a_pool_goes_through_its_proxy(origin: Origin, pr
     try:
         through_pool, unknown = asyncio.run(run())
     except PlaywrightError as e:
-        if os.environ.get("CI") or "Executable doesn't exist" not in e.message:
+        if os.environ.get("CI") or "is not found at" not in e.message:
             raise
-        pytest.skip("Chromium is not installed: run `uv run patchright install --no-shell chromium`")
+        pytest.skip("Google Chrome is not installed: run `uv run patchright install chrome`")
 
     assert _outcome(through_pool) == (200, "ok", None)
     assert b"<h1>Catalogue</h1>" in through_pool.bundle.body

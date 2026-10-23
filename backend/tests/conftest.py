@@ -15,9 +15,11 @@ from hypothesis import settings
 from lxml import html as lxml_html
 from selectolax import lexbor
 
+from crawlerai.acquire import impersonate
 from crawlerai.acquire.api import JsonFetcher, JsonRequest, fetch_json
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.storage.capture_bundle import HeaderList
 from tests.stand_in import IMPERSONATE, handler_transport
 
 settings.register_profile("ci", max_examples=200)
@@ -33,11 +35,18 @@ _TEST_DATABASE_PREFIX = "CRAWLERAI_TEST_"
 @pytest.fixture(autouse=True)
 def _hermetic_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """Every `CRAWLERAI_*` variable of the process is removed while a test runs: `make check` exports the developer's
-    `.env` (keys, model ids), and settings a test builds read the environment. A test sets what it needs."""
+    `.env` (keys, model ids), and settings a test builds read the environment. A test sets what it needs. No Chrome
+    starts to read the browser rung's headers (`acquire.impersonate`): the rungs impersonate the default target with
+    its own headers."""
     for name in list(os.environ):
         upper = name.upper()
         if upper.startswith("CRAWLERAI_") and not upper.startswith(_TEST_DATABASE_PREFIX):
             monkeypatch.delenv(name)
+    monkeypatch.setattr(impersonate, "_read_headers", _no_browser)
+
+
+async def _no_browser() -> HeaderList:
+    return ()
 
 
 class ParserCounter:

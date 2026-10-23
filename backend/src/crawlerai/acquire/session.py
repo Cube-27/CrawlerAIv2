@@ -3,9 +3,9 @@ a site held, handed to the later HTTP and JSON fetches of the same site (browser
 sets is ever handed on).
 
 A live session is the cookies a browser fetch earned past a refusal that plain HTTP met, in this process's memory
-only, for the same proxy endpoint. The HTTP and JSON rungs send them with their own identity (the impersonation's
-user agent and client hints), never the browser's: a header copied from the browser would pair a browser's user agent
-with curl's TLS and HTTP/2 fingerprint. Challenge and clearance cookies go with the rest (owner #76: a clearance a
+only, for the same proxy endpoint. The HTTP and JSON rungs send them with their own identity headers, which name the
+browser rung's Chrome (`acquire.impersonate`), over the nearest Chrome TLS and HTTP/2 handshake; no header is copied
+from the fetch that earned them. Challenge and clearance cookies go with the rest (owner #76: a clearance a
 browser earned may be reused). No cookie is logged or captured (`headers.recorded` keeps cookies out of every capture,
 and no repr shows a cookie value).
 

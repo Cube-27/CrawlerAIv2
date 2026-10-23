@@ -8,12 +8,14 @@ from collections.abc import Callable
 import httpx
 
 from crawlerai.acquire.curl_client import Failed, Hop, Transport, Wire
+from crawlerai.acquire.impersonate import Impersonation
 from crawlerai.acquire.ssrf import Target
 from crawlerai.core.settings import IMPERSONATE_DEFAULT
 
 __all__ = ["CONNECT_FAILED", "IMPERSONATE", "handler_transport"]
 
-IMPERSONATE = IMPERSONATE_DEFAULT
+# The default target with its own headers, as when the browser rung's Chrome is not read.
+IMPERSONATE = Impersonation(IMPERSONATE_DEFAULT)
 # The reason of a connection the server refused: curl's CURLE_COULDNT_CONNECT, which a handler's `ConnectError` stands
 # for.
 CONNECT_FAILED = "network_error: curl 7"

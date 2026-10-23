@@ -25,7 +25,7 @@ from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, Target
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.core.settings import IMPERSONATE_DEFAULT, Settings
+from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobId, JobKind, UrlTask
 from crawlerai.llm.client import NO_LLM
 from crawlerai.resolve.pipeline import EngineData
@@ -38,6 +38,7 @@ from crawlerai.worker.handlers.scrape import scrape_handler
 from crawlerai.worker.loop import TaskHandler, run_worker
 from tests.db.support import TITLE, api, unpaced
 from tests.local_server import Reply, Server, serving
+from tests.stand_in import IMPERSONATE
 
 pytestmark = pytest.mark.anyio
 
@@ -120,7 +121,7 @@ def site(server: Server, own_origin: str) -> str:
 def fetching(server: Server, site: str, tmp_path: Path) -> Fetching:
     """The real HTTP rung through the guard, unpaced; the browser is never needed."""
     connector = SiteConnector(urlsplit(site).hostname or "", server.port)
-    http = functools.partial(fetch_http, engine_version="test", impersonate=IMPERSONATE_DEFAULT, connector=connector)
+    http = functools.partial(fetch_http, engine_version="test", impersonate=IMPERSONATE, connector=connector)
 
     async def browser(url: str, policy: FetchPolicy) -> FetchResult:
         raise AssertionError("no page here needs a browser")

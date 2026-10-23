@@ -4,8 +4,9 @@ new curl session per fetch.
 Redirects are followed by hand so the SSRF guard checks every hop (§4.5), and each request connects only to the
 address the guard checked. Through a proxy pool, which resolves names itself, the guard still checks each hop's host
 before it is requested. Every failure becomes an `error` outcome with a short reason that never
-contains the URL. The request is a navigation, sent with the impersonation's own headers, and
-with a site session's cookies where the site has one (`acquire.session`, INV-29's exception).
+contains the URL. The request is a navigation, sent with the impersonation's headers (`acquire.impersonate`), in
+the request locale's language as the browser rung asks for it (`acquire.locality`), and with a site session's cookies
+where the site has one (`acquire.session`, INV-29's exception).
 """
 
 import asyncio
@@ -16,12 +17,14 @@ from functools import partial
 from typing import cast
 
 from curl_cffi import CurlOpt
-from curl_cffi.requests import AsyncSession, BrowserTypeLiteral
+from curl_cffi.requests import AsyncSession
 from curl_cffi.requests.exceptions import RequestException
 
 from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_label, count
 from crawlerai.acquire.classify import Redirect
 from crawlerai.acquire.curl_client import Hop, pinned, reason, send
+from crawlerai.acquire.impersonate import Impersonation
+from crawlerai.acquire.locality import language_headers
 from crawlerai.acquire.outcome import Content, fetch_result, report_proxy
 from crawlerai.acquire.session import SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector, Target
@@ -35,7 +38,7 @@ async def fetch_http(
     policy: FetchPolicy,
     *,
     engine_version: str,
-    impersonate: BrowserTypeLiteral,
+    impersonate: Impersonation,
     connector: SafeConnector | None = None,
     pools: Mapping[str, ProxyPool] | None = None,
     sessions: SiteSessions | None = None,
@@ -50,7 +53,7 @@ async def fetch_http(
     session = None if sessions is None else sessions.take(url, url, policy.proxy_pool)
     sent = await send(
         url,
-        Hop("GET", {}),
+        Hop("GET", language_headers(policy.locale_hint)),
         policy,
         impersonate=impersonate,
         connector=connector or SafeConnector(),
@@ -98,9 +101,9 @@ async def fetch_http(
     return result
 
 
-def _follow(_hop: Hop, _status: int, _target: Target) -> Hop:
-    """A navigation's redirect is followed with a plain GET (RFC 9110 §15.4)."""
-    return Hop("GET", {})
+def _follow(hop: Hop, _status: int, _target: Target) -> Hop:
+    """A navigation's redirect is followed with a plain GET (RFC 9110 §15.4), in the navigation's language."""
+    return Hop("GET", hop.headers)
 
 
 class RequestFailed(Exception):

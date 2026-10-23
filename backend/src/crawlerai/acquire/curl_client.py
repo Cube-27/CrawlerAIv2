@@ -3,8 +3,9 @@ every request pinned to the address the SSRF guard checked or sent through a pro
 while they stream, redirects followed by hand through the guard with the fetch's own cookies (INV-29), and every
 failure a short reason that never contains the URL.
 
-A request's headers are merged into the impersonation's defaults: a header the profile sends keeps the profile's
-position with the request's value, a `None` value removes it, and any other header follows the profile's (D-1321).
+A request's headers are merged into the impersonation's defaults, the browser rung's own headers in place of the
+profile's (`acquire.impersonate`): a header the profile sends keeps the profile's position with the request's value, a
+`None` value removes it, and any other header follows the profile's (D-1321).
 """
 
 import asyncio
@@ -25,11 +26,12 @@ from curl_cffi.curl import (
     CURLINFO_HEADER_IN,
     CURLINFO_HEADER_OUT,
 )
-from curl_cffi.requests import AsyncSession, BrowserTypeLiteral, Response
+from curl_cffi.requests import AsyncSession, Response
 from curl_cffi.requests.exceptions import RequestException
 
 from crawlerai.acquire.cookies import FetchCookies
 from crawlerai.acquire.headers import recorded
+from crawlerai.acquire.impersonate import Impersonation
 from crawlerai.acquire.outcome import Exchange, Traffic
 from crawlerai.acquire.redirects import MAX_REDIRECTS
 from crawlerai.acquire.redirects import location as redirect_location
@@ -135,7 +137,7 @@ async def send(
     first: Hop,
     policy: FetchPolicy,
     *,
-    impersonate: BrowserTypeLiteral,
+    impersonate: Impersonation,
     connector: SafeConnector,
     pools: Mapping[str, ProxyPool] | None,
     redirected: Redirected,
@@ -300,21 +302,22 @@ class _Session(AsyncSession[Response]):
 
 @asynccontextmanager
 async def curl_transport(
-    impersonate: BrowserTypeLiteral, proxy: ProxyEndpoint | None, limits: Limits, traffic: Traffic
+    impersonate: Impersonation, proxy: ProxyEndpoint | None, limits: Limits, traffic: Traffic
 ) -> AsyncIterator[Transport]:
     """A transport over one curl_cffi session for one fetch, through `proxy` when a pool carries it, adding the bytes
-    each request moves to `traffic`."""
+    each request moves to `traffic`; every request sends the impersonation's headers unless it sets its own."""
     # Cookies are kept by `FetchCookies`, not libcurl's engine, which this build runs without the public-suffix list
     # (RFC 6265 §5.3 step 5): the session discards what curl parsed, and each request clears curl's list before
     # sending only the cookies passed in. `trust_env=False` stops curl_cffi reading the proxy environment variables;
     # libcurl reads them itself, so each request also sets CURLOPT_PROXY, and a pool request CURLOPT_NOPROXY:
     # proxies come only from the pools.
-    async with _Session(impersonate=impersonate, trust_env=False, discard_cookies=True) as session:
-        yield partial(_request, session, proxy, limits, traffic)
+    async with _Session(impersonate=impersonate.target, trust_env=False, discard_cookies=True) as session:
+        yield partial(_request, session, impersonate.headers, proxy, limits, traffic)
 
 
 async def _request(
     session: AsyncSession[Response],
+    defaults: HeaderList,
     proxy: ProxyEndpoint | None,
     limits: Limits,
     traffic: Traffic,
@@ -364,7 +367,7 @@ async def _request(
         response = await session.request(
             hop.method,
             target.url,
-            headers=dict(hop.headers),
+            headers=_merged(defaults, hop.headers),
             data=hop.body,
             allow_redirects=False,
             timeout=remaining,
@@ -377,6 +380,13 @@ async def _request(
         last = None if partial_response is None else _wire(target, partial_response, sent, b"")
         raise Failed(error, last) from e
     return _wire(target, response, sent, body.getvalue())
+
+
+def _merged(defaults: HeaderList, headers: Mapping[str, str | None]) -> dict[str, str | None]:
+    """`defaults` (lowercase names) with `headers` set over them, a field of the same name in any case replaced
+    (RFC 9110 §5.1)."""
+    given = {name.lower() for name in headers}
+    return {**{name: value for name, value in defaults if name not in given}, **headers}
 
 
 def reason(error: RequestException) -> str:

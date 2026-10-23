@@ -71,7 +71,7 @@ Per page, before any request, from memory alone (no extraction, no collector pas
 
 ### a.3 Fetch: HTTP default, browser on block or by field source
 
-HTTP rung (`acquire/http.py`, curl_cffi impersonating the installed Chromium major, unchanged) classifies the answer
+HTTP rung (`acquire/http.py`, curl_cffi impersonating the browser rung's Chrome: its naming headers, read at startup, over the nearest curl_cffi Chrome profile) classifies the answer
 structurally (`acquire/classify.py`, INV-24). In `auto`, the browser retry happens for exactly these outcomes, all of
 which are "blocked" in the owner's sense (the server did not give the page to this client):
 
@@ -87,7 +87,7 @@ which are "blocked" in the owner's sense (the server did not give the page to th
 The `BROWSER_MIN_S=20` budget guard, the site-session handoff (browser cookies to HTTP, one way, challenge and
 clearance cookies included: owner #76), block history and the 7-day re-check of `browser` contracts stay as specified.
 
-Browser rung (`acquire/browser.py`, Patchright headless Chromium, INV-42..44): a persistent profile per site (owner
+Browser rung (`acquire/browser.py`, Patchright headless Google Chrome stable, INV-42..44, owner 2026-10-23): a persistent profile per site (owner
 #50), one navigation, no request interception (owner #67 (12), removed: request routing sends `no-cache` headers no
 user's browser sends), network capture, caller steps. The ready condition is fixed and source-driven
 (`acquire/browser_wait.py`):

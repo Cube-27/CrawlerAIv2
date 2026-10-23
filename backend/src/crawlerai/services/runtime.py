@@ -111,7 +111,7 @@ async def open_fetching(
             sessions=sessions,
         )
 
-    impersonate = rung_impersonation(settings)
+    impersonate = await rung_impersonation(settings)
     http = partial(
         fetch_http,
         engine_version=ENGINE_VERSION,
@@ -129,7 +129,11 @@ async def open_fetching(
         sessions=sessions,
     )
     async with aclosing(
-        SharedBrowser(partial(open_browser, settings.browser_profiles), fetch_in, lambda session: session.alive)
+        SharedBrowser(
+            partial(open_browser, settings.browser_profiles, settings.egress_country),
+            fetch_in,
+            lambda session: session.alive,
+        )
     ) as browser:
 
         async def listing(url: str, policy: FetchPolicy, drive: Drive) -> PagedFetch:

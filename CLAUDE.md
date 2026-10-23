@@ -35,7 +35,7 @@ make check          # every CI check locally (`make check-backend`, ... per job)
 ```
 
 - `uv run mypy src tests migrations` (in `backend/`) must pass.
-- `browser` tests need `uv run patchright install --no-shell chromium` once.
+- `browser` tests need Google Chrome stable: `uv run patchright install chrome` once.
 - DB tests need `make db` and `CRAWLERAI_DATABASE_URL` (`.env.example`); `tests/db` also need
   `CRAWLERAI_TEST_DATABASE_URL`, a database they own, never the dev one. `tools/orchestrator/test_db.sh up|drop`
   manages one per worktree.
