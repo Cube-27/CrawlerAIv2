@@ -26,7 +26,8 @@ handler of the job kind (`worker/handlers/`); `scheduler/loop.py` enqueues sched
    Site memory (the rung a site's pages start with): `memory.py`. The result is a capture bundle (`core/capture.py`,
    `storage/capture_bundle.py`); every record can be replayed from it (`POST /v1/captures/{id}/replay`).
    A browser capture keeps the page's data calls (`browser_capture.py`, `FetchPolicy.calls` `data`), or, for an
-   engineer capture (`POST /v1/captures`, `services/captures.py`, a scrape in the browser), every call (`all`): each
+   engineer capture (`POST /v1/captures`, `services/captures.py`, a scrape in the browser run synchronously in the API
+   process like `POST /v1/scrape`, no job), every call (`all`): each
    fetch/xhr answer on any site and each document a page step navigated to, never an event stream or binary media, own
    site first, with the page step it followed. Its calls are listed by endpoint with the paths that carry the schema's
    fields (`services/recipe_calls.py` over `config_ir/api_recipe/discovery.py`) and exported as HAR (`services/har.py`).
