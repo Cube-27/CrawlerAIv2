@@ -63,11 +63,14 @@ class CustomRecipe(_Model):
             raise ValueError(f"fields with more than one source: {twice}")
         if len({parse(pattern).host for pattern in self.patterns}) != 1:
             raise ValueError("a recipe's URL patterns are of one host")
+        if self.page_kind == "listing" and self.main.pagination is None:
+            raise ValueError("a listing recipe's main call has a pagination: its rows path selects the rows")
         return self
 
     @property
     def host(self) -> str:
-        return parse(self.patterns[0]).host
+        """The site's host, as a site row writes it: an IP literal without its brackets (RFC 3986 §3.2.2)."""
+        return parse(self.patterns[0]).host.removeprefix("[").removesuffix("]")
 
     def field_names(self) -> set[str]:
         return {*self.main.map, *(name for call in self.calls.values() for name in call.map), *self.fields}

@@ -56,6 +56,10 @@ class ShapeTaken(ValueError):
     """Another active recipe of the scope serves a URL pattern of the same shape."""
 
 
+class NotActive(ValueError):
+    """The recipe an edit replaces is no longer active: another edit replaced it first."""
+
+
 async def activate(conn: AsyncConnection, key: StateKey, validated: Validated) -> ExtractionConfigId:
     """Store `validated`'s config for `key` as active and end `key`'s learning run with it; its id. Raises
     `NotValidated` when validation refused the config, `ConfigMismatch` when the config was learned for another site,
@@ -155,7 +159,8 @@ async def store_recipe(
 ) -> ExtractionConfigId:
     """Store the custom recipe `ir` as `key`'s next version, active, and return its id; the recipe `replaces` names,
     if any, is suspended, and no other row changes. Raises `ShapeTaken` when another active recipe of the scope has
-    a pattern of one of `ir`'s shapes, and `ConfigMismatch` like `activate`."""
+    a pattern of one of `ir`'s shapes, `NotActive` when `replaces` is no longer active (an edit that ran first replaced
+    it, under the same state lock), and `ConfigMismatch` like `activate`."""
     await lock_state(conn, key)
     await _check_key(conn, key, ir)
     configs = ExtractionConfig
@@ -167,7 +172,9 @@ async def store_recipe(
         if other.id != replaces and (taken := shapes.intersection(map(shape, other.patterns))):
             raise ShapeTaken(f"config {other.id} serves URL patterns of shape {sorted(taken)}")
     if replaces is not None:
-        await conn.execute(update(configs).where(configs.id == replaces).values(status="suspended"))
+        replaced = update(configs).where(configs.id == replaces, configs.status == "active").values(status="suspended")
+        if (await conn.execute(replaced)).rowcount != 1:
+            raise NotActive(f"config {replaces} is no longer active: another edit replaced it")
     return await _store(conn, key, ir, None, "active")
 
 

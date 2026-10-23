@@ -24,7 +24,15 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir import corrections
-from crawlerai.config_ir.activation import NotPending, ShapeTaken, approve, reject, store_correction, store_recipe
+from crawlerai.config_ir.activation import (
+    NotActive,
+    NotPending,
+    ShapeTaken,
+    approve,
+    reject,
+    store_correction,
+    store_recipe,
+)
 from crawlerai.config_ir.corrections import Correction
 from crawlerai.config_ir.custom_recipe import CustomRecipe, InvalidRecipe, recipe_ir
 from crawlerai.config_ir.exporters.configs import ConfigExport, ConfigFormat, export_config
@@ -210,7 +218,7 @@ async def _save_recipe(
     ir = recipe_ir(recipe, host, schema, at=datetime.now(UTC), engine_version=ENGINE_VERSION)
     try:
         config_id = await store_recipe(conn, key, ir, replaces=replaces)
-    except ShapeTaken as e:
+    except (ShapeTaken, NotActive) as e:
         raise ConfigConflict(str(e)) from e
     return await get(conn, config_id)
 
