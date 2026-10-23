@@ -17,9 +17,9 @@ from selectolax import lexbor
 
 from crawlerai.acquire import impersonate
 from crawlerai.acquire.api import JsonFetcher, JsonRequest, fetch_json
+from crawlerai.acquire.browser_session import Identity
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.storage.capture_bundle import HeaderList
 from tests.stand_in import IMPERSONATE, STAND_IN_BROWSER, handler_transport
 
 settings.register_profile("ci", max_examples=200)
@@ -42,11 +42,11 @@ def _hermetic_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         upper = name.upper()
         if upper.startswith("CRAWLERAI_") and not upper.startswith(_TEST_DATABASE_PREFIX):
             monkeypatch.delenv(name)
-    monkeypatch.setattr(impersonate, "_read_headers", _no_browser)
+    monkeypatch.setattr(impersonate, "_read_identity", _no_browser)
 
 
-async def _no_browser() -> HeaderList:
-    return STAND_IN_BROWSER
+async def _no_browser() -> Identity:
+    return Identity(STAND_IN_BROWSER, {})
 
 
 class ParserCounter:

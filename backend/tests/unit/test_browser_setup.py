@@ -187,10 +187,11 @@ def test_inv42_inv43_chrome_headless_in_a_profile_with_the_guards_webrtc_policy(
         "accept_downloads": False,
     }
     # The browser started to read its headers is the same build, loads no site and sends nothing around the guard.
-    # It goes only to a listener of this process on 127.0.0.1, the one address its proxy bypasses.
-    proxy = {"server": "socks5://127.0.0.1:9", "bypass": "127.0.0.1"}
+    # It goes only to listeners of this process on the loopback address, the addresses its proxy bypasses: the one
+    # reading its headers, then the one reading its TLS ClientHello.
+    proxy = {"server": "socks5://127.0.0.1:9", "bypass": "127.0.0.1,localhost"}
     assert recorder.probe == {"channel": "chrome", "headless": True, "proxy": proxy}
-    assert [urlsplit(url).hostname for url in recorder.navigated] == ["127.0.0.1"]
+    assert [urlsplit(url).hostname for url in recorder.navigated] == ["127.0.0.1", "localhost"]
     # Read once per process: a session opened again (a restart) starts no second browser.
     with pytest.raises(_Stop):
         asyncio.run(_fetch_once())

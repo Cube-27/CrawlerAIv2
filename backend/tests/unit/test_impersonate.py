@@ -1,7 +1,8 @@
 """Which Chrome the HTTP and JSON rungs impersonate: the browser rung's Chrome, read once per
-process, its headers sent in place of the nearest curl_cffi profile's own; an operator's explicit target is kept with
-its own headers; a process that renders does not start without them. The headers go out on the wire through the real
-curl transport to a local server."""
+process, its headers sent in place of the nearest curl_cffi profile's own and its ClientHello's trust anchors added to
+the profile's TLS, a JA4 differing from the browser's logged; an operator's explicit target is kept with its own
+headers; a process that renders does not start without them. The headers go out on the wire through the real curl
+transport to a local server."""
 
 import asyncio
 import logging
@@ -14,11 +15,12 @@ from curl_cffi.requests import BrowserTypeLiteral
 from patchright.async_api import Error as PlaywrightError
 
 from crawlerai.acquire import impersonate
+from crawlerai.acquire.browser_session import Identity
+from crawlerai.acquire.client_hello import ClientHello
 from crawlerai.acquire.curl_client import Hop, Limits, curl_transport
 from crawlerai.acquire.impersonate import BrowserUnread, Impersonation, nearest_target, rung_impersonation
 from crawlerai.acquire.outcome import Traffic
 from crawlerai.core.settings import AcquireSettings
-from crawlerai.storage.capture_bundle import HeaderList
 from tests.local_server import LoopbackConnector, Reply, Server, serving
 
 _PROFILES = sorted(
@@ -35,26 +37,33 @@ _BROWSER = (
 )
 
 
-def test_unset_the_target_follows_the_browser_and_sends_its_headers(
+# A ClientHello no curl_cffi profile sends (synthetic: one cipher, trust anchors under RFC 5612's documentation PEN).
+_HELLO = ClientHello(0x0303, (0x1301,), (0x002B, 0xCA34), (0x0304,), trust_anchors=("32473.1", "32473.2"))
+
+
+def test_unset_the_target_follows_the_browser_and_sends_its_headers_and_trust_anchors(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    async def read() -> HeaderList:
-        return _BROWSER
+    async def read() -> Identity:
+        return Identity(_BROWSER, {}, _HELLO)
 
-    monkeypatch.setattr(impersonate, "_read_headers", read)
+    monkeypatch.setattr(impersonate, "_read_identity", read)
 
     with caplog.at_level(logging.WARNING):
         chosen = asyncio.run(rung_impersonation(AcquireSettings(), browser_rung=True))
 
-    assert chosen == Impersonation(nearest_target(_PROFILES[-1]), _BROWSER)
+    assert chosen == Impersonation(nearest_target(_PROFILES[-1]), _BROWSER, _HELLO.trust_anchors)
     assert f"Chrome {_NEWER}" in caplog.text
+    # The HTTP rung's own ClientHello, read on the loopback address, is not the browser's: both JA4s are logged.
+    assert "the browser rung's t13i0102" in caplog.text
+    assert "the HTTP rung's t13d" in caplog.text
 
 
 def test_an_explicit_target_is_kept_with_its_own_headers_and_starts_no_browser(monkeypatch: pytest.MonkeyPatch) -> None:
     async def unread() -> None:
         raise AssertionError("no browser starts for an explicit target")
 
-    monkeypatch.setattr(impersonate, "_read_headers", unread)
+    monkeypatch.setattr(impersonate, "_read_identity", unread)
     monkeypatch.setenv("CRAWLERAI_IMPERSONATE", f"chrome{_PROFILES[0]}")
 
     chosen = asyncio.run(rung_impersonation(AcquireSettings(), browser_rung=True))
@@ -62,14 +71,14 @@ def test_an_explicit_target_is_kept_with_its_own_headers_and_starts_no_browser(m
     assert chosen == Impersonation(nearest_target(_PROFILES[0]))
 
 
-async def _failing() -> HeaderList:
+async def _failing() -> Identity:
     raise PlaywrightError("Chromium distribution 'chrome' is not found")
 
 
 def test_a_browser_that_does_not_start_leaves_the_default_target_where_nothing_renders(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    monkeypatch.setattr(impersonate, "_read_headers", _failing)
+    monkeypatch.setattr(impersonate, "_read_identity", _failing)
 
     with caplog.at_level(logging.WARNING):
         chosen = asyncio.run(rung_impersonation(AcquireSettings(), browser_rung=False))
@@ -80,7 +89,7 @@ def test_a_browser_that_does_not_start_leaves_the_default_target_where_nothing_r
 
 def test_a_process_that_renders_does_not_start_without_its_browsers_headers(monkeypatch: pytest.MonkeyPatch) -> None:
     # Its HTTP rung would otherwise name another browser than its renders.
-    monkeypatch.setattr(impersonate, "_read_headers", _failing)
+    monkeypatch.setattr(impersonate, "_read_identity", _failing)
     reading = rung_impersonation(AcquireSettings(), browser_rung=True)
 
     with pytest.raises(BrowserUnread):

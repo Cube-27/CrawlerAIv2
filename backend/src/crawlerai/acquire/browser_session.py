@@ -23,6 +23,7 @@ from patchright.async_api import BrowserContext, CDPSession, Frame, Page, Playwr
 from patchright.async_api import Error as PlaywrightError
 
 from crawlerai.acquire.browser_profiles import Profile, discard_profile, open_profile, profile_name
+from crawlerai.acquire.client_hello import HELLO_HOST, ClientHello, hello_listener
 from crawlerai.acquire.desktop_screen import desktop_screen
 from crawlerai.acquire.locality import Locality, locality
 from crawlerai.acquire.outcome import Exchange, Traffic
@@ -76,10 +77,11 @@ _WORKERS: Final = ({"type": "service_worker"}, {"type": "shared_worker"})
 # The browser started only to read the identity it presents (`browser_identity`) loads no page of any site; anything it
 # requests in the background goes to this closed loopback port and fails, rather than around the guard.
 _NOWHERE: Final = "socks5://127.0.0.1:9"
-# The page that browser navigates to, the one address its proxy bypasses: a listener of this process on the loopback
-# address (RFC 6890 §2.2.2), which reads the request as the browser's network stack sends it (Playwright's request
-# routing sees it before that stack adds `Accept-Language`) and answers an empty page. A loopback origin is potentially
-# trustworthy (W3C Secure Contexts §3.2): client hints go to it, and its page reads them.
+# The page that browser navigates to, with the ClientHello listener's `localhost` the addresses its proxy bypasses: a
+# listener of this process on the loopback address (RFC 6890 §2.2.2), which reads the request as the browser's network
+# stack sends it (Playwright's request routing sees it before that stack adds `Accept-Language`) and answers an empty
+# page. A loopback origin is potentially trustworthy (W3C Secure Contexts §3.2): client hints go to it, and its page
+# reads them.
 _LOOPBACK: Final = "127.0.0.1"
 _EMPTY_PAGE: Final = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
 # The headers of a navigation that name the browser (RFC 9110 §10.1.5 `User-Agent`, RFC 8942 client hints, the
@@ -136,10 +138,12 @@ class Identity:
     """The browser rung's Chrome as its profiles present it: the headers that name it on a navigation
     (`_NAMING_HEADERS`, its user agent's headless token renamed), which the HTTP and JSON rungs send too, and its
     User-Agent Client Hints as the browser reports them (CDP's `Emulation.UserAgentMetadata`), which `present` sets
-    with that user agent."""
+    with that user agent; and the TLS ClientHello it opens a connection with (none: not read), which the HTTP and JSON
+    rungs' impersonation follows (`acquire.impersonate`)."""
 
     headers: HeaderList
     metadata: Mapping[str, object]
+    hello: ClientHello | None = None
 
     @property
     def agent(self) -> str:
@@ -335,20 +339,22 @@ async def open_browser(profiles: Path | None = None, direct: ExitPlace = UNDECLA
 
 async def browser_identity(playwright: Playwright) -> Identity:
     """The browser's identity: the headers that name it (`_NAMING_HEADERS`) as its navigation sends them, its user
-    agent's headless token renamed, and the client hints its page reports (`_HINTS`, read in Patchright's isolated
-    world); read once per process (`_IDENTITY`) from a browser started for it alone, whose one navigation goes to a
-    listener of this process (`_LOOPBACK`), so nothing is sent beyond the machine. Raises `HeadlessIdentity` when any
-    of it still names headless mode."""
+    agent's headless token renamed, the client hints its page reports (`_HINTS`, read in Patchright's isolated
+    world) and its TLS ClientHello; read once per process (`_IDENTITY`) from a browser started for it alone, whose two
+    navigations go to listeners of this process (`_LOOPBACK`, `client_hello.hello_listener`), so nothing is sent beyond
+    the machine. Raises `HeadlessIdentity` when any of it still names headless mode."""
     if (known := _IDENTITY.get(_CHANNEL)) is not None:
         return known
     sent: dict[str, str] = {}
-    async with _listening(sent) as url:
-        proxy = ProxySettings(server=_NOWHERE, bypass=_LOOPBACK)
+    async with _listening(sent) as url, hello_listener() as (hello_url, hello):
+        proxy = ProxySettings(server=_NOWHERE, bypass=f"{_LOOPBACK},{HELLO_HOST}")
         browser = await playwright.chromium.launch(channel=_CHANNEL, headless=True, proxy=proxy)
         try:
             page = await browser.new_page()
             await page.goto(url)
             hints = cast(dict[str, object], await page.evaluate(_HINTS_JS))
+            with contextlib.suppress(PlaywrightError):  # the listener reads the ClientHello and closes the connection
+                await page.goto(hello_url)
         finally:
             await browser.close()
     headers = tuple(
@@ -356,7 +362,8 @@ async def browser_identity(playwright: Playwright) -> Identity:
         for name, value in sent.items()
         if name in _NAMING_HEADERS
     )
-    identity = Identity(headers, {_HINT_FIELDS.get(name, name): value for name, value in hints.items()})
+    metadata = {_HINT_FIELDS.get(name, name): value for name, value in hints.items()}
+    identity = Identity(headers, metadata, hello.result() if hello.done() else None)
     if _HEADLESS in json.dumps([identity.headers, identity.metadata]).lower():
         raise HeadlessIdentity("the browser rung's Chrome still names headless mode in its headers or client hints")
     _IDENTITY[_CHANNEL] = identity
