@@ -48,11 +48,10 @@ _SEND_JS: Final = """async ([url, method, headers, body, cap]) => {
   const head = {status: response.status, url: response.url, headers: [...response.headers]};
   const chunks = [];
   let size = 0;
-  const reader = response.body && response.body.getReader();
-  for (let read = reader && await reader.read(); read && !read.done; read = await reader.read()) {
-    size += read.value.length;
-    if (size > cap) { await reader.cancel(); return {...head, body: null}; }
-    chunks.push(read.value);
+  for await (const chunk of response.body ?? []) {
+    size += chunk.length;
+    if (size > cap) return {...head, body: null};  // leaving the loop cancels the stream
+    chunks.push(chunk);
   }
   let text = "";
   for (const chunk of chunks)
