@@ -44,7 +44,8 @@ COPY migrations ./migrations
 
 # The browser rung's Google Chrome stable, installed as the
 # Patchright README sets it up (its apt package, under /opt/google/chrome for every user), with the system libraries
-# and fonts the package depends on; then the service user and the directories `docker-compose.yml` mounts volumes on
+# and fonts the package depends on; then the service user, with the home directory Chrome keeps its user data and
+# crash database in (it does not start without one), and the directories `docker-compose.yml` mounts volumes on
 # (a new volume takes its owner from there). A desktop's font set is added so that font enumeration
 # does not single the container out: metric-compatible core fonts (Liberation, Carlito, Caladea; SIL OFL / Apache-2.0),
 # DejaVu, Noto with CJK and colour emoji, and Roboto. The Microsoft core fonts are not redistributable, so Liberation
@@ -54,7 +55,7 @@ RUN patchright install --with-deps chrome \
         fonts-crosextra-caladea fonts-crosextra-carlito fonts-dejavu fonts-liberation \
         fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core fonts-roboto xvfb \
     && rm -rf /var/lib/apt/lists/* && fc-cache -f \
-    && useradd --system --no-create-home crawlerai \
+    && useradd --system --create-home crawlerai \
     && mkdir /data /data/objects /data/browser-profiles /data/ui \
     && chown crawlerai /data/objects /data/browser-profiles /data/ui
 USER crawlerai
