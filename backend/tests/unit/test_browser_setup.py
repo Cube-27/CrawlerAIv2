@@ -229,7 +229,8 @@ def test_inv42_inv43_chrome_in_a_profile_with_the_guards_webrtc_policy_in_each_m
         **_MODES[headless],
     }
     # Headless, the browser's identity is set on its workers and its tab; headful, nothing is set, on a display.
-    assert (recorder.overrides, recorder.displays) == ((["workers", "tab"], 0) if headless else ([], 1))
+    expected = (["workers", "tab"], 0) if headless else ([], 1)
+    assert (recorder.overrides, recorder.displays) == expected
     # The browser started to read its headers is the same build in the same mode, loads no site and sends nothing
     # around the guard. It goes only to a listener of this process on 127.0.0.1, the one address its proxy bypasses.
     proxy = {"server": "socks5://127.0.0.1:9", "bypass": "127.0.0.1"}
