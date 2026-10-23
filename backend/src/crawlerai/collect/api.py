@@ -12,16 +12,22 @@ the recipe's map and rows, as it binds the config executor (`collect.config`), a
 detail page's values belong to the page; a listing's row-scoped values belong to the rows its `rows` query selects,
 read with paths relative to each row, and its page-scoped values to the page.
 
+A custom recipe's call may answer an HTML document instead (`answer` `html`): each map entry is then an XPath 1.0
+expression over the answer's parse (`content.page`), which reads a value only where it gives exactly one non-empty
+string or number, located as `api:<recipe id>:<expression>`.
+
 The row reader is shared: the `xhr` collector reads a listing's rows from a captured call with a map it proved on the
 page (`collect.xhr`), so its rows are read exactly as a recipe's are (C8).
 """
 
 import json
+import math
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Final, Literal
 
+from lxml import etree
 from pydantic import JsonValue
 
 from crawlerai.collect import json_doc
@@ -78,16 +84,43 @@ def _read(path: str, document: JsonValue, at: str) -> tuple[Scalar, str] | None:
     return (parts[0] if len(parts) == 1 else joined_raw(parts)), "+".join(paths)
 
 
+def read_xpath(path: str, page: ParsedPage) -> Scalar | None:
+    """The raw value an HTML answer's map entry reads in `page`: the one non-empty string or number its XPath 1.0
+    expression gives (a node set of one node gives its string-value, XPath 1.0 §5); `None` otherwise."""
+    try:
+        found = page.lxml_tree.xpath(path)
+    except etree.XPathError:  # not an expression lxml evaluates: it reads nothing, as an absent value
+        return None
+    if isinstance(found, list):
+        if len(found) != 1:
+            return None
+        found = _STRING_VALUE(found[0]) if isinstance(found[0], etree._Element) else found[0]
+    if isinstance(found, bool):
+        return None  # a test, not a value
+    if isinstance(found, float):
+        return None if math.isnan(found) else found  # NaN is no number a page states (XPath 1.0 §3.5)
+    text = str(found).strip()
+    return text or None
+
+
+# XPath 1.0 §5: an element's string-value.
+_STRING_VALUE: Final = etree.XPath("string()")
+
+
 @dataclass(frozen=True)
 class ApiCollector:
     """The collector of the captures one recipe fetched. `recipe_id` names the recipe in locators (no `:` and no
-    whitespace); `map` is its field -> path map, and `rows` its listing's row query (`pagination.rows`), if any."""
+    whitespace); `map` is its field -> path map, and `rows` its listing's row query (`pagination.rows`), if any;
+    `answer` what its answer is (module docstring)."""
 
     recipe_id: str
     map: Mapping[str, str]
     rows: str | None = None
+    answer: Literal["json", "html"] = "json"
 
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> Executed:
+        if self.answer == "html":
+            return self._html(page, schema, ctx)
         try:
             document = json_text.parse(page.html)
         except ValueError as e:
@@ -110,6 +143,24 @@ class ApiCollector:
         entities, listed = reading.rows(rows, row_fields, document)
         found = (*candidates, *listed)
         return Executed(rows=tuple(entities), candidates=found, refusals=refusals, notes=tuple(reading.notes))
+
+    def _html(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> Executed:
+        """An HTML answer's values, every field the page's (an HTML answer has no rows query)."""
+        notes: list[str] = []
+        found: list[Candidate] = []
+        for name, path in self.map.items():
+            spec = schema.fields.get(name)
+            if spec is None or (raw := read_xpath(path, page)) is None:
+                continue
+            locator = format_locator("api", self.recipe_id, path)
+            if (made := candidate(name, spec, PAGE, "api", raw, locator, ctx, notes)) is not None:
+                found.append(made)
+        refusals = tuple(
+            Refusal(kind="field", source=f"api:{self.recipe_id}", field=name, reason="not a field of the schema")
+            for name in self.map
+            if name not in schema.fields
+        )
+        return Executed(rows=(), candidates=tuple(found), refusals=refusals, notes=tuple(notes))
 
 
 def read_rows(

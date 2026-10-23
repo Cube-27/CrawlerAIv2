@@ -1,4 +1,4 @@
-"""Identity-checked data calls: a JSON answer fetched for one product, kept only when
+"""Identity-checked data calls: a JSON (or HTML) answer fetched for one product, kept only when
 it states that product.
 
 A data call is a request for a product's JSON that the fetch makes beside the product's page: the product JSON a
@@ -14,9 +14,12 @@ platform (the network body's `data_call`), which the extraction reads as that pl
 """
 
 from collections.abc import Iterable, Iterator
+from itertools import islice
 from typing import Final
 from urllib.parse import unquote, urljoin, urlsplit
 
+from lxml import etree
+from lxml import html as lxml_html
 from pydantic import JsonValue
 
 from crawlerai.acquire.outcome import as_error
@@ -38,9 +41,13 @@ _MAX_SCALARS: Final = 20_000
 def identifies(answer: JsonValue, page_url: str, keys: Iterable[str]) -> bool:
     """Whether the JSON `answer` states the product of the page at `page_url` requested by `keys` (module docstring);
     a key shorter than `MIN_KEY` is not compared."""
+    return _identifies(_scalars(answer), page_url, keys)
+
+
+def _identifies(scalars: Iterable[str | int | float], page_url: str, keys: Iterable[str]) -> bool:
     wanted = {unquote(key).casefold() for key in keys if len(key) >= MIN_KEY}
     path = urlsplit(page_url).path.rstrip("/")
-    for value in _scalars(answer):
+    for value in scalars:
         text = str(value)
         if text.casefold() in wanted or (len(path) > 1 and _path_of(page_url, text) == path):
             return True
@@ -70,6 +77,21 @@ def _scalars(answer: JsonValue) -> Iterator[str | int | float]:
         elif isinstance(value, (str, int, float)) and not isinstance(value, bool):
             seen += 1
             yield value
+
+
+def _html_scalars(text: str) -> Iterator[str]:
+    """The text nodes and attribute values of an HTML answer's elements (HTML Standard §13.2), stripped, up to
+    `_MAX_SCALARS`: where an HTML document states a key (a text, a `data-*` value, a link's `href`)."""
+    try:
+        root = lxml_html.document_fromstring(text)
+    except (etree.ParserError, ValueError):
+        return
+    values = (
+        value.strip()
+        for element in root.iter(etree.Element)
+        for value in (*element.attrib.values(), element.text or "", element.tail or "")
+    )
+    yield from islice(filter(None, values), _MAX_SCALARS)
 
 
 def joined(page: FetchResult, call: FetchResult, key: str, platform: str) -> tuple[FetchResult | None, FetchResult]:
@@ -142,13 +164,17 @@ def joined_call(
     ).decoded(page.text)  # the page's body, read as the page's
 
 
-def identified(result: FetchResult, url: str, keys: tuple[str, ...]) -> FetchResult:
+def identified(result: FetchResult, url: str, keys: tuple[str, ...], *, html: bool = False) -> FetchResult:
     """A data call's `ok` answer when it states the product of the page at `url` it was requested with `keys` for
     (`identifies`: a parameter value, or a URL with the page's path); else an `error`, `NOT_THE_PRODUCT`, which is not
-    used: a recipe's page is then served by its configured fetch, a companion call joins nothing. An answer
-    that is not JSON is the collector's to report."""
+    used: a recipe's page is then served by its configured fetch, a companion call joins nothing. An `html` answer
+    states it in a text node or an attribute value (`_html_scalars`). An answer that is not JSON is the collector's to
+    report."""
     if result.block_class != "ok":
         return result
+    if html:
+        found = _identifies(_html_scalars(result.bundle.text), url, keys)
+        return result if found else as_error(result, NOT_THE_PRODUCT)
     try:
         answer = json_text.parse(result.bundle.body)
     except ValueError:

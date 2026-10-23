@@ -2,7 +2,10 @@
 worker's `batch_scrape` and `crawl` tasks. A URL a custom recipe's pattern matches is served by that recipe, any other
 by the learned config. The recipe's request goes
 through robots.txt and the site's rate like the page's would; its values are `api` candidates in the
-`adapter` bucket; a page the recipe serves joins no drift window, which measures the config's page steps."""
+`adapter` bucket; a page the recipe serves joins no drift window, which measures the config's page steps. A custom
+recipe serves with its warm-up, its extra calls (bound from the main answer too), its HTML answers read by XPath and
+its page fields; it is tried before an adapter, and a page it does not serve goes to the page rungs, its attempts
+first, each naming the recipe."""
 
 import json
 import uuid
@@ -10,14 +13,17 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.api import JsonRequest
+from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.adapters.base import AdapterMatch, Shape
+from crawlerai.adapters.registry import Registry
 from crawlerai.config_ir.activation import store_recipe
 from crawlerai.config_ir.custom_recipe import CustomRecipe
 from crawlerai.config_ir.progressive import StateKey
@@ -44,20 +50,25 @@ PRODUCT = {"data": {"slug": "desk-lamp", "name": "Desk Lamp", "price": 19.5, "cu
 
 @dataclass
 class Web(SharedWeb):
-    """`SharedWeb` with each endpoint of `endpoints` answering as JSON; any other is a 404."""
+    """`SharedWeb` with each endpoint of `endpoints` answering as JSON, and of `html` as HTML; any other is a 404."""
 
     endpoints: dict[str, object] = field(default_factory=dict)
+    html: dict[str, bytes] = field(default_factory=dict)
     requested: list[JsonRequest] = field(default_factory=list)
+    adapters: Registry = field(default_factory=lambda: Registry(()))
 
     async def json(self, request: JsonRequest, policy: FetchPolicy) -> FetchResult:
         self.requested.append(request)
+        if request.url in self.html:
+            html = (("Content-Type", "text/html; charset=utf-8"),)
+            return self.fetch_result(request.page_url, 200, self.html[request.url], html, method="api")
         if request.url not in self.endpoints:
             return self.fetch_result(request.page_url, 404, b"{}", block_class="not_found", method="api")
         body = json.dumps(self.endpoints[request.url]).encode()
         return self.fetch_result(request.page_url, 200, body, method="api")
 
     def rungs(self) -> Rungs:
-        return replace(super().rungs(), json=self.json)
+        return replace(super().rungs(), json=self.json, adapters=self.adapters)
 
 
 @pytest.fixture
@@ -192,28 +203,33 @@ async def test_an_endpoint_robots_txt_disallows_is_not_requested_and_the_page_is
 # Selection by URL.
 
 
+async def _custom(
+    engine: AsyncEngine, own_origin: str, site: SiteId, schema: SchemaDef, **recipe: Any
+) -> ExtractionConfigId:
+    """A custom recipe for the URLs `/item/{slug}` of the site, stored active."""
+    host = own_origin.removeprefix("https://")
+    document = {"schema_id": schema.id, "page_kind": "detail", "patterns": [f"{host}/item/{{slug}}"], **recipe}
+    ir = CustomRecipe.model_validate(document).to_ir(schema, at=datetime(2026, 10, 1, tzinfo=UTC), engine_version="t")
+    async with engine.begin() as conn:
+        return await store_recipe(conn, StateKey(site, schema.id, "detail"), ir, replaces=None)
+
+
+def _items(own_origin: str) -> dict[str, Any]:
+    """The main call of `/item/{slug}`: the item's JSON by its slug."""
+    return {
+        "method": "GET",
+        "url": f"{own_origin}/api/items/{{p1}}",
+        "params_from_url": {"p1": "path:1"},
+        "map": {"title": "$['data']['name']", "price": "$['data']['price']+$['data']['currency']"},
+    }
+
+
 @pytest.fixture
 async def custom_recipe(
     engine: AsyncEngine, own_origin: str, site: SiteId, kettle_schema: SchemaDef, recipe_config: ExtractionConfigId
 ) -> ExtractionConfigId:
     """Beside the learned `recipe_config`, a custom recipe for the URLs `/item/{slug}`, served by another endpoint."""
-    host = own_origin.removeprefix("https://")
-    recipe = CustomRecipe.model_validate(
-        {
-            "schema_id": kettle_schema.id,
-            "page_kind": "detail",
-            "patterns": [f"{host}/item/{{slug}}"],
-            "main": {
-                "method": "GET",
-                "url": f"{own_origin}/api/items/{{p1}}",
-                "params_from_url": {"p1": "path:1"},
-                "map": {"title": "$['data']['name']", "price": "$['data']['price']+$['data']['currency']"},
-            },
-        }
-    )
-    ir = recipe.to_ir(kettle_schema, at=datetime(2026, 10, 1, tzinfo=UTC), engine_version="t")
-    async with engine.begin() as conn:
-        return await store_recipe(conn, StateKey(site, kettle_schema.id, "detail"), ir, replaces=None)
+    return await _custom(engine, own_origin, site, kettle_schema, main=_items(own_origin))
 
 
 async def test_a_url_a_recipes_pattern_matches_is_served_by_it_and_any_other_by_the_learned_config(
@@ -249,4 +265,181 @@ async def test_a_url_a_recipes_pattern_matches_is_served_by_it_and_any_other_by_
         "Lamp page",
         "config:title:0:normalize-space(//h1)",
     )
+    assert [r.url for r in web.requested] == [f"{own_origin}/api/items/desk-lamp"]
+
+
+# Serving a custom recipe.
+
+
+async def test_an_extra_call_bound_from_the_main_answer_fills_its_fields_after_a_form_post(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    site: SiteId,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    main = {
+        "method": "POST",
+        "url": f"{own_origin}/api/search",
+        "params_from_url": {"q": "pattern:slug"},
+        "body": {"template": "q={q}&n=1", "encoding": "form"},
+        "map": {"title": "$['data']['name']"},
+    }
+    stock = {
+        "method": "GET",
+        "url": f"{own_origin}/api/stock/{{id}}",
+        "params_from_url": {"id": "main:$['data']['id']"},
+        "map": {"price": "$['price']+$['currency']"},
+    }
+    config = await _custom(engine, own_origin, site, kettle_schema, main=main, calls={"stock": stock})
+    url = f"{own_origin}/item/desk%20lamp"
+    web.endpoints[f"{own_origin}/api/search"] = {"data": {"id": "7701", "slug": "desk lamp", "name": "Desk Lamp"}}
+    web.endpoints[f"{own_origin}/api/stock/7701"] = {"item": "7701", "price": 19.5, "currency": "EUR"}
+
+    result = await scrape(engine, fetching, _scrape(url, kettle_schema), data=engine_data)
+
+    assert [(r.method, r.url, r.body) for r in web.requested] == [
+        ("POST", f"{own_origin}/api/search", "q=desk+lamp&n=1"),
+        ("GET", f"{own_origin}/api/stock/7701", None),
+    ]
+    assert ("Content-Type", "application/x-www-form-urlencoded") in web.requested[0].headers
+    assert result.fetch is not None
+    assert result.records is not None
+    assert (result.fetch.method, web.page_fetches()) == ("api", [])
+    assert [(a.method, a.recipe) for a in result.fetch.attempts] == [("api", str(config))] * 2
+    title, price = result.records[0].fields["title"], result.records[0].fields["price"]
+    assert (title.value, title.locator) == ("Desk Lamp", f"api:{config}:$['data']['name']")
+    assert (price.value, price.locator) == (
+        {"amount": 19.5, "currency": "EUR"},
+        f"api:{config}.stock:$['price']+$['currency']",
+    )
+
+
+async def test_an_html_answer_is_read_by_xpath_with_a_parameter_the_warm_up_answered(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    site: SiteId,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    main = {
+        "method": "GET",
+        "url": f"{own_origin}/fragments/{{p1}}?t={{t}}",
+        "params_from_url": {"p1": "pattern:slug", "t": "warm_up:$['token']"},
+        "answer": "html",
+        "map": {"title": "normalize-space(//h2)", "price": "string(//span[@id='price'])"},
+    }
+    warm_up = {"url": f"{own_origin}/session"}
+    config = await _custom(engine, own_origin, site, kettle_schema, main=main, warm_up=warm_up)
+    url = f"{own_origin}/item/desk-lamp"
+    web.endpoints[f"{own_origin}/session"] = {"token": "tok-1234"}
+    fragment = f"{own_origin}/fragments/desk-lamp?t=tok-1234"
+    web.html[fragment] = b"<div data-item='desk-lamp'><h2> Desk  Lamp </h2><span id='price'>EUR 19.50</span></div>"
+
+    result = await scrape(engine, fetching, _scrape(url, kettle_schema), data=engine_data)
+
+    assert [r.url for r in web.requested] == [f"{own_origin}/session", fragment]
+    assert web.requested[1].raw
+    assert result.fetch is not None
+    assert result.records is not None
+    assert result.fetch.method == "api"
+    title, price = result.records[0].fields["title"], result.records[0].fields["price"]
+    assert (title.value, title.source_kind, title.locator) == (
+        "Desk Lamp",
+        "api",
+        f"api:{config}:normalize-space(//h2)",
+    )
+    assert price.value == {"amount": 19.5, "currency": "EUR"}
+
+
+async def test_a_page_field_is_read_from_the_page_the_recipe_fetched(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    site: SiteId,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    main = {**_items(own_origin), "map": {"price": "$['data']['price']+$['data']['currency']"}}
+    fields = {"title": {"steps": [{"xpath": "normalize-space(//h1)"}]}}
+    config = await _custom(engine, own_origin, site, kettle_schema, main=main, fields=fields)
+    url = f"{own_origin}/item/desk-lamp"
+    web.serve(url, PAGE)
+    web.endpoints[f"{own_origin}/api/items/desk-lamp"] = PRODUCT
+
+    result = await scrape(engine, fetching, _scrape(url, kettle_schema), data=engine_data)
+
+    assert result.fetch is not None
+    assert result.records is not None
+    assert (result.fetch.method, web.page_fetches()) == ("api", [("http", url)])
+    assert [(a.method, a.recipe) for a in result.fetch.attempts] == [("http", str(config)), ("api", str(config))]
+    title, price = result.records[0].fields["title"], result.records[0].fields["price"]
+    assert (title.value, title.locator) == ("Lamp page", "config:title:0:normalize-space(//h1)")
+    assert price.locator == f"api:{config}:$['data']['price']+$['data']['currency']"
+
+
+async def test_a_page_the_recipe_does_not_serve_goes_to_the_page_rungs_with_the_recipes_attempts_first(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    custom_recipe: uuid.UUID,
+    engine_data: EngineData,
+) -> None:
+    url = f"{own_origin}/item/desk-lamp"
+    web.serve(url, PAGE)  # the endpoint answers 404
+
+    result = await scrape(engine, fetching, _scrape(url, kettle_schema), data=engine_data)
+
+    assert result.fetch is not None
+    assert (result.fetch.method, web.page_fetches()) == ("http", [("http", url)])
+    assert [(a.method, a.recipe) for a in result.fetch.attempts] == [("api", str(custom_recipe)), ("http", None)]
+
+
+@dataclass
+class _Adapter:
+    """An adapter that detects every page of `host` and is never to be asked."""
+
+    host: str
+    asked: list[str] = field(default_factory=list)
+    name: str = "stub"
+
+    def detect(self, url: str) -> AdapterMatch | None:
+        return AdapterMatch(tenant="t", page_kind="detail") if urlsplit(url).hostname == self.host else None
+
+    def serves(self, match: AdapterMatch, endpoint: str) -> bool:
+        return False
+
+    async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
+        self.asked.append(url)
+        raise AssertionError("a custom recipe serves the page before the adapter")
+
+    def shapes(self, match: AdapterMatch, answer: object, /) -> tuple[Shape, ...]:
+        return ()
+
+
+async def test_a_custom_recipe_serves_an_adapter_sites_page_before_the_adapter(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    custom_recipe: uuid.UUID,
+    engine_data: EngineData,
+) -> None:
+    adapter = _Adapter(own_origin.removeprefix("https://"))
+    web.adapters = Registry((adapter,))
+    url = f"{own_origin}/item/desk-lamp"
+    web.endpoints[f"{own_origin}/api/items/desk-lamp"] = PRODUCT
+
+    result = await scrape(engine, replace(fetching, rungs=web.rungs()), _scrape(url, kettle_schema), data=engine_data)
+
+    assert result.fetch is not None
+    assert (result.fetch.method, adapter.asked) == ("api", [])
     assert [r.url for r in web.requested] == [f"{own_origin}/api/items/desk-lamp"]

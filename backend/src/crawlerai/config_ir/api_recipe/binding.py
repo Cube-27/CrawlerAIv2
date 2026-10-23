@@ -16,12 +16,14 @@ import json
 import re
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from functools import cached_property
 from typing import Final, NamedTuple
 from urllib.parse import quote, quote_plus, unquote, urlsplit
 
 from pydantic import JsonValue, ValidationError
 
 from crawlerai.collect import json_doc
+from crawlerai.collect.api import read_xpath
 from crawlerai.collect.network_match import url_shape
 from crawlerai.config_ir.api_recipe.model import (
     CUSTOM_KINDS,
@@ -74,30 +76,87 @@ class Ambiguous:
     reason: str
 
 
+@dataclass(frozen=True)
+class CallAnswer:
+    """A call's answer as a custom recipe's binders read it: its text, its JSON document (None when it is not JSON,
+    RFC 8259) and its HTML parse (`content.page`; `parsed` when the caller has it already)."""
+
+    text: str
+    parsed: ParsedPage | None = None
+
+    @cached_property
+    def document(self) -> JsonValue:
+        try:
+            return json_text.parse(self.text.encode())
+        except ValueError:
+            return None
+
+    @cached_property
+    def page(self) -> ParsedPage:
+        return self.parsed if self.parsed is not None else ParsedPage(self.text)
+
+
+@dataclass(frozen=True)
+class Served:
+    """What serving a custom recipe fetched before a call, which the recipe's own binders read (`CUSTOM_KINDS`): the
+    parameters of the URL pattern the page matched (decoded, `url_pattern.match`), the warm-up's answer and the main
+    call's."""
+
+    pattern: Mapping[str, str] = field(default_factory=dict)
+    warm_up: CallAnswer | None = None
+    main: CallAnswer | None = None
+
+    def value(self, binder: Binder) -> str | None:
+        """The value `binder` reads: a JSONPath selecting one scalar of a JSON answer, an XPath 1.0 expression giving
+        one value of an HTML answer, or a regex's first group in an answer's text."""
+        if binder.kind == "pattern":
+            return self.pattern.get(binder.arg)
+        answer = self.main if binder.kind == "main" else self.warm_up
+        if answer is None:
+            return None
+        if binder.kind == "warm_up_xpath":
+            found = read_xpath(binder.arg, answer.page)
+            # XPath 1.0 §4.2 `string()`: an integral number is written without a decimal point.
+            return None if found is None else _scalar_text(int(found) if _integral(found) else found)
+        if binder.kind == "warm_up_regex":
+            matched = re.compile(binder.arg, PCRE_FLAGS).search(answer.text)
+            return None if matched is None else matched[1]
+        return _one_scalar(binder.arg, answer.document)
+
+
+def _integral(value: JsonValue) -> bool:
+    return isinstance(value, float) and value.is_integer()
+
+
 # --- reading and filling ---------------------------------------------------------------------------------------------
 
 
-def resolve(binder: Binder, page_url: str, page_data: PageData) -> str | None:
-    """The value `binder` reads from the page, decoded; `None` when the page has no non-empty value there, and for a
-    custom recipe's binder, which reads what serving the recipe fetched, not the page."""
+def resolve(binder: Binder, page_url: str, page_data: PageData, served: Served | None = None) -> str | None:
+    """The value `binder` reads from the page, decoded; `None` when the page has no non-empty value there. A custom
+    recipe's binder reads what serving the recipe fetched (`served`), not the page: `None` without it."""
     if binder.kind in CUSTOM_KINDS:
-        return None
+        return None if served is None else served.value(binder) or None
     kind = _DATA_KINDS.get(binder.kind)
     value = _url_value(binder, _Url.split(page_url)) if kind is None else _data_value(kind, binder.arg, page_data)
     return value or None
 
 
-def resolve_params(spec: RequestSpec, page_url: str, page_data: PageData) -> dict[str, str] | None:
-    """Every parameter of `spec` read from the page; `None` when one has no value there."""
-    params = _params_or_missing(spec, page_url, page_data)
+def resolve_params(
+    spec: RequestSpec, page_url: str, page_data: PageData, served: Served | None = None
+) -> dict[str, str] | None:
+    """Every parameter of `spec` read from the page (and what serving a custom recipe fetched, `served`); `None` when
+    one has no value there."""
+    params = _params_or_missing(spec, page_url, page_data, served)
     return params if isinstance(params, dict) else None
 
 
-def _params_or_missing(spec: RequestSpec, page_url: str, page_data: PageData) -> dict[str, str] | str:
+def _params_or_missing(
+    spec: RequestSpec, page_url: str, page_data: PageData, served: Served | None = None
+) -> dict[str, str] | str:
     """Every parameter of `spec` read from the page, or the name of the first one without a value there."""
     params: dict[str, str] = {}
     for name, binder in spec.binders.items():
-        value = resolve(binder, page_url, page_data)
+        value = resolve(binder, page_url, page_data, served)
         if value is None:
             return name
         params[name] = value
@@ -177,9 +236,12 @@ def _url_value(binder: Binder, url: "_Url") -> str | None:
 
 
 def _data_value(kind: PageDataKind, query: str, page_data: PageData) -> str | None:
-    if kind not in page_data:
-        return None
-    nodes = json_doc.select(query, page_data[kind])
+    return None if kind not in page_data else _one_scalar(query, page_data[kind])
+
+
+def _one_scalar(query: str, document: JsonValue) -> str | None:
+    """The text of the one scalar `query` selects in `document`; None when it selects anything else."""
+    nodes = json_doc.select(query, document)
     return _scalar_text(nodes[0][1]) if len(nodes) == 1 else None
 
 

@@ -1138,6 +1138,8 @@ export interface components {
              * @enum {string}
              */
             method: "http" | "browser" | "api";
+            /** Recipe */
+            recipe?: string | null;
             /** Status */
             status: number | null;
             /**

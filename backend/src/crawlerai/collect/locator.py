@@ -66,7 +66,8 @@ _ADDRESS: dict[str, re.Pattern[str]] = {
     # The nth captured network body in the bundle.
     "xhr": _INDEXED_JSONPATH,
     "adapter": _NAMED_JSONPATH,
-    "api": _NAMED_JSONPATH,
+    # An API recipe's id, then a path in its answer: a JSONPath, or an XPath 1.0 expression for an HTML answer.
+    "api": re.compile(rf"{_ASSIGNED_NAME}:(.+)", re.DOTALL),
     # A schema field name, the step index, then the step's selector.
     "config": re.compile(rf"({NAME_PATTERN}):{_INDEX}:(.+)", re.DOTALL),
     # `[start, end)` character offsets into the cleaned text.

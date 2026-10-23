@@ -22,7 +22,7 @@ from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.storage.capture_bundle import network_json
+from crawlerai.storage.capture_bundle import network_json, recipe_mark
 
 __all__ = ["PlatformJsonCollector", "data_call_bodies"]
 
@@ -60,8 +60,8 @@ def _answers(page: ParsedPage, diagnostics: list[str]) -> Iterator[tuple[str, Js
         return
     for index in sorted(data_call_bodies(page)):
         platform = page.network_entries[index].data_call
-        if platform == ADAPTER_CALL:
-            continue  # an adapter's answer, which its adapter's shapes read (`collect.run`)
+        if platform == ADAPTER_CALL or recipe_mark(platform):
+            continue  # an adapter's answer, which its adapter's shapes read (`collect.run`), or a recipe's, its map's
         try:
             answer = network_json(page.network[index])
         except ValueError as e:

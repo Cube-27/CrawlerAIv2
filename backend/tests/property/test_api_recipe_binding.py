@@ -1,10 +1,10 @@
 """Binding: sample pages and the endpoint requests made for them bind to a request spec whose templates
 reproduce every request, or to `Ambiguous` with the reason. Binder round trips: a value placed in a page URL is read
-back by its binder, and endpoint requests generated from a template bind back to binders that reproduce every
-request."""
+back by its binder, endpoint requests generated from a template bind back to binders that reproduce every
+request, and a value written into a form body is read back by the form's decoding."""
 
 from dataclasses import dataclass
-from urllib.parse import quote
+from urllib.parse import parse_qsl, quote
 
 from hypothesis import given
 from hypothesis import strategies as st
@@ -15,6 +15,7 @@ from crawlerai.config_ir.api_recipe.binding import (
     PageData,
     Sample,
     bind,
+    render_body,
     render_url,
     resolve,
     resolve_params,
@@ -85,6 +86,14 @@ def _layouts(draw: st.DrawFn) -> _Layout:
     segments = ["API", "V1"] + [f"{{v{i}}}" for i in order if not in_endpoint_query[i]]
     query = [f"k{i}={{v{i}}}" for i in order if in_endpoint_query[i]] + ["fmt=JSON"]
     return _Layout(binders, "https://api.example.test/" + "/".join(segments) + "?" + "&".join(query))
+
+
+@given(st.text(min_size=1, max_size=12), st.text(min_size=1, max_size=12))
+def test_a_value_in_a_form_body_is_read_back_by_the_forms_decoding(first: str, second: str) -> None:
+    # WHATWG URL §5.1: application/x-www-form-urlencoded parsing gives back what §5.2 serializing wrote.
+    body = render_body("a={a}&b={b}&c=1", {"a": first, "b": second}, "form")
+
+    assert parse_qsl(body, keep_blank_values=True, errors="strict") == [("a", first), ("b", second), ("c", "1")]
 
 
 @given(_layouts(), st.data())

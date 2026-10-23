@@ -1,6 +1,7 @@
 """Recipe execution: a site with an active recipe is served over `fetch_json` with no browser,
 the HTML page fetched first only when a binder reads its JSON documents; what the recipe cannot serve falls back to the
-configured rungs; a listing's pages come by incrementing the pagination parameter until the rows run out.
+configured rungs; a listing's pages come by incrementing the pagination parameter until the rows run out. A custom
+recipe's warm-up and calls are one fetch: a cookie the warm-up's answer sets goes with the calls after it.
 
 A stand-in API (`tests.stand_in`, synthetic `.test` hosts) answers through `fetch_json` and the SSRF guard.
 """
@@ -22,7 +23,7 @@ from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.collect.base import PAGE
-from crawlerai.config_ir.api_recipe.execute import RecipeRung, recipe_collector
+from crawlerai.config_ir.api_recipe.execute import Custom, RecipeRung, recipe_collector
 from crawlerai.config_ir.api_recipe.model import (
     ApiRecipe,
     CursorPagination,
@@ -30,6 +31,7 @@ from crawlerai.config_ir.api_recipe.model import (
     Pagination,
     Proof,
 )
+from crawlerai.config_ir.model import WarmUp
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import CaptureId, PageKind, SchemaId
@@ -132,6 +134,37 @@ def test_a_page_is_served_over_the_api_with_no_browser_and_its_values_are_api_ca
         ("title", "api", PAGE, "Desk Lamp"),
         ("price", "api", PAGE, {"amount": "19.5", "currency": "EUR"}),
     ]
+
+
+def test_a_cookie_the_warm_up_sets_goes_with_the_main_call_of_the_same_fetch_only() -> None:
+    def site(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/session":
+            return httpx.Response(200, text="<!doctype html><p>hi</p>", headers={"Set-Cookie": "sid=s1; Path=/"})
+        return _products(request)
+
+    api = StandIn(site)
+    recipe = ApiRecipe(
+        method="GET", url=f"{SITE}/api/{{p1}}", params_from_url={"p1": "pattern:slug"}, map={"t": "$['data']['name']"}
+    )
+    custom = Custom("cfg1", ("shop.example.test/p/{slug}",), warm_up=WarmUp(url=f"{SITE}/session"))
+    rung = RecipeRung(recipe, api.fetch_json(), ScriptedRung(), "test", custom)
+    url = f"{SITE}/p/desk-lamp"
+
+    async def twice() -> FetchResult:
+        await rung(url, POLICY)
+        return await rung(url, POLICY)
+
+    result = asyncio.run(twice())
+
+    # Each fetch starts with a jar of its own: the second warm-up carries no cookie of the first fetch.
+    assert [(r.url.path, r.headers.get("Cookie")) for r in api.requests] == [
+        ("/session", None),
+        ("/api/desk-lamp", "sid=s1"),
+        ("/session", None),
+        ("/api/desk-lamp", "sid=s1"),
+    ]
+    assert result.block_class == "ok"
+    assert [(a.method, a.recipe) for a in result.attempts] == [("api", "cfg1"), ("api", "cfg1")]
 
 
 # --- pagination -----------------------------------------------------------------------------

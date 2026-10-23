@@ -27,7 +27,7 @@ from crawlerai.acquire.memory import learn_fetch
 from crawlerai.acquire.politeness import backoff, slowed_down
 from crawlerai.acquire.rungs import NO_PLAN
 from crawlerai.acquire.types import AttemptRecord, CallsMode, FetchResult
-from crawlerai.config_ir.active import recipe_of
+from crawlerai.config_ir.active import custom_of, recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.db.queue import LEASE, ClaimedTask, Failed, Finished, Postpone, TaskResult
 from crawlerai.services.fetch_options import FetchOptions, fetch_policy
@@ -120,6 +120,7 @@ async def fetch_task(
     )
     config = None if records is None else records.config
     recipe = recipe_of(config) if page_task.served and config is not None else None
+    custom = None if recipe is None or config is None else custom_of(config)
     # A page the config's API recipe serves was stored as its JSON.
     where, cache, formats = (site, task.canonical_url), page_task.options.cache, page_task.formats
     stored = await read_stored(
@@ -135,7 +136,9 @@ async def fetch_task(
     attempts: list[AttemptRecord] = []
     pages = _recipe_pages(page_task, recipe, attempts)
     growth, deadline = page_task.growth, page_task.deadline
-    plan = PagePlan(rungs, site, policy, attempts, recipe, pages, growth, deadline=deadline, fetch=by_sources)
+    plan = PagePlan(
+        rungs, site, policy, attempts, recipe, pages, growth, deadline=deadline, fetch=by_sources, custom=custom
+    )
     try:
         fetched, further = await _fetched(engine, fetching, page_task, plan, waiting)
     except TargetRejected as e:  # a scrape's growth or browser actions met a refused request

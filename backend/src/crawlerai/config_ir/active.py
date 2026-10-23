@@ -21,7 +21,7 @@ from crawlerai.acquire.rungs import FetchPlan
 from crawlerai.acquire.types import CallEndpoint, FetchPolicy, FetchResult
 from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.api_recipe.binding import page_data, resolve_params
-from crawlerai.config_ir.api_recipe.execute import RecipeExecutor
+from crawlerai.config_ir.api_recipe.execute import Custom, RecipeExecutor
 from crawlerai.config_ir.api_recipe.model import PLACEHOLDER, ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import request_for
 from crawlerai.config_ir.drift import Drifted, DriftMargins, record_run
@@ -130,11 +130,39 @@ def recipe_of(config: ActiveConfig) -> ApiRecipe | None:
     return config.api.recipe if isinstance(config.api, RecipeExecutor) else None
 
 
+def custom_of(config: ActiveConfig) -> Custom | None:
+    """What `config`'s custom recipe serves beyond its main call; None for a learned config."""
+    return config.api.custom if isinstance(config.api, RecipeExecutor) else None
+
+
+def _custom(config_id: ExtractionConfigId, ir: ExtractionConfigIR) -> Custom | None:
+    """A custom recipe's serving (`execute.Custom`), from the config with URL patterns that stores it."""
+    if not ir.patterns:
+        return None
+    page_fields = bool(_page_fields(ir))
+    return Custom(str(config_id), tuple(ir.patterns), ir.recipes, ir.warm_up, page_fields, ir.rate_ms)
+
+
+def _page_fields(ir: ExtractionConfigIR) -> dict[str, FieldSteps]:
+    """The running fields a custom recipe reads off the HTML page: no call's, and not the browser's render."""
+    return {
+        name: steps
+        for name, steps in ir.fields.items()
+        if steps.call is None and steps.needs == "http" and steps.status != "suspended"
+    }
+
+
 def _bound(config_id: ExtractionConfigId, version: int, ir: ExtractionConfigIR, vocabulary: Vocabulary) -> ActiveConfig:
-    """The config bound to its executor, and to its recipe's when it has one: the recipe's locators name the config."""
+    """The config bound to its executor, and to its recipe's when it has one: the recipe's locators name the config.
+    A custom recipe's executor reads its page fields, on the HTML page it fetched, with the config's executor of just
+    those fields."""
     executor = EngineExecutor(ir, vocabulary)
     recipe = ir.api_recipe
-    api = None if recipe is None else RecipeExecutor.of(recipe, str(config_id), executor.field_status)
+    custom = _custom(config_id, ir)
+    page = None
+    if custom is not None and custom.page_fields:
+        page = EngineExecutor(ir.model_copy(update={"fields": _page_fields(ir)}), vocabulary)
+    api = None if recipe is None else RecipeExecutor.of(recipe, str(config_id), executor.field_status, custom, page)
     return ActiveConfig(config_id, version, executor, api, patterns=tuple(ir.patterns))
 
 

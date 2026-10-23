@@ -421,6 +421,17 @@
             "title": "Method",
             "type": "string"
           },
+          "recipe": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipe"
+          },
           "status": {
             "anyOf": [
               {
