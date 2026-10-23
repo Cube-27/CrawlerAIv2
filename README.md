@@ -56,7 +56,7 @@ around a [generalization contract](docs/rules.md):
 |---|---|
 | Backend | Python 3.12, FastAPI, PostgreSQL (also the job queue), curl_cffi, Patchright (headless), lxml, Babel/CLDR |
 | Frontend | Vite, React, TypeScript, HeroUI |
-| Deployment | One Docker image running three roles (api, worker, scheduler), with S3-compatible object storage |
+| Deployment | One Docker image (linux/amd64 only: Google Chrome has no arm64 build, use `--platform=linux/amd64` emulation) running three roles (api, worker, scheduler), with S3-compatible object storage |
 
 ## Getting started
 
