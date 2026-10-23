@@ -94,15 +94,35 @@ _UNENDING_CALL = (
     + b"</p><script>fetch('/api/unending'); fetch('/api/items');</script></body></html>"
 )
 # A page that starts a dedicated worker (HTML Standard §10.2.6), which makes a request of its own, holds a frame of
-# another site (`localhost`: a cross-site frame renders in a process of its own), and writes the client hints it reads.
-# 127.0.0.1 and localhost are potentially trustworthy origins (W3C Secure Contexts §3.2), to which client hints go.
+# another site (`localhost`: a cross-site frame renders in a process of its own), and writes the client hints it reads,
+# then those a service worker (Service Workers §3.1) and a shared worker (HTML Standard §10.2.6) report once running.
+# 127.0.0.1 and localhost are potentially trustworthy origins (W3C Secure Contexts §3.2), to which client hints go and
+# which may register a service worker.
 _WITH_WORKER = """<html><body><p>Worker page</p><iframe src="http://localhost:{port}/framed"></iframe><script>
-new Worker('/worker.js');
-navigator.userAgentData.getHighEntropyValues({hints}).then(h => {{
-  const pre = document.createElement('pre'); pre.setAttribute('id', 'hints'); pre.textContent = JSON.stringify(h);
+const write = (id, text) => {{
+  const pre = document.createElement('pre'); pre.setAttribute('id', id); pre.textContent = text;
   document.body.append(pre);
-}});
+}};
+new Worker('/worker.js');
+navigator.userAgentData.getHighEntropyValues({hints}).then(h => write('hints', JSON.stringify(h)));
+navigator.serviceWorker.onmessage = e => write('service-worker', e['data']);
+navigator.serviceWorker.register('/service-worker.js').then(() => navigator.serviceWorker.ready)
+  .then(r => r.active.postMessage({hints}));
+const shared = new SharedWorker('/shared-worker.js');
+shared.port.onmessage = e => write('shared-worker', e['data']);
+shared.port.postMessage({hints});
 </script></body></html>"""
+# What a worker reports when asked: its user agent and the client hints the page names.
+_REPORT = b"""const report = h => navigator.userAgentData.getHighEntropyValues(h)
+  .then(v => JSON.stringify([navigator.userAgent, v]));
+"""
+_SERVICE_WORKER = _REPORT + b"self.onmessage = e => e.waitUntil(report(e['data']).then(r => e.source.postMessage(r)));"
+_SHARED_WORKER = (
+    _REPORT
+    + b"""self.onconnect = c => {
+  c.ports[0].onmessage = e => report(e['data']).then(r => c.ports[0].postMessage(r));
+};"""
+)
 _FRAMED = b"<html><body><p>Framed</p><script>fetch('/api/n/8');</script></body></html>"
 
 # A 403 document that stands in for the page and never navigates on within the fetch (a challenge it cannot pass).
@@ -216,6 +236,8 @@ def server() -> Iterator[Server]:
             "/api/unending": Reply(content_type=_JSON, body=b'{"never": "complete"}', hold_s=30),
             "/framed": Reply(body=_FRAMED),
             "/worker.js": Reply(content_type="text/javascript", body=b"fetch('/api/n/7');"),
+            "/service-worker.js": Reply(content_type="text/javascript", body=_SERVICE_WORKER),
+            "/shared-worker.js": Reply(content_type="text/javascript", body=_SHARED_WORKER),
             "/refusal": Reply(403, body=_REFUSAL_PAGE),
             "/stall": Reply(body=b"<html></html>", delay_s=8),
             "/hop": Reply(302, headers=(("Location", "/app"),)),
@@ -330,11 +352,12 @@ def test_a_data_call_whose_body_never_ends_is_left_out_and_the_page_kept(browser
     assert [e.url for e in result.bundle.manifest.network_bodies] == [server.url("/api/items")]
 
 
-def test_the_probe_reads_what_every_request_of_a_page_its_frame_and_worker_presents(
+def test_the_probe_reads_what_every_request_of_a_page_its_frame_and_workers_presents(
     browser: Browser, server: Server
 ) -> None:
     """Owner 2026-10-23: the identity read at startup (`browser_identity`), which the HTTP and JSON rungs send, names no
-    headless mode, and is what the page, a cross-site frame and a dedicated worker send and report."""
+    headless mode, and is what the page, a cross-site frame and a dedicated, service and shared worker send and
+    report."""
     identity = browser.session.identity
     hints = ["architecture", "bitness", "fullVersionList", "model", "platformVersion", "wow64"]
     server.routes["/with-worker"] = Reply(body=_WITH_WORKER.format(port=server.port, hints=json.dumps(hints)).encode())
@@ -346,13 +369,17 @@ def test_the_probe_reads_what_every_request_of_a_page_its_frame_and_worker_prese
     sent = {
         path: {name.lower(): value for name, value in headers.items()} for _, path, headers in server.requests[seen:]
     }
-    assert set(sent) >= {"/with-worker", "/framed", "/worker.js", "/api/n/7", "/api/n/8"}
+    scripts = {"/worker.js", "/service-worker.js", "/shared-worker.js"}
+    assert set(sent) >= {"/with-worker", "/framed", "/api/n/7", "/api/n/8", *scripts}
     assert {headers["user-agent"] for headers in sent.values()} == {identity.agent}
     named = dict(identity.headers)
     for document in ("/with-worker", "/framed"):
         assert {name: sent[document].get(name) for name in named} == named
-    reported = json.loads(lxml_html.fromstring(result.bundle.body).get_element_by_id("hints").text_content())
+    page = lxml_html.fromstring(result.bundle.body)
+    reported = json.loads(page.get_element_by_id("hints").text_content())
     assert {name: reported[name] for name in hints} == {name: identity.metadata[name] for name in hints}
+    for worker in ("service-worker", "shared-worker"):
+        assert json.loads(page.get_element_by_id(worker).text_content()) == [identity.agent, reported]
 
 
 @pytest.fixture(scope="module")
