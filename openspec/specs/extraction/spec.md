@@ -381,11 +381,16 @@ one of which is shown, as a carousel's slides and a tab list's panels are (WAI-A
 site navigation included, in `main`); the WAI-ARIA landmark and window roles of the same meaning; and elements whose
 class or id names a furniture word (header, footer, nav, menu, breadcrumb, cookie, consent, sidebar, social, share,
 newsletter, modal, popup, skip, as Firecrawl's `excludeNonMainTags` and Readability read them, a name's parts split at
-`-`, `_` and camelCase boundaries; a header or footer class only where the element would be page-level, and a header
-or footer `id` whatever its scope, an id being unique in the document); no rule drops an element holding the page's
-first `h1`, a `main` or `article`, no `aside` or `complementary` landmark one holding the page's longest leaf text
-block, and no name or page-hidden mark one holding that block or more than two fifths of the page's text outside
-hyperlinks; when the names together would drop more than two fifths of that text, the page is read without them. Everything left is written in document order as CommonMark with GFM tables (headings, paragraphs with collapsed
+`-`, `_` and camelCase boundaries, a word after `has`, `with`, `without`, `no`, `non` or `not` naming a layout, not
+furniture; a header or footer class only where the element would be page-level, and a header or footer `id` whatever
+its scope, an id being unique in the document); no rule drops an element holding the page's first `h1`, a `main` or
+`article`, no `aside` or `complementary` landmark one holding the page's longest leaf text block, and no name,
+page-hidden mark or page-level `header` holding no navigation (one by its scope alone, HTML §4.3.8) one holding that
+block or more than two fifths of the page's text outside hyperlinks; a class such a kept element or a block holding
+the longest block bears names the page's blocks, not furniture. The signs are read strongest first and the page's
+text measured anew on what each leaves (stated landmarks; then `aside`, page-level `header` and hidden elements; then
+names), so a cookie dialog's text never stands for the content; when the names together would drop more than two
+fifths of that text, the page is read without them. Everything left is written in document order as CommonMark with GFM tables (headings, paragraphs with collapsed
 inline whitespace, nested lists, tables, fenced code, block quotes, links and images resolved against the document
 base URL); a form control's value is no text. A page that shows nothing once scripts would run is written as a user
 agent with scripting disabled renders it, its `noscript` content included (HTML Standard §4.12.2). `markdown` is `""`
@@ -402,6 +407,10 @@ D-1277, D-1450, D-1473, D-1474; endpoint in [rest-api](../rest-api/spec.md).
 #### Scenario: Content in a wrapper named after a sidebar
 - **WHEN** a `div` whose class names a sidebar holds the page's longest paragraph, under two fifths of its text
 - **THEN** `markdown` keeps it
+#### Scenario: Article wrapped in a page-level header
+- **WHEN** a body-level `header` holding no `nav` wraps the article's text, its `h1` outside it, and an open cookie
+  `dialog` holds a longer paragraph
+- **THEN** `markdown` keeps the article's text and drops the dialog's
 #### Scenario: Header and footer of the main content
 - **WHEN** `main` holds a `header` with the title's summary and a `footer` with a citation, neither holding a `nav`,
   and a page whose `main` wraps its layout holds a `footer` with a `nav` and the site's address

@@ -155,28 +155,39 @@ def test_markdown_is_the_page_minus_its_furniture() -> None:
     )
 
 
-_FURNITURE_NAMES = ("has-no-sidebar", "sidebarContent", "page_menu", "share-panel", "modal")
+_FURNITURE_WRAPPERS = (
+    "div class='has-no-sidebar'",
+    "div class='page-with-sidebar'",
+    "div class='sidebarContent'",
+    "div class='page_menu'",
+    "div class='share-panel'",
+    "div class='modal'",
+    "header class='inner-content'",
+)
 
 
 @given(
-    st.sampled_from(_FURNITURE_NAMES),
+    st.sampled_from(_FURNITURE_WRAPPERS),
     st.integers(min_value=12, max_value=40),
     st.lists(st.integers(min_value=1, max_value=11), min_size=1, max_size=6),
 )
 def test_a_wrapper_named_after_furniture_that_holds_the_longest_block_is_kept(
-    name: str, longest: int, others: list[int]
+    wrapper: str, longest: int, others: list[int]
 ) -> None:
-    # Readability: the content is where the longest text runs; a name is a weak sign of furniture.
+    # Readability: the content is where the longest text runs; a name, or a header's scope, is a weak sign of
+    # furniture, measured on what the stated landmarks (here an open cookie dialog with longer text) leave.
     blocks = "".join(f"<p>{'Other words here. ' * n}</p>" for n in others)
+    tag = wrapper.split()[0]
     page = (
-        f"<html><body><nav>{'Menu entry ' * 5}</nav><div>{blocks * 4}</div>"
-        f"<div class='{name}'><p>{'Long running text. ' * longest}</p></div></body></html>"
+        f"<html><body><nav>{'Menu entry ' * 5}</nav><dialog open><p>{'Cookie notice. ' * 60}</p></dialog>"
+        f"<div>{blocks * 4}</div><{wrapper}><p>{'Long running text. ' * longest}</p></{tag}></body></html>"
     )
 
     made = markdown(ParsedPage(page), FINAL_URL)
 
     assert ("Long running text. " * longest).strip() in made
     assert "Menu entry" not in made
+    assert "Cookie notice" not in made
 
 
 def test_a_header_or_footer_in_main_is_the_main_contents_unless_it_holds_navigation() -> None:

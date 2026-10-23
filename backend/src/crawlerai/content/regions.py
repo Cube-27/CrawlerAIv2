@@ -17,22 +17,31 @@ Furniture is what a page shows around its content on every page of its site, or 
 - **Named furniture.** An element whose `class` or `id` names one of the furniture words below, as Firecrawl's
   `onlyMainContent` (`excludeNonMainTags`) and Mozilla Readability (`unlikelyCandidates`) read class and id names: a
   word that is a whole token or one of its parts (split at `-`, `_` and camelCase boundaries), or, for the words that
-  name a layout slot rather than furniture alone (`ad`, `widget`), only a whole token. A header or footer class
-  counts only where the element would be the page's (page-level, as for the elements); an `id` is unique
-  in the document (HTML Standard §3.2.6), so one naming a header or footer names the page's whatever its scope.
+  name a layout slot rather than furniture alone (`ad`, `widget`), only a whole token. A word after a part that makes
+  it something the element has or lacks (`has-no-sidebar`, `page-with-sidebar`) names a layout, not furniture. A
+  header or footer class counts only where the element would be the page's (page-level, as for the elements); an
+  `id` is unique in the document (HTML Standard §3.2.6), so one naming a header or footer names the page's whatever
+  its scope.
 
 No furniture rule drops the page's content: an element that holds the page's first `h1` (HTML Standard §4.3.6: its
 title), a `main` element or `role="main"` landmark (§4.4.14) or an `article` (§4.3.2) is kept, and so is an `aside`
 that holds the page's longest leaf text block: content tangential to the page holds none of its main text (a faceted
-listing's category text in its sidebar column). A name or the page's
-own hiding is a weaker sign than a landmark the markup states, and an element so marked is kept when it is the
-page's content by its text, as Mozilla Readability finds it: when it holds the page's longest leaf text block, or
-more than two fifths of the page's text outside hyperlinks (HTML Standard §4.5.1: a hyperlink's content labels the
-link; a block that is mostly links is a menu). That keeps a wrapper named after a sidebar or a modal it also holds
-and a body a consent script reveals. When the names together would still drop more than two fifths of that text,
-they name the page's layout rather than its furniture, and the page is read without them (Readability's retry
-without its `unlikelyCandidates`, which keeps its visibility check). The elements never rendered whatever a script
-does are dropped regardless.
+listing's category text in its sidebar column). A name, the page's own hiding, or a `header` that is the page's only
+by its scope and holds no navigation (HTML Standard §4.3.8: introductory content, which may wrap what it introduces)
+is a weaker sign than a landmark the markup states, and an element so marked is kept when it is the page's content by
+its text, as Mozilla Readability finds it: when it holds the page's longest leaf text block, or more than two fifths
+of the page's text outside hyperlinks (HTML Standard §4.5.1: a hyperlink's content labels the link; a block that is
+mostly links is a menu). That keeps a wrapper named after a sidebar or a modal it also holds, a body a consent script
+reveals and a `header` that wraps an article. A class that an element so kept for its text bears, or a block holding
+the longest leaf text block, names the page's blocks (a page builder's `widget` panels, a table style), not its
+furniture, and the others of that class are kept too. When the names together would still drop more than two fifths
+of that text, they name the page's layout rather than its furniture, and the page is read without them
+(Readability's retry without its `unlikelyCandidates`, which keeps its visibility check). The elements never rendered
+whatever a script does are dropped regardless.
+
+The signs are read strongest first, the page's text measured anew after each: the stated landmarks; then the
+tangential, scope-inferred and hidden elements; then the names. A cookie dialog's text is no measure of the page's
+content, so the longest block and the two fifths are those of what the stronger signs leave.
 
 A leaf text block is a block element (paragraph, list item, description, quote, caption, summary, `div`, `pre`, table
 cell or heading) that holds no other; its text is the text outside hyperlinks.
@@ -65,6 +74,10 @@ LANDMARK_ROLES = ("navigation", "banner", "contentinfo", "complementary", "searc
 # root is `body` is the page's; one inside an `article` or `section` belongs to that section. HTML-AAM §4.1 (`header`,
 # `footer`): one inside `main` is no `banner` or `contentinfo` landmark either, but the main content's own.
 _PAGE_LEVEL = frozenset({"header", "footer"})
+# HTML Standard §4.3.8: a `header` is introductory content or navigational aids; one the page's by its scope alone that
+# holds no navigation may wrap the content it introduces, an article whose title sits outside it. A `footer` (§4.3.9)
+# holds what is about its section, never the section.
+_HEADER = "header"
 _SCOPES = frozenset(
     {*("article", "aside", "nav", "section", "blockquote", "details", "dialog", "fieldset", "figure", "td")}
     | {"body", "main"}
@@ -86,6 +99,9 @@ _FURNITURE_WORDS = frozenset(
 # Firecrawl `excludeNonMainTags`: words that name furniture only as a whole token (`.ad`, `.widget`); as a part they
 # name page-builder blocks of any content (`page-widget`, `ad-free`).
 _FURNITURE_TOKENS = frozenset({"ad", "ads", "advert", "widget", "overlay"})
+# A part that makes the word after it something the element has or lacks rather than what it is: `has-no-sidebar`,
+# `page-with-sidebar`, `without-header` name a layout with or without that furniture, not the furniture.
+_QUALIFIERS = frozenset({"has", "with", "without", "no", "non", "not"})
 # The parts of a class or id: split at `-`, `_` and camelCase boundaries (`apphub_HeaderTop`, `siteHeader`).
 _PARTS = re.compile(r"[-_]+|(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 # Above this share of the page's text outside hyperlinks an element is the page's content, whatever it is named; above
@@ -96,9 +112,16 @@ _HEADINGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 LEAF_TAGS = ("p", "li", "dd", "dt", "blockquote", "figcaption", "summary", "div", "pre", "td", "th", *_HEADINGS)
 _MAIN = ("main", "article")
 _NOSCRIPT = "noscript"
-# The signs of furniture (`_furniture`): a landmark the markup states, a complementary one (`aside`), the page's own
-# hiding, a name.
-type Sign = Literal["stated", "tangential", "hidden", "named"]
+# The signs of furniture (`_furniture`): a landmark the markup states, a complementary one (`aside`), a header the
+# page's by its scope alone, the page's own hiding, a name.
+type Sign = Literal["stated", "tangential", "scoped", "hidden", "named"]
+# The order the signs are read in (module docstring): what the markup states is out before the page's text is measured
+# for the weaker signs, and the names last, measured on what the others leave.
+_STAGES: tuple[frozenset[Sign], ...] = (
+    frozenset({"stated"}),
+    frozenset({"tangential", "scoped", "hidden"}),
+    frozenset({"named"}),
+)
 
 
 def main_region(page: ParsedPage) -> LexborNode | None:
@@ -124,12 +147,16 @@ def drop_furniture(tree: HtmlElement, *, scripting: bool = True) -> None:
     for element in [e for e in tree.iter() if not isinstance(e.tag, str) or e.tag in unrendered]:
         _drop(element)
     body = tree.find("body")
-    guard = _Guard(body if body is not None else tree)
-    stated, named = _marked(tree, guard, shown)
-    if sum(map(unlinked_length, named)) > _MAX_SHARE * guard.size:
-        named = []
-    for element in (*stated, *named):
-        _drop(element)
+    root = body if body is not None else tree
+    for signs in _STAGES:
+        guard = _Guard(root)
+        if "named" in signs:
+            guard.read_layout(root)
+        marked = _marked(tree, guard, shown, signs)
+        if "named" in signs and sum(map(unlinked_length, marked)) > _MAX_SHARE * guard.size:
+            marked = []
+        for element in marked:
+            _drop(element)
 
 
 def leaf_blocks(tree: HtmlElement) -> Iterator[HtmlElement]:
@@ -145,20 +172,18 @@ def unlinked_length(element: HtmlElement) -> int:
     return max(len(collapse(element.text_content())) - links, 0)
 
 
-def _marked(tree: HtmlElement, guard: "_Guard", shown: frozenset[str]) -> tuple[list[HtmlElement], list[HtmlElement]]:
-    """The outermost furniture elements the guard does not keep: those the markup states or the page hides, and those
-    only named furniture."""
-    stated: list[HtmlElement] = []
-    named: list[HtmlElement] = []
+def _marked(tree: HtmlElement, guard: "_Guard", shown: frozenset[str], signs: frozenset[Sign]) -> list[HtmlElement]:
+    """The outermost elements furniture by one of `signs` that the guard does not keep."""
+    marked: list[HtmlElement] = []
     stack = [tree]
     while stack:
         element = stack.pop()
         found = _furniture(element) if element is not tree and element.tag not in shown else None
-        if found is None or guard.keeps(element, found):
+        if found not in signs or guard.keeps(element, found):
             stack.extend(reversed(element))
         else:
-            (named if found == "named" else stated).append(element)
-    return stated, named
+            marked.append(element)
+    return marked
 
 
 def _drop(element: HtmlElement) -> None:
@@ -175,6 +200,15 @@ class _Guard:
         self.size = unlinked_length(root)
         longest = max(leaf_blocks(root), key=unlinked_length, default=None)
         self.longest = frozenset() if longest is None else frozenset({longest, *longest.iterancestors()})
+        self.layout: set[str] = set()
+
+    def read_layout(self, root: HtmlElement) -> None:
+        """Takes the classes the blocks holding the page's content bear (the longest leaf text block and its
+        ancestors, and any element named furniture that holds more than two fifths of the text) for the names of
+        the page's blocks, not its furniture."""
+        named = (e for e in root.iter() if isinstance(e.tag, str) and _furniture_names(e))
+        content = [*self.longest, *(e for e in named if unlinked_length(e) > _MAX_SHARE * self.size)]
+        self.layout = {name for element in content for name in tokens(element.get("class"))}
 
     def keeps(self, element: HtmlElement, sign: Sign) -> bool:
         if self.title is not None and (element is self.title or self.title in element.iterdescendants("h1")):
@@ -183,6 +217,8 @@ class _Guard:
             return True
         if sign == "stated":
             return False
+        if sign == "named" and _furniture_names(element) <= self.layout:
+            return True
         return element in self.longest or (sign != "tangential" and unlinked_length(element) > _MAX_SHARE * self.size)
 
 
@@ -192,19 +228,19 @@ def _is_main(element: HtmlElement) -> bool:
 
 def _furniture(element: HtmlElement) -> Sign | None:
     """Whether the element is furniture, and by what sign: one the markup states (a landmark element or role; content
-    tangential to the page, `aside` or `complementary`, a sign of its own), or a weak one (the page hides it, or its
-    name calls it furniture)."""
+    tangential to the page, `aside` or `complementary`, a sign of its own), or a weak one (a `header` the page's by
+    its scope alone and holding no navigation, the page hides it, or its name calls it furniture)."""
     role = _role(element)
     if role == _COMPLEMENTARY or element.tag == _ASIDE:
         return "tangential"
     if role in _FURNITURE_ROLES or element.tag in _FURNITURE_TAGS:
         return "stated"
     if element.tag in _PAGE_LEVEL and _page_level(element):
-        return "stated"
+        return "scoped" if element.tag == _HEADER and not element.cssselect(_NAVIGATION) else "stated"
     attributes: dict[str, str | None] = dict(element.attrib)
     if hidden(str(element.tag), attributes) and not _alternative(element):
         return "hidden"
-    return "named" if _named_furniture(element) else None
+    return "named" if _furniture_names(element) else None
 
 
 def _role(element: HtmlElement) -> str:
@@ -213,17 +249,24 @@ def _role(element: HtmlElement) -> str:
     return next(iter(tokens((element.get("role") or "").lower())), "")
 
 
-def _named_furniture(element: HtmlElement) -> bool:
+def _furniture_names(element: HtmlElement) -> set[str]:
+    """The element's class and id names that call it furniture (module docstring), as written."""
     classes, ids = tokens(element.get("class")), tokens(element.get("id"))
-    if _FURNITURE_TOKENS.intersection(name.lower() for name in (*classes, *ids)):
-        return True
-    named, unique = _words(classes), _words(ids)
-    return bool((named | unique) - _PAGE_LEVEL) or bool(unique) or (bool(named) and _page_level(element))
+    found = {name for name in (*classes, *ids) if name.lower() in _FURNITURE_TOKENS or _words([name]) - _PAGE_LEVEL}
+    found.update(name for name in ids if _words([name]))
+    page_level = [name for name in classes if _words([name]) & _PAGE_LEVEL]
+    if page_level and _page_level(element):
+        found.update(page_level)
+    return found
 
 
 def _words(names: list[str]) -> set[str]:
-    """The furniture words among the names' parts."""
-    return {part.lower() for name in names for part in _PARTS.split(name)} & _FURNITURE_WORDS
+    """The furniture words among the names' parts, but for one a qualifier precedes (`_QUALIFIERS`)."""
+    found: set[str] = set()
+    for name in names:
+        parts = [part.lower() for part in _PARTS.split(name)]
+        found.update(word for before, word in zip(("", *parts), parts, strict=False) if before not in _QUALIFIERS)
+    return found & _FURNITURE_WORDS
 
 
 def _page_level(element: HtmlElement) -> bool:
