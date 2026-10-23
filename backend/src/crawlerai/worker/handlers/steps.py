@@ -82,7 +82,8 @@ RECIPE_PAGES_SHARE: Final = LEASE / 4
 # The `last_error` of a records task in a worker that has not loaded the engine's data files (D-0492).
 RECORDS_UNAVAILABLE: Final = "records_unavailable"
 # A page a 429 kept out (RFC 6585 §4) is fetched at most this many times: one retry after the back-off, from the
-# pool's next address, then `blocked`.
+# pool's next address, then `blocked`; once its fetch went on to the browser (owner decision 2026-10-23,
+# `acquire.rungs`), at once.
 _TOO_MANY_TRIES: Final = 2
 
 # The request's `min_confidence`, as the job row stores it.
@@ -261,7 +262,8 @@ async def fetch_queued(
       postponed until it is, or `blocked`;
     - a 429 or 503 to any request of the fetch, unless the outcome kept is `ok` (the page an adapter's endpoint fell
       back to, adapters spec): a transient failure, retried after the back-off (`politeness.backoff`), `blocked` once
-      attempts run out (a 429's after one retry), and at once when the server asks for more than the longest backoff.
+      attempts run out (a 429's after one retry, or as soon as the fetch tried it in the browser), and at once when
+      the server asks for more than the longest backoff.
     The task is logged as running once the site admits its fetch: a postponed task did not run."""
 
     async def admitted(url: str, admit: Admit, known: HostRules) -> FetchResult:
@@ -284,15 +286,29 @@ async def fetch_queued(
 def _backed_off(result: FetchResult, task: ClaimedTask) -> FetchResult | TaskResult:
     """A fetch that kept no `ok` page: the result, or, after a 429 or 503 to any of its requests, the task retried
     after the back-off of its try (`politeness.backoff`), or `blocked` when the server asks for longer than the longest
-    backoff (the polite fetch paused the host) or a 429 came on the retry (`_TOO_MANY_TRIES`)."""
+    backoff (the polite fetch paused the host), or a 429 came on the retry (`_TOO_MANY_TRIES`) or was answered in the
+    browser already: its one attempt is the retry."""
     slowed = slowed_down(result.attempts)
     if slowed is None:
         return result
     error = f"http {slowed.status}"
     after = backoff(slowed, task.attempts)
-    if after is None or (slowed.status == HTTPStatus.TOO_MANY_REQUESTS and task.attempts >= _TOO_MANY_TRIES):
+    too_many = slowed.status == HTTPStatus.TOO_MANY_REQUESTS and (
+        _rendered_after(slowed, result.attempts) or task.attempts >= _TOO_MANY_TRIES
+    )
+    if after is None or too_many:
         return Finished("blocked", reason=error)
     return Failed(error, transient=True, after=after, exhausted="blocked")
+
+
+def _rendered_after(slowed: AttemptRecord, attempts: tuple[AttemptRecord, ...]) -> bool:
+    """Whether the page's HTTP 429 `slowed` was answered in the browser by a later attempt of the fetch (its one
+    browser attempt, `acquire.rungs`); an adapter's or a recipe's 429 is its endpoint's, which the browser does not
+    retry."""
+    if slowed.method != "http":
+        return False
+    later = attempts[next(i for i, attempt in enumerate(attempts) if attempt is slowed) + 1 :]
+    return any(attempt.method == "browser" for attempt in later)
 
 
 async def count_fetch(conn: AsyncConnection, task: ClaimedTask, page: Page | Ended) -> None:

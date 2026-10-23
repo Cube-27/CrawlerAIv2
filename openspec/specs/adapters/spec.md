@@ -52,7 +52,8 @@ listings as `ItemList` rows. A shape may read a property from further members af
 root before each of a property's string values (`prefixes`); an amount the API's documentation states as an integer
 count of the currency's minor unit is scaled to the major unit by the places the documentation states, a constant or
 a member of the node (`minor_units`), and any other value of that property is dropped; an amount no documentation
-gives a unit for is never scaled; a property the API splits over members as parts of one rich text (`sections`: a
+gives a unit for is never scaled; a timestamp the documentation states as an integer count of milliseconds since the
+Unix epoch (`epoch_ms`) is read as the RFC 3339 date-time in UTC it names, and any other value of it is dropped; a property the API splits over members as parts of one rich text (`sections`: a
 body, headed lists, closing remarks) is one HTML text of its non-empty parts in the order the platform's page shows
 them, each part's heading an `h2` before its body; a field that reads a whole node whose shape maps
 properties reads an object of those properties' schema.org names. Each entity carries what identifies its item as a
@@ -73,7 +74,8 @@ regional hosts fall through to the page rungs. A job read for a hosted Greenhous
 route on the page's host as its URL; one read for an embedded board keeps the API's `absolute_url`. A posting answer's
 documented apply link (Lever and SmartRecruiters `applyUrl`) is its ApplyAction's `target` (`adapters.base.apply_action`);
 a job read for a hosted Greenhouse board page has that job route as its target, where Greenhouse documents the hosted
-application form (owner #82). A platform's documented embed of its application form in a page on another host
+application form (owner #82). A Lever posting's `createdAt`, its creation time in milliseconds since the Unix epoch
+(Lever Data API, "Postings"), is its `datePosted` (`epoch_ms`). A platform's documented embed of its application form in a page on another host
 (`adapters.base.ApplicationEmbed`: Greenhouse's `grnhse_app` container and board loader script, on a page whose URL
 names one job by `gh_jid`) is site data of the adapter package, which `collect/application.py` reads
 ([resolution](../resolution/spec.md) "Derived values"). Refs: D-0267, D-0307, D-0310, D-1483, D-1493, owner #82.

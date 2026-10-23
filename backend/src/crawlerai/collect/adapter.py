@@ -12,7 +12,8 @@ normalizer is the only filter (C7).
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from functools import cache
 from html import escape
@@ -33,6 +34,8 @@ from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.capture_bundle import network_json
 
+# POSIX "Seconds Since the Epoch": 1970-01-01T00:00:00Z, which an API's millisecond timestamps count from.
+_EPOCH: Final = datetime(1970, 1, 1, tzinfo=UTC)
 # ISO 4217 minor units run from 0 (JPY) to 4 (CLF); a stated unit outside them is no currency's.
 _MAX_PLACES: Final = 4
 
@@ -122,11 +125,12 @@ class _Node:
             prefix = self.shape.prefixes.get(prop, "")
             places = self._places(prop)
             meant = self.shape.booleans.get(prop)
-            return [
+            values = [
                 value
                 for at in (members, *self.shape.also.get(prop, ()))
                 for value in self._read(at, prefix, places, meant)
             ]
+            return _timestamps(values) if prop in self.shape.epoch_ms else values
         return [
             Value(node.as_object(), self._locator(node.path), node)
             for shape in self.shape.nodes.get(prop, ())
@@ -183,6 +187,23 @@ class _Node:
 
     def _locator(self, path: str) -> str:
         return format_locator("adapter", self.adapter, path)
+
+
+def _timestamps(values: Sequence[Value]) -> list[Value]:
+    """The values that are an integer count of milliseconds since the Unix epoch (`Shape.epoch_ms`), each as the
+    RFC 3339 date-time in UTC it names (`2026-05-21T18:11:00.345Z`); any other value, or one past the dates a
+    date-time holds, is dropped."""
+    return [replace(value, raw=stamp) for value in values if (stamp := _timestamp(value.raw)) is not None]
+
+
+def _timestamp(raw: JsonValue) -> str | None:
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        return None
+    try:
+        moment = _EPOCH + timedelta(milliseconds=raw)
+    except OverflowError:
+        return None
+    return moment.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def _meant(raw: JsonValue, meant: Booleans) -> JsonValue:

@@ -15,7 +15,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, replace
 from functools import partial
-from typing import Literal, cast
+from typing import Final, Literal, cast
 from urllib.parse import urlsplit
 
 from curl_cffi import Curl, CurlECode, CurlOpt
@@ -42,6 +42,7 @@ from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, poo
 from crawlerai.storage.capture_bundle import HeaderList
 
 __all__ = [
+    "BODY_CAP",
     "Failed",
     "Hop",
     "Limits",
@@ -60,9 +61,11 @@ _CURLPROXY_HTTP = 0  # curl's `curl_proxytype` for an HTTP proxy (CURLOPT_PROXYT
 # The debug callback's kinds that carry HTTP message bytes (curl_debug_callback, CURLOPT_DEBUGFUNCTION): the headers and
 # the body as transferred, proxy CONNECT exchanges included, without the TLS records or HTTP/2 framing around them.
 _MESSAGE_BYTES = frozenset({CURLINFO_HEADER_IN, CURLINFO_HEADER_OUT, CURLINFO_DATA_IN, CURLINFO_DATA_OUT})
+# INV-30: the reason of a body past `max_body_bytes` or `max_decompressed_bytes`.
+BODY_CAP: Final = "body_cap"
 _CURL_ERRORS: dict[int, str] = {
     CurlECode.OPERATION_TIMEDOUT: "timeout",
-    CurlECode.FILESIZE_EXCEEDED: "body_cap",  # the compressed body passed max_body_bytes
+    CurlECode.FILESIZE_EXCEEDED: BODY_CAP,  # the compressed body passed max_body_bytes
     CurlECode.BAD_CONTENT_ENCODING: "decode_error",
 }
 
@@ -374,7 +377,7 @@ async def _request(
             content_callback=on_body,
         )
     except RequestException as e:
-        error = "body_cap" if received > limits.max_decompressed_bytes else reason(e)
+        error = BODY_CAP if received > limits.max_decompressed_bytes else reason(e)
         # The exception carries what arrived before the failure: the status and headers, if any.
         partial_response: Response | None = e.response
         last = None if partial_response is None else _wire(target, partial_response, sent, b"")
