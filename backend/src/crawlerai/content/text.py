@@ -10,7 +10,7 @@ misnested tags). The lxml tree is a copy of that tree (`acquire.items.lxml_of`),
 """
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Literal, NamedTuple
 
@@ -52,6 +52,12 @@ _VALUE_NOT_SHOWN = frozenset({"checkbox", "radio", "file", "image", "password", 
 # Namespaces in XML 1.0, NCName: a name without a colon, starting with a letter or `_` (`[^\W\d]`), then letters,
 # digits, `.`, `-` or `_`. Only an NCName can be an XPath 1.0 name test.
 _NCNAME = re.compile(r"[^\W\d][\w.\-]*")
+# HTML Standard §4.5.4 `s` and §4.7.2 `del`: text that is no longer accurate or was removed is no current value; the
+# obsolete `strike` renders as `s` does. CSS Text Decoration 3 §2.1-§2.2: an inline `text-decoration` or
+# `text-decoration-line` holding `line-through` strikes the text through.
+_STRUCK_TAGS = frozenset({"s", "del", "strike"})
+_LINE_THROUGH = "line-through"
+_DECORATION = ("text-decoration", "text-decoration-line")
 
 _Attributes = dict[str, str | None]
 
@@ -319,6 +325,21 @@ def shown(node: LexborNode) -> bool:
 def hidden(tag: str, attributes: _Attributes) -> bool:
     """Whether an element with `tag` and `attributes` is not rendered, with its whole subtree (`_hidden`)."""
     return _hidden(tag, attributes, declarations(attributes))
+
+
+def struck(tag: str, attributes: Mapping[str, str | None]) -> bool:
+    """Whether an element strikes its text through (`_STRUCK_TAGS`, or an inline `line-through` decoration): a value it
+    holds is no current one, a former price."""
+    if tag in _STRUCK_TAGS:
+        return True
+    style = declarations(dict(attributes))
+    return any(_LINE_THROUGH in style.get(prop, "").split() for prop in _DECORATION)
+
+
+def struck_ids(region: LexborNode) -> frozenset[int]:
+    """The region's elements that are struck through (`struck`) or inside one that is."""
+    roots = (e for e in (region, *region.css("*")) if struck(e.tag or "", e.attributes))
+    return frozenset(node.mem_id for root in roots for node in (root, *root.css("*")))
 
 
 def concealed(attributes: _Attributes) -> bool:

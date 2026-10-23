@@ -4,7 +4,7 @@ summary or a cut of it.
 
 These structures name such a block, all read from the page's main content (`collect.dom`: the `main` element, else the
 `role="main"` landmark, else the one `article`, else the body) outside its tangential content, dialogs, media fallback,
-reviews, related items and the blocks outside the product container (`collect.dom.product_apart`):
+reviews, related items and the blocks outside the product container (`collect.product_scope.product_apart`):
 - **Extension.** A block of prose whose text begins with a candidate another collector proposed for the field (the
   JSON-LD, microdata or Open Graph description, or its ellipsis-cut form) and goes on: it is the whole of what that
   candidate begins. A block that equals a candidate is its corroboration. Of the blocks that begin with it, the
@@ -50,9 +50,10 @@ from pydantic import JsonValue
 from selectolax.lexbor import LexborNode
 
 from crawlerai.collect.base import PAGE, Candidate, CollectResult
-from crawlerai.collect.dom import OTHER_ITEMS, list_items
+from crawlerai.collect.dom import list_items
 from crawlerai.collect.labels import field_labels, labelled, properties, words
 from crawlerai.collect.locator import InvalidLocator, format_locator, parse_locator
+from crawlerai.collect.product_scope import OTHER_ITEMS
 from crawlerai.collect.schema_org_map import candidate
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage, node_xpath
@@ -177,7 +178,7 @@ def _stated(candidate_: Candidate) -> str | None:
 
 class DescriptionCollector:
     def __init__(self, outside: frozenset[int] = frozenset()) -> None:
-        # The elements outside the page's product container (`collect.dom.product_apart`).
+        # The elements outside the page's product container (`collect.product_scope.product_apart`).
         self.outside = outside
 
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context, others: Sequence[Candidate]) -> CollectResult:

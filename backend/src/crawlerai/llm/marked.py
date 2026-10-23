@@ -13,10 +13,10 @@ The ids are not page text: a span the model claims is grounded in the cleaned te
 the ids before it (`cleaned_offset`), and a claimed id is grounded in the element it marks (`llm.grounding`).
 
 Role C's evidence is the product's own (`scoped`): the text runs and marks of the elements that hold other items'
-content (`collect.dom.other_item_paths`: related and similar items, reviews, lists of other documents' cards, the cards
-of other items whose prices the page shows) are left out, with the line breaks and spaces that follow them, so the
-model neither reads nor grounds a value of another item. Offsets of the scoped text map back to the whole cleaned
-text (`Scoped.cleaned_offset`), where locators point.
+content (`collect.product_scope.other_item_paths`: related and similar items, reviews, lists of other documents'
+cards, the cards of other items whose prices the page shows) are left out, with the line breaks and spaces that follow
+them, so the model neither reads nor grounds a value of another item. Offsets of the scoped text map back to the whole
+cleaned text (`Scoped.cleaned_offset`), where locators point.
 """
 
 from bisect import bisect_right

@@ -24,7 +24,7 @@ from crawlerai.adapters.registry import Registry
 from crawlerai.collect.adapter import AdapterCollector
 from crawlerai.collect.admission import AdmittingCollector
 from crawlerai.collect.base import Candidate, Collector, CollectResult, Entity
-from crawlerai.collect.dom import DomCollector, product_apart
+from crawlerai.collect.dom import DomCollector
 from crawlerai.collect.dom_images import stated_images
 from crawlerai.collect.dom_text import DescriptionCollector
 from crawlerai.collect.items.align import Items, align
@@ -35,6 +35,7 @@ from crawlerai.collect.microdata import MicrodataCollector
 from crawlerai.collect.network_match import LearnedCalls
 from crawlerai.collect.og import OpenGraphCollector
 from crawlerai.collect.platform_json import PlatformJsonCollector
+from crawlerai.collect.product_scope import product_apart
 from crawlerai.collect.scope import other_items
 from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.collect.xhr import XhrCollector
@@ -67,7 +68,7 @@ class Collected:
     # The query parameters by which the page's platform selects a variant on a product's own URL
     # (`adapters.platforms.variant_params`); none when the page shows no platform that documents any.
     variant_params: tuple[str, ...] = ()
-    # A detail page's blocks outside its product container (`collect.dom.product_apart`), by element.
+    # A detail page's blocks outside its product container (`collect.product_scope.product_apart`), by element.
     outside: frozenset[int] = frozenset()
 
 
@@ -157,8 +158,8 @@ def _item_type(spec: FieldSpec) -> FieldType | None:
 
 @dataclass(frozen=True, slots=True)
 class _DomPasses:
-    """A detail page's two DOM passes, scoped to its product container (`collect.dom.product_apart`, read once against
-    the structured data's prices)."""
+    """A detail page's two DOM passes, scoped to its product container (`collect.product_scope.product_apart`, read once
+    against the structured data's prices)."""
 
     outside: frozenset[int]
     # The main image the structured data states (`collect.dom_images.stated_images`).

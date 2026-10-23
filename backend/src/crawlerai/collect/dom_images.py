@@ -100,8 +100,8 @@ def image_found(
     page: ParsedPage, schema: SchemaDef, ctx: Context, outside: frozenset[int], primary: Sequence[str]
 ) -> Iterator[Found]:
     """The main image for each image field whose path names schema.org `image`, and its gallery for each such list of
-    images, outside the product container's other blocks (`collect.dom.product_apart`). The main image is the shown
-    image of a `primary` file (`_anchor`), else, in a main region, that region's first image (`_main_image`)."""
+    images, outside the product container's other blocks (`collect.product_scope.product_apart`). The main image is the
+    shown image of a `primary` file (`_anchor`), else, in a main region, that region's first image (`_main_image`)."""
     named = _image_fields(schema)
     fields = [n for n, spec in named.items() if spec.type is FieldType.IMAGE_URL]
     lists = [n for n, spec in named.items() if spec.type is FieldType.LIST]

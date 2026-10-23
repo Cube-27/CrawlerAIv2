@@ -142,7 +142,7 @@ class EngineData:
 @dataclass(frozen=True, slots=True)
 class GapRequest:
     """The fields of `target` that resolution left missing, for role C to read from the page text, without the product's
-    own container's `outside` (`collect.dom.product_apart`: other items' cards)."""
+    own container's `outside` (`collect.product_scope.product_apart`: other items' cards)."""
 
     page: ParsedPage
     schema: SchemaDef
