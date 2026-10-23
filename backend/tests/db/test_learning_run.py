@@ -20,7 +20,7 @@ from crawlerai.acquire.types import FetchResult
 from crawlerai.config_ir.active import active_config, config_by_id, recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Replays
-from crawlerai.config_ir.learning import (
+from crawlerai.config_ir.learn_job import (
     LEARN_RUN_TIMEOUT,
     LEARNING_FINISHED,
     Learned,
@@ -28,6 +28,7 @@ from crawlerai.config_ir.learning import (
     next_learn_job,
     run_learn_job,
 )
+from crawlerai.config_ir.learning import Hooks
 from crawlerai.config_ir.progressive import StateKey, operator_activated, request_learning, trigger_learning
 from crawlerai.db.models import (
     Extraction,
@@ -195,7 +196,7 @@ class LearnSite:
             job_id,
             vocabulary=self.data.vocabulary,
             max_chars=120_000,
-            replay=replay,
+            hooks=Hooks(replay),
         )
         return job_id, learned
 

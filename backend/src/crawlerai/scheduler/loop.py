@@ -25,7 +25,7 @@ from crawlerai.acquire.host_turns import expire_host_turns
 from crawlerai.acquire.rungs import Rung
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.api.webhooks import DELIVERY_BATCH, Poster, deliver_webhooks, poster
-from crawlerai.config_ir.learning import EXPIRE_BATCH, expire_learn_runs
+from crawlerai.config_ir.learn_job import EXPIRE_BATCH, expire_learn_runs
 from crawlerai.config_ir.progressive import TRIGGER_BATCH, trigger_learning
 from crawlerai.core.settings import Settings
 from crawlerai.db.queue import LEASE_BATCH, STALLED_BATCH, fail_stalled_jobs, release_expired_leases

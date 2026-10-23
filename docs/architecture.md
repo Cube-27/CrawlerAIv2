@@ -59,10 +59,11 @@ the request's, else the exit's declared one, and the HTTP and JSON rungs send it
 
 ## Learned configs
 
-`config_ir/` holds the IR (`model.py`), learning (`learning.py`, `induction.py`, `listing_induction.py`, `synthesis.py`),
-validation on held-out pages (`validation.py`, `held_out.py`), activation and drift (`activation.py`, `drift.py`), operator
-corrections (`corrections.py`), API recipes (`api_recipe/`) and executors (`executor.py`, `release_executor.py`, which
-shares no code with the engine). Configs keep selectors and cookies, never values. Learn jobs: `worker/learn.py`.
+`config_ir/` holds the IR (`model.py`), learning (the stateless pipeline `learning.py`, `induction.py`,
+`listing_induction.py`, `synthesis.py`), validation on held-out pages (`validation.py`, `held_out.py`), activation and
+drift (`activation.py`, `drift.py`), operator corrections (`corrections.py`), API recipes (`api_recipe/`) and executors
+(`executor.py`, `release_executor.py`, which shares no code with the engine). Configs keep selectors and cookies, never
+values. Learn jobs: `learn_job.py` (the job's lifecycle around the pipeline) and `worker/learn.py`.
 
 ## Jobs and data
 

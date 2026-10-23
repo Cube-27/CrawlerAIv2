@@ -3,6 +3,7 @@ beside it, on one runtime."""
 
 import asyncio
 
+from crawlerai.config_ir.learning import Hooks
 from crawlerai.core.settings import Settings
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.services.fetching import learning_replay
@@ -28,9 +29,11 @@ async def work(settings: Settings, runtime: Runtime, stop: asyncio.Event) -> Non
             stop,
             vocabulary=data.vocabulary,
             max_chars=settings.llm_a_max_chars,
-            replay=learning_replay(runtime.database, fetching),
-            render=learning_render(runtime.database, fetching),
-            extract=learning_extract(data, llm),
+            hooks=Hooks(
+                learning_replay(runtime.database, fetching),
+                learning_render(runtime.database, fetching),
+                learning_extract(data, llm),
+            ),
         )
         running.append(learner)
     await asyncio.gather(*running)
