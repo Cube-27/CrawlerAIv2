@@ -16,10 +16,11 @@ from collections.abc import Iterable, Mapping
 from typing import Any, Final, cast, get_args
 
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import Text, column, false, func, select, true
+from sqlalchemy import Text, column, func, select, true
 from sqlalchemy.dialects.postgresql import JSONB, distinct_on
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.acquire.stored_fetch import tried_browser
 from crawlerai.content.signals import PREFIX as SIGNAL_PREFIX
 from crawlerai.content.signals import SIGNALS, Signal
 from crawlerai.db.models import Capture, Extraction, Job, JobId, Record, RecordDelta, TaskRecord, UrlTask
@@ -154,14 +155,13 @@ async def _signals(conn: AsyncConnection, job_id: JobId) -> dict[Signal, int]:
 
 async def _missing_unrendered(conn: AsyncConnection, job_id: JobId) -> dict[str, int]:
     """Per field, the records the job's tasks stand for whose page was fetched over HTTP with no browser attempt
-    (`capture.method`, `fetch_policy.attempts`) and left it `missing/no_candidates`: a render may show it."""
+    (`capture.method`, `StoredFetch.attempts`) and left it `missing/no_candidates`: a render may show it."""
     field = func.jsonb_each(Record.field_meta).table_valued(column("key", Text), column("value", JSONB)).lateral()
-    browser_tried = Capture.fetch_policy["attempts"].contains([{"method": "browser"}])
     standing = (
         select(TaskRecord.record_id)
         .join(UrlTask, UrlTask.id == TaskRecord.url_task_id)
         .join(Capture, Capture.id == UrlTask.capture_id)
-        .where(UrlTask.job_id == job_id, Capture.method == "http", ~func.coalesce(browser_tried, false()))
+        .where(UrlTask.job_id == job_id, Capture.method == "http", ~tried_browser())
         .distinct()
         .subquery()
     )
@@ -180,7 +180,6 @@ async def _missing_unrendered(conn: AsyncConnection, job_id: JobId) -> dict[str,
 async def _listed_nothing_unrendered(conn: AsyncConnection, job_id: JobId) -> int:
     """The job's listing pages fetched over HTTP with no browser attempt that listed nothing (`partial` with no record,
     `store_page_record`): a render may show their rows."""
-    browser_tried = Capture.fetch_policy["attempts"].contains([{"method": "browser"}])
     kept = select(TaskRecord.url_task_id).where(TaskRecord.url_task_id == UrlTask.id).exists()
     found = await conn.execute(
         select(func.count())
@@ -191,7 +190,7 @@ async def _listed_nothing_unrendered(conn: AsyncConnection, job_id: JobId) -> in
             UrlTask.page_kind == "listing",
             UrlTask.outcome == "partial",
             Capture.method == "http",
-            ~func.coalesce(browser_tried, false()),
+            ~tried_browser(),
             ~kept,
         )
     )

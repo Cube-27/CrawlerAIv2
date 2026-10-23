@@ -14,10 +14,11 @@ The rest of politeness holds by cadence: one page request per site per 7 days is
 from datetime import timedelta
 from typing import Final
 
-from sqlalchemy import ColumnElement, func, or_, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.rungs import Rung
+from crawlerai.acquire.stored_fetch import fetched_as_kind
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.db.models import Capture, FetchMethod, PageKind, SiteContract, SiteId
 
@@ -50,12 +51,6 @@ async def recheck_fetch_method(conn: AsyncConnection, fetch: Rung, *, batch: int
     return len(memories)
 
 
-def _fetched_as(kind: PageKind) -> ColumnElement[bool]:
-    """The captures fetched as `kind`, under `remembered_as`: a capture fetched with no page kind is a detail page's."""
-    stated = Capture.fetch_policy["page_kind"].astext
-    return stated == kind if kind == "listing" else or_(stated.is_(None), stated == kind)
-
-
 async def _method(
     conn: AsyncConnection,
     site_id: SiteId,
@@ -64,7 +59,7 @@ async def _method(
 ) -> FetchMethod:
     latest_ok = (
         select(Capture.url)
-        .where(Capture.site_id == site_id, Capture.block_class == "ok", _fetched_as(kind))
+        .where(Capture.site_id == site_id, Capture.block_class == "ok", fetched_as_kind(kind))
         .order_by(Capture.fetched_at.desc())
         .limit(1)
     )

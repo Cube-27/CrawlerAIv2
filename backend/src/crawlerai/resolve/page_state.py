@@ -6,6 +6,7 @@ sources of the site's config and the attempts the capture records.
 from collections.abc import Collection, Mapping
 from typing import Final
 
+from crawlerai.acquire.stored_fetch import stored_fetch
 from crawlerai.resolve.types import FieldOutcome, FieldSet
 from crawlerai.schemas.paths import named_property, parse_paths
 from crawlerai.schemas.types import FieldType, SchemaDef
@@ -25,11 +26,8 @@ _PRICE: Final = "price"  # schema.org Offer.price
 
 def was_rendered(manifest: CaptureManifest) -> bool:
     """Whether a browser render of the page ran: the kept capture is one, or the fetch tried the browser and kept the
-    HTTP page (`fetch_policy.attempts`, each with its `method`)."""
-    if manifest.method == "browser":
-        return True
-    attempts = manifest.fetch_policy.get("attempts")
-    return isinstance(attempts, list) and any(isinstance(a, dict) and a.get("method") == "browser" for a in attempts)
+    HTTP page (`StoredFetch.tried_browser`)."""
+    return manifest.method == "browser" or stored_fetch(manifest).tried_browser
 
 
 def out_of_stock(schema: SchemaDef, fields: FieldSet) -> FieldSet:

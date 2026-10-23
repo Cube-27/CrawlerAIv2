@@ -9,17 +9,16 @@ and, for a screenshot, the same area. A capture of a page with a click revealing
 """
 
 import asyncio
-import json
 from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Final
 
-from sqlalchemy import ColumnElement, Row, cast, func, literal, or_, select
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Row, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.acquire.stored_fetch import StoredFetch, made_as
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.errors import Refusal
 from crawlerai.db.models import Capture, CaptureId, SiteId, UrlTask
 from crawlerai.storage.artifacts import PDF, SCREENSHOT, stored_names
@@ -65,7 +64,6 @@ async def recent_capture(
     an API recipe fetched only with `api` (it holds JSON, not the page). Captures are found through the tasks that
     fetched them, which hold the canonical URL. Its bundle is read with `reread`,
     outside the transaction."""
-    made = policy.model_dump(mode="json", include={"steps", "context", "screenshot"})
     query = (
         select(Capture.id, Capture.object_key, Capture.duration_ms, Capture.fetch_policy)
         .join(UrlTask, UrlTask.capture_id == Capture.id)
@@ -74,29 +72,16 @@ async def recent_capture(
             Capture.block_class == "ok",
             or_(Capture.expires_at.is_(None), Capture.expires_at > func.now()),
             UrlTask.canonical_url == canonical,
-            func.coalesce(Capture.fetch_policy["steps"], _jsonb([])) == _jsonb(made["steps"]),
-            func.coalesce(Capture.fetch_policy["context"], _jsonb(None)) == _jsonb(made["context"]),
+            made_as(policy),
         )
         .order_by(Capture.fetched_at.desc())
         .limit(1)
     )
     if max_age is not None:
         query = query.where(Capture.fetched_at >= func.now() - timedelta(seconds=max_age))
-    if policy.screenshot is not None:
-        # A screenshot of the viewport does not stand for one of the full page, nor the other way round.
-        query = query.where(Capture.fetch_policy["screenshot"] == _jsonb(made["screenshot"]))
-    if policy.content_only:
-        # An HTTP page kept `ok` for a records read may carry its text in a script: the content rule never judged it.
-        query = query.where(or_(Capture.fetch_policy["content_only"] == _jsonb(True), Capture.method == "browser"))
     if not api:
         query = query.where(Capture.method != "api")
     return (await conn.execute(query)).one_or_none()
-
-
-def _jsonb(value: object) -> ColumnElement[Any]:
-    """`value` as a JSONB value in SQL: its JSON text, bound as text and cast there (a JSONB-typed bind would encode the
-    text again, as a JSON string)."""
-    return cast(literal(json.dumps(value)), JSONB)
 
 
 async def reread(store: ObjectStore, row: CaptureRow, formats: Collection[str] = ()) -> Recent | None:
@@ -111,5 +96,5 @@ async def reread(store: ObjectStore, row: CaptureRow, formats: Collection[str] =
     if not {name for name, format in _FILE_FORMATS.items() if format in formats} <= names:
         return None
     bundle = await asyncio.to_thread(decode, blob)
-    attempts = tuple(AttemptRecord.model_validate(attempt) for attempt in fetch_policy["attempts"])
+    attempts = StoredFetch.model_validate(fetch_policy).attempts
     return Recent(capture_id, FetchResult(bundle=bundle, duration_ms=duration_ms, attempts=attempts), names)

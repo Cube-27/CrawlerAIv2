@@ -96,6 +96,7 @@ def test_the_bundle_records_every_attempt_beside_its_policy() -> None:
                 "error": None,
                 "challenge": None,
                 "steps": [],
+                "data_call": None,
             },
             {
                 "method": "browser",
@@ -105,6 +106,7 @@ def test_the_bundle_records_every_attempt_beside_its_policy() -> None:
                 "error": None,
                 "challenge": None,
                 "steps": [],
+                "data_call": None,
             },
         ],
     }
