@@ -48,7 +48,7 @@ thing: an interstitial that sends the client back once passed (`_returns_to`), a
 
 import re
 from base64 import urlsafe_b64decode
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import suppress
 from typing import NamedTuple
 from urllib.parse import SplitResult, parse_qsl, unquote, urldefrag, urljoin, urlsplit
@@ -262,7 +262,7 @@ def _carries_unrendered(tree: LexborHTMLParser) -> bool:
     The tree is read, not changed."""
     scripts = sum(_chars(script.text()) for script in tree.css(_SCRIPT))
     concealed = sum(
-        _chars(node.text()) for node in _outermost(n for n in tree.css(_CONCEALED) if _concealed(n.attributes))
+        _chars(node.text()) for node in tree.css(_CONCEALED) if _concealed(node.attributes) and not _in_concealed(node)
     )
     if scripts + concealed < _CARRIED_MIN_CHARS:
         return False
@@ -275,19 +275,12 @@ def _carries_unrendered(tree: LexborHTMLParser) -> bool:
     return _chars(shown.text_content()) < _SHELL_MAX_TEXT_CHARS
 
 
-def _outermost(nodes: Iterable[LexborNode]) -> Iterator[LexborNode]:
-    """The `nodes` (in document order) inside none of the others, so that a subtree's text is counted once."""
-    kept: list[LexborNode] = []
-    for node in nodes:
-        if not any(_inside(node, outer) for outer in kept):
-            kept.append(node)
-            yield node
-
-
-def _inside(node: LexborNode, outer: LexborNode) -> bool:
+def _in_concealed(node: LexborNode) -> bool:
+    """Whether an ancestor of `node` is concealed too, so that a subtree's text is counted once, with its outermost
+    concealed element. One walk up per node: the time is linear in the concealed elements times the tree's depth."""
     parent = node.parent
-    while parent is not None:
-        if parent == outer:
+    while parent is not None and parent.is_element_node:
+        if _concealed(parent.attributes):
             return True
         parent = parent.parent
     return False
