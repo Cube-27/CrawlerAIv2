@@ -124,6 +124,10 @@ _STAGES: tuple[frozenset[Sign], ...] = (
 )
 
 
+# WAI-ARIA 1.2 windows and menus: a popup a control opens, never a disclosure's panel.
+_WINDOWS = frozenset({"dialog", "alertdialog", "menu", "listbox", "tooltip"})
+
+
 def main_region(page: ParsedPage) -> LexborNode | None:
     """The `main` element, else the `role="main"` landmark, else the one `article`; none when the page has several."""
     for selector in ("main", '[role="main"]', "article"):
@@ -152,7 +156,7 @@ def drop_furniture(tree: HtmlElement, *, scripting: bool = True) -> None:
         guard = _Guard(root)
         if "named" in signs:
             guard.read_layout(root)
-        marked = _marked(tree, guard, shown, signs)
+        marked = _marked(tree, guard, shown, signs, _collapsed_panels(tree))
         if "named" in signs and sum(map(unlinked_length, marked)) > _MAX_SHARE * guard.size:
             marked = []
         for element in marked:
@@ -172,13 +176,15 @@ def unlinked_length(element: HtmlElement) -> int:
     return max(len(collapse(element.text_content())) - links, 0)
 
 
-def _marked(tree: HtmlElement, guard: "_Guard", shown: frozenset[str], signs: frozenset[Sign]) -> list[HtmlElement]:
+def _marked(
+    tree: HtmlElement, guard: "_Guard", shown: frozenset[str], signs: frozenset[Sign], panels: frozenset[str]
+) -> list[HtmlElement]:
     """The outermost elements furniture by one of `signs` that the guard does not keep."""
     marked: list[HtmlElement] = []
     stack = [tree]
     while stack:
         element = stack.pop()
-        found = _furniture(element) if element is not tree and element.tag not in shown else None
+        found = _furniture(element, panels) if element is not tree and element.tag not in shown else None
         if found not in signs or guard.keeps(element, found):
             stack.extend(reversed(element))
         else:
@@ -226,7 +232,7 @@ def _is_main(element: HtmlElement) -> bool:
     return element.tag in _MAIN or _role(element) == "main"
 
 
-def _furniture(element: HtmlElement) -> Sign | None:
+def _furniture(element: HtmlElement, panels: frozenset[str]) -> Sign | None:
     """Whether the element is furniture, and by what sign: one the markup states (a landmark element or role; content
     tangential to the page, `aside` or `complementary`, a sign of its own), or a weak one (a `header` the page's by
     its scope alone and holding no navigation, the page hides it, or its name calls it furniture)."""
@@ -238,8 +244,11 @@ def _furniture(element: HtmlElement) -> Sign | None:
     if element.tag in _PAGE_LEVEL and _page_level(element):
         return "scoped" if element.tag == _HEADER and not element.cssselect(_NAVIGATION) else "stated"
     attributes: dict[str, str | None] = dict(element.attrib)
-    if hidden(str(element.tag), attributes) and not _alternative(element):
-        return "hidden"
+    if hidden(str(element.tag), attributes):
+        if _disclosed(element, panels):
+            return None
+        if not _alternative(element):
+            return "hidden"
     return "named" if _furniture_names(element) else None
 
 
@@ -280,6 +289,35 @@ def _page_level(element: HtmlElement) -> bool:
         return True
     main = scope.tag == "main" or _role(scope) == "main"
     return main and element.getparent() is scope and bool(element.cssselect(_NAVIGATION))
+
+
+def _collapsed_panels(tree: HtmlElement) -> frozenset[str]:
+    """The ids of the panels a collapsed disclosure or tab control names (WAI-ARIA 1.2 `aria-controls` with
+    `aria-expanded="false"` or `aria-selected="false"`; the Disclosure and Tabs patterns), read on the tree as the
+    earlier stages left it: a control inside dropped furniture, or one the page hides itself, names nothing.
+    A control that opens a popup (`aria-haspopup`: a menu, a dialog) is not a disclosure."""
+    found: set[str] = set()
+    for control in tree.iter():
+        if not isinstance(control.tag, str) or not control.get("aria-controls"):
+            continue
+        state = control.get("aria-expanded") or control.get("aria-selected")
+        popup = (control.get("aria-haspopup") or "false").lower() != "false"
+        if (state or "").strip().lower() == "false" and not popup and not _concealed(control):
+            found.update(tokens(control.get("aria-controls")))
+    return frozenset(found)
+
+
+def _concealed(element: HtmlElement) -> bool:
+    return any(hidden(str(e.tag), dict(e.attrib)) for e in (element, *element.iterancestors()))
+
+
+def _disclosed(element: HtmlElement, panels: frozenset[str]) -> bool:
+    """Whether a hidden element is a collapsed disclosure's panel: `hidden="until-found"` (HTML Standard §6.1), or one
+    a collapsed control names (`_collapsed_panels`) that is not itself a window (a `dialog`, `alertdialog` or `menu`
+    role: WAI-ARIA 1.2 §5.4)."""
+    if _role(element) in _WINDOWS:
+        return False
+    return (element.get("hidden") or "").strip().lower() == "until-found" or element.get("id") in panels
 
 
 def _alternative(element: HtmlElement) -> bool:
