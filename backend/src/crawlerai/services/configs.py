@@ -6,7 +6,7 @@ drops a version someone else added, and the result is always stored as the next 
 held-out pages and active when validation keeps it, else a `draft` whose report says why not.
 
 A custom recipe (`config_ir.custom_recipe`) is saved as its scope's next version, active at once beside the learned
-config, which stays active; an edit is the next version replacing the recipe, made from its shape's latest version.
+config, which stays active; an edit is the next version replacing the recipe, made from its shape's active version.
 Saving needs no validation, approval or audit: the engineer tested the recipe.
 
 An export carries the release check run on the pages the config was validated on
@@ -246,9 +246,9 @@ async def create_recipe(conn: AsyncConnection, host: str, recipe: CustomRecipe) 
 
 
 async def edit_recipe(conn: AsyncConnection, config_id: ExtractionConfigId, recipe: CustomRecipe) -> ConfigDetail:
-    """Save `recipe` as the next version replacing the custom recipe `config_id`, which must be active and the latest
-    version of its pattern shape; raises like `create_recipe`, and `ConfigConflict` for a config that is not a custom
-    recipe, not active or not its shape's latest."""
+    """Save `recipe` as the next version replacing the custom recipe `config_id`, which must be the active version of
+    its pattern shape (a newer repair waiting for approval, or one refused, is not the recipe); raises like
+    `create_recipe`, and `ConfigConflict` for a config that is not a custom recipe or not active."""
     row = await _row(conn, config_id)
     if not row["custom"]:
         raise ConfigConflict(f"config {config_id} is not a custom recipe: correct it with PUT /v1/configs/{config_id}")
@@ -256,10 +256,9 @@ async def edit_recipe(conn: AsyncConnection, config_id: ExtractionConfigId, reci
         raise InvalidRecipe([("schema_id", f"config {config_id} is for schema {row['schema_id']}, {row['page_kind']}")])
     key = StateKey(row["site_id"], row["schema_id"], row["page_kind"])
     await lock_state(conn, key)
-    latest = await _latest_version(conn, key, row["pattern_shape"])
-    if row["version"] != latest or row["status"] != "active":
-        # An edit suspends the recipe it replaces, whatever shape the new version has.
-        raise ConfigConflict(f"config {config_id} is {row['status']} version {row['version']}; edit the active latest")
+    if row["status"] != "active":
+        # One version of a shape is active (`uq_extraction_config_active`); `store_recipe` checks it still is, locked.
+        raise ConfigConflict(f"config {config_id} is {row['status']} version {row['version']}; edit the active one")
     return await _save_recipe(conn, key, row["host"], recipe, config_id)
 
 

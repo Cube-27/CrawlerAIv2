@@ -392,7 +392,7 @@ async def test_a_recipe_of_a_shape_another_active_recipe_serves_is_refused(
     assert await world.configs() == [(1, "active", "operator")]
 
 
-async def test_an_edit_replaces_the_recipe_and_only_its_shapes_latest_version_is_edited(
+async def test_an_edit_replaces_the_recipe_and_only_its_active_version_is_edited(
     client: httpx.AsyncClient, world: World
 ) -> None:
     learned = await world.active_config(H2)

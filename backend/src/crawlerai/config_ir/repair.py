@@ -37,7 +37,7 @@ from crawlerai.llm.client import LLMClient
 from crawlerai.schemas.types import SchemaDef
 
 NO_REPLAY: Final = "no_replay: the run cannot send requests, so no recipe can be proven"
-UNCHANGED: Final = "unchanged: the learned call is the recipe's and reads no drifted field elsewhere"
+UNCHANGED: Final = "unchanged: the learned call repairs no field of the recipe"
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,12 +84,10 @@ def proposed(
     recipe (module docstring); None when that changes nothing."""
     recipe = CustomRecipe.from_ir(current, schema.id)
     drifted = {name for name, steps in current.fields.items() if steps.status == "suspended"}
-    others = recipe.field_names() - set(main.map) - drifted
-    if _request(main) == _request(learned):
-        repaired = {name: learned.map[name] for name in drifted & set(learned.map)}
-        main = main.model_copy(update={"map": {**main.map, **repaired}})
-    else:
-        main = learned.model_copy(update={"map": {n: p for n, p in learned.map.items() if n not in others}})
+    repaired_main = _main_call(main, learned, drifted, recipe.field_names() - set(main.map) - drifted)
+    if repaired_main is None:
+        return None
+    main = repaired_main
     moved = set(main.map)
     calls = {
         name: call.model_copy(update={"map": kept})
@@ -106,6 +104,18 @@ def proposed(
     steps = {n: s.model_copy(update={"status": "suspended"}) if n in drifted else s for n, s in ir.fields.items()}
     provenance = ir.provenance.model_copy(update={"validated_on": validated_on})
     return ir.model_copy(update={"fields": steps, "provenance": provenance})
+
+
+def _main_call(main: ApiRecipe, learned: ApiRecipe, drifted: set[str], others: set[str]) -> ApiRecipe | None:
+    """The main call repaired from `learned` (module docstring), `others` being the fields the recipe's other kept
+    sources give; None when the learned call reads none of the rest."""
+    if _request(main) == _request(learned):
+        repaired = {name: learned.map[name] for name in drifted & set(learned.map)}
+        return main.model_copy(update={"map": {**main.map, **repaired}})
+    # A call needs a field to read (`ApiRecipe.map`): one reading only what the kept sources give repairs nothing.
+    if not (read := {n: p for n, p in learned.map.items() if n not in others}):
+        return None
+    return learned.model_copy(update={"map": read})
 
 
 def _request(spec: RequestSpec) -> tuple[str, str, str | None]:
