@@ -131,9 +131,9 @@ class CallEndpoint(_Frozen):
         )
 
 
-class PolicyFields[Context: BaseModel](_Frozen):
-    """What a fetch is asked to do, with its caller's request context as `Context`: the `RequestContext` itself for a
-    fetch to make (`FetchPolicy`), or its serialized form for one a capture keeps (`stored_fetch.StoredFetch`)."""
+class PolicyFields[ContextModel: BaseModel](_Frozen):
+    """What a fetch is asked to do, with its caller's request context as `ContextModel`: the `RequestContext` itself
+    for a fetch to make (`FetchPolicy`), or its serialized form for one a capture keeps (`stored_fetch.StoredFetch`)."""
 
     method_hint: Literal["auto", "http", "browser"] = "auto"
     proxy_pool: str | None = None
@@ -158,7 +158,7 @@ class PolicyFields[Context: BaseModel](_Frozen):
     # (whole pages are kept); None asks for every page, up to the adapters' hard cap (`adapters.paging.MAX_ROWS`).
     max_rows: PositiveInt | None = None
     # The caller's headers and cookies, and the page steps the browser runs before it reads the page.
-    context: Context | None = None
+    context: ContextModel | None = None
     steps: tuple[PageStep, ...] = ()
     # Browser only: the data call endpoints the site's located `call` field sources name; the page is ready once each
     # has answered, else once no data call is in flight.
@@ -204,7 +204,7 @@ class AttemptRecord(_Frozen):
     steps: tuple[StepOutcome, ...] = ()
     # An `api` attempt that was a detail page's data call (`acquire.identity`): the platform whose documented product
     # JSON it requested. Stored only on such an attempt.
-    data_call: str | None = None
+    data_call: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class FetchResult(_Frozen):
