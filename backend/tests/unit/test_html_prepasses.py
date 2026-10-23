@@ -63,6 +63,16 @@ def test_a_completed_boundary_shows_its_streamed_segment_in_place_of_the_fallbac
     assert page.lxml_tree.xpath("string(/html/body/main/p)") == "Price 12.00"
 
 
+def test_a_completed_segment_shows_in_place_of_its_placeholder() -> None:
+    page = ParsedPage(
+        "<html><body><main><template id='P:2'></template></main>"
+        "<div hidden id='S:2'><p>Price 12.00</p></div><script>$RS('S:2','P:2')</script></body></html>"
+    )
+
+    assert page.cleaned_text.text == "Price 12.00"
+    assert page.lxml_tree.xpath("string(/html/body/main/p)") == "Price 12.00"
+
+
 def test_a_boundary_rendered_on_the_client_keeps_its_fallback() -> None:
     page = ParsedPage(_STREAMED.format(call='$RX("B:1")'))
 

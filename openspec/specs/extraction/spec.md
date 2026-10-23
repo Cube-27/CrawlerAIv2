@@ -124,10 +124,11 @@ before any text or DOM collector runs (`content/page.py::prepassed`; no script r
 form only, and a document none applies to is not reparsed):
 - **Declarative shadow DOM** (HTML Standard, `template` `shadowrootmode` `open` or `closed`): the template's content
   takes its place among its host's children; slotted light-DOM children stay where they are.
-- **Completed streaming boundaries** (React Fizz instruction set, `completeBoundary`): for each inline script's
-  `$RC("<boundary id>", "<content id>")` call, the children of the (hidden) element with the content id take the place
-  of the `template` with the boundary id, and the fallback after it, up to the boundary's closing `<!--/$-->` comment,
-  is removed; a `$RX` call leaves the fallback.
+- **Completed streaming boundaries** (React Fizz instruction set, `completeBoundary`, `completeSegment`): for each
+  inline script's `$RC("<boundary id>", "<content id>")` call, the children of the (hidden) element with the content id
+  take the place of the `template` with the boundary id, and the fallback after it, up to the boundary's closing
+  `<!--/$-->` comment, is removed; a `$RX` call leaves the fallback. For each `$RS("<content id>", "<placeholder id>")`
+  call, they take the place of the `template` with the placeholder id.
 - **Eager fragment inclusion** (Hotwire Turbo, Frames): the children of each eager `<turbo-frame id src>` are replaced
   by those of the element with the same id in the captured 2xx HTML answer to its `src`
   ([acquisition](../acquisition/spec.md), "Eager fragments"); a frame without an answer keeps its own.
@@ -201,7 +202,7 @@ documents as source `attr`.
   ordinary `template`'s content is read by neither
 #### Scenario: Late Suspense segment
 - **WHEN** a document holds `<div hidden id="S:1">`, `<template id="B:1">` and a script calling `$RC("B:1","S:1")`
-- **THEN** the segment is visible text in the boundary's place and the fallback is gone; with `$RX` the fallback stays
+- **THEN** the segment is visible text in the boundary's place and the fallback is gone; with `$RX` the fallback stays; a `<div hidden id="S:2">` that a `$RS("S:2","P:2")` call places is visible text where `<template id="P:2">` was
 
 ### Requirement: Embedded JSON state and XHR admission
 The system SHALL admit a scalar from the state documents ("Source documents": JS literals, decoded state, RSC rows) or
@@ -373,15 +374,18 @@ Enforced by: resolver test; active.
 The system SHALL produce `markdown`, `html`, `raw_html`, `links` and `metadata` from the `ParsedPage` with no per-site
 cleaning (`content/`). `markdown` is the page minus its furniture (`content/regions.py`, the one definition the DOM
 collectors share): elements never rendered or hidden by the page itself (`script`, `style`, `template`, `hidden`,
-`aria-hidden="true"`, a closed `dialog`), the landmarks `nav`, `aside`, an open `dialog` and a `header` or `footer`
-whose scope is the body, the WAI-ARIA landmark and window roles of the same meaning, and elements whose class or id
-names a furniture word (header, footer, nav, menu, breadcrumb, cookie, consent, sidebar, social, share, newsletter,
-modal, popup, skip, as Firecrawl's `excludeNonMainTags` and Readability read them, a name's parts split at `-`, `_` and
-camelCase boundaries; a header or footer class only where the element's scope is the body, `main` being no scope, and
-a header or footer `id` whatever its scope, an id being unique in the document); no rule drops an element holding the
-page's first `h1`, a `main` or `article`, and no name or page-hidden mark one holding the page's longest leaf text
-block or more than two fifths of the page's text outside hyperlinks; when the names together would drop more than two
-fifths of that text, the page is read without them. Everything left is written in document order as CommonMark with GFM tables (headings, paragraphs with collapsed
+`aria-hidden="true"`, a closed `dialog`) except a hidden one of like siblings (same tag and role, a class in common)
+one of which is shown, as a carousel's slides and a tab list's panels are (WAI-ARIA Authoring Practices); the landmarks
+`nav`, `aside`, an open `dialog` and a page-level `header` or `footer`: one whose scope is the body, or `main` when it
+holds navigation (HTML-AAM §4.1: one in `main` is the main content's own, unless the page wraps its whole layout,
+site navigation included, in `main`); the WAI-ARIA landmark and window roles of the same meaning; and elements whose
+class or id names a furniture word (header, footer, nav, menu, breadcrumb, cookie, consent, sidebar, social, share,
+newsletter, modal, popup, skip, as Firecrawl's `excludeNonMainTags` and Readability read them, a name's parts split at
+`-`, `_` and camelCase boundaries; a header or footer class only where the element would be page-level, and a header
+or footer `id` whatever its scope, an id being unique in the document); no rule drops an element holding the page's
+first `h1`, a `main` or `article`, no `aside` or `complementary` landmark one holding the page's longest leaf text
+block, and no name or page-hidden mark one holding that block or more than two fifths of the page's text outside
+hyperlinks; when the names together would drop more than two fifths of that text, the page is read without them. Everything left is written in document order as CommonMark with GFM tables (headings, paragraphs with collapsed
 inline whitespace, nested lists, tables, fenced code, block quotes, links and images resolved against the document
 base URL); a form control's value is no text. A page that shows nothing once scripts would run is written as a user
 agent with scripting disabled renders it, its `noscript` content included (HTML Standard §4.12.2). `markdown` is `""`
@@ -398,6 +402,13 @@ D-1277, D-1450, D-1473, D-1474; endpoint in [rest-api](../rest-api/spec.md).
 #### Scenario: Content in a wrapper named after a sidebar
 - **WHEN** a `div` whose class names a sidebar holds the page's longest paragraph, under two fifths of its text
 - **THEN** `markdown` keeps it
+#### Scenario: Header and footer of the main content
+- **WHEN** `main` holds a `header` with the title's summary and a `footer` with a citation, neither holding a `nav`,
+  and a page whose `main` wraps its layout holds a `footer` with a `nav` and the site's address
+- **THEN** `markdown` keeps the first page's header and footer and drops the second page's footer
+#### Scenario: Carousel slides
+- **WHEN** a carousel's slides are `div`s of one class, the first shown and the others `aria-hidden="true"`
+- **THEN** `markdown` holds every slide's caption
 #### Scenario: Listing items
 - **WHEN** a listing's grid of cards sits in its `main`
 - **THEN** `markdown` holds each card's link, image and text, in page order

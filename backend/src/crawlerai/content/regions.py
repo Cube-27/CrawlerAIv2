@@ -5,21 +5,26 @@ for the content formats (`content.markdown`, `content.fit`) and the DOM collecto
 Furniture is what a page shows around its content on every page of its site, or not at all:
 - **Not rendered.** The elements the user-agent style sheet never renders (`content.text.NOT_RENDERED`: `script`,
   `style`, `template`, `noscript` unless scripting is off, ...), and those the page hides itself (`content.text.hidden`:
-  the `hidden` attribute, an inline `display: none`, `aria-hidden="true"`, a closed `dialog`).
+  the `hidden` attribute, an inline `display: none`, `aria-hidden="true"`, a closed `dialog`), but for one of a set of
+  like siblings one of which is shown: a carousel's slides, a tab list's panels (WAI-ARIA Authoring Practices), each
+  the page's content in its turn.
 - **Landmarks.** `nav` and `aside` (HTML Standard §4.3.4, §4.3.5: navigation, content tangential to its
-  surroundings), a `header` or `footer` whose scope is the body (§4.3.8, §4.3.9: the page's header or footer; one in an
-  `article` or `section` is that section's), an open `dialog` (§4.11.4: a window apart from the page), and the WAI-ARIA
-  1.2 roles of the same meaning (§5.3.4 landmarks `navigation`, `banner`, `contentinfo`, `complementary`, `search`;
-  §5.4 windows `dialog`, `alertdialog`).
+  surroundings), a page-level `header` or `footer` (§4.3.8, §4.3.9: one whose scope is the body is the page's, one in
+  an `article` or `section` that section's; HTML-AAM §4.1: one in `main` the main content's, unless it holds the site's
+  navigation, as on a page that wraps its whole layout in `main`), an open `dialog` (§4.11.4: a window apart from the
+  page), and the WAI-ARIA 1.2 roles of the same meaning (§5.3.4 landmarks `navigation`, `banner`, `contentinfo`,
+  `complementary`, `search`; §5.4 windows `dialog`, `alertdialog`).
 - **Named furniture.** An element whose `class` or `id` names one of the furniture words below, as Firecrawl's
   `onlyMainContent` (`excludeNonMainTags`) and Mozilla Readability (`unlikelyCandidates`) read class and id names: a
   word that is a whole token or one of its parts (split at `-`, `_` and camelCase boundaries), or, for the words that
   name a layout slot rather than furniture alone (`ad`, `widget`), only a whole token. A header or footer class
-  counts only where the element would be the page's (its scope is the body, as for the elements); an `id` is unique
+  counts only where the element would be the page's (page-level, as for the elements); an `id` is unique
   in the document (HTML Standard §3.2.6), so one naming a header or footer names the page's whatever its scope.
 
 No furniture rule drops the page's content: an element that holds the page's first `h1` (HTML Standard §4.3.6: its
-title), a `main` element or `role="main"` landmark (§4.4.14) or an `article` (§4.3.2) is kept. A name or the page's
+title), a `main` element or `role="main"` landmark (§4.4.14) or an `article` (§4.3.2) is kept, and so is an `aside`
+that holds the page's longest leaf text block: content tangential to the page holds none of its main text (a faceted
+listing's category text in its sidebar column). A name or the page's
 own hiding is a weaker sign than a landmark the markup states, and an element so marked is kept when it is the
 page's content by its text, as Mozilla Readability finds it: when it holds the page's longest leaf text block, or
 more than two fifths of the page's text outside hyperlinks (HTML Standard §4.5.1: a hyperlink's content labels the
@@ -57,14 +62,21 @@ DIALOG_ROLES = ("dialog", "alertdialog")
 # WAI-ARIA 1.2 §5.3.4: the landmark roles that name page furniture; `main`, `region` and `form` hold content.
 LANDMARK_ROLES = ("navigation", "banner", "contentinfo", "complementary", "search")
 # HTML Standard §4.3.8, §4.3.9: a `header` or `footer` whose nearest ancestor that is sectioning content or a sectioning
-# root is `body` is the page's; one inside an `article` or `section` belongs to that section. `main` (§4.4.14) is
-# neither, so a footer inside it is the page's.
+# root is `body` is the page's; one inside an `article` or `section` belongs to that section. HTML-AAM §4.1 (`header`,
+# `footer`): one inside `main` is no `banner` or `contentinfo` landmark either, but the main content's own.
 _PAGE_LEVEL = frozenset({"header", "footer"})
 _SCOPES = frozenset(
-    {*("article", "aside", "nav", "section", "blockquote", "details", "dialog", "fieldset", "figure", "td", "body")}
+    {*("article", "aside", "nav", "section", "blockquote", "details", "dialog", "fieldset", "figure", "td")}
+    | {"body", "main"}
 )
+# WAI-ARIA 1.2 §5.3.4: the `navigation` landmark; HTML Standard §4.3.4: `nav`.
+_NAVIGATION = "nav, [role~=navigation]"
 _FURNITURE_ROLES = frozenset({*LANDMARK_ROLES, *DIALOG_ROLES})
-_FURNITURE_TAGS = frozenset({"nav", "aside", DIALOG})
+_FURNITURE_TAGS = frozenset({"nav", DIALOG})
+# HTML Standard §4.3.5 (`aside`), WAI-ARIA 1.2 §5.3.4 (`complementary`): content tangential to the page's, which holds
+# none of its main text.
+_ASIDE = "aside"
+_COMPLEMENTARY = "complementary"
 # Firecrawl `excludeNonMainTags` and Readability `unlikelyCandidates`: class and id words that name furniture.
 _FURNITURE_WORDS = frozenset(
     {*("header", "footer", "nav", "navbar", "navigation", "menu", "breadcrumb", "breadcrumbs", "sidebar", "skip")}
@@ -84,6 +96,9 @@ _HEADINGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 LEAF_TAGS = ("p", "li", "dd", "dt", "blockquote", "figcaption", "summary", "div", "pre", "td", "th", *_HEADINGS)
 _MAIN = ("main", "article")
 _NOSCRIPT = "noscript"
+# The signs of furniture (`_furniture`): a landmark the markup states, a complementary one (`aside`), the page's own
+# hiding, a name.
+type Sign = Literal["stated", "tangential", "hidden", "named"]
 
 
 def main_region(page: ParsedPage) -> LexborNode | None:
@@ -139,7 +154,7 @@ def _marked(tree: HtmlElement, guard: "_Guard", shown: frozenset[str]) -> tuple[
     while stack:
         element = stack.pop()
         found = _furniture(element) if element is not tree and element.tag not in shown else None
-        if found is None or guard.keeps(element, weak=found != "stated"):
+        if found is None or guard.keeps(element, found):
             stack.extend(reversed(element))
         else:
             (named if found == "named" else stated).append(element)
@@ -161,27 +176,33 @@ class _Guard:
         longest = max(leaf_blocks(root), key=unlinked_length, default=None)
         self.longest = frozenset() if longest is None else frozenset({longest, *longest.iterancestors()})
 
-    def keeps(self, element: HtmlElement, *, weak: bool) -> bool:
+    def keeps(self, element: HtmlElement, sign: Sign) -> bool:
         if self.title is not None and (element is self.title or self.title in element.iterdescendants("h1")):
             return True
         if _is_main(element) or any(_is_main(inside) for inside in element.iterdescendants()):
             return True
-        return weak and (element in self.longest or unlinked_length(element) > _MAX_SHARE * self.size)
+        if sign == "stated":
+            return False
+        return element in self.longest or (sign != "tangential" and unlinked_length(element) > _MAX_SHARE * self.size)
 
 
 def _is_main(element: HtmlElement) -> bool:
     return element.tag in _MAIN or _role(element) == "main"
 
 
-def _furniture(element: HtmlElement) -> Literal["stated", "hidden", "named"] | None:
-    """Whether the element is furniture, and by what sign: one the markup states (a landmark element or role), or a
-    weak one (the page hides it, or its name calls it furniture)."""
-    if _role(element) in _FURNITURE_ROLES or element.tag in _FURNITURE_TAGS:
+def _furniture(element: HtmlElement) -> Sign | None:
+    """Whether the element is furniture, and by what sign: one the markup states (a landmark element or role; content
+    tangential to the page, `aside` or `complementary`, a sign of its own), or a weak one (the page hides it, or its
+    name calls it furniture)."""
+    role = _role(element)
+    if role == _COMPLEMENTARY or element.tag == _ASIDE:
+        return "tangential"
+    if role in _FURNITURE_ROLES or element.tag in _FURNITURE_TAGS:
         return "stated"
     if element.tag in _PAGE_LEVEL and _page_level(element):
         return "stated"
     attributes: dict[str, str | None] = dict(element.attrib)
-    if hidden(str(element.tag), attributes):
+    if hidden(str(element.tag), attributes) and not _alternative(element):
         return "hidden"
     return "named" if _named_furniture(element) else None
 
@@ -206,6 +227,30 @@ def _words(names: list[str]) -> set[str]:
 
 
 def _page_level(element: HtmlElement) -> bool:
-    """Whether the nearest ancestor that is sectioning content or a sectioning root is the body."""
-    scope = next((str(a.tag) for a in element.iterancestors() if a.tag in _SCOPES), "body")
-    return scope == "body"
+    """Whether the nearest ancestor that is sectioning content, a sectioning root or the main landmark is the body, or
+    it is the main landmark and the element holds navigation: a page that wraps its whole layout in `main` puts its
+    banner and footer there, and they hold the site's navigation; the main content's own header or footer (its title,
+    a citation, a link to the previous and next page) holds none."""
+    scope = next((a for a in element.iterancestors() if a.tag in _SCOPES or _role(a) == "main"), None)
+    if scope is None or scope.tag == "body":
+        return True
+    return (scope.tag == "main" or _role(scope) == "main") and bool(element.cssselect(_NAVIGATION))
+
+
+def _alternative(element: HtmlElement) -> bool:
+    """Whether a hidden element is one of a set of like siblings (the same tag and role, a class in common) of which
+    one is shown: a carousel's slides or a tab list's panels show one at a time and hide the others (WAI-ARIA Authoring
+    Practices, Carousel and Tabs patterns: `aria-hidden` or `hidden` on the panels not shown), all of them the page's
+    content."""
+    parent = element.getparent()
+    if parent is None:
+        return False
+    return any(
+        _like(element, sibling) and not hidden(str(sibling.tag), dict(sibling.attrib))
+        for sibling in parent.iterchildren(str(element.tag))
+        if sibling is not element
+    )
+
+
+def _like(a: HtmlElement, b: HtmlElement) -> bool:
+    return _role(a) == _role(b) and not set(tokens(a.get("class"))).isdisjoint(tokens(b.get("class")))

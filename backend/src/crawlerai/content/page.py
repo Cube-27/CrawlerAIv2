@@ -30,9 +30,11 @@ _SHADOW_ROOT = "template[shadowrootmode]"
 _SHADOW_MARK = re.compile("shadowrootmode", re.IGNORECASE)
 _SHADOW_MODES = frozenset({"open", "closed"})
 _TEMPLATE = "template"
-# React Fizz instruction set (`completeBoundary`, called as `$RC("<boundary id>", "<content id>")`): the call that
-# moves a streamed segment into its Suspense boundary. A `$RX` call renders the fallback on the client: nothing moves.
-_COMPLETE = re.compile(r"""\$RC\(\s*(["'])([^"']+)\1\s*,\s*(["'])([^"']+)\3\s*\)""")
+# React Fizz instruction set: `completeBoundary`, called as `$RC("<boundary id>", "<content id>")`, moves a streamed
+# segment into its Suspense boundary; `completeSegment`, called as `$RS("<content id>", "<placeholder id>")`, moves a
+# streamed segment into its placeholder `template`. A `$RX` call renders the fallback on the client: nothing moves.
+_COMPLETE = re.compile(r"""\$R([CS])\(\s*(["'])([^"']+)\2\s*,\s*(["'])([^"']+)\4\s*\)""")
+_BOUNDARY = "C"
 # Fizz boundary comments: `<!--$-->`, `<!--$?-->`, `<!--$!-->` open one, `<!--/$-->` closes it.
 _OPEN, _CLOSE = "$", "/$"
 
@@ -269,7 +271,7 @@ def prepassed(
     of its answer in `answers`; and the fetched `partials` (URL, markup) whose text it does not show appended to its
     body (`content.fragments`). No script runs. A document none applies to is returned as it is, unparsed."""
     shadow = _SHADOW_MARK.search(html) is not None
-    streamed = "$RC(" in html
+    streamed = "$RC(" in html or "$RS(" in html
     frames = bool(answers) and url is not None and declares_frames(html)
     if not (shadow or streamed or frames or partials):
         return html
@@ -307,16 +309,20 @@ def _flatten_shadow_roots(tree: lexbor.LexborHTMLParser) -> None:
 def _complete_boundaries(tree: lexbor.LexborHTMLParser) -> None:
     """For each `$RC(boundary, content)` call of an inline script, the children of the (hidden) element with the
     content id take the place of the `template` with the boundary id, and the fallback after it, up to the boundary's
-    closing comment, is removed, as `completeBoundary` does."""
+    closing comment, is removed, as `completeBoundary` does; for each `$RS(content, placeholder)` call, they take the
+    place of the `template` with the placeholder id, as `completeSegment` does."""
     for script in tree.css("script"):
         if "src" in script.attributes:
             continue
         for match in _COMPLETE.finditer(script.text(deep=True)):
+            boundary = match.group(1) == _BOUNDARY
+            marker_id, content_id = (match.group(3), match.group(5)) if boundary else (match.group(5), match.group(3))
             # Looked up per call: a completed segment may hold a boundary a later call completes.
-            marker, content = tree.css_first(f'[id="{match.group(2)}"]'), tree.css_first(f'[id="{match.group(4)}"]')
+            marker, content = tree.css_first(f'[id="{marker_id}"]'), tree.css_first(f'[id="{content_id}"]')
             if marker is None or content is None or marker.tag != _TEMPLATE:
                 continue
-            _remove_fallback(marker)
+            if boundary:
+                _remove_fallback(marker)
             for child in content.iter(include_text=True):
                 marker.insert_before(child)
             marker.decompose()
