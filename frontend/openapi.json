@@ -5224,6 +5224,7 @@
                   "page",
                   "locale",
                   "url",
+                  "symbol",
                   "unknown"
                 ],
                 "type": "string"
@@ -7079,6 +7080,7 @@
                   "page",
                   "locale",
                   "url",
+                  "symbol",
                   "unknown"
                 ],
                 "type": "string"

@@ -877,6 +877,7 @@ class Basis(Enum):
     page = "page"
     locale = "locale"
     url = "url"
+    symbol = "symbol"
     unknown = "unknown"
 
 

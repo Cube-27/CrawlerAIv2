@@ -93,8 +93,8 @@ class FieldOutcome(_Model):
     locator: LocatorText | None
     derived_by: Derivation | None
     chosen: Candidate | None
-    # A published money value's weaker currency evidence (`Ok.basis`: `page`, `locale`, `url`, `unknown`), noted; else
-    # None.
+    # A published money value's weaker currency evidence (`Ok.basis`: `page`, `locale`, `url`, `symbol`, `unknown`),
+    # noted; else None.
     basis: Basis | None = None
     kept: tuple[Candidate, ...] = ()  # the candidates that passed screening (validity, ownership, INV-13)
     rejected: tuple[tuple[Candidate, str], ...]  # each with its reject reason
