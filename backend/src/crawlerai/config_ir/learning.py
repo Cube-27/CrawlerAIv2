@@ -56,7 +56,7 @@ from crawlerai.config_ir.synthesis import synthesize
 from crawlerai.config_ir.validation import Facts, HeldOutPage, Validated, ValidationReport, validate, with_unlearned
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.redaction import REDACTED
-from crawlerai.db.jobs import JOB_TRANSITIONS, record_event, transition_job
+from crawlerai.db.jobs import JOB_TRANSITIONS, lock_job, record_event, transition_job
 from crawlerai.db.models import (
     ConfigOrigin,
     ExtractionConfig,
@@ -256,9 +256,7 @@ async def expire_learn_runs(conn: AsyncConnection, *, batch: int) -> int:
 async def _abandon(conn: AsyncConnection, job_id: JobId, reason: str) -> Learned:
     """End a run that will not finish: its state as a failed run leaves it, and its job `failed`. A run that
     ended meanwhile is left as it ended: a stopping worker's cancel can come as the run's final transaction commits."""
-    # FOR NO KEY UPDATE, as every lock of a job's row takes (`settle_job`).
-    locked = select(Job.status, Job.request).where(Job.id == job_id).with_for_update(key_share=True)
-    job = (await conn.execute(locked)).one()
+    job = await lock_job(conn, job_id, Job.status, Job.request)
     if not JOB_TRANSITIONS[job.status]:
         return Learned(None, reason)
     if job.status == "queued":  # it failed to start: a job ends `failed` only from `running`

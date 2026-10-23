@@ -13,10 +13,11 @@ import uuid
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime
+from functools import partial
 from typing import Any, Final, Literal, NamedTuple, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
-from sqlalchemy import RowMapping, func, select, update
+from sqlalchemy import RowMapping, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.types import AttemptRecord
@@ -29,7 +30,6 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.errors import Refusal
 from crawlerai.core.redaction import redacted_request
-from crawlerai.db.jobs import JOB_TRANSITIONS, transition_job
 from crawlerai.db.models import (
     Capture,
     CaptureId,
@@ -48,7 +48,7 @@ from crawlerai.db.models import (
     UrlTaskId,
 )
 from crawlerai.db.paging import keyset_page, total_rows
-from crawlerai.db.queue import settle_job
+from crawlerai.db.queue import request_cancel
 from crawlerai.llm.pricing import default_pricing
 from crawlerai.normalize.dispatch import served
 from crawlerai.resolve.records import FieldMeta, RecordContent
@@ -350,36 +350,20 @@ async def cancel_job(conn: AsyncConnection, job_id: JobId) -> JobSummary:
     """Ask the job to stop: its queued tasks are cancelled at once, its claimed ones as their workers
     finish, and the job is `cancelled` once none is claimed. Cancelling a cancelled job again changes nothing; a job
     that completed or failed cannot be cancelled (`JobEnded`)."""
-    status = (await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one_or_none()
-    if status is None:
+    job = (await conn.execute(select(Job.status, Job.kind, Job.request).where(Job.id == job_id))).one_or_none()
+    if job is None:
         raise JobNotFound(f"no job {job_id}")
-    if status in ("completed", "failed"):
-        raise JobEnded(f"job {job_id} already {status}")
-    if status != "cancelled":
-        await _cancel(conn, job_id)
+    if job.status in ("completed", "failed"):
+        raise JobEnded(f"job {job_id} already {job.status}")
+    if job.status != "cancelled":
+        # A `learn` job that never started ends its state's run as a cancelled run does.
+        unstarted = partial(_learn_cancelled, job.request) if job.kind == "learn" else None
+        await request_cancel(conn, job_id, unstarted)
     return await get_job(conn, job_id)
 
 
-async def _cancel(conn: AsyncConnection, job_id: JobId) -> None:
-    # Tasks first, then the job row: the order a finishing worker locks them in (`crawlerai.db.queue`), so the two
-    # never wait on each other. A claim that starts the job locks its tasks before the job too.
-    await conn.execute(
-        update(UrlTask).where(UrlTask.job_id == job_id, UrlTask.status == "queued").values(status="cancelled")
-    )
-    # FOR NO KEY UPDATE, as `settle_job` takes, so a running task's inserts that refer to the job do not hold it up.
-    locked = select(Job.status, Job.kind, Job.request).where(Job.id == job_id).with_for_update(key_share=True)
-    job = (await conn.execute(locked)).one()
-    if not JOB_TRANSITIONS[job.status]:
-        return  # it ended while its tasks were cancelled
-    await conn.execute(update(Job).where(Job.id == job_id).values(cancel_requested=True))
-    if job.status == "queued":
-        # No task of it was ever claimed: a claim starts its job in the same transaction. A `learn` job that never
-        # started ends its state's run as a cancelled run does.
-        if job.kind == "learn":
-            await learning_failed(conn, StateKey.from_request(job.request))
-        await transition_job(conn, job_id, "cancelled")
-    elif job.kind != "learn":  # a started learn run has no tasks, and ends itself on `cancel_requested`
-        await settle_job(conn, job_id)
+async def _learn_cancelled(request: dict[str, Any], conn: AsyncConnection, _job_id: JobId, _target: JobStatus) -> None:
+    await learning_failed(conn, StateKey.from_request(request))
 
 
 async def job_results(

@@ -14,10 +14,9 @@ from crawlerai.acquire.politeness import Admit, HostLimiter
 from crawlerai.acquire.robots import RobotsSnapshot
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.db.models import Job, JobId, Project, Site, SiteId, UrlTask
-from crawlerai.db.queue import ClaimedTask, Failed, Finished, claim_tasks
+from crawlerai.db.queue import ClaimedTask, Failed, Finished, TaskResult, claim_tasks
 from crawlerai.services.polite import QUEUED, HostRules, PageFetch, Turns, rules_of
 from crawlerai.worker.handlers.steps import fetch_queued
-from crawlerai.worker.loop import TaskResult
 from tests.db.support import Web as SharedWeb
 
 pytestmark = pytest.mark.anyio

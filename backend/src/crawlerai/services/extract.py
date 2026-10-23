@@ -30,7 +30,7 @@ from typing import Final, Self, cast
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from sqlalchemy import select, update
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.types import FetchPolicy, FetchResult
@@ -38,7 +38,7 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.core.egress import Egress
 from crawlerai.core.errors import Refusal
 from crawlerai.crawl.rules import MAX_PATTERNS, UrlGlob, is_glob, url_glob
-from crawlerai.db.jobs import transition_job
+from crawlerai.db.jobs import lock_job, transition_job
 from crawlerai.db.models import ApiKeyId, Job, JobId, PageKind, ScheduleId
 from crawlerai.llm.client import LLMClient
 from crawlerai.llm.roles.s_labels import with_labels
@@ -264,9 +264,8 @@ async def _drafted(
             raise DraftTimedOut(timeout_s) from e
         raise
     async with engine.begin() as conn:
-        # FOR NO KEY UPDATE, as `settle_job` takes: a cancel waits for the tasks, or the tasks see the cancel.
-        locked = select(Job.status).where(Job.id == job_id).with_for_update(key_share=True)
-        if (await conn.execute(locked)).scalar_one() == "running":
+        # A cancel waits for the tasks, or the tasks see the cancel.
+        if (await lock_job(conn, job_id, Job.status)).status == "running":
             pinned = await job_pins(conn, data, list(urls.values()), drafted)
             await conn.execute(update(Job).where(Job.id == job_id).values(schema_id=drafted.id, pinned=pinned))
             await insert_tasks(conn, job_id, request.page_kind, _pairs(urls))

@@ -9,8 +9,9 @@ from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
 from typing import Any, Final
 
-from sqlalchemy import ColumnElement, func, insert, select, update
+from sqlalchemy import ColumnElement, Row, Select, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.orm import InstrumentedAttribute
 
 from crawlerai.core.redaction import has_secrets, redacted_request
 from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, TaskStatus, UrlTask, UrlTaskId
@@ -37,6 +38,19 @@ TASK_TRANSITIONS: Final[Mapping[TaskStatus, frozenset[TaskStatus]]] = {
 class InvalidTransition(Exception):
     def __init__(self, table: str, row_id: object, current: str, target: str) -> None:
         super().__init__(f"{table} {row_id}: {current} -> {target}")
+
+
+def locking[S: Select[Any]](statement: S, *, skip_locked: bool = False) -> S:
+    """`statement`, a select of job rows, locking them as every lock of a job's row does: FOR NO KEY UPDATE
+    (PostgreSQL row-level locks). It serializes with every other write to the row, but not with a running task's
+    inserts that refer to the job (FOR KEY SHARE), which hold until that task commits. With `skip_locked`, a row another
+    transaction holds is left out."""
+    return statement.with_for_update(key_share=True, skip_locked=skip_locked)
+
+
+async def lock_job(conn: AsyncConnection, job_id: JobId, *columns: InstrumentedAttribute[Any]) -> Row[Any]:
+    """Lock the job's row for `conn`'s transaction (`locking`) and read its `columns` (default: its id)."""
+    return (await conn.execute(locking(select(*(columns or (Job.id,))).where(Job.id == job_id)))).one()
 
 
 def blocking_statuses(*, cancel_requested: bool) -> tuple[TaskStatus, ...]:
