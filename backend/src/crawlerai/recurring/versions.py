@@ -9,7 +9,7 @@ in place) adds the next version, superseding it and naming its changed fields. E
 way the task stands for the record it answers with (`task_record`), so that its job lists it, with what the record
 is against the entity's previous record (`task_record.delta`): `new` when it had none,
 `changed` when a published value differs, else `same`. This is the
-`resolve.task.RecordWriter` a page task stores its records with.
+write `store_extraction` (`page_store`) stores a page task's records with.
 """
 
 import hashlib

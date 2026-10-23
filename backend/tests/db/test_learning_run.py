@@ -44,15 +44,14 @@ from crawlerai.db.models import (
 )
 from crawlerai.db.queue import complete_task, insert_claimed
 from crawlerai.llm.client import LLMRequest, LLMResponse, ReplyCheck, request_hash
-from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import (
     EngineData,
     extract_page,
 )
-from crawlerai.resolve.task import Stored, store_extraction
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument, document_digest
 from crawlerai.services import configs as configs_service
+from crawlerai.services.page_store import Stored, store_extraction
 from crawlerai.storage.capture_bundle import CaptureBundle
 from crawlerai.storage.fs import FsStore
 from tests.support.captures import call
@@ -167,7 +166,6 @@ class LearnSite:
                 schema=self.schema,
                 caller_supplied=True,
                 config=config,
-                write_records=store_records,
             )
             assert stored.outcome != "failed"
             await complete_task(conn, task, stored.outcome, capture_id=capture_id)

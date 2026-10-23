@@ -25,12 +25,11 @@ from crawlerai.db.models import (
     SiteId,
 )
 from crawlerai.db.queue import insert_claimed
-from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData, extract_page
-from crawlerai.resolve.task import store_extraction
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
 from crawlerai.services import captures, records
+from crawlerai.services.page_store import store_extraction
 from crawlerai.services.records import RecordFilter
 from crawlerai.storage.fs import FsStore
 from tests.db.support import api
@@ -118,7 +117,6 @@ class World:
                 site_id=self.site_id,
                 schema=self.schema,
                 caller_supplied=True,
-                write_records=store_records,
             )
             if before_commit is not None:
                 await before_commit()

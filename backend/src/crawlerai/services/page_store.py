@@ -8,11 +8,13 @@ task themselves (`page_run`).
 """
 
 import math
-from collections.abc import Iterable
+import re
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from typing import Final, Literal
 
-from sqlalchemy import select
+from pydantic import JsonValue
+from sqlalchemy import insert, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -20,6 +22,7 @@ from crawlerai.acquire.memory import Coverage, Remembered, learn_extraction, lea
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.rungs import NO_PLAN, FetchPlan
 from crawlerai.acquire.types import AttemptRecord, FetchResult
+from crawlerai.collect.base import Candidate
 from crawlerai.config_ir.active import fetch_plan, record_page
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.config_ir.locate import Extract
@@ -27,9 +30,15 @@ from crawlerai.config_ir.progressive import LocateRequest, StateKey, render_mode
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import CaptureMethod
+from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.db.models import Candidate as CandidateRow
 from crawlerai.db.models import (
     CaptureId,
+    Extraction,
+    ExtractionId,
+    FinishedOutcome,
     JobId,
+    NormalizeStatus,
     PageKind,
     ProgressiveState,
     Project,
@@ -41,11 +50,12 @@ from crawlerai.db.models import (
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.db.usage import record_usage
 from crawlerai.llm.client import LLMClient
+from crawlerai.normalize.base import Ambiguous, Invalid, Ok
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
-from crawlerai.resolve.task import ActiveConfig, Stored, StoredRecord, store_extraction
-from crawlerai.resolve.types import ExtractionResult
+from crawlerai.resolve.task import ActiveConfig, RecordSource, StoredRecord, page_records
+from crawlerai.resolve.types import ExtractionResult, FieldOutcome
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.scrape_request import RenderOptions
 from crawlerai.storage.base import ObjectStore
@@ -107,6 +117,151 @@ async def record_fetch_usage(
             )
 
 
+@dataclass(frozen=True, slots=True)
+class Stored:
+    """The task's outcome (`url_task.outcome`; a resolution `error` is `failed`), the rows written for it, and each
+    record's content: at most one record for a detail page, one per kept row for a listing."""
+
+    outcome: FinishedOutcome | Literal["failed"]
+    extraction_id: ExtractionId
+    records: tuple[StoredRecord, ...]
+    result: ExtractionResult
+
+
+async def store_extraction(
+    conn: AsyncConnection,
+    task: ClaimedTask,
+    result: ExtractionResult,
+    *,
+    capture_id: CaptureId,
+    site_id: SiteId,
+    schema: SchemaDef,
+    caller_supplied: bool,
+    config: ActiveConfig | None = None,
+    page_url: str | None = None,
+) -> Stored:
+    """Store `result`, `extract_page`'s for the task's capture, in `conn`'s transaction. `caller_supplied` is true for
+    `scrape`, `batch_scrape` and `extract` URLs: an incomplete page then keeps its record (`partial`), where a
+    crawl-discovered one gets `no_match` and none. The caller settles the task with the returned outcome.
+    `scrape` extracts before it opens the transaction, so it holds no connection while the page resolves. `config` is
+    the config a `config`-mode result ran; `page_url` the canonical URL of the document it read, when that is not the
+    task's (a listing's further page)."""
+    page_url = page_url or task.canonical_url
+    extraction_id: ExtractionId = (
+        await conn.execute(
+            insert(Extraction)
+            .values(
+                url_task_id=task.id,
+                capture_id=capture_id,
+                engine_version=ENGINE_VERSION,
+                config_version=None if config is None else config.version,
+                mode=result.mode,
+                llm_calls=len(result.llm_calls),
+                diagnostics=list(result.diagnostics),
+            )
+            .returning(Extraction.id)
+        )
+    ).scalar_one()
+    if result.candidates:
+        await conn.execute(insert(CandidateRow), list(_candidate_rows(extraction_id, result)))
+    if result.entity is None:
+        return Stored("failed" if result.outcome == "error" else result.outcome, extraction_id, (), result)
+    outcome, drafts = page_records(
+        schema,
+        result.entity,
+        result.rows,
+        site_id=site_id,
+        page_url=page_url,
+        caller_supplied=caller_supplied,
+        diagnostics=result.diagnostics,
+    )
+    if not drafts:
+        return Stored(outcome, extraction_id, (), result)
+    source = RecordSource(extraction_id, task.id, task.job_id, site_id, result.mode, page_url)
+    records = await store_records(conn, schema, drafts, source)
+    return Stored(outcome, extraction_id, records, result)
+
+
+def _candidate_rows(extraction_id: ExtractionId, result: ExtractionResult) -> Iterator[dict[str, object]]:
+    chosen, reasons = _marks(result)
+    for candidate in result.candidates:
+        status, value = _normalized(candidate)
+        key = _key(candidate)
+        yield {
+            "extraction_id": extraction_id,
+            "entity_ref": candidate.entity_id,
+            "field": candidate.field,
+            "raw_value": storable(candidate.raw),
+            "normalized_value": value,
+            "normalize_status": status,
+            "source_kind": candidate.source_kind,
+            "independent": candidate.independent,
+            "locator": candidate.locator,
+            "chosen": key in chosen,
+            "reject_reason": None if key in chosen else reasons.get(key),
+        }
+
+
+# PostgreSQL `jsonb` holds no U+0000 (its text type cannot) and no lone surrogate (not a Unicode scalar value, so no
+# UTF-8 string holds it; RFC 8259 §8.2 lets JSON text escape one). A page's raw value may carry either.
+_UNSTORABLE = re.compile(r"[\x00\ud800-\udfff]")
+
+
+def storable(value: JsonValue) -> JsonValue:
+    """`value` with each U+0000 and lone surrogate in its strings and member names replaced by U+FFFD, the Unicode
+    replacement character, so that `jsonb` takes it. A raw value is kept for triage; the normalized one is what
+    publishes, and normalizers decline such strings."""
+    if isinstance(value, str):
+        return _UNSTORABLE.sub("\ufffd", value)
+    if isinstance(value, list):
+        return [storable(item) for item in value]
+    if isinstance(value, dict):
+        return {_UNSTORABLE.sub("\ufffd", key): storable(item) for key, item in value.items()}
+    return value
+
+
+# A candidate's identity on the page: one field's value, from one source, at one place, of one entity.
+_CandidateKey = tuple[str, str, str, str]
+
+
+def _key(candidate: Candidate) -> _CandidateKey:
+    return candidate.field, candidate.entity_id, candidate.source_kind, candidate.locator
+
+
+def _marks(result: ExtractionResult) -> tuple[set[_CandidateKey], dict[_CandidateKey, str]]:
+    """The candidates some entity's field published, and why each other one did not. A listing resolves every row
+    against all candidates, so a row's candidate is `not_owned` in every other row: the reason its own row gave says
+    more, and is kept."""
+    chosen: set[_CandidateKey] = set()
+    reasons: dict[_CandidateKey, str] = {}
+    for fields in (result.entity or {}, *result.rows):
+        for outcome in _with_sub_fields(fields.values()):
+            if outcome.chosen is not None:
+                chosen.add(_key(outcome.chosen))
+            for candidate, reason in outcome.rejected:
+                if reasons.get(_key(candidate), "not_owned") == "not_owned":
+                    reasons[_key(candidate)] = reason
+    return chosen, reasons
+
+
+def _with_sub_fields(outcomes: Iterable[FieldOutcome]) -> Iterator[FieldOutcome]:
+    """Each outcome, and the sub-field outcomes of a row-mapped field's published rows."""
+    for outcome in outcomes:
+        yield outcome
+        for item in outcome.items or ():
+            yield from item.fields.values()
+
+
+def _normalized(candidate: Candidate) -> tuple[NormalizeStatus, JsonValue]:
+    match candidate.normalized:
+        case Ok(value=value):
+            return "ok", value
+        case Ambiguous():
+            return "ambiguous", None
+        case Invalid():
+            return "invalid", None
+
+
 async def store_page_record(
     conn: AsyncConnection,
     engine: AsyncEngine,
@@ -146,7 +301,6 @@ async def store_page_record(
         site_id=site_id,
         schema=schema,
         caller_supplied=caller_supplied,
-        write_records=store_records,
         config=config,
         page_url=page_url,
     )
