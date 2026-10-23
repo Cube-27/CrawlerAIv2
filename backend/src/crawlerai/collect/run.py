@@ -138,8 +138,12 @@ def _state_rows(page: ParsedPage, schema: SchemaDef, ctx: Context, diagnostics: 
     """A listing's rows from its state JSON (`collect.items.state_rows`); none on a detail page."""
     if schema.page_kind != "listing":
         return StateRows()
-    read = partial(state_rows, page, state_documents(page, []), schema, ctx)
-    return _isolated(state_rows, read, diagnostics) or StateRows()
+    # The state documents are parsed inside the isolation too: a script that fails to parse costs only these rows.
+    return _isolated(state_rows, partial(_read_state, page, schema, ctx), diagnostics) or StateRows()
+
+
+def _read_state(page: ParsedPage, schema: SchemaDef, ctx: Context) -> StateRows:
+    return state_rows(page, state_documents(page, []), schema, ctx)
 
 
 def _signals(
