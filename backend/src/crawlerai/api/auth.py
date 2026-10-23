@@ -108,7 +108,7 @@ async def require_api_key(
     return key_id
 
 
-async def caller(request: Request, key: Annotated[ApiKeyId, Depends(require_api_key)]) -> Caller:
+def caller(request: Request, key: Annotated[ApiKeyId, Depends(require_api_key)]) -> Caller:
     """The dependency of a route that calls the services as its key: an LLM call no job pays for counts against the
     key's draft cap, as over MCP."""
     return Caller.of(runtime(request), key)
