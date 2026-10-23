@@ -87,14 +87,20 @@ def _range(lo: Decimal, hi: Decimal, code: str | None, period: str | None) -> Js
 
 @settings(deadline=None)
 @given(_bounds)
-def test_a_dollar_sign_is_ambiguous_without_evidence_and_settled_by_a_page_currency(bounds: list[Decimal]) -> None:
+def test_a_range_takes_its_signs_currency_flagged_and_a_stated_one_settles_it(bounds: list[Decimal]) -> None:
     lo, hi = bounds
+    spec = _spec(FieldType.RANGE)
     raw = f"${lo} - ${hi} per year"
 
-    # A range has no basis to flag a sign's default currency, so it states none until the page names one.
-    assert normalize(raw, _spec(FieldType.RANGE), CTX) == Ambiguous("currency_unknown", ())
+    # Both bounds share the sign's primary currency, flagged as a single price is.
+    assert normalize(raw, spec, CTX) == Ok(_range(lo, hi, "USD", "YEAR"), basis="symbol")
     settled = Context(captured_at=AT, page_currencies=("CAD",))
-    assert normalize(raw, _spec(FieldType.RANGE), settled) == Ok(_range(lo, hi, "CAD", "YEAR"))
+    assert normalize(raw, spec, settled) == Ok(_range(lo, hi, "CAD", "YEAR"), basis="page")
+    # A bound that states its currency settles the other when its sign can denote it.
+    assert normalize(f"${lo} - CAD {hi} per year", spec, CTX) == Ok(_range(lo, hi, "CAD", "YEAR"))
+    assert normalize(f"${lo} - USD {hi} per year", spec, CTX) == Ok(_range(lo, hi, "USD", "YEAR"))
+    # Currencies the bounds cannot share stay unknown.
+    assert normalize(f"€{lo} - CAD {hi} per year", spec, CTX) == Ambiguous("currency_unknown", ())
 
 
 def test_a_list_is_as_checked_as_its_least_checked_item_and_as_settled_as_its_weakest() -> None:
