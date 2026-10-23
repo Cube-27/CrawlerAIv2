@@ -148,20 +148,27 @@ async def acquire(
     """Fetch `url` through the active adapter that detects it, if any, requesting its API with `send` (no adapter runs
         without it); a page an adapter does not serve skips the recipe. Otherwise through `recipe`, the
         active config's API recipe bound to its fetch, when the site has one. The adapter's result is kept
-        when it is `ok`, the recipe's when it is `ok` or asks for fewer requests; otherwise the page is fetched as if there
+        when it is `ok`, the recipe's when it is `ok` or asks for fewer requests; otherwise the page is fetched as if
+        there
         were neither. Without either, fetch it with `policy.method_hint`, or else in the browser when the
-        `plan` says so, or else the method the site's memory says (`remembered`). In `auto`, an HTTP block, shell or network
-        error is fetched again in the browser, and the browser's outcome is kept only if it is `ok` (or a shell no challenge
-        names: the last rung's page, `_as_last_page`); an HTTP `ok` page never is. Each request after the first (the page
+        `plan` says so, or else the method the site's memory says (`remembered`). In `auto`, an HTTP block, shell or
+        network
+        error is fetched again in the browser, and the browser's outcome is kept only if it is `ok` (or a shell no
+        challenge
+        names: the last rung's page, `_as_last_page`); an HTTP `ok` page never is. Each request after the first (the
+        page
         after an
-        adapter or a recipe, the browser retry, the companion call) waits for `admit_next` to admit it at the site's rate,
+        adapter or a recipe, the browser retry, the companion call) waits for `admit_next` to admit it at the site's
+        rate,
     and is not sent when `admit_next` refuses it: the fetch keeps the outcome it has. The result
         lists every attempt, in its bundle's manifest too. A page no adapter detected whose canonical link is its URL
         without the query, which an adapter detects, is fetched again by that adapter on its own turn. An
-        HTTP `ok` detail page kept is joined with its platform's documented product JSON (`_joined`, sent with `send`), and
+        HTTP `ok` detail page kept is joined with its platform's documented product JSON (`_joined`, sent with `send`),
+        and
         any kept HTTP `ok` page with the answers of its eager fragments on its own site (`_with_frames`), and with the
         answers of the `plan`'s companion calls (`_with_calls`, sent with `send`). A policy that captures the page
-        (`screenshot`, `pdf`) uses neither an adapter, a recipe nor a companion call. No browser retry starts with less than
+        (`screenshot`, `pdf`) uses neither an adapter, a recipe nor a companion call. No browser retry starts with less
+        than
         `BROWSER_MIN_S` left before `deadline` (on `time.monotonic`), the task's budget: the HTTP outcome is kept."""
     if policy.captures_page:
         send = recipe = None  # a screenshot or PDF is of the page itself, which an adapter's or a recipe's JSON is not

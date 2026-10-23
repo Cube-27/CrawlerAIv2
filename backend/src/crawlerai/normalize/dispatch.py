@@ -102,7 +102,8 @@ def served(data: Mapping[str, JsonValue], fields: Mapping[str, FieldSpec]) -> di
     """A record's published values `data`, of the schema `fields`, as the API, exports and webhooks serve them:
     money amounts, range bounds and numbers as JSON numbers, a number rounded to
         two decimal places, in lists and objects too; every other value, and a key `fields` lacks, as it is. Only output
-        reads this form: storage, equality and learning keep the normalized values, whose precision it may round away."""
+        reads this form: storage, equality and learning keep the normalized values, whose precision it may round
+        away."""
     return {name: _served(value, fields[name]) if name in fields else value for name, value in data.items()}
 
 

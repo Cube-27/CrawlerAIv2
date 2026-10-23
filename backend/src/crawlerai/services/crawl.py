@@ -54,7 +54,8 @@ from crawlerai.services.webhook_options import WebhookOptions
 
 class CrawlRequest(WebhookOptions):
     """The body of `POST /v1/crawl`. The formats, `schema`, `fetch` and `locale` are a batch's, for every
-        page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted
+        page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is
+        drafted
         while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap
         does.
     `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which

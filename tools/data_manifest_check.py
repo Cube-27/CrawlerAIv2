@@ -6,9 +6,9 @@ match the pinned hash. An entry marked `"fetched": true` is downloaded by `crawl
 its file may be absent, and when present it must match its hash. Prints one line per problem and
 exits 1, or prints one summary line and exits 0.
 
-Three files are fitted on dev rather than fetched (owner answers 2026-10-14 and 2026-10-16): `source_precedence.yaml`, `calibration.json` and `drift_margins.json`. They are
-frozen as fitted on 2026-10-18 and not listed in the manifest; each must instead carry the stamp
-`source_split: dev` (the split they were fitted on).
+Three files are fitted on dev rather than fetched: `source_precedence.yaml`, `calibration.json` and
+`drift_margins.json`. They are frozen as fitted on 2026-10-18 and not listed in the manifest; each must instead
+carry the stamp `source_split: dev` (the split they were fitted on).
 """
 
 import argparse

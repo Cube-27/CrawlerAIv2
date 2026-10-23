@@ -1294,8 +1294,10 @@ export interface components {
         /**
          * CrawlRequest
          * @description The body of `POST /v1/crawl`. The formats, `schema`, `fetch` and `locale` are a batch's, for every
-         *         page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted
-         *         while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does.
+         *         page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is
+         *         drafted
+         *         while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap
+         *         does.
          *     `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which
          *         pages are extracted. The webhook options are `WebhookOptions`.
          *
@@ -1851,7 +1853,8 @@ export interface components {
          * @description One field of a schema, or the item of a list.
          *
          *     The parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,
-         *     `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants): the path names the row entities, and `key` names the sub-fields that identify a row.
+         *     `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants):
+         *     the path names the row entities, and `key` names the sub-fields that identify a row.
          */
         "FieldSpec-Input": {
             /** Description */
@@ -1887,7 +1890,8 @@ export interface components {
          * @description One field of a schema, or the item of a list.
          *
          *     The parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,
-         *     `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants): the path names the row entities, and `key` names the sub-fields that identify a row.
+         *     `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants):
+         *     the path names the row entities, and `key` names the sub-fields that identify a row.
          */
         "FieldSpec-Output": {
             /** Description */
@@ -2298,7 +2302,8 @@ export interface components {
         /**
          * ListingSpec
          * @description Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` locates the next
-         *     page's URL. A `jsonpath` row step selects the rows' JSON objects in its source's documents, and its fields' steps are `jsonpath` steps of the same source read from each row (`$`).
+         *     page's URL. A `jsonpath` row step selects the rows' JSON objects in its source's documents, and its fields' steps
+         *     are `jsonpath` steps of the same source read from each row (`$`).
          */
         ListingSpec: {
             /** Fields */

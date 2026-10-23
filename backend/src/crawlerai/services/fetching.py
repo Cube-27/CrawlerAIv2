@@ -271,7 +271,8 @@ class RecipePages:
 
     async def rung(self, recipe: RecipeRung, url: str, policy: FetchPolicy) -> Rung | None:
         """The recipe rung `acquire` fetches the page through: one that answers with the first page the listing recipe
-                served, its further pages kept, so `acquire` keeps or falls back from that one answer as from any recipe's;
+                served, its further pages kept, so `acquire` keeps or falls back from that one answer as from any
+                recipe's;
         None when it served no page. Each page request waits for its host's rate on its own
                 (`recipe_rung`)."""
         pages = [

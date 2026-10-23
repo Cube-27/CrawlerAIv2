@@ -1133,7 +1133,7 @@
       },
       "CrawlRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/crawl`. The formats, `schema`, `fetch` and `locale` are a batch's, for every\n    page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted\n    while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does.\n`include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which\n    pages are extracted. The webhook options are `WebhookOptions`.\n\n    `strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the\n    links that best match `query` and `keywords` first (`crawl.scoring`). `allow_subdomains`\n    keeps the start host's subdomains without an `include`, and `allow_external` any host.",
+        "description": "The body of `POST /v1/crawl`. The formats, `schema`, `fetch` and `locale` are a batch's, for every\n    page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is\n    drafted\n    while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap\n    does.\n`include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which\n    pages are extracted. The webhook options are `WebhookOptions`.\n\n    `strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the\n    links that best match `query` and `keywords` first (`crawl.scoring`). `allow_subdomains`\n    keeps the start host's subdomains without an `include`, and `allow_external` any host.",
         "properties": {
           "allow_external": {
             "default": false,
@@ -2570,7 +2570,7 @@
       },
       "FieldSpec-Input": {
         "additionalProperties": false,
-        "description": "One field of a schema, or the item of a list.\n\nThe parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,\n`item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants): the path names the row entities, and `key` names the sub-fields that identify a row.",
+        "description": "One field of a schema, or the item of a list.\n\nThe parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,\n`item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants):\nthe path names the row entities, and `key` names the sub-fields that identify a row.",
         "properties": {
           "description": {
             "anyOf": [
@@ -2694,7 +2694,7 @@
       },
       "FieldSpec-Output": {
         "additionalProperties": false,
-        "description": "One field of a schema, or the item of a list.\n\nThe parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,\n`item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants): the path names the row entities, and `key` names the sub-fields that identify a row.",
+        "description": "One field of a schema, or the item of a list.\n\nThe parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,\n`item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants):\nthe path names the row entities, and `key` names the sub-fields that identify a row.",
         "properties": {
           "description": {
             "anyOf": [
@@ -3860,7 +3860,7 @@
       },
       "ListingSpec": {
         "additionalProperties": false,
-        "description": "Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` locates the next\npage's URL. A `jsonpath` row step selects the rows' JSON objects in its source's documents, and its fields' steps are `jsonpath` steps of the same source read from each row (`$`).",
+        "description": "Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` locates the next\npage's URL. A `jsonpath` row step selects the rows' JSON objects in its source's documents, and its fields' steps\nare `jsonpath` steps of the same source read from each row (`$`).",
         "properties": {
           "fields": {
             "patternProperties": {

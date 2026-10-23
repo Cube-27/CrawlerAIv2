@@ -161,7 +161,8 @@ async def submit_batch(
         it, signs its webhook; `egresses`, the configured pools, one of which `fetch.proxy_pool` must name,
     and the countries they go out from. The job's egress is its pool's (`job_egress`). Raises, storing
         nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a URL refused by its form or a refused
-        `webhook_url` (`check_targets`), `RecordsUnavailable` for `records` without `data`, and `named_schema`'s errors for
+        `webhook_url` (`check_targets`), `RecordsUnavailable` for `records` without `data`, and `named_schema`'s errors
+        for
         a schema `records` cannot use (or field names `llm` could not draft)."""
     if egresses is not None:
         check_proxy_pool(request.fetch, egresses.pools)

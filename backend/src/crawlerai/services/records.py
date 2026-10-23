@@ -130,7 +130,8 @@ class RecordPage(BaseModel):
 class RecordFilter(BaseModel):
     """The records to list: those of a job, of a site (its host), of a schema, stored at or after a time, or any
         combination. A job's are those its pages stand for, stored by it or found equal to the latest version.
-        Stored from `changed_since` on, a record is a new entity or a new version of one: the change feed of recurring runs.
+        Stored from `changed_since` on, a record is a new entity or a new version of one: the change feed of recurring
+        runs.
     An entity re-extracted equal stores no record, so `changed_since` does not list it again."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
