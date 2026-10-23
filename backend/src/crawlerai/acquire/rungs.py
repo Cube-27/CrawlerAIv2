@@ -151,8 +151,9 @@ async def acquire(
     when it is `ok`, the recipe's when it is `ok` or asks for fewer requests; otherwise the page is fetched as if there
     were neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else in the browser when the
     `plan` says so, or else the method the site's memory says (`remembered`). In `auto`, an HTTP block, shell or network
-    error is fetched again in the browser, and the browser's outcome is kept only if it is `ok`; an HTTP `ok` page never
-    is (acquisition spec, "Browser on block or by field source"). Each request after the first (the page after an
+    error is fetched again in the browser, and the browser's outcome is kept only if it is `ok` (or a shell no challenge
+    names: the last rung's page, `_as_last_page`); an HTTP `ok` page never is (acquisition spec, "Browser on block or
+    by field source"). Each request after the first (the page after an
     adapter or a recipe, the browser retry, the companion call) waits for `admit_next` to admit it at the site's rate
     (acquisition spec), and is not sent when `admit_next` refuses it: the fetch keeps the outcome it has. The result
     lists every attempt, in its bundle's manifest too. A page no adapter detected whose canonical link is its URL
@@ -297,7 +298,8 @@ class _Retry:
 
 async def _page(url: str, policy: FetchPolicy, remembered: Remembered, rungs: Rungs, retry: _Retry) -> Fetched:
     """The page over HTTP or in the browser (`acquire`): the outcome kept, every attempt and their duration. An HTTP
-    page kept for want of a browser outcome is the fetch's last page (`_as_last_page`). An HTTP shell the browser
+    page kept for want of a browser outcome, and the browser's page, are the fetch's last page (`_as_last_page`); an
+    HTTP page kept after the browser's attempt failed is not the last rung's. An HTTP shell the browser
     would retry for lacking content (`_referable`) asks its referral first (`retry.refer`), and an `ok` answer is kept
     without the render (adapters spec, "Referral from a tenant's own host")."""
     method = remembered.method if policy.method_hint == "auto" else policy.method_hint
@@ -318,10 +320,22 @@ async def _page(url: str, policy: FetchPolicy, remembered: Remembered, rungs: Ru
         or not await _admitted(retry.admit_next, after=_paused_by(result))
         or not retry.in_budget()
     ):
-        return await _as_last_page(result, policy), attempts, duration_ms
+        return await _as_last_page(result, policy, last=True), attempts, duration_ms
     rendered = await _browser_retry(url, policy, rungs, result)
-    kept = rendered if rendered.block_class == "ok" else await _as_last_page(result, policy)
-    return kept, attempts + rendered.attempts, duration_ms + rendered.duration_ms
+    return await _kept(result, rendered, policy), attempts + rendered.attempts, duration_ms + rendered.duration_ms
+
+
+async def _kept(result: FetchResult, rendered: FetchResult, policy: FetchPolicy) -> FetchResult:
+    """The page kept after the browser's attempt `rendered` at the HTTP `result`: the browser's `ok`, else the HTTP page
+    when it is `ok` as a page kept with no browser outcome (`_as_last_page`, not the last rung's), else the browser's
+    page when the last rung's rule makes it `ok`, else the HTTP page."""
+    if rendered.block_class == "ok":
+        return rendered
+    http = await _as_last_page(result, policy, last=False)
+    if http.block_class == "ok":
+        return http
+    shown = await _as_last_page(rendered, policy, last=True)
+    return shown if shown.block_class == "ok" else http
 
 
 async def _joined(policy: FetchPolicy, page: Fetched, admit_next: Admit | None, send: JsonFetcher | None) -> Fetched:
@@ -460,23 +474,33 @@ def _paused_by(result: FetchResult) -> timedelta:
     return BACKOFF_MAX if pause is None else pause
 
 
-async def _as_last_page(result: FetchResult, policy: FetchPolicy) -> FetchResult:
-    """D-1261: an HTTP page kept with no browser outcome is the last page of the fetch, which is extracted whatever its
-    links, as the browser's is (`browser.classified`): a shell by the listing rule alone (a page with site structure
-    but no repeated items, `classify`) or by the content rule alone (a page whose text a script carries, read for
-    content formats) or by the detail rule alone (a page whose structured data describes the item of a `target_types`
-    type while a script carries the rest) becomes `ok`, so the rows role C reads from it, the text it shows, or the
-    item its data states are kept; one showing a vendor's stand-in marker (`block_class_of`) stays as it is. Its
-    attempt keeps the class HTTP gave it."""
+async def _as_last_page(result: FetchResult, policy: FetchPolicy, *, last: bool) -> FetchResult:
+    """D-1261: a page kept for want of an `ok` outcome is extracted whatever its links, as the browser's is
+    (`browser.classified`). When it is the `last` rung's page (the browser's, or HTTP's when no browser attempt is
+    made), a `shell` no challenge names (`_referable`: a 2xx document with no vendor's signature on its attempt) is
+    `ok`: owner decision 2026-10-23, the server gave the page and it shows what it shows (a page announcing a launch, a
+    parked domain), so its text is published as it is. Any other HTTP shell kept is `ok` when it is a shell by the
+    listing rule alone (a page with site structure but no repeated items, `classify`), by the content rule alone (a page
+    whose text a script carries, read for content formats) or by the detail rule alone (a page whose structured data
+    describes the item of a `target_types` type while a script carries the rest), so the rows role C reads from it, the
+    text it shows, or the item its data states are kept; one showing a vendor's stand-in marker (`block_class_of`) or
+    as little text as a shell stays as it is. Its attempt keeps the class its rung gave it."""
+    if result.block_class != "shell":
+        return result
+    if last and _referable(result):
+        return _as_ok(result)
     manifest = result.bundle.manifest
-    if result.block_class != "shell" or manifest.method != "http":
+    if manifest.method != "http":
         return result
     text = result.bundle.text
     unlisted = await asyncio.to_thread(
         partial(block_class_of, types=policy.target_types), manifest.status_code, manifest.headers.response, text
     )
-    if unlisted != "ok":
-        return result
+    return _as_ok(result) if unlisted == "ok" else result
+
+
+def _as_ok(result: FetchResult) -> FetchResult:
+    manifest = result.bundle.manifest
     bundle = result.bundle.model_copy(update={"manifest": manifest.model_copy(update={"block_class": "ok"})})
     return result.model_copy(update={"bundle": bundle})
 

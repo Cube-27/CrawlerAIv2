@@ -213,6 +213,22 @@ def test_no_browser_retry_starts_too_close_to_the_deadline() -> None:
 # --- D-1261: an HTTP listing shell kept for want of a browser outcome is the fetch's last page ---
 
 
+def test_the_last_rungs_shell_no_challenge_names_is_the_page() -> None:
+    # Owner decision 2026-10-23: the browser's short page with no challenge is `ok`; one a challenge names is not, and
+    # then the HTTP shell is kept as it is, not the last rung's page.
+    shown = web("shell", "shell").acquire()
+    challenged = web("shell", "shell")
+    challenged.browser.challenge = "vendor"
+    refused = challenged.acquire()
+    # HTTP is the last rung when no browser attempt is made.
+    http_only = web("shell", "ok").acquire(FetchPolicy(method_hint="http"))
+
+    assert (shown.method, shown.block_class) == ("browser", "ok")
+    assert _attempts(shown) == [("http", "shell"), ("browser", "shell")]
+    assert (refused.method, refused.block_class) == ("http", "shell")
+    assert (http_only.method, http_only.block_class) == ("http", "ok")
+
+
 # --- D-1263: a 503 interstitial gets one browser attempt after the site's pause ---
 
 
