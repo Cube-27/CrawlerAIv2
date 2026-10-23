@@ -19,7 +19,6 @@ propagates: the learning job ends `failed` and nothing activates.
 
 import asyncio
 import json
-import re
 from collections.abc import Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib.resources import files
@@ -28,7 +27,6 @@ from typing import Final, cast
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from crawlerai.collect.base import PAGE, Candidate
-from crawlerai.collect.config import Executed
 from crawlerai.collect.json_doc import nodes
 from crawlerai.collect.locator import InvalidLocator, parse_locator
 from crawlerai.collect.vocabulary import Vocabulary
@@ -36,6 +34,7 @@ from crawlerai.config_ir import sample_view, step_wire
 from crawlerai.config_ir.executor import EngineExecutor, row_id
 from crawlerai.config_ir.induction import Published, SamplePage
 from crawlerai.config_ir.model import NEXT_PAGE_FIELD, ExtractionConfigIR, FieldSteps, ListingSpec, Step
+from crawlerai.config_ir.page_run import PageRun
 from crawlerai.config_ir.validation import MIN_ROWS
 from crawlerai.db.models import FieldStatus, JobId
 from crawlerai.llm.client import LLMClient, LLMRequest, PromptKind, closed_object
@@ -256,39 +255,6 @@ def _dumped(value: JsonValue) -> str:
     return text if len(text) <= VALUE_MAX_CHARS else f"{text[:VALUE_MAX_CHARS]}…"
 
 
-# `EngineExecutor` diagnostics: `config:row: <message>` for the row selector, `config:<field>:<step>: <message>` for a
-# field's step (a field name has no `:`, `NAME_PATTERN`).
-_ROW_DIAGNOSTIC: Final = "config:row: "
-_STEP_DIAGNOSTIC: Final = re.compile(r"config:([^:]+):(\d+: .*)", re.ASCII | re.DOTALL)
-
-
-@dataclass(frozen=True, slots=True)
-class _PageRun:
-    """The executor's output on one sample page, indexed once for every target checked on it: the row count,
-    candidates by owner and field, the row selector's diagnostics and each field's step diagnostics."""
-
-    rows: int
-    candidates: Mapping[tuple[str, str], Candidate]
-    row_diagnostics: tuple[str, ...]
-    step_diagnostics: Mapping[str, tuple[str, ...]]
-
-    @classmethod
-    def of(cls, executed: Executed) -> "_PageRun":
-        rows: list[str] = []
-        steps: dict[str, list[str]] = {}
-        for diagnostic in executed.diagnostics:
-            if diagnostic.startswith(_ROW_DIAGNOSTIC):
-                rows.append(diagnostic.removeprefix(_ROW_DIAGNOSTIC))
-            elif (step := _STEP_DIAGNOSTIC.fullmatch(diagnostic)) is not None:
-                steps.setdefault(step[1], []).append(step[2])
-        return cls(
-            rows=len(executed.rows),
-            candidates={(c.entity_id, c.field): c for c in executed.candidates},
-            row_diagnostics=tuple(rows),
-            step_diagnostics={name: tuple(found) for name, found in steps.items()},
-        )
-
-
 # --- one learning run -----------------------------------------------------------------------------------------------
 
 
@@ -421,7 +387,7 @@ class _Learning:
         with their diagnostics."""
         row = next(iter(proposal.steps[ROW]), None) if ROW in proposal.steps else self.row
         executor = EngineExecutor(self._trial(proposal, row), self.vocabulary)
-        runs = [_PageRun.of(executor.execute(s.page, self.schema, s.ctx)) for s in self.sample]
+        runs = [PageRun.of(executor, s.page, self.schema, s.ctx) for s in self.sample]
         problems = proposal.parse_problems()
         if ROW in proposal.steps and row is not None:
             problems[ROW].extend(self._row_problems(runs))
@@ -443,28 +409,28 @@ class _Learning:
             listing = ListingSpec(row=row, fields={**self.row_fields, **rows})
         return self.ir.model_copy(update={"fields": {**self.ir.fields, **self.fields, **page}, "listing": listing})
 
-    def _target_problems(self, name: str, runs: Sequence[_PageRun], *, row_ok: bool) -> list[str]:
+    def _target_problems(self, name: str, runs: Sequence[PageRun], *, row_ok: bool) -> list[str]:
         """A row field is checked only relative to a verified row selector."""
         if self._in_row(name) and not row_ok:
             return ["row_not_verified"]
         return self._field_problems(name, runs)
 
-    def _row_problems(self, runs: Sequence[_PageRun]) -> list[str]:
+    def _row_problems(self, runs: Sequence[PageRun]) -> list[str]:
         problems = []
         for n, (sample, run) in enumerate(zip(self.sample, runs, strict=True)):
             got, want = run.rows, len(sample.rows)
             if got < MIN_ROWS or (want and got != want):
                 problems.append(f"page {n + 1}: rows({got}, {want or f'at least {MIN_ROWS}'})")
-            problems.extend(f"page {n + 1}: {d}" for d in run.row_diagnostics)
+            problems.extend(f"page {n + 1}: {r.reason}" for r in run.refusals("row"))
         return problems
 
-    def _field_problems(self, name: str, runs: Sequence[_PageRun]) -> list[str]:
+    def _field_problems(self, name: str, runs: Sequence[PageRun]) -> list[str]:
         spec = self.schema.fields[name]
         problems: list[str] = []
         for n, run in enumerate(runs):
-            problems.extend(f"page {n + 1}: step {d}" for d in run.step_diagnostics.get(name, ()))
+            problems.extend(f"page {n + 1}: step {r.step}: {r.reason}" for r in run.refusals("step", name))
             for where, owner, published in self._slots(name, n, run.rows):
-                problem = _problem(run.candidates.get((owner, name)), published, spec)
+                problem = _problem(run.candidate(owner, name), published, spec)
                 if problem is not None:
                     problems.append(f"{where}: {problem}")
         return problems

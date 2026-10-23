@@ -26,7 +26,7 @@ from pydantic import JsonValue
 
 from crawlerai.collect import json_doc
 from crawlerai.collect.base import ARRAY_ROW, PAGE, Candidate, Entity
-from crawlerai.collect.config import ROW_KIND, Executed
+from crawlerai.collect.config import ROW_KIND, Executed, Refusal
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate
 from crawlerai.content.page import ParsedPage
@@ -91,21 +91,25 @@ class ApiCollector:
         try:
             document = json_text.parse(page.html)
         except ValueError as e:
-            return Executed(rows=(), candidates=(), diagnostics=(f"api:{self.recipe_id}: not JSON ({e})",))
+            refusal = Refusal(kind="document", source=f"api:{self.recipe_id}", reason=f"not JSON ({e})")
+            return Executed(rows=(), candidates=(), refusals=(refusal,))
         reading = _Reading("api", self.recipe_id, schema, ctx)
         known = {name: path for name, path in self.map.items() if name in schema.fields}
-        reading.diagnostics.extend(
-            f"api:{self.recipe_id}:{name}: not a field of the schema" for name in self.map if name not in known
+        refusals = tuple(
+            Refusal(kind="field", source=f"api:{self.recipe_id}", field=name, reason="not a field of the schema")
+            for name in self.map
+            if name not in known
         )
         rows = self.rows if schema.page_kind == "listing" else None
         # On a detail page every field describes the page's one entity (detail fields are row-scoped).
         page_fields = {n: p for n, p in known.items() if rows is None or schema.fields[n].scope == "page"}
         candidates = reading.candidates(page_fields, document, json_doc.ROOT, PAGE)
         if rows is None:
-            return Executed(rows=(), candidates=tuple(candidates), diagnostics=tuple(reading.diagnostics))
+            return Executed(rows=(), candidates=tuple(candidates), refusals=refusals, notes=tuple(reading.notes))
         row_fields = {n: p for n, p in known.items() if n not in page_fields}
         entities, listed = reading.rows(rows, row_fields, document)
-        return Executed(rows=tuple(entities), candidates=(*candidates, *listed), diagnostics=tuple(reading.diagnostics))
+        found = (*candidates, *listed)
+        return Executed(rows=tuple(entities), candidates=found, refusals=refusals, notes=tuple(reading.notes))
 
 
 def read_rows(
@@ -122,7 +126,7 @@ def read_rows(
     `<kind>:<address>:<path>`."""
     reading = _Reading(kind, address, schema, ctx)
     entities, candidates = reading.rows(query, fields, document)
-    return Executed(rows=tuple(entities), candidates=tuple(candidates), diagnostics=tuple(reading.diagnostics))
+    return Executed(rows=tuple(entities), candidates=tuple(candidates), notes=tuple(reading.notes))
 
 
 @dataclass
@@ -133,7 +137,7 @@ class _Reading:
     address: str
     schema: SchemaDef
     ctx: Context
-    diagnostics: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
     def candidates(self, fields: Mapping[str, str], document: JsonValue, at: str, owner: str) -> list[Candidate]:
         found: list[Candidate] = []
@@ -143,7 +147,7 @@ class _Reading:
                 continue  # the value is absent or not one scalar here: no candidate, as for any source
             raw, located = read
             locator = format_locator(self.kind, self.address, located)
-            made = candidate(name, self.schema.fields[name], owner, self.kind, raw, locator, self.ctx, self.diagnostics)
+            made = candidate(name, self.schema.fields[name], owner, self.kind, raw, locator, self.ctx, self.notes)
             if made is not None:
                 found.append(made)
         return found

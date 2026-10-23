@@ -30,9 +30,9 @@ from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Replay, request_for
 from crawlerai.config_ir.executor import EngineExecutor, row_id
 from crawlerai.config_ir.model import NEXT_PAGE_FIELD, ExtractionConfigIR, FieldSteps, ListingSpec, Ratio, Step
+from crawlerai.config_ir.page_run import PageRun
 from crawlerai.config_ir.release_executor import Released, ReleasePage, Value, release_run
 from crawlerai.config_ir.release_rules import release_rules
-from crawlerai.config_ir.row_alignment import align
 from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import CaptureId, FieldStatus
 from crawlerai.normalize.base import Context, Ok
@@ -155,7 +155,7 @@ def validate(
     if len(held_out) < min_held_out:
         return Validated(None, ValidationReport(held_out=captures, fields={}, listing=None, refused="too_few_held_out"))
     executor = EngineExecutor(ir, vocabulary)
-    runs = [_PageRun.of(executor, schema, page) for page in held_out]
+    runs = [_HeldOutRun.of(executor, schema, page) for page in held_out]
     fields, page_reports = _check_fields(ir.fields, schema, runs, _page_slots)
     listing, listing_report = _check_listing(ir.listing, schema, runs)
     kept = len(fields) + (len(listing.fields) if listing is not None else 0)
@@ -247,48 +247,25 @@ def release_on(ir: ExtractionConfigIR, schema: SchemaDef, page: HeldOutPage) -> 
 
 
 @dataclass(frozen=True, slots=True)
-class _PageRun:
-    """Both executors' output on one held-out page: the engine's config candidates by owner and field, and for each of
-    the engine's listing rows the config row it aligns with (`row_alignment`)."""
+class _HeldOutRun:
+    """Both executors' output on one held-out page: the engine's config run, and for each of the engine's listing rows
+    the config row it aligns with (`row_alignment`)."""
 
     page: HeldOutPage
-    candidates: Mapping[tuple[str, str], Candidate]
-    rows: int
+    config: PageRun
     released: Released
     aligned: Sequence[int | None] = ()
 
     @classmethod
-    def of(cls, executor: EngineExecutor, schema: SchemaDef, page: HeldOutPage) -> "_PageRun":
-        executed = executor.execute(page.page, schema, page.ctx)
-        candidates = {(c.entity_id, c.field): c for c in executed.candidates}
-        config_rows = [_valid_values(candidates, row_id(n)) for n in range(len(executed.rows))]
+    def of(cls, executor: EngineExecutor, schema: SchemaDef, page: HeldOutPage) -> "_HeldOutRun":
+        config = PageRun.of(executor, page.page, schema, page.ctx)
         engine_rows = [facts.published for facts in page.rows]
         return cls(
             page=page,
-            candidates=candidates,
-            rows=len(executed.rows),
+            config=config,
             released=release_on(executor.ir, schema, page),
-            aligned=align(engine_rows, config_rows, agreeing(schema)),
+            aligned=config.aligned(engine_rows, schema),
         )
-
-
-def _valid_values(candidates: Mapping[tuple[str, str], Candidate], owner: str) -> dict[str, JsonValue]:
-    return {
-        name: candidate.normalized.value
-        for (entity, name), candidate in candidates.items()
-        if entity == owner and isinstance(candidate.normalized, Ok)
-    }
-
-
-def agreeing(schema: SchemaDef) -> Callable[[str, JsonValue, JsonValue], bool]:
-    """Whether a config's value for a field of `schema` agrees with the value the engine published (`equal`), as rows
-    are aligned."""
-
-    def agrees(name: str, value: JsonValue, published: JsonValue) -> bool:
-        spec = schema.fields.get(name)
-        return spec is not None and equal(value, published, spec)
-
-    return agrees
 
 
 def release_value(values: Mapping[str, Value], name: str, spec: FieldSpec, ctx: Context) -> JsonValue | None:
@@ -321,16 +298,16 @@ def _slot(candidate: Candidate | None, released: JsonValue | None, facts: Facts,
     return _Slot(candidate, released, facts.published.get(name), tuple(facts.references.get(name, ())))
 
 
-type _SlotsOf = Callable[[_PageRun, str, FieldSpec], tuple[list[_Slot], bool]]
+type _SlotsOf = Callable[[_HeldOutRun, str, FieldSpec], tuple[list[_Slot], bool]]
 
 
-def _page_slots(run: _PageRun, name: str, spec: FieldSpec) -> tuple[list[_Slot], bool]:
+def _page_slots(run: _HeldOutRun, name: str, spec: FieldSpec) -> tuple[list[_Slot], bool]:
     """A page-level field has one slot, the page."""
     released = release_value(run.released.fields, name, spec, run.page.ctx)
-    return [_slot(run.candidates.get((PAGE, name)), released, run.page.facts, name)], True
+    return [_slot(run.config.candidate(PAGE, name), released, run.page.facts, name)], True
 
 
-def _row_slots(run: _PageRun, name: str, spec: FieldSpec) -> tuple[list[_Slot], bool]:
+def _row_slots(run: _HeldOutRun, name: str, spec: FieldSpec) -> tuple[list[_Slot], bool]:
     """A row field has one slot per engine row, against the config row it aligns with (none when it aligns with none),
     and one per config row no engine row aligns with, which the engine did not publish. The rows align when
     both executors select as many rows and the engine published no more."""
@@ -340,12 +317,12 @@ def _row_slots(run: _PageRun, name: str, spec: FieldSpec) -> tuple[list[_Slot], 
         if n is None:
             return _slot(None, None, published, name)
         value = release_value(released[n], name, spec, run.page.ctx) if n < len(released) else None
-        return _slot(run.candidates.get((row_id(n), name)), value, published, name)
+        return _slot(run.config.candidate(row_id(n), name), value, published, name)
 
     paired = set(run.aligned)
     slots = [config_slot(n, published) for n, published in zip(run.aligned, facts, strict=True)]
-    slots += [config_slot(n, Facts()) for n in range(run.rows) if n not in paired]
-    return slots, run.rows == len(released) and len(facts) <= run.rows
+    slots += [config_slot(n, Facts()) for n in range(run.config.rows) if n not in paired]
+    return slots, run.config.rows == len(released) and len(facts) <= run.config.rows
 
 
 @dataclass(frozen=True, slots=True)
@@ -391,7 +368,7 @@ def _agrees(slot: _Slot, spec: FieldSpec) -> bool:
 
 
 def _check_fields(
-    fields: Mapping[str, FieldSteps], schema: SchemaDef, runs: Sequence[_PageRun], slots_of: _SlotsOf
+    fields: Mapping[str, FieldSteps], schema: SchemaDef, runs: Sequence[_HeldOutRun], slots_of: _SlotsOf
 ) -> tuple[dict[str, FieldSteps], dict[str, FieldReport]]:
     """The fields that pass, with their status, yield and validity, and every field's report."""
     kept: dict[str, FieldSteps] = {}
@@ -446,11 +423,11 @@ def _report(seen: Sequence[_Seen], status: FieldStatus, pages: int, dropped: str
 
 
 def _check_listing(
-    listing: ListingSpec | None, schema: SchemaDef, runs: Sequence[_PageRun]
+    listing: ListingSpec | None, schema: SchemaDef, runs: Sequence[_HeldOutRun]
 ) -> tuple[ListingSpec | None, ListingReport | None]:
     if listing is None:
         return None, None
-    rows_ok = sum(run.rows >= MIN_ROWS for run in runs)
+    rows_ok = sum(run.config.rows >= MIN_ROWS for run in runs)
     fields, reports = _check_fields(listing.fields, schema, runs, _row_slots)
     next_step, next_report = _check_next(listing, schema, runs)
     dropped = None
@@ -467,7 +444,7 @@ def _check_listing(
 
 
 def _check_next(
-    listing: ListingSpec, schema: SchemaDef, runs: Sequence[_PageRun]
+    listing: ListingSpec, schema: SchemaDef, runs: Sequence[_HeldOutRun]
 ) -> tuple[Step | None, FieldReport | None]:
     """`next` is checked as the page-level field it fills, and dropped when it fails."""
     if listing.next is None or NEXT_PAGE_FIELD not in schema.fields:

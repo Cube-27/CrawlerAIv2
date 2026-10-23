@@ -6,7 +6,7 @@ pipeline takes the executor already bound to its config and never names the IR t
 """
 
 from collections.abc import Mapping
-from typing import Protocol, Self
+from typing import Literal, Protocol, Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -20,6 +20,27 @@ from crawlerai.schemas.types import SchemaDef
 # schema.org: a ListItem is an item in a list, the kind of a listing's row.
 ROW_KIND = "ListItem"
 
+# What a refusal is about: the whole document, a field the schema does not have, one step of a field, the row selector.
+RefusalKind = Literal["document", "field", "step", "row"]
+
+
+class Refusal(BaseModel):
+    """Something a mapped source could not run on the page: `source` is its locator scheme and address (`config`,
+    `api:<recipe id>`), `field` the field a `field` or `step` refusal is about, `step` a step's index in its field."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: RefusalKind
+    source: str
+    field: str | None = None
+    step: int | None = None
+    reason: str
+
+    def rendered(self) -> str:
+        """`<source>: ...`, `<source>:<field>: ...`, `<source>:<field>:<step>: ...` or `<source>:row: ...`."""
+        about = {"document": (), "field": (self.field,), "step": (self.field, str(self.step)), "row": ("row",)}
+        return ":".join((self.source, *(part for part in about[self.kind] if part is not None))) + f": {self.reason}"
+
 
 class Executed(BaseModel):
     """What a config proposed for one page. Its page-level candidates are owned by `page`, which the OpenGraph collector
@@ -29,8 +50,15 @@ class Executed(BaseModel):
 
     rows: tuple[Entity, ...]
     candidates: tuple[Candidate, ...]
-    # Steps that could not run (a selector the engine refuses at run time); a value that did not match is no diagnostic.
-    diagnostics: tuple[str, ...] = ()
+    # What could not run (a selector the engine refuses at run time); a value that did not match is no refusal.
+    refusals: tuple[Refusal, ...] = ()
+    # Other notes on the page's values (a value its normalizer declined to read).
+    notes: tuple[str, ...] = ()
+
+    @property
+    def diagnostics(self) -> tuple[str, ...]:
+        """The refusals rendered, then the notes."""
+        return (*(refusal.rendered() for refusal in self.refusals), *self.notes)
 
     @model_validator(mode="after")
     def _owners_resolve(self) -> Self:

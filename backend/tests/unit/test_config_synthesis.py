@@ -118,6 +118,16 @@ def test_a_step_that_does_not_parse_is_dropped_and_the_others_are_verified() -> 
     assert result.ir.fields["title"].steps == [XPathStep(xpath=TITLE["xpath"])]
 
 
+def test_a_step_the_executor_refuses_reaches_the_repair_prompt_with_its_reason() -> None:
+    # XPath 1.0 §3.4: a boolean result is no value of any field type, so the executor refuses the step at run time.
+    reply = _fields(title=[{"xpath": "boolean(//h1)"}])
+    client = ScriptedClient(*[reply] * 4)
+    result = _run(client)
+    refused = "page 1: step 0: a boolean XPath result is not a value"
+    assert result.unresolved["title"][:2] == (refused, "page 1: no_match")
+    assert refused in client.requests[1].user
+
+
 # --- listings ---
 
 LISTING_SCHEMA = {"title": FieldSpec(type=FieldType.TEXT, description="Row name"), "link": URL, "next_page_url": NEXT}

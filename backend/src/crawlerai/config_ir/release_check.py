@@ -19,9 +19,10 @@ from pydantic import BaseModel, ConfigDict, JsonValue
 
 from crawlerai.config_ir.executability import Executability, class_counts, config_classes
 from crawlerai.config_ir.model import NEXT_PAGE_FIELD, ExtractionConfigIR
+from crawlerai.config_ir.page_run import agreeing
 from crawlerai.config_ir.release_executor import Released
 from crawlerai.config_ir.row_alignment import align
-from crawlerai.config_ir.validation import HeldOutPage, agreeing, release_on, release_value, small_n_rule
+from crawlerai.config_ir.validation import HeldOutPage, release_on, release_value, small_n_rule
 from crawlerai.db.models import CaptureId
 from crawlerai.normalize.dispatch import equal
 from crawlerai.schemas.types import FieldSpec, SchemaDef
