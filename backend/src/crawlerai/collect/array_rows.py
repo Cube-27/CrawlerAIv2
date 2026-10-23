@@ -22,8 +22,8 @@ def row_of(item: JsonValue) -> Row:
 
 
 def row_paths[N](rows: Sequence[Row], fields: Iterable[N], reads: Callable[[N, str, Scalar], bool]) -> dict[N, str]:
-    """Each field's path in the rows: of the paths that are JSON queries (`json_doc.is_query`) holding a value `reads`
-    accepts for the field, the one induced across the rows; a field none is induced for is left out."""
+    """Each field's path in the rows: of the paths that are JSON queries (`is_query` of `collect.json_doc`) holding a
+    value `reads` accepts for the field, the one induced across the rows; a field none is induced for is left out."""
     found: dict[N, str] = {}
     for name in fields:
         proposals = [

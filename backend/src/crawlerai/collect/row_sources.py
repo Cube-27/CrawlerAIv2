@@ -6,7 +6,7 @@ the rows of the page's captured calls (`collect.xhr`) with the aligned groups of
 gives the stated rows; the item blocks are the rows beside the stated rows (`collect.items.bind`) except beside a
 config's alone, whose row selector was validated against every item. The state JSON's rows serve only where no other
 source, item blocks included, gives any, and only then do their candidates join: so the state is read only where the
-call rows and the item blocks are none (`RowSources.read`), as no source after them can take its place.
+call rows and the item blocks are none (`read` of `RowSources`), as no source after them can take its place.
 
 Structured data's rows need the page's entity graph, built from the collectors' entities and the config's rows, so
 `collect` reads the sources it holds and resolution picks with the structured and config rows (`RowSources.pick`).
