@@ -49,7 +49,7 @@ async def rung_impersonation(settings: AcquireSettings) -> Impersonation:
         return Impersonation(configured)
     try:
         headers = await _read_headers()
-    except PlaywrightError:
+    except (PlaywrightError, OSError):  # the driver or the browser could not be started
         log.warning("the browser rung's Chrome did not start: impersonating %s with its own headers", configured)
         return Impersonation(configured)
     agent = next((value for name, value in headers if name == "user-agent"), "")

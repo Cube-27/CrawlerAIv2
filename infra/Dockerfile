@@ -39,10 +39,10 @@ COPY alembic.ini ./
 COPY migrations ./migrations
 
 # The browser rung's Google Chrome stable (acquisition spec, "Patchright's documented browser setup"), installed as the
-# Patchright README sets it up, with the system libraries and fonts its package depends on.
-RUN patchright install --with-deps chrome && rm -rf /var/lib/apt/lists/*
-
-RUN useradd --system --no-create-home crawlerai
+# Patchright README sets it up (its apt package, under /opt/google/chrome for every user), with the system libraries
+# and fonts the package depends on; then the service user.
+RUN patchright install --with-deps chrome && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --no-create-home crawlerai
 USER crawlerai
 
 EXPOSE 8000
