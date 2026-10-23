@@ -13,7 +13,7 @@ import io
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import AsyncExitStack, asynccontextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import partial
 from typing import Final, Literal, cast
 from urllib.parse import urlsplit
@@ -32,7 +32,7 @@ from curl_cffi.requests.exceptions import RequestException
 from crawlerai.acquire.cookies import FetchCookies
 from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.impersonate import Impersonation
-from crawlerai.acquire.outcome import Exchange, Traffic
+from crawlerai.acquire.outcome import Exchange, Route, Traffic
 from crawlerai.acquire.public_suffix import site_of
 from crawlerai.acquire.redirects import MAX_REDIRECTS
 from crawlerai.acquire.redirects import location as redirect_location
@@ -125,15 +125,12 @@ Redirected = Callable[[Hop, int, Target], Hop]
 
 @dataclass(frozen=True)
 class Sent:
-    """What a fetch's requests got: the last response (None when none arrived), the failure, if any, the pool
-    endpoint they went through, the site session they carried and the bytes they moved (`Traffic`)."""
+    """What a fetch's requests got: the last response (None when none arrived), the failure, if any, and how they went
+    out (`Route`)."""
 
     last: Wire | None
     error: str | None
-    pool: ProxyPool | None = None
-    proxy: ProxyEndpoint | None = None
-    session: SiteSession | None = None
-    transferred: int = 0
+    route: Route = field(default_factory=Route)
 
 
 async def send(
@@ -181,8 +178,8 @@ async def send(
                 page_url=page_url,
             )
     except Failed as failed:
-        return Sent(failed.last, failed.error, pool, proxy, session, traffic.bytes)
-    return Sent(last, None, pool, proxy, session, traffic.bytes)
+        return Sent(failed.last, failed.error, Route(pool, proxy, session, traffic.bytes))
+    return Sent(last, None, Route(pool, proxy, session, traffic.bytes))
 
 
 def _usable(session: SiteSession | None, pool: ProxyPool | None) -> SiteSession | None:

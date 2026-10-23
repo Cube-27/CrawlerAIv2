@@ -13,21 +13,19 @@ site's registrable domain.
 """
 
 import asyncio
-import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Final, Literal
 from urllib.parse import urlsplit, urlunsplit
 
-from crawlerai.acquire.challenge import CHALLENGED, challenge_label, count
+from crawlerai.acquire.challenge import CHALLENGED, challenge_label
 from crawlerai.acquire.classify import classify
 from crawlerai.acquire.curl_client import Hop, Transport, Wire, send
 from crawlerai.acquire.impersonate import Impersonation
 from crawlerai.acquire.locality import exit_place, language_headers
-from crawlerai.acquire.outcome import Content, fetch_result, report_proxy
+from crawlerai.acquire.outcome import Content, Sending
 from crawlerai.acquire.public_suffix import default_suffixes
-from crawlerai.acquire.session import SiteSessions
+from crawlerai.acquire.session import SessionScope
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.core import json_text
@@ -95,19 +93,14 @@ async def fetch_json(
     connector: SafeConnector | None = None,
     pools: Mapping[str, ProxyPool] | None = None,
     transport: Transport | None = None,
-    sessions: SiteSessions | None = None,
+    scope: SessionScope | None = None,
     direct: ExitPlace = UNDECLARED,
 ) -> FetchResult:
     """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every request, from its place
     (`direct` without a pool), whose locale the request's language falls back to. `transport`
-    replaces the network (tests). `sessions` are this process's site sessions: the page's site's goes with a request
-    in its registrable domain, and is dropped when it is `blocked`."""
-    fetched_at = datetime.now(UTC)
-    started = time.monotonic()
-    # A fetch with the caller's own context takes no site session.
-    if policy.context is not None:
-        sessions = None
-    session = None if sessions is None else sessions.take(request.page_url, request.url, policy.proxy_pool)
+    replaces the network (tests). `scope` is the fetch's site state (`SiteSessions.scope_for`): the page's site's
+    session goes with a request in its registrable domain, and is dropped when it is `blocked`."""
+    sending = Sending(request.page_url, "api", policy, engine_version, scope)
     sent = await send(
         request.url,
         _first_hop(request, language_headers(policy.locale_hint, exit_place(policy.proxy_pool, pools, direct))),
@@ -117,7 +110,7 @@ async def fetch_json(
         pools=pools,
         redirected=_Redirect(request.page_url),
         transport=transport,
-        session=session,
+        session=sending.session(request.url),
         page_url=request.page_url,
     )
     last, error, challenge = sent.last, sent.error, None
@@ -128,25 +121,14 @@ async def fetch_json(
         body = last.body
         if block_class in CHALLENGED:
             challenge = await asyncio.to_thread(_label, last, request.url)
-    count(challenge, "api")
-    result = fetch_result(
-        url=request.page_url,
-        method="api",
-        policy=policy,
-        engine_version=engine_version,
-        fetched_at=fetched_at,
-        started=started,
+    return sending.finish(
         exchange=None if last is None else last.exchange,
         content=Content(body=body),
         block_class=block_class,
         error=error,
         challenge=challenge,
-        transferred=sent.transferred,
+        route=sent.route,
     )
-    report_proxy(sent.pool, sent.proxy, result)
-    if sessions is not None:
-        sessions.settle(sent.session, result)
-    return result
 
 
 def _label(last: Wire, url: str) -> str | None:

@@ -29,7 +29,7 @@ from crawlerai.acquire.browser import fetch_browser
 from crawlerai.acquire.browser_profiles import profile_name
 from crawlerai.acquire.browser_session import BrowserSession, context_key, open_browser
 from crawlerai.acquire.desktop_screen import desktop_screen
-from crawlerai.acquire.session import CookieExport
+from crawlerai.acquire.session import CookieExport, SiteSessions
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.engine_version import ENGINE_VERSION
@@ -311,15 +311,17 @@ class Browser:
         pools: dict[str, ProxyPool] | None = None,
     ) -> FetchResult:
         self.connector = LocalConnector(self.port)
+        policy = policy or FetchPolicy(browser_timeout_s=10)
         return self.runner.run(
             fetch_browser(
                 url,
-                policy or FetchPolicy(browser_timeout_s=10),
+                policy,
                 session=self.session,
                 engine_version=ENGINE_VERSION,
                 connector=self.connector,
                 pools=pools,
                 export=export,
+                scope=SiteSessions().scope_for(policy),
             )
         )
 
@@ -418,7 +420,7 @@ def test_a_page_is_laid_out_in_a_maximised_window_on_the_screen_of_its_profile(
     """Owner 2026-10-23: the screen is the site profile's (`acquire.desktop_screen`), and what the page reads of it is
     one desktop's: a work area of the screen less a taskbar, the window filling it, the viewport inside its toolbars."""
     url = server.url("/geometry")
-    key = context_key(url, FetchPolicy(), None)
+    key = context_key(url, SiteSessions().scope_for(FetchPolicy()), None)
     assert key is not None
     screen = desktop_screen(profile_name(*key))
 

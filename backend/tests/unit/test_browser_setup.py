@@ -26,6 +26,7 @@ from crawlerai.acquire.browser import fetch_browser
 from crawlerai.acquire.browser_profiles import profile_name
 from crawlerai.acquire.browser_session import BrowserSession, HeadlessIdentity, browser_identity, open_browser
 from crawlerai.acquire.desktop_screen import desktop_screen
+from crawlerai.acquire.session import SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.core.engine_version import ENGINE_VERSION
@@ -187,14 +188,16 @@ def recorder(monkeypatch: pytest.MonkeyPatch) -> _Recorder:
 
 
 async def _fetch_once(locale: str | None = None, direct: ExitPlace = UNDECLARED, *, headless: bool = True) -> None:
+    policy = FetchPolicy(browser_timeout_s=5, locale_hint=locale)
     async with open_browser(direct=direct, headless=headless) as session:
         assert isinstance(session, BrowserSession)
         await fetch_browser(
             "http://shop.example.test/item",
-            FetchPolicy(browser_timeout_s=5, locale_hint=locale),
+            policy,
             session=session,
             engine_version=ENGINE_VERSION,
             connector=_Connector(),
+            scope=SiteSessions().scope_for(policy),
         )
 
 

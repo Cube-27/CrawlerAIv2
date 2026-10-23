@@ -10,7 +10,7 @@ from functools import partial
 
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from crawlerai.acquire.api import fetch_json
+from crawlerai.acquire.api import JsonRequest, fetch_json
 from crawlerai.acquire.browser import fetch_browser
 from crawlerai.acquire.browser_session import BrowserSession, open_browser
 from crawlerai.acquire.browser_tab import Drive, fetch_listing
@@ -110,28 +110,35 @@ async def open_fetching(
             connector=connector,
             pools=pools,
             export=export,
-            sessions=sessions,
+            scope=sessions.scope_for(policy),
         )
 
     impersonate = await rung_impersonation(settings, browser_rung=True)
-    http = partial(
-        fetch_http,
-        engine_version=ENGINE_VERSION,
-        impersonate=impersonate,
-        connector=connector,
-        pools=pools,
-        sessions=sessions,
-        direct=settings.direct,
-    )
-    json = partial(
-        fetch_json,
-        engine_version=ENGINE_VERSION,
-        impersonate=impersonate,
-        connector=connector,
-        pools=pools,
-        sessions=sessions,
-        direct=settings.direct,
-    )
+
+    async def http(url: str, policy: FetchPolicy) -> FetchResult:
+        return await fetch_http(
+            url,
+            policy,
+            engine_version=ENGINE_VERSION,
+            impersonate=impersonate,
+            connector=connector,
+            pools=pools,
+            scope=sessions.scope_for(policy),
+            direct=settings.direct,
+        )
+
+    async def json(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
+        return await fetch_json(
+            request,
+            policy,
+            engine_version=ENGINE_VERSION,
+            impersonate=impersonate,
+            connector=connector,
+            pools=pools,
+            scope=sessions.scope_for(policy),
+            direct=settings.direct,
+        )
+
     async with aclosing(
         SharedBrowser(
             partial(open_browser, settings.browser_profiles, settings.direct, headless=settings.browser_headless),
@@ -151,7 +158,7 @@ async def open_fetching(
                     engine_version=ENGINE_VERSION,
                     connector=connector,
                     pools=pools,
-                    sessions=sessions,
+                    scope=sessions.scope_for(policy),
                 )
             )
 

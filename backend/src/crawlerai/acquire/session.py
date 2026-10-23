@@ -31,7 +31,7 @@ from typing import Final, Protocol
 from urllib.parse import urlsplit
 
 from crawlerai.acquire.public_suffix import PublicSuffixes, default_suffixes
-from crawlerai.acquire.types import FetchResult
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.proxy import SESSION_FETCHES, SESSION_TTL, ProxyEndpoint
 from crawlerai.db.models import BrowserEngine
 
@@ -39,6 +39,7 @@ __all__ = [
     "ENGINE",
     "CookieExport",
     "SessionCookie",
+    "SessionScope",
     "SiteSession",
     "SiteSessions",
     "StoredState",
@@ -124,6 +125,13 @@ class SiteSessions:
     suffixes: Callable[[], PublicSuffixes] = default_suffixes
     store: StoredState | None = None
     _by_domain: dict[tuple[str, str | None], SiteSession] = field(default_factory=dict, repr=False)
+
+    def scope_for(self, policy: FetchPolicy) -> "SessionScope | None":
+        """The site state a fetch under `policy` may use and record, through its proxy pool; None for a fetch with the
+        caller's own context, whose cookies are the caller's store, not the site's (RFC 6265 §5.4: a request carries
+        the cookies of its own store): it takes no site session, opens none, writes no stored state and gets no kept
+        profile. Every rung receives this one decision."""
+        return None if policy.context is not None else SessionScope(self, policy.proxy_pool)
 
     def open(self, url: str, pool: str | None, export: CookieExport) -> SiteSession | None:
         """A session for the site of `url` through `pool`, from the cookies of `export` that belong to its registrable
@@ -233,3 +241,28 @@ def _host(url: str) -> str:
 def _domain_match(cookie_domain: str, domain: str) -> bool:
     """RFC 6265 §5.1.3: the cookie's domain is the registrable domain or a subdomain of it."""
     return cookie_domain == domain or cookie_domain.endswith("." + domain)
+
+
+@dataclass(frozen=True)
+class SessionScope:
+    """The site sessions, stored state and kept profiles one fetch through `pool` uses (`SiteSessions.scope_for`)."""
+
+    sessions: SiteSessions
+    pool: str | None
+
+    def take(self, page_url: str, url: str) -> SiteSession | None:
+        return self.sessions.take(page_url, url, self.pool)
+
+    def settle(self, session: SiteSession | None, result: FetchResult) -> None:
+        self.sessions.settle(session, result)
+
+    def open(self, url: str, export: CookieExport) -> SiteSession | None:
+        return self.sessions.open(url, self.pool, export)
+
+    async def for_browser(self, url: str) -> tuple[SessionCookie, ...]:
+        return await self.sessions.for_browser(url, self.pool)
+
+    async def after_browser(
+        self, url: str, cookies: Sequence[SessionCookie], result: FetchResult, *, temporary: bool
+    ) -> None:
+        await self.sessions.after_browser(url, self.pool, cookies, result, temporary=temporary)
