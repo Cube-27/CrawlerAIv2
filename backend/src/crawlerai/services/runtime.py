@@ -1,11 +1,11 @@
 """What the services run with in one process: the database, the fetching rungs, the LLM client and the engine's data
-files. The API app and the MCP server's stdio process open one each from the settings."""
+files. The API app, the MCP server's stdio process, the worker and the scheduler open one each from the settings."""
 
 import asyncio
 import logging
 from collections.abc import AsyncIterator, Mapping
 from contextlib import aclosing, asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -34,8 +34,10 @@ from crawlerai.core.egress import Egresses
 from crawlerai.core.engine_version import ENGINE_VERSION, engine_data_dir
 from crawlerai.core.event_loop import quiet_peer_resets
 from crawlerai.core.proxy import ExitPlace, ProxyPool
-from crawlerai.core.settings import Settings
+from crawlerai.core.settings import AcquireSettings, Settings
+from crawlerai.db.models import ApiKeyId
 from crawlerai.llm.client import LLMClient
+from crawlerai.llm.draft_cap import KeyCapped
 from crawlerai.llm.providers.from_settings import llm_from_settings
 from crawlerai.llm.setup import LLMSetup
 from crawlerai.normalize.dispatch import warm
@@ -81,23 +83,49 @@ class Runtime:
     search: SearchProvider | None = None  # None without a configured provider: search answers 503
 
 
+@dataclass(frozen=True)
+class Caller:
+    """One call of an API key, over REST or MCP: the process's runtime, its LLM calls that no job pays for counted
+    against the key's draft cap (`KeyCapped`)."""
+
+    runtime: Runtime
+    api_key_id: ApiKeyId
+
+    @classmethod
+    def of(cls, runtime: Runtime, api_key_id: ApiKeyId) -> "Caller":
+        capped = replace(runtime, llm=KeyCapped(runtime.llm, runtime.database, api_key_id))
+        return cls(capped, api_key_id)
+
+
 @asynccontextmanager
 async def open_fetching(
     settings: Settings, connector: SafeConnector | None = None, database: AsyncEngine | None = None
 ) -> AsyncIterator[Fetching]:
-    """What a process fetches pages with: HTTP, the process's one shared browser (launched when a
-    render first needs it; the page rung's and the listing rung's alike), the adapters and the process's site sessions,
-    all through one SSRF guard; the browser closes with the block. With a `database`, hosts' turns and holds are shared
-    with every process through it (`acquire/host_turns.py`), and with a cookie key too, the site sessions keep the
-    stored cookie state of temporary browser profiles in it. The cookie key also keys the digest of request contexts
-    (`core.context_digest`)."""
+    """What a process fetches pages with: the rungs (`open_rungs`), the object store captures go to, the per-host
+    limiter and the egresses. With a `database`, hosts' turns and holds are shared with every process through it
+    (`acquire/host_turns.py`), and with a cookie key too, the site sessions keep the stored cookie state of temporary
+    browser profiles in it. The cookie key also keys the digest of request contexts (`core.context_digest`)."""
     connector = connector or SafeConnector()
-    pools = settings.proxy_pools
     key = settings.cookie_key
     if key is not None:
         configure_context_digest(key.get_secret_value())
     store = None if database is None or key is None else CookieStore(database, key.get_secret_value())
-    sessions = SiteSessions(store=store)  # this process's site sessions
+    async with open_rungs(settings, connector, SiteSessions(store=store)) as rungs:
+        limiter = HostLimiter(shared=None if database is None else HostTurns(database))
+        egresses = Egresses(settings.proxy_pools, settings.egress_country)
+        yield Fetching(rungs, connector, open_store(settings.object_store), limiter, egresses)
+
+
+@asynccontextmanager
+async def open_rungs(
+    settings: AcquireSettings, connector: SafeConnector, sessions: SiteSessions, *, browser_rung: bool = True
+) -> AsyncIterator[Rungs]:
+    """The rungs of a process: HTTP, the process's one shared browser (launched when a render first needs it; the page
+    rung's and the listing rung's alike), the adapters and the process's site `sessions`, all through one SSRF guard;
+    the browser closes with the block. `browser_rung`: the process renders in that browser, so its Chrome must be
+    readable (`rung_impersonation`). The declared egress places are checked first (`check_exits`)."""
+    pools = settings.proxy_pools
+    check_exits(pools, settings.direct)
 
     async def fetch_in(
         session: BrowserSession, url: str, policy: FetchPolicy, export: CookieExport | None
@@ -113,7 +141,7 @@ async def open_fetching(
             scope=sessions.scope_for(policy),
         )
 
-    impersonate = await rung_impersonation(settings, browser_rung=True)
+    impersonate = await rung_impersonation(settings, browser_rung=browser_rung)
 
     async def http(url: str, policy: FetchPolicy) -> FetchResult:
         return await fetch_http(
@@ -162,7 +190,7 @@ async def open_fetching(
                 )
             )
 
-        rungs = Rungs(
+        yield Rungs(
             http=http,
             browser=browser.fetch,
             adapters=adapter_registry(settings.disabled_adapters),
@@ -172,10 +200,21 @@ async def open_fetching(
             listing=listing,
             frames=eager_frames,
         )
-        limiter = HostLimiter(shared=None if database is None else HostTurns(database))
-        egresses = Egresses(pools, settings.egress_country)
-        check_exits(pools, settings.direct)
-        yield Fetching(rungs, connector, open_store(settings.object_store), limiter, egresses)
+
+
+async def fetch_once(
+    settings: AcquireSettings,
+    url: str,
+    policy: FetchPolicy,
+    *,
+    in_browser: bool,
+    connector: SafeConnector | None = None,
+) -> FetchResult:
+    """One fetch of `url`, outside any job: in the browser rung when `in_browser`, else over HTTP, whose
+    impersonation then does without the browser when its Chrome cannot be read."""
+    async with open_rungs(settings, connector or SafeConnector(), SiteSessions(), browser_rung=in_browser) as rungs:
+        rung = rungs.browser if in_browser else rungs.http
+        return await rung(url, policy)
 
 
 def check_exits(pools: Mapping[str, ProxyPool], direct: ExitPlace) -> None:

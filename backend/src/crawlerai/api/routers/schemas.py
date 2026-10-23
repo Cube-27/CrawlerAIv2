@@ -9,16 +9,16 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.api.auth import require_api_key
-from crawlerai.api.database import database
+from crawlerai.api.auth import caller, require_api_key
 from crawlerai.api.dto import PROBLEM_RESPONSE, SchemaList
 from crawlerai.api.problems import conflict, invalid, not_found
+from crawlerai.api.runtime import database
 from crawlerai.api.submissions import submission_problems
-from crawlerai.db.models import ApiKeyId, PageKind, SchemaId, SchemaStatus
-from crawlerai.llm.draft_cap import KeyCapped
+from crawlerai.db.models import PageKind, SchemaId, SchemaStatus
 from crawlerai.schemas.registry import SchemaNotFound
 from crawlerai.schemas.types import FieldLabels, Name, SchemaContent, SchemaDef
 from crawlerai.services import schemas
+from crawlerai.services.runtime import Caller
 from crawlerai.services.schemas import InvalidSchema, NewSchema, SchemaConflict
 from crawlerai.services.scrape_request import SchemaFields, fields_schema
 
@@ -63,17 +63,15 @@ class FieldsDraft(SchemaFields):
 
 
 @router.post("/draft", responses={502: PROBLEM_RESPONSE, 503: PROBLEM_RESPONSE})
-async def draft_schema(
-    body: FieldsDraft, request: Request, key: Annotated[ApiKeyId, Depends(require_api_key)]
-) -> SchemaDef:
+async def draft_schema(body: FieldsDraft, caller: Annotated[Caller, Depends(caller)]) -> SchemaDef:
     """The schema role S drafts from `fields` for `page_kind` pages, with exactly those top-level fields, as a run's
     `schema.fields` uses it: the stored draft when these names were drafted for this page kind before, else a new
     one, stored. A client shows it for editing before the run. A draft the LLM could not give is a
     problem typed with the LLM failure (502, 503), or a 429 once the key has made the project's `draft_call_cap` of
     them; a retired draft is a 422."""
-    llm = KeyCapped(request.app.state.llm, database(request), key)
+    runtime = caller.runtime
     with submission_problems():
-        return await fields_schema(database(request), llm, body.fields, body.page_kind)
+        return await fields_schema(runtime.database, runtime.llm, body.fields, body.page_kind)
 
 
 @router.get("")

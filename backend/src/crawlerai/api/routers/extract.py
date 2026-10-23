@@ -4,16 +4,12 @@ with the job; the job runs in the workers, its status is `GET /v1/jobs/{id}` and
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, status
 
-from crawlerai.api.auth import require_api_key
-from crawlerai.api.database import database
+from crawlerai.api.auth import caller, require_api_key
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.problems import ProblemError, invalid, target_refused
 from crawlerai.api.submissions import submission_problems
-from crawlerai.db.models import ApiKeyId
-from crawlerai.llm.draft_cap import KeyCapped
-from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import extract
 from crawlerai.services.extract import (
     DraftTimedOut,
@@ -22,7 +18,8 @@ from crawlerai.services.extract import (
     NoSamplePage,
     NothingToExtract,
 )
-from crawlerai.services.fetching import Fetching, TargetRejected
+from crawlerai.services.fetching import TargetRejected
+from crawlerai.services.runtime import Caller
 
 router = APIRouter(
     prefix="/v1/extract",
@@ -37,20 +34,23 @@ router = APIRouter(
     status_code=status.HTTP_202_ACCEPTED,
     responses={409: PROBLEM_RESPONSE, 502: PROBLEM_RESPONSE, 503: PROBLEM_RESPONSE, 504: PROBLEM_RESPONSE},
 )
-async def extract_records(
-    body: ExtractRequest, request: Request, key: Annotated[ApiKeyId, Depends(require_api_key)]
-) -> ExtractSubmitted:
+async def extract_records(body: ExtractRequest, caller: Annotated[Caller, Depends(caller)]) -> ExtractSubmitted:
     """Queue a job that extracts a record of `page_kind` from each of `urls`; a URL with a `*` is a glob, expanded
     through a map of its host. A `schema.prompt` is drafted from the first pages before the job is queued, and the
     draft is returned as `schema`. A target the API may not fetch, a URL by its form, a glob's origin or map or
     `webhook_url`, is a 422 and nothing is queued; a URL refused only once its host is resolved (`dns`, a private
     address) fails its own task."""
-    fetching: Fetching = request.app.state.fetching
-    llm = KeyCapped(request.app.state.llm, database(request), key)
-    data: EngineData | None = request.app.state.engine_data
+    runtime = caller.runtime
     with submission_problems():
         try:
-            return await extract.submit_extract(database(request), fetching, body, llm=llm, data=data, api_key_id=key)
+            return await extract.submit_extract(
+                runtime.database,
+                runtime.fetching,
+                body,
+                llm=runtime.llm,
+                data=runtime.engine_data,
+                api_key_id=caller.api_key_id,
+            )
         except TargetRejected as e:
             raise target_refused(e.reason) from e
         except (NothingToExtract, NoSamplePage) as e:

@@ -9,7 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from crawlerai.api.app import create_app
-from crawlerai.api.auth import require_api_key
+from crawlerai.api.auth import caller, require_api_key
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import ApiKeyId, SchemaId
 from crawlerai.resolve.types import ExtractionResult
@@ -27,6 +27,7 @@ BODY = {"urls": [URL], "formats": ["records"], "schema": {"id": str(uuid.UUID(in
 def _post(path: str, body: object) -> httpx.Response:
     app = create_app()
     app.dependency_overrides[require_api_key] = lambda: ApiKeyId(uuid.UUID(int=1))
+    app.dependency_overrides[caller] = lambda: None  # the app has no runtime here, and the body is refused first
 
     async def send() -> httpx.Response:
         transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)

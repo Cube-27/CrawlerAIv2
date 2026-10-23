@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from crawlerai.api.app import create_app
-from crawlerai.api.database import database
+from crawlerai.api.runtime import database
 
 
 async def _send(app: FastAPI, method: str, path: str, body: object = None) -> httpx.Response:

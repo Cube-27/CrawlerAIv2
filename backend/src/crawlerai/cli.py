@@ -7,9 +7,8 @@ import logging
 import signal
 import sys
 import uuid
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager, suppress
-from functools import partial
 from importlib.metadata import version
 from pathlib import Path
 from typing import Final
@@ -17,42 +16,24 @@ from typing import Final
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
-from crawlerai.acquire.browser import fetch_browser
-from crawlerai.acquire.browser_session import open_browser
-from crawlerai.acquire.http import fetch_http
-from crawlerai.acquire.impersonate import rung_impersonation
-from crawlerai.acquire.session import SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.api.app import create_app
-from crawlerai.api.webhooks import poster
-from crawlerai.config_ir.learning import Hooks
 from crawlerai.core.data import fetch_data
-from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
-from crawlerai.core.event_loop import quiet_peer_resets
+from crawlerai.core.engine_version import backend_dir, data_dir
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
 from crawlerai.db.keys import authenticate, create_key, hash_key, revoke_key
 from crawlerai.db.models import ScheduleId
 from crawlerai.job_cli import add_job_commands
-from crawlerai.llm.client import NO_LLM
-from crawlerai.llm.providers.from_settings import llm_from_settings
-from crawlerai.normalize.dispatch import warm
-from crawlerai.recurring.listing_diff import close_run
-from crawlerai.scheduler.loop import periodic, run_scheduler
+from crawlerai.scheduler.loop import serve
 from crawlerai.schemas.registry import PresetConflict
 from crawlerai.services import schedules as schedules_service
 from crawlerai.services import schemas as schemas_service
 from crawlerai.services.fetch_options import FetchOptions, UnknownProxyPool, check_proxy_pool, fetch_policy
-from crawlerai.services.fetching import learning_replay
-from crawlerai.services.page_store import learning_extract
 from crawlerai.services.records import MAX_PAGE
-from crawlerai.services.runtime import check_exits, load_drift_margins, load_engine_data, open_fetching
-from crawlerai.services.schedules import ScheduleListQuery, ScheduleNotFound, Submitting
-from crawlerai.services.scrape_paging import learning_render
-from crawlerai.storage import open_store
+from crawlerai.services.runtime import Runtime, fetch_once, open_runtime
+from crawlerai.services.schedules import ScheduleListQuery, ScheduleNotFound
 from crawlerai.storage.capture_bundle import encode
-from crawlerai.worker.handlers.table import task_handlers
-from crawlerai.worker.learn import run_learner
-from crawlerai.worker.loop import run_worker
+from crawlerai.worker.process import work
 
 # What `crawlerai schedules` prints of a schedule: enough to find it and see whether and when it runs.
 _SCHEDULE_LINE: Final = {"id", "name", "kind", "cron", "interval_s", "timezone", "paused", "next_run_at", "last_job_id"}
@@ -76,55 +57,11 @@ def _stop_on_signals() -> asyncio.Event:
     return stop
 
 
-async def _work() -> None:
-    quiet_peer_resets(asyncio.get_running_loop())
+async def _serve(process: Callable[[Settings, Runtime, asyncio.Event], Awaitable[None]]) -> None:
+    """Run a long-running `process` (the worker's, the scheduler's) on one runtime until SIGINT or SIGTERM."""
     settings = Settings()
-    engine = create_async_engine(settings.database_url.get_secret_value())
-    try:
-        async with open_fetching(settings, database=engine) as fetching:
-            # The normalizers' all-locale tables are built before the first task, not by it.
-            await asyncio.to_thread(warm)
-            store, adapters = fetching.store, fetching.rungs.adapters
-            llm, setup = llm_from_settings(settings, engine)
-            data, margins = load_engine_data(adapters), load_drift_margins()
-            handlers = task_handlers(fetching, data, margins, llm=llm)
-            stop = _stop_on_signals()
-            # A records crawl that completes is diffed against its earlier runs.
-            work = [run_worker(settings, handlers, stop, ending=close_run), setup.verify()]
-            if data is not None:  # learning reads the vocabulary from the data files
-                learner = run_learner(
-                    engine,
-                    store,
-                    llm,
-                    stop,
-                    vocabulary=data.vocabulary,
-                    max_chars=settings.llm_a_max_chars,
-                    hooks=Hooks(
-                        learning_replay(engine, fetching),
-                        learning_render(engine, fetching),
-                        learning_extract(data, llm),
-                    ),
-                )
-                work.append(learner)
-            await asyncio.gather(*work)
-    finally:
-        await engine.dispose()
-
-
-async def _schedule() -> None:
-    settings = Settings()
-    fetch = partial(
-        fetch_http,
-        engine_version=ENGINE_VERSION,
-        impersonate=await rung_impersonation(settings, browser_rung=True),  # its `open_fetching` renders too
-        pools=settings.proxy_pools,
-        direct=settings.direct,
-    )
-    # A schedule's run submits its job with the schema its creation resolved, so it drafts nothing: no LLM client.
-    async with open_fetching(settings) as fetching:
-        submitting = Submitting(fetching, load_engine_data(fetching.rungs.adapters), NO_LLM)
-        entries = periodic(open_store(settings.object_store), fetch, poster(SafeConnector()), submitting)
-        await run_scheduler(settings, entries, _stop_on_signals())
+    async with open_runtime(settings) as runtime:
+        await process(settings, runtime, _stop_on_signals())
 
 
 async def fetch_to_file(
@@ -142,32 +79,9 @@ async def fetch_to_file(
     if headful:
         settings = settings.model_copy(update={"browser_headless": False})
     options = options or FetchOptions()
-    policy = fetch_policy(options, None)
-    check_exits(settings.proxy_pools, settings.direct)
-    if options.in_browser:
-        async with open_browser(
-            settings.browser_profiles, settings.direct, headless=settings.browser_headless
-        ) as session:
-            result = await fetch_browser(
-                url,
-                policy,
-                session=session,
-                engine_version=ENGINE_VERSION,
-                connector=connector,
-                pools=settings.proxy_pools,
-                scope=SiteSessions().scope_for(policy),
-            )
-    else:
-        result = await fetch_http(
-            url,
-            policy,
-            engine_version=ENGINE_VERSION,
-            impersonate=await rung_impersonation(settings, browser_rung=False),
-            connector=connector,
-            pools=settings.proxy_pools,
-            scope=SiteSessions().scope_for(policy),
-            direct=settings.direct,
-        )
+    result = await fetch_once(
+        settings, url, fetch_policy(options, None), in_browser=options.in_browser, connector=connector
+    )
     out.write_bytes(encode(result.bundle))
     manifest = result.bundle.manifest
     summary = {
@@ -358,12 +272,12 @@ def _log_to_stderr() -> None:
 
 def _run_worker(_parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:
     _log_to_stderr()
-    asyncio.run(_work())
+    asyncio.run(_serve(work))
 
 
 def _run_scheduler(_parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:
     _log_to_stderr()
-    asyncio.run(_schedule())
+    asyncio.run(_serve(serve))
 
 
 def _run_fetch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:

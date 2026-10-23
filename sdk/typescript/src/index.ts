@@ -61,6 +61,9 @@ function jobPath(jobId: string): string {
 
 const ENDED: ReadonlySet<JobStatus> = new Set(["completed", "failed", "cancelled"]);
 
+// setTimeout takes a signed 32-bit millisecond count; a longer delay fires at once.
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
 /** The API answered with a problem document (RFC 9457): `type` is its code (`validation`, `search_unavailable`, ...). */
 export class APIError extends Error {
   readonly status: number;
@@ -208,14 +211,16 @@ export class CrawlerAI {
     return this.#poll(jobId, (options.pollIntervalS ?? 1) * 1000, deadline, options.timeoutS ?? 0);
   }
 
-  async #poll(jobId: string, intervalMs: number, deadline: number, timeoutS: number): Promise<JobSummary> {
+  async #poll(jobId: string, intervalMs: number, deadline: number, timeoutS: number, last = false): Promise<JobSummary> {
     const summary = await this.job(jobId);
     if (ENDED.has(summary.status)) return summary;
-    if (Date.now() >= deadline) throw new JobTimeout(jobId, timeoutS);
-    // Never sleep past the deadline: the last poll happens at it, not up to an interval after it.
-    const wait = Math.min(intervalMs, deadline - Date.now());
+    const left = deadline - Date.now();
+    if (last || left <= 0) throw new JobTimeout(jobId, timeoutS);
+    // Never sleep past the deadline: the last poll happens at it, not up to an interval after it. A poll after a sleep
+    // to the deadline is the last one, since a timer may fire a millisecond before the clock reaches it.
+    const wait = Math.min(intervalMs, left, MAX_TIMER_MS);
     await new Promise((resolve) => setTimeout(resolve, wait));
-    return this.#poll(jobId, intervalMs, deadline, timeoutS);
+    return this.#poll(jobId, intervalMs, deadline, timeoutS, wait >= left);
   }
 
   /** The job's run events live (`GET /v1/jobs/{id}/events`), until its end event; resume with the last id seen. */

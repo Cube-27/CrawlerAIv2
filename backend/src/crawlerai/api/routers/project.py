@@ -3,8 +3,8 @@
 from fastapi import APIRouter, Depends, Request
 
 from crawlerai.api.auth import require_api_key
-from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
+from crawlerai.api.runtime import database
 from crawlerai.services.project import ProjectSettings, project_settings, update_project_settings
 
 router = APIRouter(
