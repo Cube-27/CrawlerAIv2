@@ -55,10 +55,11 @@ from crawlerai.services.fetching import Fetching, SiteHttp, TargetRejected
 from crawlerai.services.map import TIMEOUT_S
 from crawlerai.services.page_run import Extracted, Page, Records, extract_run, page_run
 from crawlerai.services.page_store import record_fetch_usage
+from crawlerai.services.page_task import NotReached
 from crawlerai.services.polite import QUEUED, NoTurn, Turns, listed_sitemaps, rules_of
 from crawlerai.services.scrape_request import PageFormat
 from crawlerai.storage.base import ObjectStore
-from crawlerai.worker.handlers.steps import Ended, count_fetch, fetch_page, load_job
+from crawlerai.worker.handlers.steps import count_fetch, fetch_page, load_job
 from crawlerai.worker.loop import Settle, TaskHandler
 
 log = logging.getLogger(__name__)
@@ -121,7 +122,7 @@ async def _run(engine: AsyncEngine, fetching: Fetching, crawl: _Crawl) -> Settle
         planned=crawl.records if _extracted(task, crawl.request) else None,
     )
     extracted = None
-    if not isinstance(fetched, Ended):
+    if not isinstance(fetched, NotReached):
         # The page resolves before the task's transaction opens (`page_run`); a page no rule matched is not extracted.
         records = crawl.records if _extracted(task, crawl.request) else None
         extracted = await extract_run(fetched, records, role_c(crawl.llm, job_id=task.job_id))
@@ -132,13 +133,13 @@ async def _settle(
     engine: AsyncEngine,
     fetching: Fetching,
     crawl: _Crawl,
-    fetched: tuple[Page | Ended, Extracted | None],
+    fetched: tuple[Page | NotReached, Extracted | None],
     conn: AsyncConnection,
 ) -> TaskResult:
     """The task's writes, in its transaction: the fetched page's run, and the URLs it leads to added."""
     task = crawl.task
     page, extracted = fetched
-    if isinstance(page, Ended):
+    if isinstance(page, NotReached):
         result, links = page.task_result, Links()
     else:
         await _record_final_url(conn, task, page)
@@ -191,12 +192,12 @@ async def _record_final_url(conn: AsyncConnection, task: ClaimedTask, page: Page
     await conn.execute(update(UrlTask).where(UrlTask.id == task.id).values(final_url=final_url))
 
 
-async def _site_url(conn: AsyncConnection, crawl: _Crawl, page: Page | Ended) -> str:
+async def _site_url(conn: AsyncConnection, crawl: _Crawl, page: Page | NotReached) -> str:
     """Where the crawl's start page is (`rules.located`), which its scope follows: for the start task, from its own
     page's capture; for every other, as the start task stored it on the job."""
     request = crawl.request
     if crawl.task.canonical_url == request.start:
-        manifest = None if isinstance(page, Ended) else page.result.bundle.manifest
+        manifest = None if isinstance(page, NotReached) else page.result.bundle.manifest
         return located(request.start, None if manifest is None else (manifest.method, manifest.final_url))
     stored = (await conn.execute(select(Job.start_location).where(Job.id == crawl.task.job_id))).scalar_one()
     return stored or request.start

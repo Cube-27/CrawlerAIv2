@@ -9,7 +9,8 @@ Layering is enforced by `backend/.importlinter` (`tools/dev.py check-backend`): 
 
 `api/routers/*` (mounted in `api/app.py`) and the MCP server (`mcp_server/server.py`, mounted at `/mcp`) both call
 `services/*`. Synchronous `POST /v1/scrape` and queued jobs (batch, crawl, extract, map, search, schedules) run the same
-page task: `services/page_run.py`. Workers claim tasks from Postgres (`db/queue.py`, `worker/loop.py`) and run the
+page task: fetched by `services/page_task.py` (the caller waits in place, a queued task is postponed or backed off)
+and run by `services/page_run.py`. Workers claim tasks from Postgres (`db/queue.py`, `worker/loop.py`) and run the
 handler of the job kind (`worker/handlers/`); `scheduler/loop.py` enqueues schedules, rechecks and retention.
 
 ## Pipeline

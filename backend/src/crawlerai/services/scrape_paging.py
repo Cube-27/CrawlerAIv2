@@ -14,6 +14,7 @@ a further kept state; when the recipe does not serve the first page, the browser
 """
 
 import time
+from dataclasses import dataclass
 from typing import Final
 from urllib.parse import urlsplit
 
@@ -21,12 +22,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.politeness import Admit
 from crawlerai.acquire.rungs import slow_down
-from crawlerai.acquire.types import AttemptRecord, BrowserActions, FetchPolicy, FetchResult, PagedFetch
+from crawlerai.acquire.types import ActionsReport, AttemptRecord, BrowserActions, FetchPolicy, FetchResult, PagedFetch
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Render
 from crawlerai.db.models import PageKind
 from crawlerai.services.fetch_options import FetchOptions
-from crawlerai.services.fetching import Fetching, TargetRejected, grown, recipe_rung, refusal
+from crawlerai.services.fetching import Fetching, PagePlan, TargetRejected, grown, recipe_rung, refusal
 from crawlerai.services.polite import IN_PLACE, HostRules, ReadRules, Refused, Turns, polite_fetch, rules_of
 from crawlerai.storage.capture_bundle import CaptureBundle
 
@@ -60,38 +61,43 @@ def check_browser_actions(
         raise ValueError("browser_actions runs in the browser, so method_hint cannot be http")
 
 
-async def paged_fetch(
-    engine: AsyncEngine,
-    fetching: Fetching,
-    url: str,
-    policy: FetchPolicy,
-    attempts: list[AttemptRecord],
-    actions: BrowserActions,
-    timeout_s: float,
-    recipe: ApiRecipe | None = None,
-) -> PagedFetch | str:
-    """The listing at `url` with `actions` through the polite fetch (`polite_fetch`), or why nothing was sent; served by
-    `recipe`, the site's active API recipe, when it has pagination and serves the first page. The attempts,
-    robots.txt's too, are added to `attempts`. Raises `TargetRejected` when the guard refused a request of the fetch."""
-    deadline = actions_deadline(timeout_s)
-    rules = rules_of(engine, fetching.rungs.http, attempts, Turns(fetching.limiter, IN_PLACE))
-    paged: list[PagedFetch] = []
+@dataclass
+class Actions:
+    """A scrape's browser actions, the listing fetched with them in place of `acquire` (`page_task.Paging`), and the
+    report of what they did."""
 
-    async def fetch(target: str, admit_next: Admit, known: HostRules) -> FetchResult:
-        until = (actions.records, deadline)
-        served = await _recipe_pages(fetching, target, policy, attempts, recipe, until, (rules, admit_next))
-        if served is None:
-            served = await grown(fetching, target, policy, actions, deadline, admit_next, known)
-            record_states(served.pages, attempts)
-        paged.append(served)
-        return served.pages[0]
+    actions: BrowserActions
+    timeout_s: float
+    report: ActionsReport | None = None
 
-    result = await polite_fetch(url, policy, rules, fetching.limiter, IN_PLACE, fetch)
-    if isinstance(result, Refused):
-        return result.reason
-    if not paged:  # the polite fetch sends nothing it does not answer, and postpones nothing in place
-        raise RuntimeError("the listing was fetched without its pages")
-    return paged[0]
+    async def fetch(
+        self, engine: AsyncEngine, fetching: Fetching, url: str, plan: PagePlan
+    ) -> tuple[FetchResult, tuple[FetchResult, ...]] | Refused:
+        """The listing at `url` with the actions through the polite fetch (`polite_fetch`), and its further kept
+        states, or why nothing was sent; served by the plan's API recipe, the site's active one, when it has
+        pagination and serves the first page. The attempts, robots.txt's too, are added to the plan's. Raises
+        `TargetRejected` when the guard refused a request of the fetch."""
+        deadline = actions_deadline(self.timeout_s)
+        policy, attempts = plan.policy, plan.attempts
+        rules = rules_of(engine, fetching.rungs.http, attempts, Turns(fetching.limiter, IN_PLACE))
+        paged: list[PagedFetch] = []
+
+        async def fetch(target: str, admit_next: Admit, known: HostRules) -> FetchResult:
+            until = (self.actions.records, deadline)
+            served = await _recipe_pages(fetching, target, policy, attempts, plan.recipe, until, (rules, admit_next))
+            if served is None:
+                served = await grown(fetching, target, policy, self.actions, deadline, admit_next, known)
+                record_states(served.pages, attempts)
+            paged.append(served)
+            return served.pages[0]
+
+        result = await polite_fetch(url, policy, rules, fetching.limiter, IN_PLACE, fetch)
+        if isinstance(result, Refused):
+            return result
+        if not paged:  # the polite fetch sends nothing it does not answer, and postpones nothing in place
+            raise RuntimeError("the listing was fetched without its pages")
+        self.report = paged[0].report
+        return paged[0].pages[0], paged[0].pages[1:]
 
 
 def record_states(pages: tuple[FetchResult, ...], attempts: list[AttemptRecord]) -> None:

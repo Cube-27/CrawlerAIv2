@@ -1,6 +1,6 @@
 ---
 name: verify-worker-queue
-description: Model-check the worker/queue concurrency (claim, lease, deadline, retry, lease release, job settling, per-host pacing, the shared browser's context cap) with TLA+/TLC. Use for any change to backend/src/crawlerai/worker/loop.py, worker/handlers/steps.py (fetch_queued), db/queue.py, db/jobs.py, db/usage.py, crawl/frontier.py, worker/handlers/ (count_fetch and the frontier lock the job row), scheduler/loop.py, services/polite.py, acquire/politeness.py, acquire/shared_browser.py, or tools/verify/; and when asked whether tasks can get stuck, run twice, or overload a host.
+description: Model-check the worker/queue concurrency (claim, lease, deadline, retry, lease release, job settling, per-host pacing, the shared browser's context cap) with TLA+/TLC. Use for any change to backend/src/crawlerai/worker/loop.py, services/page_task.py (queued_end), db/queue.py, db/jobs.py, db/usage.py, crawl/frontier.py, worker/handlers/ (count_fetch and the frontier lock the job row), scheduler/loop.py, services/polite.py, acquire/politeness.py, acquire/shared_browser.py, or tools/verify/; and when asked whether tasks can get stuck, run twice, or overload a host.
 ---
 
 # Verify the worker and queue

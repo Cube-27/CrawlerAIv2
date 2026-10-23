@@ -38,10 +38,9 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.memory import learn_fetch
-from crawlerai.acquire.types import ActionsReport, AttemptRecord, BrowserActions, FetchResult
+from crawlerai.acquire.types import ActionsReport, BrowserActions, FetchResult
 from crawlerai.collect.run import Adapters
-from crawlerai.config_ir.active import active_config, recipe_of
+from crawlerai.config_ir.active import active_config
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.chunks import Chunk, ChunkOptions
@@ -52,7 +51,7 @@ from crawlerai.core.egress import Egress
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.errors import Refusal
 from crawlerai.db.models import CaptureId, Job, JobId, PageKind, SiteId, TaskOutcome
-from crawlerai.db.queue import ClaimedTask, Failed, complete_task, fail_task, insert_claimed, settle_task
+from crawlerai.db.queue import ClaimedTask, Failed, Finished, complete_task, fail_task, insert_claimed, settle_task
 from crawlerai.llm.client import NO_LLM, LLMClient, LLMFailure
 from crawlerai.llm.roles.s_labels import with_labels
 from crawlerai.llm.roles.s_schema import draft_schema
@@ -61,15 +60,12 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.resolve.types import Probability
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.services.fetch_options import CAPTURE_FORMATS, FetchOptions, check_proxy_pool, fetch_policy
+from crawlerai.services.fetch_options import CAPTURE_FORMATS, FetchOptions, check_proxy_pool
 from crawlerai.services.fetching import (
     Fetching,
     Growth,
-    PagePlan,
     TargetRejected,
     check_target,
-    fetch_now,
-    site_rungs,
 )
 from crawlerai.services.location import job_egress
 from crawlerai.services.page_formats import (
@@ -88,16 +84,16 @@ from crawlerai.services.page_run import (
     Records,
     extract_run,
     page_run,
-    read_stored,
 )
 from crawlerai.services.page_store import (
     DEFAULT_PROJECT,
     record_fetch_usage,
     site_row,
-    surface_plan,
 )
+from crawlerai.services.page_task import NotReached, PageTask, fetch_task
+from crawlerai.services.polite import IN_PLACE
 from crawlerai.services.records import RecordField, ScrapedRecord
-from crawlerai.services.scrape_paging import actions_deadline, check_browser_actions, paged_fetch, record_states
+from crawlerai.services.scrape_paging import Actions, actions_deadline, check_browser_actions
 from crawlerai.services.scrape_request import (
     MIN_CONFIDENCE_DESCRIPTION,
     RENDER_DESCRIPTION,
@@ -366,34 +362,32 @@ async def _run(
     """The fetch runs outside any transaction, so a slow page holds no connection or row lock; what it found is
     written in one transaction after it, by the page's run (`page_run`). A stored capture `fetch.cache` and `max_age`
     allow is read instead of fetching (`read_stored`)."""
-    host = urlsplit(request.url).hostname or ""
     async with engine.begin() as conn:
-        site = await site_row(conn, host, request.page_kind)
+        site = await site_row(conn, urlsplit(request.url).hostname or "", request.page_kind)
         config = await _config(conn, site.id, work)
-        by_sources = await surface_plan(conn, site.id, work.schema, config, work.render)
-    recipe = recipe_of(config) if config is not None and set(request.formats) == {"records"} else None
-    policy = fetch_policy(
+    records = None
+    if work.schema is not None and work.data is not None:
+        records = Records(work.schema, work.data, config, work.margins, work.render)
+    actions = request.browser_actions
+    paging = None if actions is None else Actions(actions, request.timeout_s)
+    growth = None if paging is not None else _growth(request, fetching)
+    page_task = PageTask(
+        task,
         request.fetch,
         request.locale,
-        page_kind=request.page_kind,
-        schema=work.schema,
-        vocabulary=None if work.data is None else work.data.vocabulary,
-        formats=request.formats,
+        work.deadline,
+        request.formats,
+        records=records,
+        # A JSON body has no markdown, links or metadata of the page.
+        served=set(request.formats) == {"records"},
+        planned=True,
+        max_age=request.max_age,
+        growth=growth,
+        paging=paging,
     )
-    stored = (site, task.canonical_url)
-    max_age, formats = request.max_age, request.formats
-    page: Page | str | None = await read_stored(
-        engine, fetching.store, stored, policy, request.fetch.cache, max_age=max_age, formats=formats, api=bool(recipe)
-    )
-    attempts: list[AttemptRecord] = []
-    report: ActionsReport | None = None
-    if page is None:
-        rungs = site_rungs(fetching, host, site)
-        growth = _growth(request, fetching)
-        plan = PagePlan(
-            rungs, site, policy, attempts, recipe=recipe, growth=growth, deadline=work.deadline, fetch=by_sources
-        )
-        page, report = await _fetched(engine, fetching, request, plan)
+    fetched = await fetch_task(engine, fetching, site, page_task, IN_PLACE)
+    page = _reached(fetched)
+    report = paging.report if paging is not None else _grew(growth, page)
     # Formats, the draft and the extraction come before the write, so a timeout or an LLM failure while they are made
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
     derived = await _derive_reached(engine, work, request, task, page, config)
@@ -407,45 +401,28 @@ async def _run(
                 conn, engine, store, task, page, derived.extracted, retryable=False, caller_supplied=True
             )
             await settle_task(conn, task, end.result)
-        await record_fetch_usage(conn, task.job_id, attempts, policy.proxy_pool)
+        await record_fetch_usage(conn, task.job_id, fetched.attempts, fetched.proxy_pool)
         usage = await _usage(conn, task.job_id)
     return _answer(request, task, (page, end), derived, report, usage, fetching.rungs.adapters)
 
 
-async def _fetched(
-    engine: AsyncEngine, fetching: Fetching, request: ScrapeRequest, plan: PagePlan
-) -> tuple[Page | str, ActionsReport | None]:
-    """The page fetched now (`fetch_now`), or by its browser actions (`paged_fetch`), with a listing's further kept
-    states and the actions' report, or why nothing was sent. What the fetch taught is remembered on the site."""
-    if request.browser_actions is None:
-        page, report = await _grown(engine, fetching, request, plan)
-    else:
-        actions, timeout_s = request.browser_actions, request.timeout_s
-        paged = await paged_fetch(
-            engine, fetching, request.url, plan.policy, plan.attempts, actions, timeout_s, recipe=plan.recipe
-        )
-        if isinstance(paged, str):
-            return paged, None
-        page, report = Page(plan.site, paged.pages[0], further=paged.pages[1:]), paged.report
-    if isinstance(page, Page):
-        await learn_fetch(engine, plan.site.id, page.result)
-    return page, report
+def _reached(fetched: Page | NotReached) -> Page | str:
+    """The page, or why nothing was sent (`blocked`). Raises `TargetRejected` when the guard refused a request of
+    the fetch."""
+    if isinstance(fetched, Page):
+        return fetched
+    match fetched.task_result:
+        case Finished(reason=str(reason)):
+            return reason
+        case Failed(error=error):
+            raise TargetRejected(error)
+    raise TypeError(f"a fetch the caller waits for ended {fetched.task_result!r}")
 
 
-async def _grown(
-    engine: AsyncEngine, fetching: Fetching, request: ScrapeRequest, plan: PagePlan
-) -> tuple[Page | str, ActionsReport | None]:
-    """The page fetched now, a listing grown by the default browser actions where its page is rendered (`_growth`)."""
-    growth = plan.growth
-    result = await fetch_now(engine, fetching, request.url, plan)
-    if isinstance(result, str):
-        return result, None
-    grew = None if growth is None else growth.of(result)
-    if grew is None:
-        return Page(plan.site, result), None
-    further = grew.pages[1:]
-    record_states(further, plan.attempts)  # the first state's attempts came with the page
-    return Page(plan.site, result, further=further), grew.report
+def _grew(growth: Growth | None, page: Page | str) -> ActionsReport | None:
+    """What the default browser actions did, when the page kept is the listing they grew."""
+    grew = None if growth is None or isinstance(page, str) else growth.of(page.result)
+    return None if grew is None else grew.report
 
 
 def _answer(
