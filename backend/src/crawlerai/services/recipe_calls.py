@@ -17,9 +17,9 @@ import html
 import re
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Final
+from typing import Annotated, Final
 
-from pydantic import BaseModel, JsonValue
+from pydantic import AfterValidator, BaseModel, Field, JsonValue
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -38,6 +38,7 @@ from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.capture_bundle import NetworkBody, is_html, network_json
 
 __all__ = [
+    "INDEX",
     "MAX_SAMPLES",
     "CallList",
     "CallSummary",
@@ -45,7 +46,11 @@ __all__ = [
     "FieldMatch",
     "NoSamples",
     "PathCount",
+    "SampleIds",
+    "Samples",
     "call_list",
+    "listed",
+    "load_samples",
 ]
 
 MAX_SAMPLES: Final = 5
@@ -53,7 +58,7 @@ MAX_SAMPLES: Final = 5
 # where a text field's type takes any string.
 _TYPED_PATHS_MAX: Final = 20
 # RFC 9535 §2.5.1.2: an array index selector, which a row's paths write as the wildcard `[*]`.
-_INDEX: Final = re.compile(r"\[\d+\]")
+INDEX: Final = re.compile(r"\[\d+\]")
 _WHITESPACE: Final = re.compile(r"\s+")
 
 
@@ -130,22 +135,54 @@ class _Group:
     rows: str | None = None
 
 
+def _distinct(capture_ids: list[CaptureId]) -> list[CaptureId]:
+    if len(set(capture_ids)) != len(capture_ids):
+        raise ValueError("a capture is named twice")
+    return capture_ids
+
+
+# The sample captures a custom recipe is built from: two to five, all distinct.
+SampleIds = Annotated[list[CaptureId], Field(min_length=2, max_length=MAX_SAMPLES), AfterValidator(_distinct)]
+
+
+@dataclass(frozen=True)
+class Samples:
+    """Sample captures as a call list reads them: the schema matched, each capture as a held-out page with the values
+    of its latest record of the schema, and the URL each was requested at, in the order named."""
+
+    schema: SchemaDef
+    pages: list[HeldOutPage]
+    urls: list[str]
+
+
 async def call_list(engine: AsyncEngine, store: ObjectStore, captures: Sequence[CaptureId]) -> CallList:
     """The call list of `captures`, matched against their schema (`_schemas`) and the values of their latest records:
     a capture the engine read no record from has none published, so each field lists the paths of its type. Raises
     `CaptureNotFound` for an id no capture has, or a capture whose bundle is no longer stored, and `NoSamples` when one
     has no schema, or theirs differ."""
+    samples = await load_samples(engine, store, captures)
+    # Matching every leaf of every body is CPU work: a thread keeps the event loop serving meanwhile.
+    return await asyncio.to_thread(listed, samples.pages, samples.schema)
+
+
+async def load_samples(
+    engine: AsyncEngine, store: ObjectStore, captures: Sequence[CaptureId], schema_id: SchemaId | None = None
+) -> Samples:
+    """The `captures` matched against `schema_id`, else against their own schema (`_schemas`); raises as `call_list`
+    does."""
     async with engine.connect() as conn:
-        known = set((await conn.execute(select(Capture.id).where(Capture.id.in_(captures)))).scalars())
-        if unknown := [str(capture) for capture in captures if capture not in known]:
+        query = select(Capture.id, Capture.url).where(Capture.id.in_(captures))
+        urls = {row.id: row.url for row in await conn.execute(query)}
+        if unknown := [str(capture) for capture in captures if capture not in urls]:
             raise CaptureNotFound(f"no capture {', '.join(unknown)}")
-        schema = await registry.get_by_id(conn, _one_schema(captures, await _schemas(conn, captures)))
+        if schema_id is None:
+            schema_id = _one_schema(captures, await _schemas(conn, captures))
+        schema = await registry.get_by_id(conn, schema_id)
         recorded = {page.capture_id: page for page in await load_captures(conn, store, schema, list(captures))}
     unrecorded = [capture for capture in captures if capture not in recorded]
     read = await asyncio.gather(*(_unrecorded(engine, store, capture) for capture in unrecorded))
     pages = {**recorded, **dict(zip(unrecorded, read, strict=True))}
-    # Matching every leaf of every body is CPU work: a thread keeps the event loop serving meanwhile.
-    return await asyncio.to_thread(listed, [pages[capture] for capture in captures], schema)
+    return Samples(schema, [pages[capture] for capture in captures], [urls[capture] for capture in captures])
 
 
 async def _schemas(conn: AsyncConnection, captures: Sequence[CaptureId]) -> dict[CaptureId, SchemaId]:
@@ -236,7 +273,7 @@ def _match(group: _Group, number: int, entry: NetworkBody, data: bytes, page: He
     typed, hits = body_readings(document, published, page.ctx, schema)
     for row in page.rows:
         for name, paths in field_hits(typed, document, row.published, page.ctx, schema).items():
-            hits.setdefault(name, {}).update(dict.fromkeys(_INDEX.sub("[*]", path) for path in paths))
+            hits.setdefault(name, {}).update(dict.fromkeys(INDEX.sub("[*]", path) for path in paths))
     _add(group.published, hits, number)
     stated = hits.keys() | published.keys() | {name for row in page.rows for name in row.published}
     _add(group.typed, _typed_paths(typed, stated), number)
@@ -246,7 +283,7 @@ def _typed_paths(typed: Mapping[str, Normalized], stated: set[str]) -> dict[str,
     """The paths of each field no page published whose value normalizes as its type, in document order, an array's
     items as one (`[*]`)."""
     return {
-        name: dict.fromkeys(_INDEX.sub("[*]", reading.path) for reading, _ in readings)
+        name: dict.fromkeys(INDEX.sub("[*]", reading.path) for reading, _ in readings)
         for name, readings in typed.items()
         if name not in stated and readings
     }

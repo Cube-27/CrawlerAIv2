@@ -47,6 +47,11 @@ export const LIMITS = {
       "minimum": 0.0
     }
   },
+  "CallRef": {
+    "index": {
+      "minimum": 0.0
+    }
+  },
   "CallsRequest": {
     "capture_ids": {
       "maxItems": 5,
@@ -175,11 +180,24 @@ export const LIMITS = {
       "minLength": 1
     }
   },
-  "CustomRecipe": {
+  "CustomRecipe-Input": {
     "patterns": {
       "minItems": 1
     },
     "rate_ms": {
+      "minimum": 0.0
+    }
+  },
+  "CustomRecipe-Output": {
+    "patterns": {
+      "minItems": 1
+    },
+    "rate_ms": {
+      "minimum": 0.0
+    }
+  },
+  "EndpointRef": {
+    "segments": {
       "minimum": 0.0
     }
   },
@@ -378,7 +396,12 @@ export const LIMITS = {
       "minLength": 1
     }
   },
-  "PageField": {
+  "PageField-Input": {
+    "steps": {
+      "minItems": 1
+    }
+  },
+  "PageField-Output": {
     "steps": {
       "minItems": 1
     }
@@ -424,9 +447,25 @@ export const LIMITS = {
       "minItems": 1
     }
   },
+  "ProposeRequest": {
+    "capture_ids": {
+      "maxItems": 5,
+      "minItems": 2
+    }
+  },
   "Provenance": {
     "engine_version": {
       "minLength": 1
+    }
+  },
+  "RecipeTestRequest": {
+    "timeout_s": {
+      "exclusiveMinimum": 0.0,
+      "maximum": 120.0
+    },
+    "urls": {
+      "maxItems": 5,
+      "minItems": 1
     }
   },
   "RecordField": {

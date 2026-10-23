@@ -27,10 +27,11 @@ import asyncio
 import os
 import socket
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from functools import partial
-from typing import Final, Self, TypedDict
+from typing import Any, Final, Self, TypedDict
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, field_validator, model_serializer, model_validator
@@ -50,7 +51,7 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.core.egress import Egress
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.errors import Refusal
-from crawlerai.db.models import CaptureId, Job, JobId, PageKind, SiteId, TaskOutcome
+from crawlerai.db.models import CaptureId, Job, JobId, PageKind, SchemaId, SiteId, TaskOutcome
 from crawlerai.db.queue import ClaimedTask, Failed, Finished, complete_task, fail_task, insert_claimed, settle_task
 from crawlerai.llm.client import NO_LLM, LLMClient, LLMFailure
 from crawlerai.llm.roles.s_labels import with_labels
@@ -339,8 +340,24 @@ async def _named_schema(
 
 
 async def _start(engine: AsyncEngine, request: ScrapeRequest, schema: SchemaDef | None, egress: Egress) -> ClaimedTask:
-    """The running job, with its task claimed by this process. Committed on its own, so that a scrape that fails
-    or times out can still record that on them."""
+    """The running job, with its task claimed by this process."""
+    stored = stored_request(request)
+    [task] = await start_job(
+        engine, stored, None if schema is None else schema.id, egress, [request.url], request.page_kind
+    )
+    return task
+
+
+async def start_job(
+    engine: AsyncEngine,
+    request: dict[str, Any],
+    schema_id: SchemaId | None,
+    egress: Egress,
+    urls: Sequence[str],
+    page_kind: PageKind | None,
+) -> list[ClaimedTask]:
+    """A running `scrape` job storing `request`, with a task per URL of `urls` claimed by this process, in order.
+    Committed on its own, so that a scrape that fails or times out can still record that on them."""
     async with engine.begin() as conn:
         job_id = (
             await conn.execute(
@@ -348,8 +365,8 @@ async def _start(engine: AsyncEngine, request: ScrapeRequest, schema: SchemaDef 
                 .values(
                     project_id=DEFAULT_PROJECT,
                     kind="scrape",
-                    request=stored_request(request),
-                    schema_id=None if schema is None else schema.id,
+                    request=request,
+                    schema_id=schema_id,
                     status="running",
                     started_at=func.now(),
                     engine_version=ENGINE_VERSION,
@@ -359,8 +376,7 @@ async def _start(engine: AsyncEngine, request: ScrapeRequest, schema: SchemaDef 
                 .returning(Job.id)
             )
         ).scalar_one()
-        canonical = canonicalize(request.url) or request.url
-        return await insert_claimed(conn, job_id, request.url, canonical, request.page_kind, _CLAIMANT)
+        return [await insert_claimed(conn, job_id, url, canonicalize(url) or url, page_kind, _CLAIMANT) for url in urls]
 
 
 async def _fail(engine: AsyncEngine, task: ClaimedTask, error: str) -> None:
@@ -415,7 +431,7 @@ async def _run(
             )
             await settle_task(conn, task, end.result)
         await record_fetch_usage(conn, task.job_id, fetched.attempts, fetched.proxy_pool)
-        usage = await _usage(conn, task.job_id)
+        usage = await job_usage(conn, task.job_id)
     return _answer(request, task, (page, end), derived, report, usage, fetching.rungs.adapters)
 
 
@@ -582,6 +598,7 @@ def _content(
     return formats, page.cleaned_text.text if sample else None
 
 
-async def _usage(conn: AsyncConnection, job_id: JobId) -> Usage:
+async def job_usage(conn: AsyncConnection, job_id: JobId) -> Usage:
+    """What the job `job_id` used so far."""
     used: dict[str, int] = (await conn.execute(select(Job.usage).where(Job.id == job_id))).scalar_one()
     return Usage.model_validate({name: used[name] for name in Usage.model_fields if name in used})

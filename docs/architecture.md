@@ -108,7 +108,12 @@ recurring diffing: `recurring/`; webhooks: `db/webhook_outbox.py`, `services/web
 REST under `/v1` (`scrape`, `batch/scrape`, `map`, `search`, `crawl`, `extract`, `schemas`, `records`, `captures`, `jobs`,
 `schedules`, `configs`/`sites`, `recipes`, `usage/llm`, `project/settings`; `GET /healthz`): the contract is `frontend/openapi.json`
 (`tools/dev.py api-client`). Captures' calls and `recipes` answer internals (calls, paths, headers) for the Recipes
-screen only. Bearer API keys (`crawlerai apikey create`). Schemas (presets in `schemas/presets/*.json`) are data.
+screen only. The recipe builder's helpers persist nothing: `POST /v1/recipes/calls` merges two to five captures' calls,
+`POST /v1/recipes/propose` drafts a custom recipe from their calls of one endpoint without sending any
+(`services/recipe_propose.py`: `binding.propose` leaves an unbound value literal and reports it, `headers.proposed`,
+`pagination.infer`, `url_pattern.generalize`), and `POST /v1/recipes/test` serves URLs of a recipe's patterns with it
+and with the normal extraction side by side (`services/recipe_trial.py`: a `scrape` job whose trial fetches store no
+capture, record or site memory; `PageTask.trial`). Bearer API keys (`crawlerai apikey create`). Schemas (presets in `schemas/presets/*.json`) are data.
 SDKs in `sdk/python`, `sdk/typescript` (`tools/dev.py sdk`); web UI in `frontend/`.
 
 ## Pinned data

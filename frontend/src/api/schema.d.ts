@@ -615,6 +615,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/recipes/propose": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Propose
+         * @description A custom recipe's draft from the samples' calls of the `main` endpoint (named by its key or one of its calls),
+         *     for the schema: the bound request, its headers, pagination, field map and URL patterns, with the fields left
+         *     unfilled, the request values left unbound and the headers left out. Deterministic, and nothing is sent or stored.
+         *     404: no such capture or schema, or a bundle expired; 422: the samples' calls of the main endpoint make no recipe.
+         */
+        post: operations["propose_v1_recipes_propose_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/recipes/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test
+         * @description Each URL fetched and extracted with the recipe (a draft, or a stored custom recipe's id), and as if no recipe's
+         *     pattern matched it, both with their fetch trails. No capture, record, config or site memory is stored; the
+         *     fetches count as a `scrape` job's usage. 404: no such config or schema; 409: the config is not a custom recipe;
+         *     422: the draft does not fit its schema, or a URL matches no pattern of the recipe.
+         */
+        post: operations["test_v1_recipes_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/records": {
         parameters: {
             query?: never;
@@ -1389,6 +1435,19 @@ export interface components {
             schema_id: string;
         };
         /**
+         * CallRef
+         * @description One call of a sample: its capture and its index among the capture's network bodies.
+         */
+        CallRef: {
+            /**
+             * Capture Id
+             * Format: uuid
+             */
+            capture_id: string;
+            /** Index */
+            index: number;
+        };
+        /**
          * CallSummary
          * @description One call of a sample: its index among the capture's network bodies (`GET /v1/captures/{id}/calls/{n}`), its
          *     answer's status, content type and size, the request's Fetch destination, the page step it followed (0: the page's
@@ -2044,7 +2103,7 @@ export interface components {
          *     call and the extra calls by name, the warm-up, the page fields, who sends the calls and the least interval between
          *     them (`rate_ms`).
          */
-        CustomRecipe: {
+        "CustomRecipe-Input": {
             /**
              * Calls
              * @default {}
@@ -2057,7 +2116,7 @@ export interface components {
              * @default {}
              */
             fields?: {
-                [key: string]: components["schemas"]["PageField"];
+                [key: string]: components["schemas"]["PageField-Input"];
             };
             main: components["schemas"]["ApiRecipe-Input"];
             /**
@@ -2081,6 +2140,50 @@ export interface components {
              */
             sent_by?: "http" | "browser";
             warm_up?: components["schemas"]["WarmUp-Input"] | null;
+        };
+        /**
+         * CustomRecipe
+         * @description A custom recipe: the schema and page kind it serves, the URL patterns of one host it serves them for, the main
+         *     call and the extra calls by name, the warm-up, the page fields, who sends the calls and the least interval between
+         *     them (`rate_ms`).
+         */
+        "CustomRecipe-Output": {
+            /**
+             * Calls
+             * @default {}
+             */
+            calls: {
+                [key: string]: components["schemas"]["ApiRecipe-Output"];
+            };
+            /**
+             * Fields
+             * @default {}
+             */
+            fields: {
+                [key: string]: components["schemas"]["PageField-Output"];
+            };
+            main: components["schemas"]["ApiRecipe-Output"];
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            /** Patterns */
+            patterns: string[];
+            /** Rate Ms */
+            rate_ms: number | null;
+            /**
+             * Schema Id
+             * Format: uuid
+             */
+            schema_id: string;
+            /**
+             * Sent By
+             * @default http
+             * @enum {string}
+             */
+            sent_by: "http" | "browser";
+            warm_up: components["schemas"]["WarmUp-Output"] | null;
         };
         /** DayUsage */
         DayUsage: {
@@ -2223,6 +2326,24 @@ export interface components {
             rows: string | null;
             /** Samples */
             samples: string[];
+            /** Segments */
+            segments: number;
+        };
+        /**
+         * EndpointRef
+         * @description An endpoint of the call list, by its key: request method, URL shape and request body shape (`Endpoint`).
+         */
+        EndpointRef: {
+            /** Body Shape */
+            body_shape?: string[] | null;
+            /** Has Path */
+            has_path: boolean;
+            /** Method */
+            method?: string | null;
+            /** Origin */
+            origin: string;
+            /** Query */
+            query: string[];
             /** Segments */
             segments: number;
         };
@@ -3451,7 +3572,7 @@ export interface components {
          * @description A field read from the page itself: its steps in order (the first valid value wins), on the HTTP page or, when
          *     only a render states it, the browser's (`browser`).
          */
-        PageField: {
+        "PageField-Input": {
             /**
              * Needs
              * @default http
@@ -3460,6 +3581,21 @@ export interface components {
             needs?: "http" | "browser";
             /** Steps */
             steps: (components["schemas"]["XPathStep-Input"] | components["schemas"]["CssStep-Input"] | components["schemas"]["JsonLdStep-Input"] | components["schemas"]["JsonPathStep-Input"] | components["schemas"]["RegexStep-Input"] | components["schemas"]["AttrStep-Input"])[];
+        };
+        /**
+         * PageField
+         * @description A field read from the page itself: its steps in order (the first valid value wins), on the HTTP page or, when
+         *     only a render states it, the browser's (`browser`).
+         */
+        "PageField-Output": {
+            /**
+             * Needs
+             * @default http
+             * @enum {string}
+             */
+            needs: "http" | "browser";
+            /** Steps */
+            steps: (components["schemas"]["XPathStep-Output"] | components["schemas"]["CssStep-Output"] | components["schemas"]["JsonLdStep-Output"] | components["schemas"]["JsonPathStep-Output"] | components["schemas"]["RegexStep-Output"] | components["schemas"]["AttrStep-Output"])[];
         };
         /**
          * PageKindRule
@@ -3715,6 +3851,36 @@ export interface components {
             /** Validated On */
             validated_on: string[];
         };
+        /**
+         * Proposal
+         * @description A custom recipe's draft, with the schema fields its map leaves unfilled, where a value of the request varies
+         *     between the samples and nothing binds it (left as the first sample's literal) or looks like a token (left out),
+         *     and the captured headers left out (a credential, a token, a value that varies).
+         */
+        Proposal: {
+            recipe: components["schemas"]["CustomRecipe-Output"];
+            /** Unbound */
+            unbound: string[];
+            /** Unfilled */
+            unfilled: string[];
+            /** Withheld Headers */
+            withheld_headers: string[];
+        };
+        /**
+         * ProposeRequest
+         * @description The body of `POST /v1/recipes/propose`: the sample captures, the main call and the schema the recipe serves.
+         */
+        ProposeRequest: {
+            /** Capture Ids */
+            capture_ids: string[];
+            /** Main */
+            main: components["schemas"]["CallRef"] | components["schemas"]["EndpointRef"];
+            /**
+             * Schema Id
+             * Format: uuid
+             */
+            schema_id: string;
+        };
         /** Provenance */
         Provenance: {
             /** Engine Version */
@@ -3767,6 +3933,50 @@ export interface components {
             held_out: string[];
             /** Refused */
             refused?: string | null;
+        };
+        /**
+         * RecipeTestRequest
+         * @description The body of `POST /v1/recipes/test`: the recipe (a draft, or a stored custom recipe's config id), the URLs of
+         *     its patterns to try it on, and how they are fetched.
+         */
+        RecipeTestRequest: {
+            /**
+             * @default {
+             *       "actions": [],
+             *       "cache": "default",
+             *       "cookies": {},
+             *       "headers": {},
+             *       "method_hint": "auto",
+             *       "respect_robots": false,
+             *       "screenshot": "viewport"
+             *     }
+             */
+            fetch?: components["schemas"]["FetchOptions-Input"];
+            /** Locale */
+            locale?: string | null;
+            /** Recipe */
+            recipe: components["schemas"]["CustomRecipe-Input"] | string;
+            /**
+             * Timeout S
+             * @default 60
+             */
+            timeout_s?: number;
+            /** Urls */
+            urls: string[];
+        };
+        /**
+         * RecipeTestResult
+         * @description The test's job, each URL's runs in the order asked, and what the job used.
+         */
+        RecipeTestResult: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Urls */
+            urls: components["schemas"]["UrlTest"][];
+            usage: components["schemas"]["Usage"];
         };
         /** RecordField */
         RecordField: {
@@ -3967,6 +4177,18 @@ export interface components {
             fields: {
                 [key: string]: components["schemas"]["SubFieldMeta"];
             };
+        };
+        /**
+         * Run
+         * @description One fetch and extraction of a URL: the records it made, unstored, and its fetch trail (`fetch`, null when
+         *     nothing was kept: `reason` says why, as a scrape's does).
+         */
+        Run: {
+            fetch: components["schemas"]["FetchSummary"] | null;
+            /** Reason */
+            reason: string | null;
+            /** Records */
+            records: components["schemas"]["ExtractedRecord"][];
         };
         /** RunStarted */
         RunStarted: {
@@ -4699,6 +4921,16 @@ export interface components {
             type: "type";
             /** Xpath */
             xpath: string | null;
+        };
+        /**
+         * UrlTest
+         * @description A URL tried: with the recipe, and with the normal extraction.
+         */
+        UrlTest: {
+            normal: components["schemas"]["Run"];
+            recipe: components["schemas"]["Run"];
+            /** Url */
+            url: string;
         };
         /**
          * Usage
@@ -5727,7 +5959,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CustomRecipe"];
+                "application/json": components["schemas"]["CustomRecipe-Input"];
             };
         };
         responses: {
@@ -6949,6 +7181,184 @@ export interface operations {
             };
             /** @description Too Many Requests */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    propose_v1_recipes_propose_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    test_v1_recipes_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecipeTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipeTestResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8343,7 +8753,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CustomRecipe"];
+                "application/json": components["schemas"]["CustomRecipe-Input"];
             };
         };
         responses: {
