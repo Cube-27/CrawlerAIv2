@@ -198,9 +198,7 @@ def _document_class(
     structured = _structured_rows(tree, documents)
     # A content-only fetch reads the rendered text, whatever structured data the page states.
     described = not content_only and _describes(tree, documents, types)
-    unstructured = (
-        _script_state(tree, page_kind) if described else _page_shell(tree, content_only=content_only)
-    )
+    unstructured = _script_state(tree, page_kind) if described else _page_shell(tree, content_only=content_only)
     # Before the shell return: a short document that refreshes and links only to mail or phone is a stand-in too.
     if unstructured == "blocked" or (_refreshes(tree, headers) and _offers_no_web_page(tree)):
         return "blocked"
