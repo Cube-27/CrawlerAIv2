@@ -129,7 +129,7 @@ def _candidates(pages: Sequence[ReplayPage]) -> tuple[list[RecipeHeader], list[s
 def _captured(samples: Sequence[Sample], *, skip: frozenset[str]) -> tuple[list[RecipeHeader], list[str]]:
     """The headers the first sample's request sent, in order, as recipe values, but for those named in `skip` and those
     the client sets itself; and the names of those never sent: credentials, values that look like tokens and values
-    that differ between the samples."""
+    that differ between the samples, and values a recipe cannot hold."""
     candidates: list[RecipeHeader] = []
     withheld: list[str] = []
     seen: set[str] = set(skip)
@@ -140,11 +140,20 @@ def _captured(samples: Sequence[Sample], *, skip: frozenset[str]) -> tuple[list[
             continue
         seen.add(key)
         value = _constant(key, samples)
-        if value is None or key in CREDENTIAL_FIELDS or token_like(value):
+        header = None if value is None or key in CREDENTIAL_FIELDS or token_like(value) else _header(name, value)
+        if header is None:
             withheld.append(name)
         else:
-            candidates.append(HeaderValue(name=name, value=value))
+            candidates.append(header)
     return candidates, withheld
+
+
+def _header(name: str, value: str) -> HeaderValue | None:
+    """The header as a recipe holds it; None for a value a recipe cannot hold (a brace, RFC 6570)."""
+    try:
+        return HeaderValue(name=name, value=value)
+    except ValidationError:
+        return None
 
 
 def _constant(key: str, samples: Sequence[Sample]) -> str | None:

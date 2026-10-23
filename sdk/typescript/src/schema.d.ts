@@ -2335,11 +2335,11 @@ export interface components {
          */
         EndpointRef: {
             /** Body Shape */
-            body_shape: string[] | null;
+            body_shape?: string[] | null;
             /** Has Path */
             has_path: boolean;
             /** Method */
-            method: string | null;
+            method?: string | null;
             /** Origin */
             origin: string;
             /** Query */

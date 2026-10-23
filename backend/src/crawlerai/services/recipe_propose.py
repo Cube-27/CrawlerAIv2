@@ -56,12 +56,12 @@ class CallRef(Input):
 class EndpointRef(Input):
     """An endpoint of the call list, by its key: request method, URL shape and request body shape (`Endpoint`)."""
 
-    method: str | None
+    method: str | None = None
     origin: str
     has_path: bool
     segments: NonNegativeInt
     query: list[str]
-    body_shape: list[str] | None
+    body_shape: list[str] | None = None
 
 
 class ProposeRequest(Input):

@@ -3560,12 +3560,10 @@
           }
         },
         "required": [
-          "method",
           "origin",
           "has_path",
           "segments",
-          "query",
-          "body_shape"
+          "query"
         ],
         "title": "EndpointRef",
         "type": "object"

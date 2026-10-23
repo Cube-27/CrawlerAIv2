@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any, Final
 from urllib.parse import urlsplit
 
-from pydantic import AfterValidator, BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -80,6 +80,14 @@ class RecipeTestRequest(Input):
     fetch: FetchOptions = FetchOptions()
     locale: str | None = None
     timeout_s: float = Field(default=60, gt=0, le=MAX_TIMEOUT_S)
+
+    @field_validator("urls")
+    @classmethod
+    def _distinct(cls, urls: list[str]) -> list[str]:
+        # A job holds one task per canonical URL.
+        if len({canonicalize(url) for url in urls}) != len(urls):
+            raise ValueError("a URL is named twice")
+        return urls
 
 
 class Run(BaseModel):
