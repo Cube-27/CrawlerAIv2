@@ -24,14 +24,17 @@ from urllib.parse import urlsplit
 import pytest
 from lxml import html as lxml_html
 from patchright.async_api import Error as PlaywrightError
+from pydantic import TypeAdapter
 
 from crawlerai.acquire.browser import fetch_browser
+from crawlerai.acquire.browser_capture import CAPS, Caps
 from crawlerai.acquire.browser_profiles import profile_name
 from crawlerai.acquire.browser_session import BrowserSession, context_key, open_browser
 from crawlerai.acquire.desktop_screen import desktop_screen
 from crawlerai.acquire.session import CookieExport, SiteSessions
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.config_ir.page_actions import Action, to_steps
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.proxy import ProxyPool
 from crawlerai.storage.capture_bundle import decode, encode
@@ -80,6 +83,19 @@ _SNIFFED = b"""<html><body><p id="done"></p><script>
 })();
 </script></body></html>"""
 _GUARDED = b")]}'\n" + json.dumps({"items": [{"name": "Guarded item"}]}).encode()
+# An engineer capture's page: two calls to its own site in turn (one guarded), one to another site, an image fetched
+# as data, and a form a step submits.
+_ENGINEER = b"""<html><body><main><p>A page whose calls an engineer reads, with enough text to be content.</p>
+<form method="post" action="/result"><input type="hidden" name="q" value="shoes"><button id="go">Go</button></form>
+<script>
+(async () => {
+  await (await fetch('/api/items')).text();
+  await (await fetch('/api/guarded')).text();
+  await (await fetch('/pixel.png')).blob();
+  await (await fetch('http://api.other.test:' + location.port + '/api/n/3')).text();
+})();
+</script></main></body></html>"""
+_RESULT = b"<html><body><main><p>The results the form asked for, with enough text to be read.</p></main></body></html>"
 # Six bodies of 1.9 MB each: past 10 MB in all at the sixth.
 _HEAVY = b"""<html><body><p id="done"></p><script>
 (async () => {
@@ -185,7 +201,9 @@ def _reply_for(server: Server, path: str) -> Reply:
     if path.startswith("/api/heavy/"):
         return Reply(content_type=_JSON, body=_HEAVY_BODY)
     if path.startswith("/api/n/"):
-        return Reply(content_type=_JSON, body=json.dumps({"n": int(path.rsplit("/", 1)[1])}).encode())
+        # Another site's page may call it (Fetch Standard §3.2: CORS).
+        body = json.dumps({"n": int(path.rsplit("/", 1)[1])}).encode()
+        return Reply(content_type=_JSON, body=body, headers=(("Access-Control-Allow-Origin", "*"),))
     return Reply(404, body=b"<html><body>not here</body></html>")
 
 
@@ -239,6 +257,9 @@ def server() -> Iterator[Server]:
             "/api/search": Reply(content_type=_JSON, body=b'{"hits": []}'),
             "/sniffed": Reply(body=_SNIFFED),
             "/api/guarded": Reply(content_type="text/plain; charset=utf-8", body=_GUARDED),
+            "/engineer": Reply(body=_ENGINEER),
+            "/result": Reply(body=_RESULT),
+            "/pixel.png": Reply(content_type="image/png", body=b"\x89PNG\r\n\x1a\n"),
             "/api/plain-json": Reply(content_type="text/plain", body=b'[{"id": 1}, {"id": 2}]'),
             "/api/empty": Reply(204, content_type=_JSON),
             "/api/linked": Reply(
@@ -374,6 +395,39 @@ def test_js_only_page_is_rendered_and_its_json_and_flight_captured(browser: Brow
     ]
     assert result.bundle.network == (_ITEMS, _FLIGHT)
     assert decode(encode(result.bundle)) == result.bundle
+
+
+def test_an_engineer_capture_keeps_every_call_own_site_first_and_the_document_a_step_submitted(
+    browser: Browser, server: Server
+) -> None:
+    steps = to_steps(TypeAdapter(list[Action]).validate_python([{"type": "click", "selector": "#go"}]), None)
+    policy = FetchPolicy(method_hint="browser", browser_timeout_s=10, steps=steps, calls="all")
+
+    result = browser.fetch(server.url("/engineer"), policy)
+
+    entries = result.bundle.manifest.network_bodies
+    kept = [(e.url, e.resource_type, e.action, e.same_site, e.method, e.request_body) for e in entries]
+    assert kept == [
+        (server.url("/api/items"), "fetch", 0, True, "GET", None),
+        (server.url("/api/guarded"), "fetch", 0, True, "GET", None),
+        (server.url("/result"), "document", 1, True, "POST", "q=shoes"),
+        (server.url("/api/n/3", host="api.other.test"), "fetch", 0, False, "GET", None),
+    ]
+    assert [e.guard_prefix for e in entries] == [None, ")]}'\n", None, None]
+    assert result.bundle.network[2] == _RESULT
+    assert result.attempts[-1].steps[0].outcome == "done"
+    assert decode(encode(result.bundle)) == result.bundle
+
+
+def test_an_engineer_capture_keeps_its_own_site_s_calls_first_within_its_cap(
+    browser: Browser, server: Server, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(CAPS, "all", Caps(bodies=1, page_bytes=CAPS["all"].page_bytes))
+    policy = FetchPolicy(method_hint="browser", browser_timeout_s=10, calls="all")
+
+    result = browser.fetch(server.url("/engineer"), policy)
+
+    assert [e.url for e in result.bundle.manifest.network_bodies] == [server.url("/api/items")]
 
 
 def test_a_data_call_whose_body_never_ends_is_left_out_and_the_page_kept(browser: Browser, server: Server) -> None:

@@ -96,7 +96,7 @@ def fetch_result(
         timings_ms={"total": duration_ms, **(timings or {})},
         html_sha256=sha256_hex(content.body),
         raw_html_sha256=None if raw_body is None else sha256_hex(raw_body),
-        network_bodies=tuple(entry for entry, _ in content.network),
+        network_bodies=tuple(_redacted_call(entry, policy) for entry, _ in content.network),
         fetch_policy=policy.model_dump(mode="json"),
         engine_version=engine_version,
         item_areas=content.item_areas,
@@ -130,6 +130,13 @@ def _redacted(headers: HeaderList, policy: FetchPolicy) -> HeaderList:
         return headers
     names = policy.context.header_names()
     return tuple((name, REDACTED if name.lower() in names else value) for name, value in headers)
+
+
+def _redacted_call(entry: NetworkBody, policy: FetchPolicy) -> NetworkBody:
+    """A call's entry with the value of each request header the caller set redacted (`_redacted`)."""
+    if entry.request_headers is None or policy.context is None or not policy.context.headers:
+        return entry
+    return entry.model_copy(update={"request_headers": _redacted(entry.request_headers, policy)})
 
 
 def as_error(result: FetchResult, reason: str) -> FetchResult:

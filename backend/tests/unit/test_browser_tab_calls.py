@@ -19,7 +19,9 @@ class _Page:
 
 def _tab(responses: list[Any]) -> Any:
     rendered = SimpleNamespace(
-        page=_Page(), calls=SimpleNamespace(responses=responses, actions=0, finished=lambda _response: True)
+        page=_Page(),
+        response=SimpleNamespace(url=_Page.url),
+        calls=SimpleNamespace(responses=responses, actions=0, finished=lambda _response: True),
     )
     return browser_tab._PatchrightTab(rendered, url=_Page.url, engine_version="test", started=0.0, steps=())  # type: ignore[arg-type]
 
@@ -27,7 +29,7 @@ def _tab(responses: list[Any]) -> Any:
 def test_a_response_arriving_while_bodies_are_read_waits_for_the_next_call(monkeypatch: pytest.MonkeyPatch) -> None:
     responses: list[Any] = ["r0", "r1"]
 
-    async def bodies(read: list[Any]) -> tuple[Any, ...]:
+    async def bodies(read: list[Any], _page_url: str) -> tuple[Any, ...]:
         if read == ["r0"]:
             responses.append("r2")  # the page answers another call meanwhile
         await asyncio.sleep(0)

@@ -2,6 +2,11 @@
 bodies the page loads and the HTML fragments it fetches from its own site, the network data-source layer's input
 (Appendix A #59) and API discovery's (§7.2 step 1); the resources it loaded, counted; the rendered area of a listing's
 item blocks; and the screenshot or PDF the policy asks for.
+
+An engineer capture (`FetchPolicy.calls` `all`) keeps every call instead, which an engineer chooses a custom recipe's
+calls from: each fetch and XMLHttpRequest answer on any site, and each document the main frame navigates to after a
+page step (a form submit), unless its answer is an event stream or binary (`_UNKEPT`), within larger caps
+(`CAPS`); its own site's calls first.
 """
 
 import asyncio
@@ -19,7 +24,7 @@ from patchright.async_api import Frame, Page, Request, Response
 from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.items import element_path, item_groups, lxml_root
 from crawlerai.acquire.public_suffix import default_suffixes
-from crawlerai.acquire.types import FetchPolicy
+from crawlerai.acquire.types import CallsMode, FetchPolicy
 from crawlerai.storage.artifacts import PDF, SCREENSHOT
 from crawlerai.storage.capture_bundle import (
     FLIGHT_TYPE,
@@ -27,6 +32,7 @@ from crawlerai.storage.capture_bundle import (
     WASM_TYPE,
     HeaderList,
     NetworkBody,
+    guard_prefix,
     is_html,
     network_file,
     network_json,
@@ -36,9 +42,12 @@ from crawlerai.storage.capture_bundle import (
 __all__ = [
     "AREAS_JS",
     "ARTIFACT_TIMEOUT_S",
+    "CAPS",
     "DATA_REQUESTS",
     "JSON_BODIES_MAX",
     "JSON_PAGE_MAX_BYTES",
+    "Answer",
+    "Caps",
     "DataCalls",
     "Resources",
     "capture_artifacts",
@@ -52,6 +61,31 @@ __all__ = [
 _JSON_BODY_MAX_BYTES = 2_000_000
 JSON_BODIES_MAX = 50
 JSON_PAGE_MAX_BYTES = 10_000_000
+
+
+@dataclass(frozen=True)
+class Caps:
+    """How many bodies a capture keeps, and how many bytes of them in all."""
+
+    bodies: int
+    page_bytes: int
+
+
+# An engineer capture keeps every call (`all`), so more of them: 500 bodies, 50 MB per page; a body's cap stays 2 MB.
+CAPS: Final[dict[CallsMode, Caps]] = {
+    "data": Caps(JSON_BODIES_MAX, JSON_PAGE_MAX_BYTES),
+    "all": Caps(500, 50_000_000),
+}
+# The answers an engineer capture leaves out, by media type essence: an event stream (HTML Standard §9.2
+# `text/event-stream`, which never ends), and binary media (RFC 2046 §4: the `image`, `audio` and `video` top-level
+# types, and `font`, RFC 8081; `application/octet-stream`, §4.5.1; archives and PDF documents, whose subtypes name
+# `zip` or `pdf`). A WebSocket is no response at all.
+_UNKEPT_TOPS: Final = frozenset({"image", "audio", "video", "font"})
+_UNKEPT_TYPES: Final = frozenset({"text/event-stream", "application/octet-stream"})
+_UNKEPT_PARTS: Final = ("zip", "pdf")
+# The reads an engineer capture starts early (`DataCalls.early`) per body it keeps: room for the other sites' calls
+# its own site's go before (`json_bodies`), bounded on a page that calls without end.
+_EARLY_READS_PER_BODY = 2
 # The bodies read from the browser at once: each read is a round trip to it, and at most this many bodies of at most
 # `_JSON_BODY_MAX_BYTES` are held before the page cap is applied, so the reads stay bounded.
 _READS_AT_ONCE = 5
@@ -89,14 +123,26 @@ AREAS_JS: Final = """(elements) => Array.from(elements, ([path, tag]) => {
 _MEASURED_BLOCKS_MAX = 2_000
 
 
+@dataclass(frozen=True)
+class Answer:
+    """A kept answer as read from the browser: its body, and the headers of its request and its response as a capture
+    records them (`_headers`)."""
+
+    data: bytes
+    request_headers: HeaderList | None
+    response_headers: HeaderList | None
+
+
 @dataclass
 class DataCalls:
     """The data responses a page has received so far (when the policy captures them), in arrival order, each with how
     many browser actions the page had performed when it arrived; `actions` is that count now, which a listing's
-    browser actions raise (`browser_tab`)."""
+    browser actions (`browser_tab`) and the policy's page steps (`browser.stepped`) raise. `mode` is the calls the
+    capture keeps (`FetchPolicy.calls`)."""
 
     responses: list[tuple[Response, int]] = field(default_factory=list)
     actions: int = 0
+    mode: CallsMode = "data"
     in_flight: set[Request] = field(default_factory=set)  # the data calls (`_CALLS`) not answered yet
     answered: int = 0  # the data calls that have ended, answered or failed
     idle_since: float = 0.0  # on `time.monotonic`: when the last data call in flight ended
@@ -104,6 +150,14 @@ class DataCalls:
     # once its request is done: reading one still arriving waits for its end, which a body that never ends (a stream,
     # a keepalive beacon held open) never reaches, and the read would outlast the fetch's budget.
     done: set[Request] = field(default_factory=set)
+    # In `all` mode each kept answer is read once its request is done (`_read`), not when the page is: a page step that
+    # navigates the main frame discards the bodies of the document it leaves (Chromium keeps a response's body with
+    # the document that loaded it). The reads are bounded as `json_bodies`' are: `_READS_AT_ONCE` at a time, and at
+    # most `_EARLY_READS_PER_BODY` times the capture's caps (`CAPS`) in reads started and bytes read.
+    early: dict[Request, asyncio.Task[Answer | None]] = field(default_factory=dict)
+    kept: dict[Request, Response] = field(default_factory=dict)
+    early_bytes: int = 0
+    reads: asyncio.Semaphore = field(default_factory=lambda: asyncio.Semaphore(_READS_AT_ONCE))
 
     def on_request(self, request: Request, page_url: str) -> None:
         """Count `request` in flight when it is a data call of the page at `page_url` (`_CALLS`)."""
@@ -118,6 +172,22 @@ class DataCalls:
                 self.idle_since = time.monotonic()
         if request.resource_type in DATA_REQUESTS:
             self.done.add(request)
+        response = self.kept.pop(request, None)
+        if response is not None and len(self.early) < _EARLY_READS_PER_BODY * CAPS[self.mode].bodies:
+            self.early[request] = asyncio.get_running_loop().create_task(self._read_early(response))
+
+    async def _read_early(self, response: Response) -> Answer | None:
+        async with self.reads:
+            if self.early_bytes >= _EARLY_READS_PER_BODY * CAPS[self.mode].page_bytes:
+                return None
+            answer = await _read(response, self.mode)
+        self.early_bytes += 0 if answer is None else len(answer.data)
+        return answer
+
+    def cancel(self) -> None:
+        """Stop the early reads not done: the page is no longer read."""
+        for task in self.early.values():
+            task.cancel()
 
     def finished(self, response: Response) -> bool:
         """Whether `response`'s body can be read without waiting: its request is done."""
@@ -125,12 +195,17 @@ class DataCalls:
 
     def on_response(self, response: Response, main_frame: Frame) -> None:
         request = response.request
-        # The main frame's navigation responses are the page itself, not data it loaded.
-        if request.is_navigation_request() and request.frame == main_frame:
-            return
-        data = request.resource_type in DATA_REQUESTS and _data_label(response) is not None
-        if data or _fragment(response, main_frame.url):
+        navigation = request.is_navigation_request() and request.frame == main_frame
+        if self.mode == "all":
+            kept = _any_call(response, navigation, self.actions)
+        else:
+            # The main frame's navigation responses are the page itself, not data it loaded.
+            data = request.resource_type in DATA_REQUESTS and _data_label(response) is not None
+            kept = not navigation and (data or _fragment(response, main_frame.url))
+        if kept:
             self.responses.append((response, self.actions))
+            if self.mode == "all":
+                self.kept[request] = response
 
 
 @dataclass
@@ -210,6 +285,21 @@ def _block_refs(body: bytes) -> list[tuple[str, str]]:
     return [(element_path(block), str(block.tag)) for block in blocks[:_MEASURED_BLOCKS_MAX]]
 
 
+def _any_call(response: Response, navigation: bool, actions: int) -> bool:
+    """Whether an engineer capture keeps `response`: a fetch or XMLHttpRequest answer, or a document the main frame
+    navigated to after a page step (`actions` > 0: the first is the page itself), unless it is unkept (`_unkept`)."""
+    request = response.request
+    called = request.resource_type in _CALLS or (navigation and actions > 0)
+    return called and not _unkept(response.headers.get("content-type", ""))
+
+
+def _unkept(content_type: str) -> bool:
+    """Whether an answer of `content_type` is one an engineer capture leaves out (`_UNKEPT_TOPS`)."""
+    essence = content_type.split(";", 1)[0].strip().lower()
+    top, _, subtype = essence.partition("/")
+    return top in _UNKEPT_TOPS or essence in _UNKEPT_TYPES or any(part in subtype for part in _UNKEPT_PARTS)
+
+
 def _same_site(url: str, page_url: str) -> bool:
     """Whether `url` is on the same site as `page_url` (HTML Standard §7.1.1: the same registrable domain)."""
     suffixes = default_suffixes()
@@ -259,24 +349,37 @@ def _data_essence(essence: str) -> bool:
     return essence in ("application/json", "text/json", FLIGHT_TYPE) or essence.endswith("+json")
 
 
-async def json_bodies(responses: list[tuple[Response, int]]) -> tuple[tuple[NetworkBody, bytes], ...]:
-    """The JSON, Flight and HTML fragment bodies of `responses` (each with the action count it arrived at;
-    `DataCalls.on_response` admitted them) a capture keeps, within its caps, in response order. A call whose request
-    body is past the per-body cap is left out before its answer is read; the answers are read `_READS_AT_ONCE` at a
-    time, and none after the capture is full."""
+async def json_bodies(
+    responses: list[tuple[Response, int]],
+    page_url: str,
+    mode: CallsMode = "data",
+    early: Mapping[Request, asyncio.Task[Answer | None]] | None = None,
+) -> tuple[tuple[NetworkBody, bytes], ...]:
+    """The bodies of `responses` (each with the action count it arrived at; `DataCalls.on_response` admitted them) a
+    capture of the page at `page_url` keeps under `mode`, within its caps (`CAPS`), in response order; in `all`, the
+    page's own site's first. An answer read `early` (`DataCalls.early`) is not read again. A call whose request body is
+    past the per-body cap is left out before its answer is read; the answers are read `_READS_AT_ONCE` at a time, and
+    none after the capture is full."""
+    read_early = early or {}
+    caps = CAPS[mode]
+    if mode == "all":
+        # A stable sort: each site's calls stay in response order.
+        responses = sorted(responses, key=lambda entry: not _same_site(entry[0].url, page_url))
     sent = ((response, action) for response, action in responses if _request_size(response) <= _JSON_BODY_MAX_BYTES)
     captured: list[tuple[NetworkBody, bytes]] = []
     total = 0
     # No more answers are read than the capture has room for.
-    while len(captured) < JSON_BODIES_MAX and (
-        batch := list(islice(sent, min(_READS_AT_ONCE, JSON_BODIES_MAX - len(captured))))
+    while len(captured) < caps.bodies and (
+        batch := list(islice(sent, min(_READS_AT_ONCE, caps.bodies - len(captured))))
     ):
-        bodies = await asyncio.gather(*(_json_body(response) for response, _ in batch))
-        for (response, action), data in zip(batch, bodies, strict=True):
-            if data is None or total + len(data) > JSON_PAGE_MAX_BYTES:
+        answers = await asyncio.gather(
+            *(read_early.get(response.request) or _read(response, mode) for response, _ in batch)
+        )
+        for (response, action), answer in zip(batch, answers, strict=True):
+            if answer is None or total + len(answer.data) > caps.page_bytes:
                 continue
-            captured.append((await _entry(response, action, data, len(captured)), data))
-            total += len(data)
+            captured.append((_entry(response, action, answer, len(captured), page_url, mode), answer.data))
+            total += len(answer.data)
     return tuple(captured)
 
 
@@ -284,12 +387,21 @@ def _request_size(response: Response) -> int:
     return len(response.request.post_data_buffer or b"")
 
 
-async def _entry(response: Response, action: int, data: bytes, index: int) -> NetworkBody:
-    """The manifest entry of the `index`th body a capture keeps, `data`, answering `response`'s request."""
-    request = response.request
+async def _read(response: Response, mode: CallsMode) -> Answer | None:
+    """The answer to `response`'s request a capture under `mode` keeps (`_json_body`), None when it keeps none."""
+    data = await _json_body(response, mode)
+    if data is None:
+        return None
     request_headers, response_headers = await asyncio.gather(
-        _headers(request.headers_array()), _headers(response.headers_array())
+        _headers(response.request.headers_array()), _headers(response.headers_array())
     )
+    return Answer(data, request_headers, response_headers)
+
+
+def _entry(response: Response, action: int, answer: Answer, index: int, page_url: str, mode: CallsMode) -> NetworkBody:
+    """The manifest entry of the `index`th body a capture of the page at `page_url` keeps under `mode`, `answer`,
+    answering `response`'s request; its guard prefix is read for an engineer capture (`all`), which shows it."""
+    request, data = response.request, answer.data
     return NetworkBody(
         url=response.url,
         status=response.status,
@@ -298,23 +410,30 @@ async def _entry(response: Response, action: int, data: bytes, index: int) -> Ne
         file=network_file(index),
         method=request.method,
         request_body=_text_or_none(request.post_data_buffer),
-        request_headers=request_headers,
-        response_headers=response_headers,
+        request_headers=answer.request_headers,
+        response_headers=answer.response_headers,
         resource_type=request.resource_type,
         action=action,
+        same_site=_same_site(response.url, page_url),
+        guard_prefix=guard_prefix(data) if mode == "all" else None,
     )
 
 
-async def _json_body(response: Response) -> bytes | None:
-    """The response's body when it is not empty, within the per-body cap, and data: labelled JSON, Flight or HTML (an
-    admitted fragment, `_fragment`), or sniffed as JSON text holding an object or an array (`network_json`)."""
+async def _json_body(response: Response, mode: CallsMode) -> bytes | None:
+    """The response's body when it is within the per-body cap and, in `data` mode, not empty and data: labelled JSON,
+    Flight or HTML (an admitted fragment, `_fragment`), or sniffed as JSON text holding an object or an array
+    (`network_json`). In `all` mode any answer `DataCalls.on_response` admitted is kept, an empty one too."""
     if await _json_size(response) > _JSON_BODY_MAX_BYTES:
         return None
     try:
         data = await response.body()
     except PlaywrightError:
         return None  # no body to read: a redirect, or a request that failed or was evicted
-    if not data or len(data) > _JSON_BODY_MAX_BYTES:
+    if len(data) > _JSON_BODY_MAX_BYTES:
+        return None
+    if mode == "all":
+        return data
+    if not data:
         return None  # an empty body (a 204, RFC 9110 §15.3.5) holds no JSON text
     return data if _data_label(response) or _html_label(response) or _sniffed(data) else None
 

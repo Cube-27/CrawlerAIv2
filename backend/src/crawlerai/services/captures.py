@@ -1,5 +1,10 @@
-"""The captures service: replay a stored capture with the current engine,
-for debugging, and read a stored capture's markdown again. Nothing either makes is stored.
+"""The captures service: an engineer capture of a sample page, replay a stored capture with the current engine,
+for debugging, and read a stored capture's markdown again. Nothing a replay or a read makes is stored.
+
+An engineer capture (`capture`) is a scrape of the page for `records` of the schema, run while the caller waits, as
+`POST /v1/scrape` runs one (a `scrape` job, `services.scrape`), in the browser with the caller's page steps, cookies
+and proxy pool, keeping every call the page makes (`FetchPolicy.calls` `all`): the capture and its record are stored,
+a sample page an engineer chooses a custom recipe's calls from (`services.recipe_calls`).
 
 A capture carries no schema of its own, so it replays against each schema its stored records follow, with the
 schema's current document (a schema is edited in place). A schema the site has an active config for replays
@@ -9,24 +14,46 @@ window. No replay calls an LLM: `extract_page` gets no role C.
 
 import asyncio
 from collections import OrderedDict
+from typing import Annotated, Final
 
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from crawlerai.acquire.types import AttemptRecord
 from crawlerai.config_ir.active import active_config
+from crawlerai.config_ir.page_actions import MAX_ACTIONS, Action, WaitFor, wait_for_action
 from crawlerai.content.markdown import markdown
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.errors import Refusal
-from crawlerai.db.models import Capture, CaptureId, Extraction, JobId, Record, SiteId, TaskRecord, UrlTask
+from crawlerai.db.models import (
+    Capture,
+    CaptureId,
+    Extraction,
+    JobId,
+    PageKind,
+    Record,
+    SchemaId,
+    SiteId,
+    TaskRecord,
+    UrlTask,
+)
+from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.records import record_confidence
 from crawlerai.resolve.task import ActiveConfig, page_records
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.services.records import ExtractedRecord
+from crawlerai.services import scrape
+from crawlerai.services.fetch_options import FetchOptions, Secrets
+from crawlerai.services.page_run import PageOutcome
+from crawlerai.services.records import ExtractedRecord, ScrapedRecord
+from crawlerai.services.runtime import Caller
+from crawlerai.services.scrape import MAX_TIMEOUT_S, ScrapeRequest
+from crawlerai.services.scrape_request import Input, SchemaById
 from crawlerai.storage.artifacts import ARTIFACT_TYPES, artifact_key
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
-from crawlerai.storage.capture_bundle import CaptureBundle, decode
+from crawlerai.storage.capture_bundle import CaptureBundle, HeaderList, decode
 
 _COLUMNS = (Capture.id, Capture.site_id, Capture.url, Capture.object_key)
 _Capture = Row[CaptureId, SiteId, str, str]
@@ -42,6 +69,88 @@ class CaptureNotFound(Refusal, LookupError):
 
 class NotReplayable(Exception):
     """The capture exists but no record was made from it, so no schema names what to extract."""
+
+
+class CaptureRequest(Input):
+    """The body of `POST /v1/captures`: a sample page of `schema_id`'s page kind, rendered in the browser after the
+    page steps (`actions`, `wait_for`, as `fetch` names them), with the caller's `cookies`, through `proxy_pool`."""
+
+    url: str
+    schema_id: SchemaId
+    page_kind: PageKind
+    actions: Annotated[list[Action], Field(max_length=MAX_ACTIONS, default_factory=list)]
+    wait_for: WaitFor | None = None
+    cookies: Secrets = Field(default_factory=dict)
+    proxy_pool: str | None = None
+    locale: str | None = None
+    timeout_s: float = Field(default=60, gt=0, le=MAX_TIMEOUT_S)
+
+    @field_validator("url")
+    @classmethod
+    def _absolute_http_url(cls, url: str) -> str:
+        if canonicalize(url) is None:
+            raise ValueError("not an absolute http or https URL")
+        return url
+
+    @field_validator("wait_for")
+    @classmethod
+    def _translatable(cls, wait_for: WaitFor | None) -> WaitFor | None:
+        if wait_for is not None:
+            wait_for_action(wait_for)  # raises for a selector cssselect does not translate
+        return wait_for
+
+    def scrape_request(self) -> ScrapeRequest:
+        fetch = FetchOptions(
+            method_hint="browser",
+            cookies=self.cookies,
+            actions=self.actions,
+            wait_for=self.wait_for,
+            proxy_pool=self.proxy_pool,
+            cache="bypass",
+        )
+        return ScrapeRequest(
+            url=self.url,
+            formats=["records"],
+            schema=SchemaById(id=self.schema_id),
+            page_kind=self.page_kind,
+            fetch=fetch,
+            locale=self.locale,
+            timeout_s=self.timeout_s,
+        )
+
+
+class CaptureResult(BaseModel):
+    """An engineer capture: the stored capture (None when nothing was sent: `reason` says why, as a scrape's does),
+    how its page ended, the records stored from it, and every fetch attempt."""
+
+    capture_id: CaptureId | None
+    url: str
+    outcome: PageOutcome
+    reason: str | None
+    records: list[ScrapedRecord]
+    attempts: tuple[AttemptRecord, ...]
+
+
+async def capture(caller: Caller, request: CaptureRequest) -> CaptureResult:
+    """An engineer capture of `request.url` (module docstring). Raises as `services.scrape.scrape` does."""
+    runtime = caller.runtime
+    scraped = await scrape.scrape(
+        runtime.database,
+        runtime.fetching,
+        request.scrape_request(),
+        llm=runtime.llm,
+        data=runtime.engine_data,
+        margins=runtime.drift_margins,
+        calls="all",
+    )
+    return CaptureResult(
+        capture_id=scraped.capture_id,
+        url=request.url,
+        outcome=scraped.outcome,
+        reason=scraped.reason,
+        records=scraped.records or [],
+        attempts=() if scraped.fetch is None else scraped.fetch.attempts,
+    )
 
 
 async def replay(
@@ -106,6 +215,64 @@ async def artifact(engine: AsyncEngine, store: ObjectStore, capture_id: CaptureI
         return await asyncio.to_thread(store.get, artifact_key(capture.object_key, name))
     except (ObjectNotFound, ValueError) as e:  # a ValueError: the bundle is outside `captures/`, so has none
         raise CaptureNotFound(f"capture {capture_id} has no artifact {name!r}") from e
+
+
+class CallDetail(BaseModel):
+    """One call a capture kept (`GET /v1/captures/{id}/calls/{n}`): the request as sent (headers as recorded: no
+    cookies, the caller's own values masked), the answer's status, headers and text (its UTF-8 decoding, at most
+    `ANSWER_MAX_BYTES`), the page step it followed and whether it went to the page's own site, and the guard prefix
+    its JSON opens with."""
+
+    index: int
+    method: str | None
+    url: str
+    status: int
+    content_type: str | None
+    resource_type: str | None
+    step: int | None
+    same_site: bool | None
+    guard_prefix: str | None
+    request_headers: HeaderList | None
+    request_body: str | None
+    response_headers: HeaderList | None
+    size: int
+    answer: str
+
+
+# A capture keeps no body past 2 MB (`acquire.browser_capture`); the answer an API reply holds is bounded the same.
+ANSWER_MAX_BYTES: Final = 2_000_000
+
+
+async def call(engine: AsyncEngine, store: ObjectStore, capture_id: CaptureId, index: int) -> CallDetail:
+    """The `index`th call the capture kept. Raises `CaptureNotFound` for a capture that is gone or has no such call."""
+    bundle = await bundle_of(engine, store, capture_id)
+    entries = bundle.manifest.network_bodies
+    if not 0 <= index < len(entries):
+        raise CaptureNotFound(f"capture {capture_id} has no call {index}")
+    entry, data = entries[index], bundle.network[index]
+    return CallDetail(
+        index=index,
+        method=entry.method,
+        url=entry.url,
+        status=entry.status,
+        content_type=entry.content_type,
+        resource_type=entry.resource_type,
+        step=entry.action,
+        same_site=entry.same_site,
+        guard_prefix=entry.guard_prefix,
+        request_headers=entry.request_headers,
+        request_body=entry.request_body,
+        response_headers=entry.response_headers,
+        size=len(data),
+        answer=data[:ANSWER_MAX_BYTES].decode("utf-8", errors="replace"),
+    )
+
+
+async def bundle_of(engine: AsyncEngine, store: ObjectStore, capture_id: CaptureId) -> CaptureBundle:
+    """The capture's stored bundle. Raises `CaptureNotFound` for a capture that is gone."""
+    async with engine.connect() as conn:
+        capture = await _capture(conn, capture_id)
+    return await _bundle(store, capture)
 
 
 async def _capture(conn: AsyncConnection, capture_id: CaptureId) -> _Capture:
