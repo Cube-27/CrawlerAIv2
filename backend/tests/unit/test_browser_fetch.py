@@ -126,8 +126,11 @@ _SHARED_WORKER = (
 };"""
 )
 # A page that writes down the screen, window and viewport it is laid out in (CSSOM View), at its first rendering
-# opportunity (HTML Standard §8.1.7.3 `requestAnimationFrame`): before it, headless Chrome may still report an
-# `outerWidth` and `outerHeight` of 0 to a new document, with or without a viewport.
+# opportunity (HTML Standard §8.1.7.3 `requestAnimationFrame`). Before it, Chrome, headed or headless, may report an
+# `outerWidth` and `outerHeight` of 0: a navigation's new document gets a new widget, which learns its window's
+# rectangle only when the browser shows it after the commit, so a parse-time script races that message (Chromium
+# `RenderWidgetHostImpl::SendScreenRects`). Measured on Google Chrome 156 with an inline head script, 0 in 26 of 39
+# page-driven navigations headless and 22 of 39 headed.
 _GEOMETRY = b"""<html><body><p>Geometry page</p><pre id="geometry"></pre><script>
 requestAnimationFrame(() => document.getElementById('geometry').textContent = JSON.stringify({
   width: screen.width, height: screen.height, availWidth: screen.availWidth, availHeight: screen.availHeight,
