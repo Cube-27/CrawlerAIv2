@@ -78,7 +78,7 @@ check-size-gates:
 check-complexity:
 	cd backend && $(UV_RUN) complexipy --no-ignore
 
-# Visual values only in frontend/src/app/theme.css, UI only from @heroui/react (openspec/conventions/DESIGN.md, Theming and Stack).
+# Visual values only in frontend/src/app/theme.css, UI only from @heroui/react (docs/rules.md).
 check-theme:
 	cd backend && $(UV_RUN) python ../tools/theme_only_check.py
 
@@ -88,7 +88,6 @@ check-tools:
 	cd backend && $(UV_RUN) mypy --strict ../tools
 	cd backend && $(UV_RUN) pytest ../tools/tests
 	cd backend && $(UV_RUN) python ../tools/site_literal_scan.py --public
-	cd backend && $(UV_RUN) python ../tools/decision_ids.py
 
 # Same steps and order as CI's backend-static and backend jobs. The migration round trip and the tests (tests/db needs a
 # live Postgres) run against scratch databases recreated each run, so the dev database keeps its data: the tests run in

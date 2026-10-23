@@ -7,7 +7,7 @@ disable-model-invocation: true
 # CrawlerAI v2 orchestrator
 
 1. Read `docs/agents/orchestrator.md` in full and follow it. It overrides your defaults.
-2. Read `docs/agents/plan.md` (roadmap and status) and skim `docs/agents/builder-protocol.md` (what builders are
+2. Read the owner's current plan (outside the repo) and skim `docs/agents/builder-protocol.md` (what builders are
    told, so your briefs never contradict it).
 3. Check you are inside herdr: `test "${HERDR_ENV:-}" = 1`. If not, tell the owner to start `herdr` and run
    `claude --permission-mode auto` inside it, then stop.

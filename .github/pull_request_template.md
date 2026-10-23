@@ -27,6 +27,6 @@ reason; a gain from fewer than 3 hosts is flagged. -->
 ## Checklist
 
 - [ ] No site literal (hostname, site, brand or retailer name, or page string) outside `backend/src/crawlerai/adapters/` (C3).
-- [ ] No list entry, word, selector or regex for a single page (C4, C5); no §22 candidate (C13).
+- [ ] No list entry, word, selector or regex for a single page (C4, C5); no unadmitted candidate (C13).
 - [ ] No test named after a site or asserting one site's output (C9); redundant tests deleted.
-- [ ] Behaviour changes edit `openspec/specs/`.
+- [ ] `docs/` updated if the change makes them wrong.

@@ -63,7 +63,7 @@ line-length = 120
 
 [tool.ruff.lint]
 # S102 (exec) and S307 (eval) come with "S": LLM output is never executed.
-# PT012: one statement per `pytest.raises` block (SonarCloud S5778 recurred; openspec/conventions/RECURRING.md).
+# PT012: one statement per `pytest.raises` block (SonarCloud S5778 recurred).
 # PT018: one condition per assert, and PT022: no `yield` in a fixture without teardown (SonarCloud S9073 and S9100
 # recurred). C420: `dict.fromkeys` for one value per key (S7519); FAST: no `response_model` the return annotation
 # already gives (S8409), and FastAPI's other stock checks.

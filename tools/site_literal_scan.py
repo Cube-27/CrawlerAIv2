@@ -45,8 +45,8 @@ REPO = Path(__file__).resolve().parents[1]
 TLD_LIST = REPO / "backend/data/iana/tlds-alpha-by-domain.txt"
 DEFAULT_ALLOWLIST = PurePosixPath("tools/site_literal_allowlist.txt")
 
-# Documentation is exempt (D-0004): `docs/` and, since the OpenSpec layout, `openspec/` (D-1139).
-EXEMPT_DIRS = ("backend/src/crawlerai/adapters/", "docs/", "openspec/", ".github/")
+# Documentation is exempt (D-0004): `docs/`, the frozen archive included.
+EXEMPT_DIRS = ("backend/src/crawlerai/adapters/", "docs/", ".github/")
 EXEMPT_NAMES = frozenset({"pnpm-lock.yaml", "package.json", "pyproject.toml", "LICENSE", "NOTICE"})
 EXEMPT_SUFFIXES = (".lock",)
 DATA_MANIFEST = "backend/data/manifest.json"
