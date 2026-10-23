@@ -1,3 +1,4 @@
+import { Link } from "@heroui/react";
 import { useParams } from "react-router";
 import { useSiteConfigs } from "../../api/hooks/configs";
 import { problemOf } from "../../api/hooks/query";
@@ -5,11 +6,13 @@ import { EmptyView } from "../../components/EmptyView";
 import { LoadingView } from "../../components/LoadingView";
 import { PageHeader } from "../../components/PageHeader";
 import { ProblemAlert } from "../../components/ProblemAlert";
+import { recipesPath } from "../recipes/paths";
 import { ConfigVersionsTable, useSchemaLabel } from "./ConfigTables";
 import { SiteLearnForm } from "./LearnAction";
 
 /** One site's config versions: status and field status counts per version; a row opens one. "Learn a
- * config" starts learning for a schema chosen here, so a site without a config can get its first. */
+ * config" starts learning for a schema chosen here, so a site without a config can get its first; "Recipes" opens
+ * the site's custom recipes. */
 export function SiteScreen() {
   const { host = "" } = useParams();
   const configs = useSiteConfigs(host);
@@ -18,7 +21,7 @@ export function SiteScreen() {
 
   return (
     <section className="flex flex-col gap-stack">
-      <PageHeader title={host} />
+      <PageHeader title={host} actions={<Link href={recipesPath(host)}>Recipes</Link>} />
       {configs.isPending ? <LoadingView label="Loading the site's configs" /> : null}
       {problem === null ? null : <ProblemAlert problem={problem} />}
       {configs.isSuccess && configs.data.length === 0 ? (
