@@ -28,6 +28,7 @@ const response: ScrapeResponse = {
         duration_ms: 2400,
         steps: [],
         error: null,
+        challenge: null,
       },
     ],
   },

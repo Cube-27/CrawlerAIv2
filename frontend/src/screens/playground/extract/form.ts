@@ -1,5 +1,4 @@
 import type { ExtractRequest } from "../../../api/jobs";
-import { parseJsonObject } from "../../../api/json";
 import type { FetchMember, MethodHint, PageKind, SchemaRef } from "../../../api/scrape";
 import {
   DEFAULT_ADVANCED,
@@ -9,6 +8,7 @@ import {
   type AdvancedFetch,
 } from "../advanced";
 import type { SchemaPageKind } from "../../../api/schemas";
+import { EMPTY_FORM, newSchemaOf, parseForm } from "../../../components/schemaDocument";
 import {
   llmBudget,
   NO_ERRORS,
@@ -121,7 +121,9 @@ function extractSchema(form: ExtractFormState): SchemaRef | null {
     case "fields":
       return options.fields.length === 0 ? null : { fields: [...options.fields] };
     case "inline": {
-      const inline = parseJsonObject(options.inlineSchema);
+      // The shape the schema editor's JSON tab reads; the schema rules are the server's.
+      const parsed = parseForm(options.inlineSchema, "create", EMPTY_FORM);
+      const inline = parsed.kind === "ok" ? newSchemaOf(parsed.form) : null;
       return inline === null ? null : { inline };
     }
     default: {

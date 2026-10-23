@@ -66,6 +66,7 @@ function scrapeResponse(overrides: Partial<ScrapeResponse> = {}): ScrapeResponse
           duration_ms: 120,
           steps: [],
           error: null,
+          challenge: null,
         },
         {
           method: "browser",
@@ -74,6 +75,7 @@ function scrapeResponse(overrides: Partial<ScrapeResponse> = {}): ScrapeResponse
           duration_ms: 2400,
           steps: [],
           error: null,
+          challenge: null,
         },
       ],
     },

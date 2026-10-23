@@ -54,7 +54,14 @@ _HTML_CSS = HTMLTranslator()
 
 
 class _Model(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid", validate_by_name=True, serialize_by_alias=True)
+    # The API sends every member, defaulted ones too, so its document marks them all `required` (OpenAPI 3.1).
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+        validate_by_name=True,
+        serialize_by_alias=True,
+        json_schema_serialization_defaults_required=True,
+    )
 
 
 # --- post ops -------------------------------------------------------------------------------------------------------

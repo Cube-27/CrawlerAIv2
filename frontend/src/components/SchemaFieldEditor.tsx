@@ -170,7 +170,7 @@ export function SchemaFieldEditor({
       />
       <TypeParameters key={spec.type} spec={spec} onChange={setSpec} />
       <Checkbox
-        isSelected={spec.required}
+        isSelected={spec.required === true}
         onChange={(required) => {
           setSpec({ ...spec, required });
         }}
@@ -185,7 +185,7 @@ export function SchemaFieldEditor({
       <Choices
         label="Scope"
         options={SCOPE_OPTIONS}
-        value={spec.scope}
+        value={spec.scope ?? null}
         onChange={(scope) => {
           setSpec({ ...spec, scope });
         }}

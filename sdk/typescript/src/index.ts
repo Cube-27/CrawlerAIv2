@@ -9,28 +9,13 @@ export type { components } from "./schema.js";
 
 type S = components["schemas"];
 
-/** The requests, as the API's schemas define them; members with a server default are optional here. */
-type Defaulted<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
-export type ScrapeRequest = Defaulted<
-  S["ScrapeRequest"],
-  Exclude<keyof S["ScrapeRequest"], "url" | "formats">
->;
-export type MapRequest = Defaulted<S["MapRequest"], Exclude<keyof S["MapRequest"], "url">>;
-export type CrawlRequest = Defaulted<
-  S["CrawlRequest"],
-  Exclude<keyof S["CrawlRequest"], "url" | "formats">
->;
-export type BatchScrapeRequest = Defaulted<
-  S["BatchScrapeRequest"],
-  Exclude<keyof S["BatchScrapeRequest"], "urls" | "formats">
->;
-export type ExtractRequest = Defaulted<
-  S["ExtractRequest"],
-  Exclude<keyof S["ExtractRequest"], "urls" | "page_kind" | "schema">
->;
-export type SearchRequest = Omit<Defaulted<S["SearchRequest"], "limit" | "scrape">, "scrape"> & {
-  scrape?: Partial<S["SearchScrape"]>;
-};
+/** The requests, as the API's schemas define them; members with a server default are optional. */
+export type ScrapeRequest = S["ScrapeRequest"];
+export type MapRequest = S["MapRequest"];
+export type CrawlRequest = S["CrawlRequest"];
+export type BatchScrapeRequest = S["BatchScrapeRequest"];
+export type ExtractRequest = S["ExtractRequest"];
+export type SearchRequest = S["SearchRequest"];
 
 export type ScrapeResult = S["ScrapeResult"];
 export type MapResult = S["MapResult"];

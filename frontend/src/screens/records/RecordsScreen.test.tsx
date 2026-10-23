@@ -7,6 +7,7 @@ import type { RecordPage, ReplayResult, StoredRecord } from "../../api/records";
 import type { SchemaDef } from "../../api/schemas";
 import { stubApi } from "../../test/api";
 import { recordField } from "../../test/records";
+import { fieldSpec } from "../../test/schemas";
 
 const SCHEMA_ID = "0192a000-0000-7000-8000-000000000101";
 const OTHER_SCHEMA_ID = "0192a000-0000-7000-8000-000000000102";
@@ -22,9 +23,11 @@ const schema: SchemaDef = {
   status: "active",
   page_kind: "detail",
   required_groups: [["title"]],
+  field_order: ["title", "price"],
+  labels: null,
   fields: {
-    title: { type: "text", required: true, scope: "row" },
-    price: { type: "money", required: false, scope: "row" },
+    title: fieldSpec({ type: "text", required: true, scope: "row" }),
+    price: fieldSpec({ type: "money", required: false, scope: "row" }),
   },
 };
 

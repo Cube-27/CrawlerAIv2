@@ -6,6 +6,7 @@ import { problem, stubApi, type Call } from "../../../test/api";
 import { closeOptions, fill, openOptions, openPlayground, pick } from "../../../test/playground";
 import { schemaList } from "../../../test/runs";
 import { curlBody } from "../../../test/shell";
+import { fieldSpec } from "../../../test/schemas";
 
 // Additional fields: names typed as chips become `schema.fields`; the run first shows the schema
 // `POST /v1/schemas/draft` drafts from them, for review. `fetch` answers with the shapes the API defines.
@@ -17,9 +18,11 @@ const DRAFT: SchemaDef = {
   status: "active",
   page_kind: "detail",
   required_groups: [],
+  field_order: ["colour", "price"],
+  labels: null,
   fields: {
-    colour: { type: "text", required: false, scope: "row" },
-    price: { type: "money", required: true, scope: "row" },
+    colour: fieldSpec({ type: "text", required: false, scope: "row" }),
+    price: fieldSpec({ type: "money", required: true, scope: "row" }),
   },
 };
 

@@ -185,7 +185,8 @@ ParamName = Annotated[Name, AfterValidator(_not_page_url)]
 
 
 class _Model(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    # The API sends every member, defaulted ones too, so its document marks them all `required` (OpenAPI 3.1).
+    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_serialization_defaults_required=True)
 
 
 class HeaderValue(_Model):

@@ -180,6 +180,11 @@
         "required": [
           "method",
           "url",
+          "params_from_url",
+          "headers",
+          "body",
+          "pagination",
+          "requires_page_fetch",
           "map",
           "proof"
         ],
@@ -295,7 +300,10 @@
           "method",
           "status",
           "block_class",
-          "duration_ms"
+          "duration_ms",
+          "error",
+          "challenge",
+          "steps"
         ],
         "title": "AttemptRecord",
         "type": "object"
@@ -369,6 +377,7 @@
           }
         },
         "required": [
+          "post",
           "attr"
         ],
         "title": "AttrStep",
@@ -1123,6 +1132,7 @@
         "required": [
           "start",
           "end",
+          "currency",
           "total",
           "days",
           "breakdown",
@@ -1464,6 +1474,7 @@
           }
         },
         "required": [
+          "post",
           "css",
           "xpath"
         ],
@@ -2166,7 +2177,11 @@
           "page_kind",
           "fetch",
           "fields",
-          "provenance"
+          "listing",
+          "api_recipe",
+          "recipes",
+          "provenance",
+          "absent"
         ],
         "title": "ExtractionConfigIR",
         "type": "object"
@@ -2811,7 +2826,16 @@
           }
         },
         "required": [
-          "type"
+          "type",
+          "description",
+          "required",
+          "scope",
+          "schema_org",
+          "vocab",
+          "scheme",
+          "item",
+          "fields",
+          "key"
         ],
         "title": "FieldSpec",
         "type": "object"
@@ -2909,7 +2933,11 @@
         },
         "required": [
           "steps",
-          "status"
+          "status",
+          "yield",
+          "validity",
+          "needs",
+          "call"
         ],
         "title": "FieldSteps",
         "type": "object"
@@ -3039,6 +3067,7 @@
           }
         },
         "required": [
+          "status",
           "llm"
         ],
         "title": "Health",
@@ -3504,7 +3533,9 @@
           }
         },
         "required": [
-          "jsonld"
+          "post",
+          "jsonld",
+          "when_type"
         ],
         "title": "JsonLdStep",
         "type": "object"
@@ -3601,6 +3632,7 @@
           }
         },
         "required": [
+          "post",
           "jsonpath",
           "source"
         ],
@@ -3927,7 +3959,8 @@
         },
         "required": [
           "row",
-          "fields"
+          "fields",
+          "next"
         ],
         "title": "ListingSpec",
         "type": "object"
@@ -4952,6 +4985,9 @@
           }
         },
         "required": [
+          "draft",
+          "regex_flags",
+          "xpath_document",
           "ir_version",
           "site",
           "schema",
@@ -5031,7 +5067,8 @@
           "title",
           "status",
           "detail",
-          "instance"
+          "instance",
+          "errors"
         ],
         "title": "Problem",
         "type": "object"
@@ -5527,6 +5564,7 @@
           }
         },
         "required": [
+          "post",
           "regex"
         ],
         "title": "RegexStep",
@@ -6145,11 +6183,14 @@
         },
         "required": [
           "page_kind",
+          "required_groups",
           "fields",
           "name",
           "id",
           "origin",
-          "status"
+          "status",
+          "labels",
+          "field_order"
         ],
         "title": "SchemaDef",
         "type": "object"
@@ -6808,7 +6849,9 @@
         },
         "required": [
           "query",
-          "results"
+          "results",
+          "job_id",
+          "skipped"
         ],
         "title": "SearchResult",
         "type": "object"
@@ -7328,6 +7371,13 @@
             "type": "integer"
           }
         },
+        "required": [
+          "llm_calls",
+          "llm_tokens_in",
+          "llm_tokens_out",
+          "browser_seconds",
+          "http_requests"
+        ],
         "title": "Usage",
         "type": "object"
       },
@@ -7540,6 +7590,7 @@
           }
         },
         "required": [
+          "post",
           "xpath"
         ],
         "title": "XPathStep",

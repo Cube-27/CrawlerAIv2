@@ -11,7 +11,7 @@
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
   "files": ["dist", "README.md"],
   "scripts": {
-    "gen": "openapi-typescript ../../frontend/openapi.json -o src/schema.d.ts",
+    "gen": "openapi-typescript ../../frontend/openapi.json -o src/schema.d.ts --default-non-nullable false",
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc --noEmit -p tsconfig.json",
     "test": "tsc -p tsconfig.json --outDir .test-out && node --test .test-out/test/*.test.js"

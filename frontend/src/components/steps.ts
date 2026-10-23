@@ -136,7 +136,7 @@ export function draftOf(step: IrStep): DraftStep {
   };
 }
 
-type CorrectedPostOp = CorrectedStep["post"][number];
+type CorrectedPostOp = NonNullable<CorrectedStep["post"]>[number];
 
 function correctedPostOp(op: PostOp): CorrectedPostOp {
   switch (op.op) {
