@@ -23,12 +23,14 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 report='^\s*(READY TO MERGE|BLOCKED) #'
 standing="builder-protocol.md HARD RULES apply; end with READY TO MERGE #<n> <sha7> or BLOCKED #<n>: <reason>."
 touch "$state"
-declare -A done_seq retries
+declare -A done_seq
 
 log() { echo "$(date +%H:%M:%S) $*"; return 0; }
 
-# get ID: the id's state line from QUEUE.state ("" when queued).
-get() { awk -v id="$1" '$1 == id { line = $0 } END { print line }' "$state"; return 0; }
+# get ID: the id's state line from QUEUE.state ("" when queued). `asked` lines only count the asks of an id, so a
+# restart keeps the count.
+get() { awk -v id="$1" '$1 == id && $2 != "asked" { line = $0 } END { print line }' "$state"; return 0; }
+asks() { awk -v id="$1" '$1 == id && $2 == "asked" { n++ } END { print n + 0 }' "$state"; return 0; }
 put() { echo "$*" >> "$state"; return 0; }   # the last line of an id wins
 
 # tell MESSAGE: a herdr notification, and the escalation agent's prompt when one is named. One per event.
@@ -60,8 +62,8 @@ report_of() {
 
 # ask ID MESSAGE: send the builder MESSAGE with the standing line; a third ask for one id holds it instead.
 ask() {
-  retries[$1]=$(( ${retries[$1]:-0} + 1 ))
-  if (( retries[$1] > 2 )); then hold "$1" "" "asked twice without a READY that pr_ready.sh accepts; last: $2"; return 0; fi
+  if (( $(asks "$1") >= 2 )); then hold "$1" "" "asked twice without a READY that pr_ready.sh accepts; last: $2"; return 0; fi
+  put "$1 asked"
   done_seq[$1]=$(turn_of "$1")
   herdr agent prompt "$1" "$2 $standing" >/dev/null || hold "$1" "" "could not prompt the builder"
   log "$1: asked: $2"
@@ -91,14 +93,21 @@ start() {   # ID BRIEF
 }
 
 merge() {   # ID PR SHA7 OWNER
-  local id=$1 pr=$2 sha=$3 owner=$4 out full pane
+  local id=$1 pr=$2 sha=$3 owner=$4 out full branch pane
+  # The PR must be this builder's and its head the commit it reported; that head is the one checked and merged
+  # (--match-head-commit), so a push after the check is never merged unchecked.
+  read -r branch full <<< "$(gh pr view "$pr" --json headRefName,headRefOid --jq '"\(.headRefName) \(.headRefOid)"')"
+  if [[ $branch != "change/$id" ]]; then hold "$id" "$pr" "reported PR #$pr is on ${branch:-?}, not change/$id"; return 0; fi
+  if [[ $full != "$sha"* ]]; then
+    ask "$id" "PR #$pr's head is ${full:0:7}, not the $sha you reported. Run pr_ready.sh on the head."
+    return 0
+  fi
   out=$(bash "$here/pr_ready.sh" "$pr" 2>&1 | tail -1)
   if [[ $out != "READY TO MERGE #$pr $sha"* ]]; then
     ask "$id" "pr_ready.sh says: $out. Fix it, push, and run pr_ready.sh again."
     return 0
   fi
   if [[ -n $owner ]]; then hold "$id" "$pr" "PR #$pr is ready and flagged for the owner's approval"; return 0; fi
-  full=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
   gh pr merge "$pr" --squash --match-head-commit "$full" >/dev/null 2>&1 || { hold "$id" "$pr" "gh pr merge failed"; return 0; }
   pane=$(herdr agent get "$id" 2>/dev/null | grep -o '"pane_id":"[^"]*"' | head -1 | cut -d'"' -f4)
   [[ -n $pane ]] && herdr pane close "$pane" >/dev/null 2>&1
