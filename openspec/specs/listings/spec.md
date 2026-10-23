@@ -39,7 +39,9 @@ links lead to, not the page in another state, an image file or an item's own nes
 several, else, at group level, the one document no other block links to at the place where a quorum of the blocks
 link to such a document (a link's place: its tag path, positions aside, and its parent's rank among those of the block's
 links at that path, so a title, an author and a "more" link in like elements are three places, the links of one
-paragraph one), a place whose link holds an image
+paragraph one; links at one path that lead to two or more documents of one kind, as `url_kind` names it, share their
+first one's place: they are records, as a column of cards is, or one field's values, as a book's authors are), a
+place whose link holds an image
 before the first other one: documents two or more blocks
 link to, a vendor's, an author's or a category's page, are the template's), the name (an item link's
 one-line content holding no typed value the block aligns, each such link at its own place, and, where that line runs
