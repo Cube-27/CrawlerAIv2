@@ -7,6 +7,7 @@ import type { ConfigDetail, ConfigSummary, ValidationReport } from "../../api/co
 import type { SchemaDef } from "../../api/schemas";
 import { sse, stubApi } from "../../test/api";
 import { jobSummary } from "../../test/jobs";
+import { fieldSpec } from "../../test/schemas";
 
 const HOST = "shop.example.test";
 const SCHEMA_ID = "0192a000-0000-7000-8000-000000000101";
@@ -23,10 +24,12 @@ const schema: SchemaDef = {
   status: "active",
   page_kind: "detail",
   required_groups: [["title"]],
+  field_order: ["title", "price", "sku"],
+  labels: null,
   fields: {
-    title: { type: "text", required: true, scope: "row" },
-    price: { type: "money", required: false, scope: "row" },
-    sku: { type: "identifier", scheme: "sku", required: false, scope: "row" },
+    title: fieldSpec({ type: "text", required: true, scope: "row" }),
+    price: fieldSpec({ type: "money", required: false, scope: "row" }),
+    sku: fieldSpec({ type: "identifier", scheme: "sku", required: false, scope: "row" }),
   },
 };
 
@@ -88,9 +91,14 @@ const detail: ConfigDetail = {
     schema: { name: "item_detail", digest: "0".repeat(64) },
     page_kind: "detail",
     fetch: { method: "http" },
+    listing: null,
+    api_recipe: null,
+    recipes: {},
+    absent: [],
     fields: {
       title: {
         needs: "http",
+        call: null,
         status: "corroborated",
         steps: [{ xpath: "//h1", post: [{ trim: {} }] }],
         yield: 1,
@@ -98,6 +106,7 @@ const detail: ConfigDetail = {
       },
       price: {
         needs: "http",
+        call: null,
         status: "uncorroborated",
         steps: [{ jsonld: "$.offers.price", when_type: "Product", post: [{ money: {} }] }],
         yield: 0.5,

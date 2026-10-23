@@ -174,6 +174,9 @@ class ScrapeRequest(Input):
 class Usage(BaseModel):
     """What the scrape's job used."""
 
+    # The API sends every member, defaulted ones too, so its document marks them all `required` (OpenAPI 3.1).
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
     llm_calls: int = 0
     llm_tokens_in: int = 0
     llm_tokens_out: int = 0

@@ -1,12 +1,11 @@
 import { useState, type ReactNode } from "react";
-import type { JobSchemaRef } from "../../../api/jobs";
 import type { PageKind, SchemaRef } from "../../../api/scrape";
 import { DraftReview } from "./DraftReview";
 
 /** A run request as far as its review reads it: the schema, and the page kind of a page request or the rules of a
  * crawl. */
 interface Reviewed {
-  schema: SchemaRef | JobSchemaRef | null;
+  schema?: SchemaRef | null;
   page_kind?: PageKind | null;
   page_kind_rules?: readonly { page_kind: PageKind }[];
 }
@@ -35,7 +34,7 @@ export function useFieldsReview<R extends Reviewed>(
   const start = (request: R) => {
     const { schema } = request;
     const pageKind = pageKindOf(request);
-    if (schema !== null && "fields" in schema && pageKind !== null)
+    if (schema != null && "fields" in schema && pageKind !== null)
       setPending({ request, fields: schema.fields, pageKind });
     else send(request);
   };

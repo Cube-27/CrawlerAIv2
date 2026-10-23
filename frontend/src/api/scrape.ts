@@ -3,84 +3,33 @@ import type { components } from "./schema";
 
 type Schemas = components["schemas"];
 
-export type ScrapeFormat =
-  | "markdown"
-  | "markdown_fit"
-  | "chunks"
-  | "html"
-  | "raw_html"
-  | "links"
-  | "metadata"
-  | "screenshot"
-  | "pdf"
-  | "records";
-export type PageKind = "detail" | "listing";
-export type MethodHint = "auto" | "http" | "browser";
+/** The request, as the API's schema defines it: a member the form leaves out takes the server's default. */
+export type ScrapeRequest = Schemas["ScrapeRequest"];
+export type ScrapeFormat = ScrapeRequest["formats"][number];
+export type PageKind = NonNullable<ScrapeRequest["page_kind"]>;
+/** The `fetch` member every page request shares. */
+export type FetchMember = Schemas["FetchOptions"];
+export type MethodHint = NonNullable<FetchMember["method_hint"]>;
 /** The paging mechanisms a listing's browser actions may be told to use. */
-export type PagingHint = "load_more" | "show_more" | "pagination" | "next" | "scroll";
-
+export type PagingHint = NonNullable<Schemas["BrowserActions"]["hint"]>;
 /** `fetch.cache`: reuse a stored capture as `max_age` allows, always fetch, or only serve a stored one. */
-export type CacheMode = "default" | "bypass" | "only";
-
-/** A page step the browser runs before it reads the page (`config_ir/page_actions.py`). */
-export type PageAction =
-  | { type: "wait"; ms?: number; selector?: string; network_idle?: boolean }
-  | { type: "click"; selector?: string; text?: string }
-  | { type: "scroll"; to?: "bottom"; by?: number; until?: "stable" }
-  | { type: "press"; key: string }
-  | { type: "type"; selector: string; text: string };
-
-/** The `fetch` member every page request shares, with the members the form sets; the others take the server's
- * defaults. */
-export interface FetchMember {
-  method_hint: MethodHint;
-  max_rows?: number;
-  headers?: Record<string, string>;
-  cookies?: Record<string, string>;
-  proxy_pool?: string;
-  wait_for?: number | string;
-  actions?: PageAction[];
-  cache?: CacheMode;
-  screenshot?: ScreenshotArea;
-}
+export type CacheMode = NonNullable<FetchMember["cache"]>;
+/** A page step the browser runs before it reads the page. */
+export type PageAction = NonNullable<FetchMember["actions"]>[number];
 /** The area a `screenshot` format shows: what the browser's window shows, or the whole page. */
-export type ScreenshotArea = Schemas["FetchOptions"]["screenshot"];
+export type ScreenshotArea = NonNullable<FetchMember["screenshot"]>;
 /** `markdown_fit`'s options: a query that keeps the blocks relevant to it, and at most this many blocks. */
 export type FitOptions = Schemas["FitOptions"];
 /** `chunks`' options: how the markdown is split, the size of a chunk and the overlap, in words. */
 export type ChunkOptions = Schemas["ChunkOptions"];
-export type ChunkStrategy = ChunkOptions["strategy"];
-export type ChunkSource = ChunkOptions["source"];
+export type ChunkStrategy = NonNullable<ChunkOptions["strategy"]>;
+export type ChunkSource = NonNullable<ChunkOptions["source"]>;
 export type Chunk = Schemas["Chunk"];
 /** A file the browser made of the page, served by the API at its `url` (a path on the API's own origin). */
 export type Artifact = Schemas["Artifact"];
 
 /** A schema by id, inline (a SchemaDef the server validates), or drafted by role S from a prompt or from field names. */
-export type SchemaRef =
-  | { id: string }
-  | { inline: Readonly<Record<string, unknown>> }
-  | { prompt: string }
-  | { fields: string[] };
-
-/** The request as the form builds it. It leaves out the limits it doesn't set, so the server's defaults apply; the
- * generated type marks every member with a default as required (openapi-typescript), so `runScrape` sends it as
- * that type, and the server validates it. */
-export interface ScrapeRequest {
-  url: string;
-  formats: ScrapeFormat[];
-  schema: SchemaRef | null;
-  page_kind: PageKind | null;
-  fetch: FetchMember;
-  /** Omitted to take the server's default. */
-  max_age?: number;
-  timeout_s?: number;
-  budget?: { llm_calls: number };
-  /** A listing's browser actions: a soft row target and an optional mechanism. */
-  browser_actions?: { records?: number; hint?: PagingHint };
-  /** `markdown_fit`'s and `chunks`' options: sent only with their format, with the members that are set. */
-  fit?: FitOptions;
-  chunking?: Partial<ChunkOptions>;
-}
+export type SchemaRef = NonNullable<ScrapeRequest["schema"]>;
 
 /** Every field carries the §13.1 attributes plus `reason`, `source_kind` and `derived_by`. */
 export type RecordField = Schemas["RecordField"];

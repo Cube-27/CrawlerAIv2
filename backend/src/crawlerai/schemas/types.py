@@ -73,7 +73,8 @@ MAX_DEPTH = 3
 
 
 class _Model(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    # The API sends every member, defaulted ones too, so its document marks them all `required` (OpenAPI 3.1).
+    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_serialization_defaults_required=True)
 
 
 class FieldSpec(_Model):

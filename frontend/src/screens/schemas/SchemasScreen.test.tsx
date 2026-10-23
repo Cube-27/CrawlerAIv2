@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { routes } from "../../app/router";
 import type { SchemaDef } from "../../api/schemas";
 import { stubApi } from "../../test/api";
+import { fieldSpec } from "../../test/schemas";
 
 const RETIRED_ID = "0192a000-0000-7000-8000-000000000101";
 const SCHEMA_ID = "0192a000-0000-7000-8000-000000000102";
@@ -13,6 +14,15 @@ const DRAFT_ID = "0192a000-0000-7000-8000-000000000301";
 const ADOPTED_ID = "0192a000-0000-7000-8000-000000000401";
 
 function schemaDef(overrides: Partial<SchemaDef> = {}): SchemaDef {
+  const fields = overrides.fields ?? {
+    title: fieldSpec({
+      type: "text",
+      required: true,
+      scope: "row",
+      description: "The item's name",
+    }),
+    price: fieldSpec({ type: "money", required: false, scope: "row" }),
+  };
   return {
     id: SCHEMA_ID,
     name: "item_detail",
@@ -20,10 +30,9 @@ function schemaDef(overrides: Partial<SchemaDef> = {}): SchemaDef {
     status: "active",
     page_kind: "detail",
     required_groups: [["title"]],
-    fields: {
-      title: { type: "text", required: true, scope: "row", description: "The item's name" },
-      price: { type: "money", required: false, scope: "row" },
-    },
+    fields,
+    field_order: Object.keys(fields),
+    labels: null,
     ...overrides,
   };
 }
@@ -37,7 +46,7 @@ const draft = schemaDef({
   origin: "prompt_draft",
   page_kind: "listing",
   required_groups: [],
-  fields: { headline: { type: "text", required: false, scope: "row" } },
+  fields: { headline: fieldSpec({ type: "text", required: false, scope: "row" }) },
 });
 
 const list =
@@ -102,7 +111,7 @@ describe("schemas screen: adopting a prompt draft", () => {
       name: "headlines",
       page_kind: "listing",
       required_groups: [],
-      fields: { headline: { type: "text", required: false, scope: "row" } },
+      fields: { headline: fieldSpec({ type: "text", required: false, scope: "row" }) },
     });
   });
 });

@@ -2,11 +2,8 @@ import type { ApiClient } from "../../../api/client";
 import { parseFieldTypes, type FieldTypes } from "../../../api/field";
 import type { Problem } from "../../../api/problem";
 import { apiResult } from "../../../api/result";
-import type { components } from "../../../api/schema";
 import { getSchema } from "../../../api/schemas";
 import type { ScrapeRequest, ScrapeResponse } from "../../../api/scrape";
-
-type ScrapeRequestBody = components["schemas"]["ScrapeRequest"];
 
 export type ScrapeRun =
   | { kind: "done"; response: ScrapeResponse; fieldTypes: FieldTypes }
@@ -19,7 +16,7 @@ async function fieldTypes(
   request: ScrapeRequest,
   response: ScrapeResponse,
 ): Promise<FieldTypes> {
-  if (response.records === undefined || request.schema === null || !("id" in request.schema)) {
+  if (response.records === undefined || request.schema == null || !("id" in request.schema)) {
     return {};
   }
   const schema = await getSchema(client, request.schema.id);
@@ -30,10 +27,7 @@ async function fieldTypes(
 
 /** Runs one `POST /v1/scrape`. */
 export async function runScrape(client: ApiClient, request: ScrapeRequest): Promise<ScrapeRun> {
-  const answer = await apiResult(
-    () => client.POST("/v1/scrape", { body: request as ScrapeRequestBody }),
-    "The scrape",
-  );
+  const answer = await apiResult(() => client.POST("/v1/scrape", { body: request }), "The scrape");
   if (answer.kind === "failed") return answer;
   return {
     kind: "done",

@@ -878,7 +878,7 @@ export interface components {
         };
         /** ApiRecipe */
         ApiRecipe: {
-            body?: components["schemas"]["RequestBody"] | null;
+            body: components["schemas"]["RequestBody"] | null;
             /**
              * Headers
              * @default []
@@ -894,7 +894,7 @@ export interface components {
              */
             method: "GET" | "POST";
             /** Pagination */
-            pagination?: (components["schemas"]["ParamPagination"] | components["schemas"]["CursorPagination"] | components["schemas"]["NextUrlPagination"] | components["schemas"]["LinkPagination"]) | null;
+            pagination: (components["schemas"]["ParamPagination"] | components["schemas"]["CursorPagination"] | components["schemas"]["NextUrlPagination"] | components["schemas"]["LinkPagination"]) | null;
             /**
              * Params From Url
              * @default {}
@@ -933,13 +933,13 @@ export interface components {
              */
             block_class: "ok" | "blocked" | "shell" | "not_found" | "error" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "unsupported_media";
             /** Challenge */
-            challenge?: string | null;
+            challenge: string | null;
             /** Data Call */
             data_call?: string | null;
             /** Duration Ms */
             duration_ms: number;
             /** Error */
-            error?: string | null;
+            error: string | null;
             /**
              * Method
              * @enum {string}
@@ -964,7 +964,7 @@ export interface components {
              * Post
              * @default []
              */
-            post: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+            post?: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
         };
         /**
          * AttrStep
@@ -1002,7 +1002,7 @@ export interface components {
              *       "screenshot": "viewport"
              *     }
              */
-            fetch: components["schemas"]["FetchOptions"];
+            fetch?: components["schemas"]["FetchOptions"];
             fit?: components["schemas"]["FitOptions"] | null;
             /** Formats */
             formats: ("markdown" | "markdown_fit" | "chunks" | "html" | "raw_html" | "links" | "metadata" | "screenshot" | "pdf" | "records")[];
@@ -1022,7 +1022,7 @@ export interface components {
              *       "mode": "off"
              *     }
              */
-            render: components["schemas"]["RenderOptions"];
+            render?: components["schemas"]["RenderOptions"];
             /** Schema */
             schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaFields"] | null;
             /** Urls */
@@ -1054,7 +1054,7 @@ export interface components {
              * Records
              * @default 100
              */
-            records: number;
+            records?: number;
         };
         /**
          * Budget
@@ -1089,24 +1089,24 @@ export interface components {
              * Overlap
              * @default 0
              */
-            overlap: number;
+            overlap?: number;
             /**
              * Size
              * @default 400
              */
-            size: number;
+            size?: number;
             /**
              * Source
              * @default markdown
              * @enum {string}
              */
-            source: "markdown" | "markdown_fit";
+            source?: "markdown" | "markdown_fit";
             /**
              * Strategy
              * @default heading
              * @enum {string}
              */
-            strategy: "heading" | "sentence" | "token";
+            strategy?: "heading" | "sentence" | "token";
         };
         /**
          * ClickAction
@@ -1121,7 +1121,7 @@ export interface components {
              * Timeout Ms
              * @default 5000
              */
-            timeout_ms: number;
+            timeout_ms?: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1256,12 +1256,12 @@ export interface components {
              * Confirm
              * @default []
              */
-            confirm: string[];
+            confirm?: string[];
             /**
              * Fields
              * @default {}
              */
-            fields: {
+            fields?: {
                 [key: string]: components["schemas"]["CorrectedSteps"] | null;
             };
         };
@@ -1310,12 +1310,12 @@ export interface components {
              * Allow External
              * @default false
              */
-            allow_external: boolean;
+            allow_external?: boolean;
             /**
              * Allow Subdomains
              * @default false
              */
-            allow_subdomains: boolean;
+            allow_subdomains?: boolean;
             budget?: components["schemas"]["Budget"] | null;
             chunking?: components["schemas"]["ChunkOptions"] | null;
             /** Exclude */
@@ -1331,7 +1331,7 @@ export interface components {
              *       "screenshot": "viewport"
              *     }
              */
-            fetch: components["schemas"]["FetchOptions"];
+            fetch?: components["schemas"]["FetchOptions"];
             fit?: components["schemas"]["FitOptions"] | null;
             /** Formats */
             formats: ("markdown" | "markdown_fit" | "chunks" | "html" | "raw_html" | "links" | "metadata" | "screenshot" | "pdf" | "records")[];
@@ -1344,14 +1344,14 @@ export interface components {
              * @description At most this many pages are fetched.
              * @default 500
              */
-            limit: number;
+            limit?: number;
             /** Locale */
             locale?: string | null;
             /**
              * Max Depth
              * @default 3
              */
-            max_depth: number;
+            max_depth?: number;
             /**
              * Min Confidence
              * @description Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.
@@ -1368,7 +1368,7 @@ export interface components {
              *       "mode": "off"
              *     }
              */
-            render: components["schemas"]["RenderOptions"];
+            render?: components["schemas"]["RenderOptions"];
             /** Schema */
             schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaFields"] | null;
             /**
@@ -1376,7 +1376,7 @@ export interface components {
              * @default bfs
              * @enum {string}
              */
-            strategy: "bfs" | "dfs" | "best_first";
+            strategy?: "bfs" | "dfs" | "best_first";
             /** Url */
             url: string;
             webhook_batch?: components["schemas"]["WebhookBatch"] | null;
@@ -1404,7 +1404,7 @@ export interface components {
              * Post
              * @default []
              */
-            post: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+            post?: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
             /** Xpath */
             xpath: string;
         };
@@ -1605,12 +1605,12 @@ export interface components {
              *       "screenshot": "viewport"
              *     }
              */
-            fetch: components["schemas"]["FetchOptions"];
+            fetch?: components["schemas"]["FetchOptions"];
             /**
              * Limit
              * @default 1000
              */
-            limit: number;
+            limit?: number;
             /** Locale */
             locale?: string | null;
             /**
@@ -1669,8 +1669,8 @@ export interface components {
         /** ExtractionConfigIR */
         ExtractionConfigIR: {
             /** Absent */
-            absent?: string[];
-            api_recipe?: components["schemas"]["ApiRecipe"] | null;
+            absent: string[];
+            api_recipe: components["schemas"]["ApiRecipe"] | null;
             fetch: components["schemas"]["Fetch"];
             /** Fields */
             fields: {
@@ -1681,7 +1681,7 @@ export interface components {
              * @constant
              */
             ir_version: "1";
-            listing?: components["schemas"]["ListingSpec"] | null;
+            listing: components["schemas"]["ListingSpec"] | null;
             /**
              * Page Kind
              * @enum {string}
@@ -1689,7 +1689,7 @@ export interface components {
             page_kind: "detail" | "listing";
             provenance: components["schemas"]["Provenance"];
             /** Recipes */
-            recipes?: {
+            recipes: {
                 [key: string]: components["schemas"]["ApiRecipe"];
             };
             schema: components["schemas"]["SchemaRef"];
@@ -1715,25 +1715,25 @@ export interface components {
              * Actions
              * @default []
              */
-            actions: (components["schemas"]["WaitAction"] | components["schemas"]["ClickAction"] | components["schemas"]["ScrollAction"] | components["schemas"]["PressAction"] | components["schemas"]["TypeAction"])[];
+            actions?: (components["schemas"]["WaitAction"] | components["schemas"]["ClickAction"] | components["schemas"]["ScrollAction"] | components["schemas"]["PressAction"] | components["schemas"]["TypeAction"])[];
             /**
              * Cache
              * @default default
              * @enum {string}
              */
-            cache: "default" | "bypass" | "only";
+            cache?: "default" | "bypass" | "only";
             /**
              * Cookies
              * @default {}
              */
-            cookies: {
+            cookies?: {
                 [key: string]: string;
             };
             /**
              * Headers
              * @default {}
              */
-            headers: {
+            headers?: {
                 [key: string]: string;
             };
             /** Max Rows */
@@ -1743,20 +1743,20 @@ export interface components {
              * @default auto
              * @enum {string}
              */
-            method_hint: "auto" | "http" | "browser";
+            method_hint?: "auto" | "http" | "browser";
             /** Proxy Pool */
             proxy_pool?: string | null;
             /**
              * Respect Robots
              * @default false
              */
-            respect_robots: boolean;
+            respect_robots?: boolean;
             /**
              * Screenshot
              * @default viewport
              * @enum {string}
              */
-            screenshot: "viewport" | "full_page";
+            screenshot?: "viewport" | "full_page";
             /** Wait For */
             wait_for?: number | string | null;
         };
@@ -1870,7 +1870,7 @@ export interface components {
              * Required
              * @default false
              */
-            required: boolean;
+            required?: boolean;
             /** Schema Org */
             schema_org?: string | null;
             /** Scheme */
@@ -1880,7 +1880,7 @@ export interface components {
              * @default row
              * @enum {string}
              */
-            scope: "row" | "page";
+            scope?: "row" | "page";
             type: components["schemas"]["FieldType"];
             /** Vocab */
             vocab?: string | null;
@@ -1895,23 +1895,23 @@ export interface components {
          */
         "FieldSpec-Output": {
             /** Description */
-            description?: string | null;
+            description: string | null;
             /** Fields */
-            fields?: {
+            fields: {
                 [key: string]: components["schemas"]["FieldSpec-Output"];
             } | null;
-            item?: components["schemas"]["FieldSpec-Output"] | null;
+            item: components["schemas"]["FieldSpec-Output"] | null;
             /** Key */
-            key?: string[] | null;
+            key: string[] | null;
             /**
              * Required
              * @default false
              */
             required: boolean;
             /** Schema Org */
-            schema_org?: string | null;
+            schema_org: string | null;
             /** Scheme */
-            scheme?: ("gtin" | "isbn" | "mpn" | "sku" | "custom") | null;
+            scheme: ("gtin" | "isbn" | "mpn" | "sku" | "custom") | null;
             /**
              * Scope
              * @default row
@@ -1920,7 +1920,7 @@ export interface components {
             scope: "row" | "page";
             type: components["schemas"]["FieldType"];
             /** Vocab */
-            vocab?: string | null;
+            vocab: string | null;
         };
         /**
          * FieldSteps
@@ -1929,7 +1929,7 @@ export interface components {
          */
         FieldSteps: {
             /** Call */
-            call?: string | null;
+            call: string | null;
             /**
              * Needs
              * @default http
@@ -1944,9 +1944,9 @@ export interface components {
             /** Steps */
             steps: (components["schemas"]["XPathStep-Output"] | components["schemas"]["CssStep-Output"] | components["schemas"]["JsonLdStep-Output"] | components["schemas"]["JsonPathStep-Output"] | components["schemas"]["RegexStep-Output"] | components["schemas"]["AttrStep-Output"])[];
             /** Validity */
-            validity?: number | null;
+            validity: number | null;
             /** Yield */
-            yield?: number | null;
+            yield: number | null;
         };
         /**
          * FieldType
@@ -2138,7 +2138,7 @@ export interface components {
              * Post
              * @default []
              */
-            post: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+            post?: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
             /** When Type */
             when_type?: string | null;
         };
@@ -2155,7 +2155,7 @@ export interface components {
              */
             post: (components["schemas"]["NormalizeOp-Output"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
             /** When Type */
-            when_type?: string | null;
+            when_type: string | null;
         };
         /** JsonPathStep */
         "JsonPathStep-Input": {
@@ -2165,7 +2165,7 @@ export interface components {
              * Post
              * @default []
              */
-            post: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+            post?: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
             /**
              * Source
              * @enum {string}
@@ -2254,7 +2254,7 @@ export interface components {
              * Force
              * @default false
              */
-            force: boolean;
+            force?: boolean;
             /**
              * Schema Id
              * Format: uuid
@@ -2311,7 +2311,7 @@ export interface components {
                 [key: string]: components["schemas"]["FieldSteps"];
             };
             /** Next */
-            next?: (components["schemas"]["XPathStep-Output"] | components["schemas"]["CssStep-Output"] | components["schemas"]["JsonLdStep-Output"] | components["schemas"]["JsonPathStep-Output"] | components["schemas"]["RegexStep-Output"] | components["schemas"]["AttrStep-Output"]) | null;
+            next: (components["schemas"]["XPathStep-Output"] | components["schemas"]["CssStep-Output"] | components["schemas"]["JsonLdStep-Output"] | components["schemas"]["JsonPathStep-Output"] | components["schemas"]["RegexStep-Output"] | components["schemas"]["AttrStep-Output"]) | null;
             /** Row */
             row: components["schemas"]["XPathStep-Output"] | components["schemas"]["CssStep-Output"] | components["schemas"]["JsonLdStep-Output"] | components["schemas"]["JsonPathStep-Output"] | components["schemas"]["RegexStep-Output"] | components["schemas"]["AttrStep-Output"];
         };
@@ -2324,39 +2324,39 @@ export interface components {
              * Exclude
              * @default []
              */
-            exclude: string[];
+            exclude?: string[];
             /**
              * Include
              * @default []
              */
-            include: string[];
+            include?: string[];
             /**
              * Limit
              * @default 5000
              */
-            limit: number;
+            limit?: number;
             /**
              * Llms Txt
              * @default false
              */
-            llms_txt: boolean;
+            llms_txt?: boolean;
             /**
              * Respect Robots
              * @default false
              */
-            respect_robots: boolean;
+            respect_robots?: boolean;
             /** Url */
             url: string;
             /**
              * Use Links
              * @default true
              */
-            use_links: boolean;
+            use_links?: boolean;
             /**
              * Use Sitemaps
              * @default true
              */
-            use_sitemaps: boolean;
+            use_sitemaps?: boolean;
         };
         /** MapResult */
         MapResult: {
@@ -2417,13 +2417,13 @@ export interface components {
              * Paused
              * @default false
              */
-            paused: boolean;
+            paused?: boolean;
             request: components["schemas"]["BatchScrapeRequest"];
             /**
              * Timezone
              * @default UTC
              */
-            timezone: string;
+            timezone?: string;
         };
         /** NewCrawlSchedule */
         NewCrawlSchedule: {
@@ -2442,13 +2442,13 @@ export interface components {
              * Paused
              * @default false
              */
-            paused: boolean;
+            paused?: boolean;
             request: components["schemas"]["CrawlRequest"];
             /**
              * Timezone
              * @default UTC
              */
-            timezone: string;
+            timezone?: string;
         };
         /** NewExtractSchedule */
         NewExtractSchedule: {
@@ -2467,13 +2467,13 @@ export interface components {
              * Paused
              * @default false
              */
-            paused: boolean;
+            paused?: boolean;
             request: components["schemas"]["ExtractRequest"];
             /**
              * Timezone
              * @default UTC
              */
-            timezone: string;
+            timezone?: string;
         };
         /** NewSchema */
         NewSchema: {
@@ -2492,7 +2492,7 @@ export interface components {
              * Required Groups
              * @default []
              */
-            required_groups: string[][];
+            required_groups?: string[][];
         };
         /** NewScrapeSchedule */
         NewScrapeSchedule: {
@@ -2511,13 +2511,13 @@ export interface components {
              * Paused
              * @default false
              */
-            paused: boolean;
+            paused?: boolean;
             request: components["schemas"]["ScrapeRequest"];
             /**
              * Timezone
              * @default UTC
              */
-            timezone: string;
+            timezone?: string;
         };
         /**
          * NextUrlPagination
@@ -2752,7 +2752,7 @@ export interface components {
              * Timeout Ms
              * @default 5000
              */
-            timeout_ms: number;
+            timeout_ms?: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -2912,7 +2912,7 @@ export interface components {
              * Post
              * @default []
              */
-            post: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+            post?: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
             /** Regex */
             regex: string;
         };
@@ -2984,7 +2984,7 @@ export interface components {
              * @default off
              * @enum {string}
              */
-            mode: "off" | "locate" | "always";
+            mode?: "off" | "locate" | "always";
         };
         /** ReplayRequest */
         ReplayRequest: {
@@ -2992,7 +2992,7 @@ export interface components {
              * Allow Llm
              * @default false
              */
-            allow_llm: boolean;
+            allow_llm?: boolean;
         };
         /** ReplayResult */
         ReplayResult: {
@@ -3134,7 +3134,7 @@ export interface components {
              * Required Groups
              * @default []
              */
-            required_groups: string[][];
+            required_groups?: string[][];
         };
         /**
          * SchemaDef
@@ -3147,7 +3147,7 @@ export interface components {
          */
         SchemaDef: {
             /** Field Order */
-            field_order?: string[];
+            field_order: string[];
             /** Fields */
             fields: {
                 [key: string]: components["schemas"]["FieldSpec-Output"];
@@ -3158,7 +3158,7 @@ export interface components {
              */
             id: string;
             /** Labels */
-            labels?: {
+            labels: {
                 [key: string]: string[];
             } | null;
             /** Name */
@@ -3250,7 +3250,7 @@ export interface components {
              *       "screenshot": "viewport"
              *     }
              */
-            fetch: components["schemas"]["FetchOptions"];
+            fetch?: components["schemas"]["FetchOptions"];
             fit?: components["schemas"]["FitOptions"] | null;
             /** Formats */
             formats: ("markdown" | "markdown_fit" | "chunks" | "html" | "raw_html" | "links" | "metadata" | "screenshot" | "pdf" | "records")[];
@@ -3260,7 +3260,7 @@ export interface components {
              * Max Age
              * @default 0
              */
-            max_age: number;
+            max_age?: number;
             /**
              * Min Confidence
              * @description Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.
@@ -3275,14 +3275,14 @@ export interface components {
              *       "mode": "off"
              *     }
              */
-            render: components["schemas"]["RenderOptions"];
+            render?: components["schemas"]["RenderOptions"];
             /** Schema */
             schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaPrompt"] | components["schemas"]["SchemaFields"] | null;
             /**
              * Timeout S
              * @default 60
              */
-            timeout_s: number;
+            timeout_s?: number;
             /** Url */
             url: string;
         };
@@ -3378,7 +3378,7 @@ export interface components {
              * Timeout Ms
              * @default 5000
              */
-            timeout_ms: number;
+            timeout_ms?: number;
             /** To */
             to?: "bottom" | null;
             /**
@@ -3412,7 +3412,7 @@ export interface components {
              * Limit
              * @default 10
              */
-            limit: number;
+            limit?: number;
             /** Query */
             query: string;
             scrape?: components["schemas"]["SearchScrape"] | null;
@@ -3423,7 +3423,7 @@ export interface components {
              * Job Id
              * @description The batch job scraping the results, with `scrape`
              */
-            job_id?: string | null;
+            job_id: string | null;
             /** Query */
             query: string;
             /** Results */
@@ -3453,14 +3453,14 @@ export interface components {
              *       "screenshot": "viewport"
              *     }
              */
-            fetch: components["schemas"]["FetchOptions"];
+            fetch?: components["schemas"]["FetchOptions"];
             /**
              * Formats
              * @default [
              *       "markdown"
              *     ]
              */
-            formats: ("markdown" | "markdown_fit" | "chunks" | "html" | "raw_html" | "links" | "metadata" | "screenshot" | "pdf" | "records")[];
+            formats?: ("markdown" | "markdown_fit" | "chunks" | "html" | "raw_html" | "links" | "metadata" | "screenshot" | "pdf" | "records")[];
             /** Locale */
             locale?: string | null;
             /** Page Kind */
@@ -3588,7 +3588,7 @@ export interface components {
              * Timeout Ms
              * @default 5000
              */
-            timeout_ms: number;
+            timeout_ms?: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -3656,14 +3656,14 @@ export interface components {
              * Network Idle
              * @default false
              */
-            network_idle: boolean;
+            network_idle?: boolean;
             /** Selector */
             selector?: string | null;
             /**
              * Timeout Ms
              * @default 5000
              */
-            timeout_ms: number;
+            timeout_ms?: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -3689,7 +3689,7 @@ export interface components {
              * Post
              * @default []
              */
-            post: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
+            post?: (components["schemas"]["NormalizeOp-Input"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
             /** Xpath */
             xpath: string;
         };

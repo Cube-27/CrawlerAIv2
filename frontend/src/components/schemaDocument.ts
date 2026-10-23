@@ -12,7 +12,7 @@ import type {
  * it needs to build the request; every schema rule is the server's, and its 422 is shown. */
 
 type Scheme = NonNullable<FieldSpecInput["scheme"]>;
-type Scope = FieldSpecInput["scope"];
+type Scope = NonNullable<FieldSpecInput["scope"]>;
 
 /** The generated `FieldType` enum with a label each; a `Record` so a type the API adds fails the build here. */
 export const FIELD_TYPES: Readonly<Record<FieldType, string>> = {
@@ -119,23 +119,21 @@ export function formOf(schema: SchemaDocument): SchemaFormState {
   };
 }
 
-/** The `POST` body for `form`; null until a page kind is chosen. */
-export function newSchemaOf(form: SchemaFormState): NewSchema | null {
+/** The `PUT` body for `form`: the whole document without the name, which an edit keeps; null until a page kind is
+ * chosen. */
+export function contentOf(form: SchemaFormState): SchemaContent | null {
   if (form.pageKind === null) return null;
   return {
-    name: form.name.trim(),
     page_kind: form.pageKind,
     required_groups: parseGroups(form.requiredGroups),
     fields: Object.fromEntries(form.fields.map((row) => [row.name.trim(), row.spec])),
   };
 }
 
-/** The `PUT` body for `form`: the whole document without the name, which an edit keeps. */
-export function contentOf(form: SchemaFormState): SchemaContent | null {
-  const schema = newSchemaOf(form);
-  if (schema === null) return null;
-  const { page_kind, required_groups, fields } = schema;
-  return { page_kind, required_groups, fields };
+/** The `POST` body for `form`; null until a page kind is chosen. */
+export function newSchemaOf(form: SchemaFormState): NewSchema | null {
+  const content = contentOf(form);
+  return content === null ? null : { name: form.name.trim(), ...content };
 }
 
 /** `spec` changed to `type`: the members every type has are kept, the ones only the old type takes (`vocab`,
@@ -143,8 +141,8 @@ export function contentOf(form: SchemaFormState): SchemaContent | null {
 export function withType(spec: FieldSpecInput, type: FieldType): FieldSpecInput {
   return {
     type,
-    required: spec.required,
-    scope: spec.scope,
+    ...(spec.required === undefined ? {} : { required: spec.required }),
+    ...(spec.scope === undefined ? {} : { scope: spec.scope }),
     ...(spec.description == null ? {} : { description: spec.description }),
     ...(spec.schema_org == null ? {} : { schema_org: spec.schema_org }),
   };
@@ -223,6 +221,18 @@ function isGroups(value: unknown): value is string[][] {
 
 function isPageKind(value: unknown): value is SchemaPageKind {
   return PAGE_KIND_OPTIONS.some(([kind]) => kind === value);
+}
+
+/** A schema document in the generated `NewSchema` shape, as written: only the shape is checked; the schema rules are
+ * the server's. */
+export function isNewSchema(value: unknown): value is NewSchema {
+  return (
+    isJsonObject(value) &&
+    typeof value.name === "string" &&
+    isPageKind(value.page_kind) &&
+    (value.required_groups === undefined || isGroups(value.required_groups)) &&
+    isFieldSpecs(value.fields)
+  );
 }
 
 type ParsedForm = { kind: "ok"; form: SchemaFormState } | { kind: "invalid"; reason: string };

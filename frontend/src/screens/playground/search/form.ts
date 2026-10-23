@@ -72,5 +72,5 @@ export function buildSearch(form: SearchFormState): SearchRequest | null {
             : { formats: requestFormats(scrapeForm(form)) },
         }
       : {}),
-  } as SearchRequest;
+  };
 }

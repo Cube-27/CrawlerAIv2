@@ -91,7 +91,8 @@ class SearchHit(BaseModel):
 
 
 class SearchResult(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    # The API sends every member, defaulted ones too, so its document marks them all `required` (OpenAPI 3.1).
+    model_config = ConfigDict(frozen=True, json_schema_serialization_defaults_required=True)
 
     query: str
     results: list[SearchHit]

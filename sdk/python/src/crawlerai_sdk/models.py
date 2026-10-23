@@ -568,7 +568,7 @@ class Health(BaseModel):
         extra="forbid",
     )
     llm: Annotated[Llm, Field(title="Llm")]
-    status: Annotated[Literal["ok"], Field(title="Status")] = "ok"
+    status: Annotated[Literal["ok"], Field(title="Status")]
 
 
 class Kind(Enum):
@@ -808,7 +808,7 @@ class Problem(BaseModel):
         extra="forbid",
     )
     detail: Annotated[str, Field(title="Detail")]
-    errors: Annotated[list[FieldErrorOut] | None, Field(title="Errors")] = []
+    errors: Annotated[list[FieldErrorOut], Field(title="Errors")]
     instance: Annotated[str, Field(title="Instance")]
     status: Annotated[int, Field(title="Status")]
     title: Annotated[str, Field(title="Title")]
@@ -1174,12 +1174,12 @@ class SearchResult(BaseModel):
     query: Annotated[str, Field(title="Query")]
     results: Annotated[list[SearchHit], Field(title="Results")]
     skipped: Annotated[
-        int | None,
+        int,
         Field(
             description="Results the API may not fetch, left out of the scrape",
             title="Skipped",
         ),
-    ] = 0
+    ]
 
 
 class Action(Enum):
@@ -1255,11 +1255,11 @@ class TypeAction(BaseModel):
 
 
 class Usage(BaseModel):
-    browser_seconds: Annotated[int | None, Field(title="Browser Seconds")] = 0
-    http_requests: Annotated[int | None, Field(title="Http Requests")] = 0
-    llm_calls: Annotated[int | None, Field(title="Llm Calls")] = 0
-    llm_tokens_in: Annotated[int | None, Field(title="Llm Tokens In")] = 0
-    llm_tokens_out: Annotated[int | None, Field(title="Llm Tokens Out")] = 0
+    browser_seconds: Annotated[int, Field(title="Browser Seconds")]
+    http_requests: Annotated[int, Field(title="Http Requests")]
+    llm_calls: Annotated[int, Field(title="Llm Calls")]
+    llm_tokens_in: Annotated[int, Field(title="Llm Tokens In")]
+    llm_tokens_out: Annotated[int, Field(title="Llm Tokens Out")]
 
 
 class ValidationReport(BaseModel):
@@ -1316,22 +1316,16 @@ class ApiRecipe(BaseModel):
         extra="forbid",
     )
     body: RequestBody | None = None
-    headers: Annotated[
-        list[HeaderValue | ContextHeader] | None, Field(title="Headers")
-    ] = []
+    headers: Annotated[list[HeaderValue | ContextHeader], Field(title="Headers")]
     map: Annotated[dict[str, str], Field(title="Map")]
     method: Annotated[Method, Field(title="Method")]
     pagination: Annotated[
         ParamPagination | CursorPagination | NextUrlPagination | LinkPagination | None,
         Field(title="Pagination"),
     ] = None
-    params_from_url: Annotated[
-        dict[str, str] | None, Field(title="Params From Url")
-    ] = {}
+    params_from_url: Annotated[dict[str, str], Field(title="Params From Url")]
     proof: Proof
-    requires_page_fetch: Annotated[bool | None, Field(title="Requires Page Fetch")] = (
-        False
-    )
+    requires_page_fetch: Annotated[bool, Field(title="Requires Page Fetch")]
     url: Annotated[str, Field(title="Url")]
 
 
@@ -1346,7 +1340,7 @@ class AttemptRecord(BaseModel):
     error: Annotated[str | None, Field(title="Error")] = None
     method: Annotated[Method1, Field(title="Method")]
     status: Annotated[int | None, Field(title="Status")] = None
-    steps: Annotated[list[StepOutcome] | None, Field(title="Steps")] = []
+    steps: Annotated[list[StepOutcome], Field(title="Steps")]
 
 
 class ConfigSummary(BaseModel):
@@ -1366,7 +1360,7 @@ class ConfigSummary(BaseModel):
 
 class CostReport(BaseModel):
     breakdown: Annotated[list[ModelRoleUsage], Field(title="Breakdown")]
-    currency: Annotated[Literal["USD"], Field(title="Currency")] = "USD"
+    currency: Annotated[Literal["USD"], Field(title="Currency")]
     days: Annotated[list[DayUsage], Field(title="Days")]
     end: Annotated[date, Field(title="End")]
     start: Annotated[date, Field(title="Start")]
@@ -1440,10 +1434,10 @@ class FieldSpecOutput(BaseModel):
     fields: Annotated[dict[str, FieldSpecOutput] | None, Field(title="Fields")] = None
     item: FieldSpecOutput | None = None
     key: Annotated[list[KeyItem] | None, Field(title="Key")] = None
-    required: Annotated[bool | None, Field(title="Required")] = False
+    required: Annotated[bool, Field(title="Required")]
     schema_org: Annotated[SchemaOrg | None, Field(title="Schema Org")] = None
     scheme: Annotated[Scheme | None, Field(title="Scheme")] = None
-    scope: Annotated[Scope | None, Field(title="Scope")] = "row"
+    scope: Annotated[Scope, Field(title="Scope")]
     type: FieldType
     vocab: Annotated[Vocab | None, Field(title="Vocab")] = None
 
@@ -1575,7 +1569,7 @@ class SchemaDef(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    field_order: Annotated[list[str] | None, Field(title="Field Order")] = None
+    field_order: Annotated[list[str], Field(title="Field Order")]
     fields: Annotated[dict[str, FieldSpecOutput], Field(title="Fields")]
     id: Annotated[UUID, Field(title="Id")]
     labels: Annotated[dict[str, list[Label]] | None, Field(title="Labels")] = None
@@ -1583,8 +1577,8 @@ class SchemaDef(BaseModel):
     origin: Annotated[Origin3, Field(title="Origin")]
     page_kind: Annotated[PageKind, Field(title="Page Kind")]
     required_groups: Annotated[
-        list[list[RequiredGroup]] | None, Field(title="Required Groups")
-    ] = []
+        list[list[RequiredGroup]], Field(title="Required Groups")
+    ]
     status: Annotated[Status8, Field(title="Status")]
 
 
@@ -1693,9 +1687,9 @@ class XPathStepOutput(BaseModel):
         extra="forbid",
     )
     post: Annotated[
-        list[NormalizeOpOutput | TrimOp | AbsolutizeUrlOp | RegexReplaceOp] | None,
+        list[NormalizeOpOutput | TrimOp | AbsolutizeUrlOp | RegexReplaceOp],
         Field(title="Post"),
-    ] = []
+    ]
     xpath: Annotated[str, Field(title="Xpath")]
 
 
@@ -1716,9 +1710,9 @@ class AttrStepOutput(BaseModel):
     )
     attr: Annotated[str, Field(pattern="^[A-Za-z_][A-Za-z0-9_.\\-]*$", title="Attr")]
     post: Annotated[
-        list[NormalizeOpOutput | TrimOp | AbsolutizeUrlOp | RegexReplaceOp] | None,
+        list[NormalizeOpOutput | TrimOp | AbsolutizeUrlOp | RegexReplaceOp],
         Field(title="Post"),
-    ] = []
+    ]
 
 
 class BatchScrapeRequest(BaseModel):
@@ -1853,9 +1847,9 @@ class CssStepOutput(BaseModel):
     )
     css: Annotated[str, Field(title="Css")]
     post: Annotated[
-        list[NormalizeOpOutput | TrimOp | AbsolutizeUrlOp | RegexReplaceOp] | None,
+        list[NormalizeOpOutput | TrimOp | AbsolutizeUrlOp | RegexReplaceOp],
         Field(title="Post"),
-    ] = []
+    ]
     xpath: Annotated[str, Field(title="Xpath")]
 
 
@@ -1932,9 +1926,9 @@ class JsonLdStepOutput(BaseModel):
     )
     jsonld: Annotated[str, Field(pattern="^\\$", title="Jsonld")]
     post: Annotated[
-        list[NormalizeOpOutput | TrimOp | AbsolutizeUrlOp | RegexReplaceOp] | None,
+        list[NormalizeOpOutput | TrimOp | AbsolutizeUrlOp | RegexReplaceOp],
         Field(title="Post"),
-    ] = []
+    ]
     when_type: Annotated[WhenType | None, Field(title="When Type")] = None
 
 
@@ -1956,9 +1950,9 @@ class JsonPathStepOutput(BaseModel):
     )
     jsonpath: Annotated[str, Field(pattern="^\\$", title="Jsonpath")]
     post: Annotated[
-        list[NormalizeOpOutput | TrimOp | AbsolutizeUrlOp | RegexReplaceOp] | None,
+        list[NormalizeOpOutput | TrimOp | AbsolutizeUrlOp | RegexReplaceOp],
         Field(title="Post"),
-    ] = []
+    ]
     source: Annotated[Source1, Field(title="Source")]
 
 
@@ -2048,9 +2042,9 @@ class RegexStepOutput(BaseModel):
         extra="forbid",
     )
     post: Annotated[
-        list[NormalizeOpOutput | TrimOp | AbsolutizeUrlOp | RegexReplaceOp] | None,
+        list[NormalizeOpOutput | TrimOp | AbsolutizeUrlOp | RegexReplaceOp],
         Field(title="Post"),
-    ] = []
+    ]
     regex: Annotated[str, Field(title="Regex")]
 
 
@@ -2152,7 +2146,7 @@ class FieldSteps(BaseModel):
         extra="forbid",
     )
     call: Annotated[Call | None, Field(title="Call")] = None
-    needs: Annotated[Needs | None, Field(title="Needs")] = "http"
+    needs: Annotated[Needs, Field(title="Needs")]
     status: Annotated[Status3, Field(title="Status")]
     steps: Annotated[
         list[
@@ -2201,13 +2195,13 @@ class PlatformDraft(BaseModel):
     )
     api_recipe: ApiRecipe | None = None
     api_recipe_php: Annotated[str | None, Field(title="Api Recipe Php")] = None
-    draft: Annotated[Literal[True], Field(title="Draft")] = True
+    draft: Annotated[Literal[True], Field(title="Draft")]
     fetch: Fetch
     fields: Annotated[dict[str, DraftField], Field(title="Fields")]
     ir_version: Annotated[Literal["1"], Field(title="Ir Version")]
     listing: DraftListing | None = None
     page_kind: Annotated[PageKind, Field(title="Page Kind")]
-    regex_flags: Annotated[Literal["u"], Field(title="Regex Flags")] = "u"
+    regex_flags: Annotated[Literal["u"], Field(title="Regex Flags")]
     schema_: Annotated[SchemaRef, Field(alias="schema")]
     site: Annotated[str, Field(title="Site")]
     xpath_document: Annotated[
@@ -2215,7 +2209,7 @@ class PlatformDraft(BaseModel):
             "Dom\\HTMLDocument::createFromString($html, LIBXML_NOERROR | Dom\\HTML_NO_DEFAULT_NS)"
         ],
         Field(title="Xpath Document"),
-    ] = "Dom\\HTMLDocument::createFromString($html, LIBXML_NOERROR | Dom\\HTML_NO_DEFAULT_NS)"
+    ]
 
 
 class RecordPage(BaseModel):
@@ -2260,7 +2254,7 @@ class ExtractionConfigIR(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    absent: Annotated[list[AbsentItem] | None, Field(title="Absent")] = None
+    absent: Annotated[list[AbsentItem], Field(title="Absent")]
     api_recipe: ApiRecipe | None = None
     fetch: Fetch
     fields: Annotated[dict[str, FieldSteps], Field(title="Fields")]
@@ -2268,7 +2262,7 @@ class ExtractionConfigIR(BaseModel):
     listing: ListingSpec | None = None
     page_kind: Annotated[PageKind, Field(title="Page Kind")]
     provenance: Provenance
-    recipes: Annotated[dict[str, ApiRecipe] | None, Field(title="Recipes")] = None
+    recipes: Annotated[dict[str, ApiRecipe], Field(title="Recipes")]
     schema_: Annotated[SchemaRef, Field(alias="schema")]
     site: Annotated[str, Field(min_length=1, title="Site")]
 

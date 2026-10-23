@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { SchemaDef } from "../../../api/schemas";
 import { formOf } from "../../../components/schemaDocument";
 import { reviewOf } from "./review";
+import { fieldSpec } from "../../../test/schemas";
 
 const draft: SchemaDef = {
   id: "0192a000-0000-7000-8000-0000000000d1",
@@ -10,9 +11,11 @@ const draft: SchemaDef = {
   status: "active",
   page_kind: "detail",
   required_groups: [["title"]],
+  field_order: ["title", "price"],
+  labels: null,
   fields: {
-    title: { type: "text", required: true, scope: "row" },
-    price: { type: "money", required: false, scope: "row" },
+    title: fieldSpec({ type: "text", required: true, scope: "row" }),
+    price: fieldSpec({ type: "money", required: false, scope: "row" }),
   },
 };
 
@@ -35,8 +38,8 @@ describe("reviewOf", () => {
           page_kind: "detail",
           required_groups: [],
           fields: {
-            title: { type: "text", required: true, scope: "row" },
-            price: { type: "money", required: false, scope: "row" },
+            title: fieldSpec({ type: "text", required: true, scope: "row" }),
+            price: fieldSpec({ type: "money", required: false, scope: "row" }),
           },
         },
       },

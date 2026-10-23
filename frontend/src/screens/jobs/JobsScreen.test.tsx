@@ -9,6 +9,7 @@ import type { SchemaDef } from "../../api/schemas";
 import { sse, stubApi, type Call } from "../../test/api";
 import { jobSummary } from "../../test/jobs";
 import { recordField } from "../../test/records";
+import { fieldSpec } from "../../test/schemas";
 
 const JOB_ID = "0192a000-0000-7000-8000-000000000901";
 const SCHEMA_ID = "0192a000-0000-7000-8000-000000000101";
@@ -28,7 +29,9 @@ const schema: SchemaDef = {
   status: "active",
   page_kind: "detail",
   required_groups: [["title"]],
-  fields: { title: { type: "text", required: true, scope: "row" } },
+  field_order: ["title"],
+  labels: null,
+  fields: { title: fieldSpec({ type: "text", required: true, scope: "row" }) },
 };
 
 const records: RecordPage = {

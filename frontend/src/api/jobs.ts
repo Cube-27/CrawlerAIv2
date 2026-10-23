@@ -4,12 +4,11 @@ import type { RecordPage, StoredRecord } from "./records";
 import type { Opened } from "./events";
 import { apiResult, type ApiResult } from "./result";
 import type { components, operations } from "./schema";
-import type { FetchMember, SchemaRef } from "./scrape";
 
 type Schemas = components["schemas"];
 
 /** A job's schema: by id, inline (a SchemaDef the server validates), or field names to draft one from (UI). `BatchScrapeRequest` and `CrawlRequest` take no prompt. */
-export type JobSchemaRef = Exclude<SchemaRef, { prompt: string }>;
+export type JobSchemaRef = NonNullable<Schemas["BatchScrapeRequest"]["schema"]>;
 
 export type JobSummary = Schemas["JobSummary"];
 export type JobPage = Schemas["JobPage"];
@@ -34,52 +33,12 @@ export type WebhookDeliveryPage = Schemas["DeliveryPage"];
 /** A webhook event a queued request can ask for. */
 export type WebhookEvent = NonNullable<Schemas["BatchScrapeRequest"]["webhook_events"]>[number];
 
-/** The requests as the forms build them. The generated types mark every member with a default as required
- * (openapi-typescript), so a request that leaves a default to the server is sent as that type; the server validates
- * it. */
-export type BatchRequest = Omit<
-  Schemas["BatchScrapeRequest"],
-  "fetch" | "schema" | "chunking" | "render"
-> & {
-  fetch: FetchMember;
-  schema: JobSchemaRef | null;
-  chunking?: Partial<Schemas["ChunkOptions"]>;
-  render?: Partial<Schemas["RenderOptions"]>;
-};
-export type CrawlRequest = Omit<
-  Schemas["CrawlRequest"],
-  | "fetch"
-  | "schema"
-  | "limit"
-  | "max_depth"
-  | "chunking"
-  | "strategy"
-  | "allow_subdomains"
-  | "allow_external"
-  | "render"
-> & {
-  fetch: FetchMember;
-  schema: JobSchemaRef | null;
-  chunking?: Partial<Schemas["ChunkOptions"]>;
-  render?: Partial<Schemas["RenderOptions"]>;
-  limit?: number;
-  max_depth?: number;
-  strategy?: CrawlStrategy;
-  allow_subdomains?: boolean;
-  allow_external?: boolean;
-};
-export type CrawlStrategy = Schemas["CrawlRequest"]["strategy"];
-export type ExtractRequest = Omit<
-  Schemas["ExtractRequest"],
-  "fetch" | "schema" | "budget" | "limit"
-> & {
-  fetch: FetchMember;
-  schema: SchemaRef;
-  budget?: Schemas["Budget"];
-  limit?: number;
-};
-export type MapRequest = Pick<Schemas["MapRequest"], "url" | "include" | "exclude"> &
-  Partial<Pick<Schemas["MapRequest"], "limit" | "use_sitemaps" | "use_links">>;
+/** The requests, as the API's schemas define them: a member the form leaves out takes the server's default. */
+export type BatchRequest = Schemas["BatchScrapeRequest"];
+export type CrawlRequest = Schemas["CrawlRequest"];
+export type CrawlStrategy = NonNullable<CrawlRequest["strategy"]>;
+export type ExtractRequest = Schemas["ExtractRequest"];
+export type MapRequest = Schemas["MapRequest"];
 
 /** A job's results page in `format=json`: its records, or, for a job without a schema, its page outputs. */
 export type ResultsPage =
@@ -340,8 +299,7 @@ export async function submitBatch(
   body: BatchRequest,
 ): Promise<ApiResult<string>> {
   const result = await apiResult(
-    // The server applies the defaults this request leaves out (see `BatchRequest`).
-    () => client.POST("/v1/batch/scrape", { body: body as Schemas["BatchScrapeRequest"] }),
+    () => client.POST("/v1/batch/scrape", { body }),
     "Queuing the batch",
   );
   return result.kind === "done" ? { kind: "done", value: result.value.job_id } : result;
@@ -352,11 +310,7 @@ export async function submitCrawl(
   client: ApiClient,
   body: CrawlRequest,
 ): Promise<ApiResult<string>> {
-  const result = await apiResult(
-    // The server applies the defaults this request leaves out (see `CrawlRequest`).
-    () => client.POST("/v1/crawl", { body: body as Schemas["CrawlRequest"] }),
-    "Queuing the crawl",
-  );
+  const result = await apiResult(() => client.POST("/v1/crawl", { body }), "Queuing the crawl");
   return result.kind === "done" ? { kind: "done", value: result.value.job_id } : result;
 }
 
@@ -365,21 +319,13 @@ export async function submitExtract(
   client: ApiClient,
   body: ExtractRequest,
 ): Promise<ApiResult<string>> {
-  const result = await apiResult(
-    // The server applies the defaults this request leaves out (see `ExtractRequest`).
-    () => client.POST("/v1/extract", { body: body as Schemas["ExtractRequest"] }),
-    "Queuing the extract",
-  );
+  const result = await apiResult(() => client.POST("/v1/extract", { body }), "Queuing the extract");
   return result.kind === "done" ? { kind: "done", value: result.value.job_id } : result;
 }
 
 /** The site's URLs (`POST /v1/map` answers at once; it makes no job). */
 export function mapUrls(client: ApiClient, body: MapRequest): Promise<ApiResult<MapResult>> {
-  return apiResult(
-    // The server applies the defaults this request leaves out (see `MapRequest`).
-    () => client.POST("/v1/map", { body: body as Schemas["MapRequest"] }),
-    "Mapping the site",
-  );
+  return apiResult(() => client.POST("/v1/map", { body }), "Mapping the site");
 }
 
 /** Opens the job's event stream after `lastEventId` with the client's key (`EventSource` cannot send
@@ -403,26 +349,13 @@ export async function openJobEvents(
 
 export type SearchResult = Schemas["SearchResult"];
 export type SearchHit = Schemas["SearchHit"];
-/** The search request as the form builds it: `scrape` leaves out the members it does not set, so the server's defaults
- * apply. */
-export interface SearchRequest {
-  query: string;
-  limit?: number;
-  scrape?: {
-    formats: Schemas["SearchScrape"]["formats"];
-    schema?: { id: string };
-    page_kind?: PageKindRule["page_kind"];
-  };
-}
+/** The search request: with `scrape`, a batch job scrapes the results. */
+export type SearchRequest = Schemas["SearchRequest"];
 
 /** The web results of a query (`POST /v1/search` answers at once); with `scrape`, a batch job scrapes them. */
 export function searchWeb(
   client: ApiClient,
   body: SearchRequest,
 ): Promise<ApiResult<SearchResult>> {
-  return apiResult(
-    // The server applies the defaults this request leaves out (see `SearchRequest`).
-    () => client.POST("/v1/search", { body: body as Schemas["SearchRequest"] }),
-    "Searching the web",
-  );
+  return apiResult(() => client.POST("/v1/search", { body }), "Searching the web");
 }
