@@ -27,7 +27,10 @@ Reasoning for a single change goes in its PR body.
 - **Custom recipes are engineer-driven.** An engineer picks the calls a site's pages make; the system proposes, never
   saves. Saving needs no approval or audit; the output is always the selected schema.
 - **The learned config stays active beside custom recipes.** A recipe serves the URLs its patterns match; the learned
-  config serves the rest. Ladder: custom recipe, then adapter, then learned recipe, then page rungs.
+  config serves the rest. Ladder: custom recipe, then adapter, then learned recipe, then page rungs; only
+  operator recipes with patterns move ahead of adapters.
+- **Engineer capture is synchronous** in the API process, like `POST /v1/scrape`; no new job kind.
+- **Recipe internals are shown on the Recipes screen only,** the one exception to hiding internals from users.
 
 ## Acquisition
 
