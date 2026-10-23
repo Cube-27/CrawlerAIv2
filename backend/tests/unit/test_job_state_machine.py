@@ -5,8 +5,8 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.db.jobs import JOB_TRANSITIONS, TASK_TRANSITIONS, settled_status
-from crawlerai.db.models import JobStatus, TaskStatus
+from crawlerai.db.jobs import JOB_TRANSITIONS, KIND_TRAITS, TASK_TRANSITIONS, kinds_with, settled_status
+from crawlerai.db.models import JobKind, JobStatus, ScheduledKind, TaskStatus
 
 MACHINES = pytest.mark.parametrize(
     ("transitions", "statuses"),
@@ -19,6 +19,11 @@ MACHINES = pytest.mark.parametrize(
 def test_every_status_has_a_row(transitions: Mapping[str, frozenset[str]], statuses: tuple[str, ...]) -> None:
     assert set(transitions) == set(statuses)
     assert set().union(*transitions.values()) <= set(statuses)
+
+
+def test_every_job_kind_has_traits_and_a_schedule_submits_those_with_queued_tasks() -> None:
+    assert set(KIND_TRAITS) == set(get_args(JobKind))
+    assert set(kinds_with(lambda traits: traits.queued_tasks)) == set(get_args(ScheduledKind))
 
 
 @pytest.mark.parametrize(

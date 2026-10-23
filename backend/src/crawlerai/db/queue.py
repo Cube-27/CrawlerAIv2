@@ -32,8 +32,10 @@ from sqlalchemy.orm import aliased
 from crawlerai.core.retry import backoff_delay
 from crawlerai.db.jobs import (
     JOB_TRANSITIONS,
+    KIND_TRAITS,
     InvalidTransition,
     blocking_statuses,
+    kinds_with,
     lock_job,
     locking,
     settled_status,
@@ -67,9 +69,6 @@ STALLED_BATCH: Final = 100
 # How many expired leases one scheduler turn releases (`release_expired_leases`), each turn one transaction; a full
 # batch runs again at once.
 LEASE_BATCH: Final = 100
-# The kinds of job a process runs while its caller waits, with no task for a while or ever: a `map`, an `extract`
-# drafting its prompt's schema.
-_RUN_INLINE: Final[tuple[JobKind, ...]] = ("map", "extract")
 
 # Runs as a job ends (`settle_job`): the job, and the status it is about to end in.
 JobEnding = Callable[[AsyncConnection, JobId, JobStatus], Awaitable[None]]
@@ -344,10 +343,12 @@ async def stuck_running_jobs(
 
 
 async def fail_stalled_jobs(conn: AsyncConnection, *, batch: int) -> int:
-    """End `failed` up to `batch` jobs of `_RUN_INLINE` kinds `running` with no task for longer than `LEASE`, and
-    return how many. A process runs such a job while its caller waits, within the request's time cap (a `map`'s, a
-    draft's), far under a lease."""
-    job_ids = await stuck_running_jobs(conn, kinds=_RUN_INLINE, older_than=LEASE, batch=batch, taskless=True)
+    """End `failed` up to `batch` jobs of `inline` kinds (`KindTraits`) `running` with no task for longer than
+    `LEASE`, and return how many. A process runs such a job while its caller waits, within the request's time cap (a
+    `map`'s, a draft's), far under a lease."""
+    job_ids = await stuck_running_jobs(
+        conn, kinds=kinds_with(lambda traits: traits.inline), older_than=LEASE, batch=batch, taskless=True
+    )
     for job_id in job_ids:
         await transition_job(conn, job_id, "failed")
     return len(job_ids)
@@ -404,7 +405,7 @@ async def settle_job(conn: AsyncConnection, job_id: JobId, ending: JobEnding | N
 async def request_cancel(conn: AsyncConnection, job_id: JobId, unstarted: JobEnding | None = None) -> None:
     """Ask the job to stop: its queued tasks are cancelled, and the job is `cancelled` at once when it never started
     (`unstarted` runs first), else once none of its tasks is claimed (`settle_job`). A job that ended meanwhile is left
-    as it ended. A started `learn` job has no tasks: its run ends itself on `cancel_requested`."""
+    as it ended. A started job of a kind that `ends_itself` (`KindTraits`) has no tasks to settle."""
     # Tasks first, then the job row: the order a finishing worker locks them in, so the two never wait on each other.
     # A claim that starts the job locks its tasks before the job too.
     await conn.execute(
@@ -418,5 +419,5 @@ async def request_cancel(conn: AsyncConnection, job_id: JobId, unstarted: JobEnd
         if unstarted is not None:
             await unstarted(conn, job_id, "cancelled")
         await transition_job(conn, job_id, "cancelled")
-    elif job.kind != "learn":
+    elif not KIND_TRAITS[job.kind].ends_itself:
         await settle_job(conn, job_id)
