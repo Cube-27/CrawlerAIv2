@@ -452,9 +452,16 @@ def _no_site_page(tree: LexborHTMLParser) -> BlockClass | None:
     # After the shell rule: hyperlinks inside a `template` are not in the document, and the rule strips them. A
     # document that renders an order of magnitude more text than a shell (`_CARRIED_MIN_CHARS`) is the page however it
     # links on (a script, a form): a stand-in states a line or two, not an article.
-    if tree.css_first(_HYPERLINKS) is None and _shown_chars(tree) < _CARRIED_MIN_CHARS:
+    if tree.css_first(_HYPERLINKS) is None and _unconcealed_chars(tree) < _CARRIED_MIN_CHARS:
         return "blocked"
     return None
+
+
+def _unconcealed_chars(tree: LexborHTMLParser) -> int:
+    """`_shown_chars` without the text of concealed subtrees (`_HIDDEN`, `_DISPLAY_NONE`), which no reader sees until a
+    script shows it: a stand-in's hidden text does not make it an article."""
+    concealed = _outermost(n for n in tree.css(_CONCEALED) if _concealed(n.attributes))
+    return _shown_chars(tree) - sum(_chars(node.text()) for node in concealed)
 
 
 def unread_media(status: int, headers: HeaderList) -> bool:

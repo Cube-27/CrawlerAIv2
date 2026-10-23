@@ -293,11 +293,22 @@ def _backed_off(result: FetchResult, task: ClaimedTask) -> FetchResult | TaskRes
         return result
     error = f"http {slowed.status}"
     after = backoff(slowed, task.attempts)
-    rendered = any(attempt.method == "browser" for attempt in result.attempts)
-    too_many = slowed.status == HTTPStatus.TOO_MANY_REQUESTS and (rendered or task.attempts >= _TOO_MANY_TRIES)
+    too_many = slowed.status == HTTPStatus.TOO_MANY_REQUESTS and (
+        _rendered_after(slowed, result.attempts) or task.attempts >= _TOO_MANY_TRIES
+    )
     if after is None or too_many:
         return Finished("blocked", reason=error)
     return Failed(error, transient=True, after=after, exhausted="blocked")
+
+
+def _rendered_after(slowed: AttemptRecord, attempts: tuple[AttemptRecord, ...]) -> bool:
+    """Whether the page's HTTP 429 `slowed` was answered in the browser by a later attempt of the fetch (its one
+    browser attempt, `acquire.rungs`); an adapter's or a recipe's 429 is its endpoint's, which the browser does not
+    retry."""
+    if slowed.method != "http":
+        return False
+    later = attempts[next(i for i, attempt in enumerate(attempts) if attempt is slowed) + 1 :]
+    return any(attempt.method == "browser" for attempt in later)
 
 
 async def count_fetch(conn: AsyncConnection, task: ClaimedTask, page: Page | Ended) -> None:
