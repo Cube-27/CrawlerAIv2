@@ -29,8 +29,9 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.fetch_options import FetchOptions
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.page_run import extract_run, page_run
+from crawlerai.services.page_task import NotReached
 from crawlerai.services.scrape_request import PageFormat
-from crawlerai.worker.handlers.steps import Ended, count_fetch, fetch_page, load_job
+from crawlerai.worker.handlers.steps import count_fetch, fetch_page, load_job
 from crawlerai.worker.loop import Settle, TaskHandler
 
 
@@ -69,7 +70,7 @@ def scrape_handler(
             planned=records,
         )
 
-        if isinstance(fetched, Ended):
+        if isinstance(fetched, NotReached):
             ended = fetched
 
             async def end(conn: AsyncConnection) -> TaskResult:

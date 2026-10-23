@@ -1,5 +1,5 @@
-"""Fetching a task's page politely: robots.txt, the site's rate and backoff through the queue
-(`worker.handlers.steps.fetch_queued`, the one polite fetch as a worker runs it)."""
+"""Fetching a task's page politely: robots.txt, the site's rate and backoff through the queue (`polite_fetch`
+waiting as a worker does, `QUEUED`, and what the task ends as: `page_task.queued_end`)."""
 
 import json
 from collections.abc import Callable
@@ -15,8 +15,8 @@ from crawlerai.acquire.robots import RobotsSnapshot
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.db.models import Job, JobId, Project, Site, SiteId, UrlTask
 from crawlerai.db.queue import ClaimedTask, Failed, Finished, TaskResult, claim_tasks
-from crawlerai.services.polite import QUEUED, HostRules, PageFetch, Turns, rules_of
-from crawlerai.worker.handlers.steps import fetch_queued
+from crawlerai.services.page_task import queued_end
+from crawlerai.services.polite import QUEUED, HostRules, PageFetch, Turns, polite_fetch, rules_of
 from tests.db.support import Web as SharedWeb
 
 pytestmark = pytest.mark.anyio
@@ -72,17 +72,15 @@ async def _polite(
     robots: "Web | None" = None,
     by_adapter: bool = False,
 ) -> FetchResult | TaskResult:
-    """`fetch_queued` with `page`, and robots.txt fetched from `robots`, else from `page` (then a `Web`)."""
+    """The task's queued polite fetch with `page`, and robots.txt fetched from `robots`, else from `page` (then a
+    `Web`)."""
     web = robots or page
     assert isinstance(web, Web)
-    return await fetch_queued(
-        task,
-        policy,
-        rules_of(engine, web.rung("http"), [], Turns(limiter, QUEUED)),
-        page,
-        limiter,
-        by_adapter=by_adapter,
+    rules = rules_of(engine, web.rung("http"), [], Turns(limiter, QUEUED))
+    result = await polite_fetch(
+        task.url, policy, rules, limiter, QUEUED, page, by_adapter=by_adapter, tries=task.attempts
     )
+    return queued_end(result, task)
 
 
 async def _snapshot(engine: AsyncEngine, site_id: SiteId, origin: str = ORIGIN) -> RobotsSnapshot | None:

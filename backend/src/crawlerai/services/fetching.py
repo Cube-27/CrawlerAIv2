@@ -42,6 +42,7 @@ from crawlerai.services.polite import (
     IN_PLACE,
     SLOW_DOWN,
     HostRules,
+    Later,
     PageFetch,
     ReadRules,
     Refused,
@@ -260,13 +261,12 @@ def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replays | None:
 class RecipePages:
     """A listing's pages as its active config's listing recipe (one with pagination, Appendix A #59) serves them, up
     to `limit` requests and until `deadline`; the pages after the first are kept in `further` and their attempts added
-    to `attempts`. `refused` is the SSRF guard's refusal of a further page's request, which fails the fetch:
-    a refused page is never stored, and the listing is not cut short silently."""
+    to `attempts`. A further page's request the SSRF guard refused fails the fetch (`page_task`): a refused page is
+    never stored, and the listing is not cut short silently."""
 
     limit: int = MAX_PAGES
     attempts: list[AttemptRecord] = field(default_factory=list)
     further: list[FetchResult] = field(default_factory=list)
-    refused: str | None = None
     deadline: float | None = None  # on `time.monotonic`: no page request starts after it
 
     async def rung(self, recipe: RecipeRung, url: str, policy: FetchPolicy) -> Rung | None:
@@ -283,7 +283,6 @@ class RecipePages:
         first, further = pages[0], pages[1:]
         self.attempts.extend(attempt for page in further for attempt in page.attempts)
         self.further[:] = further if first.block_class == "ok" else []
-        self.refused = next((refused for page in self.further if (refused := refusal(page)) is not None), None)
 
         async def served(_url: str, _policy: FetchPolicy) -> FetchResult:
             return first
@@ -375,16 +374,15 @@ class PagePlan:
     fetch: FetchPlan = NO_PLAN
 
 
-def _uses_recipe(page: PagePlan, url: str) -> bool:
-    """Whether `acquire` fetches `url` through the recipe: not a page the policy captures as a file, nor one an adapter
-    detects, so a listing recipe's pages are requested for no other."""
-    return not page.policy.captures_page and not page.rungs.adapters.would_serve(url)
-
-
-def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Waiting) -> PageFetch:
+def page_fetch(
+    fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Waiting, *, by_adapter: bool = False
+) -> PageFetch:
     """The page through `acquire`, as the polite fetch calls it: the adapter that detects the URL and the active
     config's API recipe ask their endpoints politely (`adapter_send`, `recipe_rung`; endpoints on the page's host by the
-    rules the polite fetch read, others by `rules`), and every attempt is added to the request's attempts."""
+    rules the polite fetch read, others by `rules`), and every attempt is added to the request's attempts. A listing
+    recipe's pages are requested only for a page `acquire` fetches through the recipe: not one the policy captures as a
+    file, nor one an adapter detects (`by_adapter`)."""
+    uses_recipe = not page.policy.captures_page and not by_adapter
 
     async def fetch(url: str, admit_next: Admit, known: HostRules) -> FetchResult:
         host = urlsplit(url).hostname or ""
@@ -393,11 +391,7 @@ def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Wa
         rung: Rung | None = None
         recipe = None if page.recipe is None else recipe_rung(fetching, page.recipe, host, here, waiting)
         if recipe is not None:
-            rung = (
-                recipe
-                if page.pages is None or not _uses_recipe(page, url)
-                else await page.pages.rung(recipe, url, page.policy)
-            )
+            rung = recipe if page.pages is None or not uses_recipe else await page.pages.rung(recipe, url, page.policy)
 
         rungs = page.rungs
         if page.growth is not None:
@@ -422,26 +416,26 @@ def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Wa
     return fetch
 
 
-async def fetch_now(
-    engine: AsyncEngine, fetching: Fetching, url: str, page: PagePlan, *, tries: int = 1
-) -> FetchResult | str:
-    """The page at `url` fetched while the caller waits (`polite_fetch`, `IN_PLACE`), or why nothing was sent
-    (`polite.Refused`); the adapter declines it made are stored on the site. Raises `TargetRejected` when the
-    guard refused a request of the fetch."""
-    host = urlsplit(url).hostname or ""
-    rules = rules_of(engine, fetching.rungs.http, page.attempts, Turns(fetching.limiter, IN_PLACE))
-    fetch = page_fetch(fetching, page, rules, IN_PLACE)
+async def fetch_planned(
+    engine: AsyncEngine, fetching: Fetching, url: str, page: PagePlan, waiting: Waiting, *, tries: int = 1
+) -> FetchResult | Refused | Later:
+    """The page at `url` fetched by `page` through the polite fetch (`polite_fetch`), waiting for turns as `waiting`
+    says, or why nothing was sent; the adapter declines it made are stored on the site. A request the guard refused
+    is an attempt's error (`refusal`)."""
+    rules = rules_of(engine, fetching.rungs.http, page.attempts, Turns(fetching.limiter, waiting))
     by_adapter = page.rungs.adapters.would_serve(url)
+    fetch = page_fetch(fetching, page, rules, waiting, by_adapter=by_adapter)
     result = await polite_fetch(
-        url, page.policy, rules, fetching.limiter, IN_PLACE, fetch, by_adapter=by_adapter, tries=tries
+        url, page.policy, rules, fetching.limiter, waiting, fetch, by_adapter=by_adapter, tries=tries
     )
-    await store_declines(engine, page.site, host, page.rungs)
-    if isinstance(result, Refused):
-        return result.reason
-    if not isinstance(result, FetchResult):  # nothing is postponed while the caller waits
-        raise TypeError(f"a fetch the caller waits for answered {type(result).__name__}")
-    if (refused := refusal(result)) is not None:
-        raise TargetRejected(refused)
+    await store_declines(engine, page.site, urlsplit(url).hostname or "", page.rungs)
+    return result
+
+
+def in_place(result: FetchResult | Refused | Later) -> FetchResult | Refused:
+    """A fetch the caller waits for (`IN_PLACE`): nothing is postponed in place."""
+    if isinstance(result, Later):
+        raise TypeError("a fetch the caller waits for was postponed")
     return result
 
 

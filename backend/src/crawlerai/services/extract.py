@@ -49,11 +49,20 @@ from crawlerai.resolve.types import Probability
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.batch import MAX_URLS, OWN_TRANSACTION, Placement, insert_job, insert_tasks, job_pins
 from crawlerai.services.fetch_options import FetchOptions, check_proxy_pool, fetch_policy
-from crawlerai.services.fetching import Fetching, PagePlan, TargetRejected, check_targets, fetch_now, site_rungs
+from crawlerai.services.fetching import (
+    Fetching,
+    PagePlan,
+    check_targets,
+    fetch_planned,
+    in_place,
+    refusal,
+    site_rungs,
+)
 from crawlerai.services.location import job_egress
 from crawlerai.services.map import MapRequest, map_urls
 from crawlerai.services.page_run import read_stored
 from crawlerai.services.page_store import SiteRow, record_fetch_usage, site_row
+from crawlerai.services.polite import IN_PLACE, Refused
 from crawlerai.services.scrape import MAX_TIMEOUT_S, Budget, RecordsUnavailable
 from crawlerai.services.scrape_request import (
     MIN_CONFIDENCE_DESCRIPTION,
@@ -305,12 +314,12 @@ async def _samples(
 async def _fetched_sample(
     engine: AsyncEngine, fetching: Fetching, job_id: JobId, url: str, page: PagePlan
 ) -> FetchResult | str:
-    """The sample page at `url` fetched as a scrape fetches its page (`fetch_now`), its attempts counted as the job's
-    usage; the guard's refusal when it refused a request of the fetch, which leaves the page unreached."""
+    """The sample page at `url` fetched as a scrape fetches its page, while the caller waits (`fetch_planned`), its
+    attempts counted as the job's usage; why nothing was sent, or the guard's refusal when it refused a request of the
+    fetch, which leaves the page unreached."""
     try:
-        return await fetch_now(engine, fetching, url, page)
-    except TargetRejected as e:
-        return e.reason
+        result = in_place(await fetch_planned(engine, fetching, url, page, IN_PLACE))
+        return result.reason if isinstance(result, Refused) else refusal(result) or result
     finally:
         async with engine.begin() as conn:
             await record_fetch_usage(conn, job_id, page.attempts, page.policy.proxy_pool)

@@ -209,8 +209,8 @@ Claim(w) ==
 
 (* polite_fetch -> _first_turn with QUEUED: HostLimiter.admit(host) records the turn and the request goes (the host *)
 (* held, `holding`, with no await between), or the turn is not due or another task of the worker holds the host:  *)
-(* Later -> the handler returns Postpone (fetch_queued). Or the task ends with no request for its page and none    *)
-(* counted (fetch_queued's robots.txt disallow; a stored capture reread, `recent_capture`).                        *)
+(* Later -> the handler returns Postpone (queued_end). Or the task ends with no request for its page and none      *)
+(* counted (queued_end's robots.txt disallow; a stored capture reread, `recent_capture`).                          *)
 (* A stale robots.txt snapshot: the first request is rules_in's robots.txt request (recording -> _first_turn),     *)
 (* admitted and held as a page's is. Bug = "robots_unpaced": it is sent before any turn, unheld (the code before).  *)
 Turn(r) ==
