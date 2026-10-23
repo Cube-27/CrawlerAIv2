@@ -20,11 +20,11 @@ from datetime import UTC, datetime
 from typing import Final, Literal
 from urllib.parse import urlsplit, urlunsplit
 
-from curl_cffi.requests import BrowserTypeLiteral
-
 from crawlerai.acquire.challenge import CHALLENGED, challenge_label, count
 from crawlerai.acquire.classify import classify
 from crawlerai.acquire.curl_client import Hop, Transport, Wire, send
+from crawlerai.acquire.impersonate import Impersonation
+from crawlerai.acquire.locality import language_headers
 from crawlerai.acquire.outcome import Content, fetch_result, report_proxy
 from crawlerai.acquire.public_suffix import default_suffixes
 from crawlerai.acquire.session import SiteSessions
@@ -91,7 +91,7 @@ async def fetch_json(
     policy: FetchPolicy,
     *,
     engine_version: str,
-    impersonate: BrowserTypeLiteral,
+    impersonate: Impersonation,
     connector: SafeConnector | None = None,
     pools: Mapping[str, ProxyPool] | None = None,
     transport: Transport | None = None,
@@ -108,7 +108,7 @@ async def fetch_json(
     session = None if sessions is None else sessions.take(request.page_url, request.url, policy.proxy_pool)
     sent = await send(
         request.url,
-        _first_hop(request),
+        _first_hop(request, policy.locale_hint),
         policy,
         impersonate=impersonate,
         connector=connector or SafeConnector(),
@@ -168,8 +168,10 @@ def _outcome(status: int, body: bytes, raw: bool) -> tuple[BlockClass, str | Non
     return ("error", "unexpected_status") if block_class == "ok" else (block_class, None)
 
 
-def _first_hop(request: JsonRequest) -> Hop:
-    headers = _fetch_headers(request.page_url, request.url, request.method, "same-origin")
+def _first_hop(request: JsonRequest, locale: str | None) -> Hop:
+    # The page's language goes with its script's calls, as the browser rung's context sends it (`acquire.locality`).
+    headers: dict[str, str | None] = {**language_headers(locale)}
+    headers.update(_fetch_headers(request.page_url, request.url, request.method, "same-origin"))
     for name, value in request.headers:
         _replace(headers, name, value)
     if request.body is not None and not any(name.lower() == _CONTENT_TYPE for name in headers):

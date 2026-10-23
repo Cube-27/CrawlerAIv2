@@ -23,10 +23,10 @@ from crawlerai.acquire.session import (
 )
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.core.capture import CaptureMethod
-from crawlerai.core.settings import IMPERSONATE_DEFAULT
 from crawlerai.db.models import BrowserEngine
 from crawlerai.storage.capture_bundle import encode
 from tests.local_server import LoopbackConnector, Reply, Server, serving
+from tests.stand_in import IMPERSONATE
 
 SITE = "shop.example.test"
 COOKIE_VALUE = "c1earance-value"
@@ -114,7 +114,7 @@ def http(server: Server, url: str, sessions: SiteSessions | None) -> FetchResult
             url,
             FetchPolicy(),
             engine_version="test",
-            impersonate=IMPERSONATE_DEFAULT,
+            impersonate=IMPERSONATE,
             connector=LoopbackConnector(server.port, {}),
             sessions=sessions,
         )

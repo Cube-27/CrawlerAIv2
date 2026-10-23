@@ -17,7 +17,7 @@ from typing import Final, cast
 from urllib.parse import urlsplit
 
 from patchright._impl._api_structures import SetCookieParam, ViewportSize
-from patchright.async_api import BrowserContext, Playwright, async_playwright
+from patchright.async_api import BrowserContext, Playwright, Route, async_playwright
 from patchright.async_api import Error as PlaywrightError
 
 from crawlerai.acquire.browser_profiles import Profile, discard_profile, open_profile, profile_name
@@ -29,25 +29,44 @@ from crawlerai.acquire.shared_browser import BROWSER_CONTEXTS
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import FetchPolicy, RequestContext
-from crawlerai.core.proxy import ProxyEndpoint
+from crawlerai.core.proxy import ProxyEndpoint, ProxyPool
+from crawlerai.storage.capture_bundle import HeaderList
 
-__all__ = ["BrowserSession", "Failed", "context_cookies", "context_key", "open_browser", "open_context"]
+__all__ = [
+    "BrowserSession",
+    "Failed",
+    "browser_headers",
+    "context_cookies",
+    "context_key",
+    "context_locality",
+    "open_browser",
+    "open_context",
+]
 
-# Patchright's documented setup (D-1204, D-1205): the full Chromium build (`chromium`), not the headless shell
-# Playwright picks for `headless=True` by default, run in Chromium's own headless mode, with its own client hints and
-# no custom headers. Each browser runs in a persistent profile with Playwright's fixed 1280x720 viewport (owner #50 as
-# amended 2026-10-21: not the README's `no_viewport`, whose headless window is 800x600), and no launch argument:
-# WebRTC's proxy policy is a profile preference (`acquire.browser_profiles`).
-_CHANNEL = "chromium"
+# Patchright's documented setup (D-1204, D-1205, owner 2026-10-23): Google Chrome stable (`chrome`, installed with
+# `patchright install chrome`), the build the Patchright README recommends, run headless, with its own client hints and
+# no custom headers. Each browser runs in a persistent profile with Playwright's fixed 1280x720 viewport
+# (owner #50 as amended 2026-10-21: not the README's `no_viewport`, whose headless window is 800x600), and no launch
+# argument: WebRTC's proxy policy is a profile preference (`acquire.browser_profiles`).
+_CHANNEL = "chrome"
 _VIEWPORT: Final = ViewportSize(width=1280, height=720)
 # The one change to the browser's identity (owner #71 as amended 2026-10-21, INV-44): its own user agent, read from the
 # browser, with the token headless mode adds (`HeadlessChrome/`) named as a headed browser names it. Set as the
 # context's user agent, never the `--user-agent` launch switch.
 _HEADLESS_PRODUCT: Final = "HeadlessChrome/"
 _HEADED_PRODUCT: Final = "Chrome/"
-# The browser started only to read its user agent loads no page; anything it requests in the background goes to this
-# closed loopback port and fails, rather than around the guard (INV-16).
+_USER_AGENT: Final = "user-agent"
+# The browser started only to read the headers it sends (`browser_headers`) loads no page of any site; anything it
+# requests in the background goes to this closed loopback port and fails, rather than around the guard (INV-16).
 _NOWHERE: Final = "socks5://127.0.0.1:9"
+# The document that browser navigates to, answered in the browser itself: `.invalid` names no host (RFC 2606 §2).
+_NO_SITE: Final = "https://browser.invalid/"
+# The headers of a navigation that name the browser (RFC 9110 §10.1.5 `User-Agent`, RFC 8942 client hints, the
+# User-Agent Client Hints low-entropy set) and what it asks for (RFC 9110 §12.5.1 `Accept`, Upgrade Insecure Requests
+# §3.2.1). The HTTP and JSON rungs send them in place of their impersonation's (`acquire.impersonate`).
+_NAMING_HEADERS: Final = frozenset(
+    {_USER_AGENT, "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "accept", "upgrade-insecure-requests"}
+)
 # Chromium's implicit proxy-bypass rules (`ProxyBypassRules`, net/proxy_resolution) send `localhost`, 127.0.0.0/8,
 # [::1], 169.254.0.0/16 and fe80::/10 around any proxy; 169.254.169.254 is the cloud metadata address. The bypass rule
 # `<-loopback>` removes those implicit rules, so they too go through the guard (INV-16). Playwright adds it itself
@@ -58,9 +77,9 @@ _PROXY_ALL_LOOPBACK = "<-loopback>"
 # in a job usually comes within seconds.
 _OPEN_PROFILES: Final = BROWSER_CONTEXTS
 _PROFILE_IDLE_S = 60.0
-# The browser's own user agent, its headless token renamed (`_headed_agent`), read once per process: the installed
-# Chromium build does not change while the process runs.
-_AGENT: dict[str, str] = {}
+# The browser's naming headers (`browser_headers`), read once per process: the installed Chrome does not change while
+# the process runs.
+_HEADERS: dict[str, HeaderList] = {}
 
 
 class Failed(Exception):
@@ -206,11 +225,13 @@ class _Profiles:
 @dataclass(frozen=True)
 class BrowserSession:
     """A Playwright driver, shared by the fetches of one worker process, the user agent its profiles send (the
-    browser's own, its headless token renamed), and the site profiles it keeps open."""
+    browser's own, its headless token renamed), the site profiles it keeps open, and the country this machine's direct
+    fetches go out from (`CRAWLERAI_EGRESS_COUNTRY`; None: undeclared)."""
 
     playwright: Playwright
     agent: str
     profiles: _Profiles = field(default_factory=_Profiles)
+    country: str | None = None
 
     @property
     def alive(self) -> bool:
@@ -228,29 +249,55 @@ def _driver_connected(playwright: Playwright) -> bool:
 
 
 @asynccontextmanager
-async def open_browser(profiles: Path | None = None) -> AsyncIterator[BrowserSession]:
+async def open_browser(profiles: Path | None = None, country: str | None = None) -> AsyncIterator[BrowserSession]:
     """The driver runs until the block ends; leaving it closes its profiles' browsers and the driver process. Site
-    profiles are kept under `profiles` (`CRAWLERAI_BROWSER_PROFILES`); without it, each lasts while it is open."""
+    profiles are kept under `profiles` (`CRAWLERAI_BROWSER_PROFILES`); without it, each lasts while it is open.
+    `country` is the machine's declared egress country, whose zone a direct render's context takes."""
     async with async_playwright() as playwright:
-        session = BrowserSession(playwright, await _headed_agent(playwright), _Profiles(profiles))
+        headers = await browser_headers(playwright)
+        agent = next(value for name, value in headers if name == _USER_AGENT)
+        session = BrowserSession(playwright, agent, _Profiles(profiles), country)
         try:
             yield session
         finally:
             await session.profiles.aclose()
 
 
-async def _headed_agent(playwright: Playwright) -> str:
-    """The browser's own user agent (`Browser.getVersion`), its headless token replaced by the headed one; read from a
-    browser started for it once per process (`_AGENT`)."""
-    if (agent := _AGENT.get(_CHANNEL)) is not None:
-        return agent
+async def browser_headers(playwright: Playwright) -> HeaderList:
+    """The headers that name the browser (`_NAMING_HEADERS`) as its profiles send them on a navigation, its user
+    agent's headless token renamed; read once per process (`_HEADERS`) from a browser started for it alone, whose
+    navigation to `_NO_SITE` is answered inside the browser (Playwright's request routing, used here and nowhere a page
+    loads), so the request is read and nothing is sent."""
+    if (known := _HEADERS.get(_CHANNEL)) is not None:
+        return known
+    sent: dict[str, str] = {}
+
+    async def answer(route: Route) -> None:
+        sent.update(await route.request.all_headers())
+        await route.fulfill(body="", content_type="text/html")
+
     browser = await playwright.chromium.launch(channel=_CHANNEL, headless=True, proxy={"server": _NOWHERE})
     try:
-        version = await (await browser.new_browser_cdp_session()).send("Browser.getVersion")
+        page = await browser.new_page()
+        await page.route(_NO_SITE, answer)
+        await page.goto(_NO_SITE)
     finally:
         await browser.close()
-    agent = _AGENT[_CHANNEL] = str(version["userAgent"]).replace(_HEADLESS_PRODUCT, _HEADED_PRODUCT, 1)
-    return agent
+    headers = tuple(
+        (name, value.replace(_HEADLESS_PRODUCT, _HEADED_PRODUCT, 1) if name == _USER_AGENT else value)
+        for name, value in sent.items()
+        if name in _NAMING_HEADERS
+    )
+    _HEADERS[_CHANNEL] = headers
+    return headers
+
+
+def context_locality(policy: FetchPolicy, session: BrowserSession, pool: ProxyPool | None) -> Locality:
+    """The context's locality (`acquire.locality`): the request's locale, and the zone of the country the render goes
+    out from, the pool's declared country through a pool, else the machine's (acquisition spec, "Egress country"); a
+    pool that declares none is not the machine's."""
+    country = session.country if pool is None else pool.country
+    return locality(policy.locale_hint, country)
 
 
 async def open_context(
@@ -262,16 +309,16 @@ async def open_context(
     proxy: ProxyEndpoint | None,
     sessions: SiteSessions | None,
     key: ContextKey | None,
+    locale: Locality,
 ) -> _Context:
     """The site profile of `key` (a temporary one without a key, `acquire.browser_profiles`), launched as a persistent
     context behind a guard of its own, holding the caller's cookies, or, in a temporary profile of the site, the cookies
-    `sessions` give (`SiteSessions.for_browser`; a kept profile holds its own), with the request locale's
-    `locale` and `timezone_id` (`acquire.locality`). Nothing intercepts its requests: Playwright's request routing
+    `sessions` give (`SiteSessions.for_browser`; a kept profile holds its own), with the `locale` and `timezone_id`
+    of `locale` (`context_locality`). Nothing intercepts its requests: Playwright's request routing
     turns the HTTP cache off, so every request carries `Cache-Control: no-cache` and `Pragma: no-cache`, which no
     user's browser sends on a first load (acquisition spec, "HTTP and browser rungs")."""
     stack = AsyncExitStack()
     traffic = Traffic()
-    locale = locality(policy.locale_hint)
     try:
         profile = open_profile(session.profiles.root, None if key is None else profile_name(*key))
         stack.callback(profile.close)  # after the browser has closed, so its last writes are in the profile

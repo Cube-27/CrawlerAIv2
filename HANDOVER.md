@@ -56,7 +56,7 @@ ones a run needs:
 
 - `CRAWLERAI_DATABASE_URL` (matches `infra/docker-compose.yml`) and `CRAWLERAI_OBJECT_STORE` (`fs:///...` or
   `s3://...`; `make` uses `<repo>/.data/objects`).
-- `CRAWLERAI_BROWSER_PROFILES`: the profiles directory, one Chromium profile per site across jobs and processes,
+- `CRAWLERAI_BROWSER_PROFILES`: the profiles directory, one Chrome profile per site across jobs and processes,
   holding that site's cookies (clearance cookies too) in plaintext. `make` uses `<repo>/.data/browser-profiles`;
   unset outside make, a profile lasts only while its browser is open. Keep it private to the service user; delete it
   to reset every profile (there is no retention job).
@@ -66,7 +66,7 @@ ones a run needs:
 - `CRAWLERAI_EGRESS_COUNTRY`, `CRAWLERAI_PROXY_POOLS`, `CRAWLERAI_DISABLED_ADAPTERS`, `CRAWLERAI_IMPERSONATE`: optional.
 
 robots.txt is off by default; a request opts in with `respect_robots: true` (owner #75). Browser tests need
-`uv run patchright install --no-shell chromium` once.
+Google Chrome stable once: `uv run patchright install chrome` (the image installs it).
 
 ## Running the e2e
 
@@ -185,7 +185,7 @@ Each is a working rule today; the owner may change it (`openspec/design/owner-de
 
 The development VM is small (8 GB, no swap, `/tmp` in RAM): at most two builders and one headless browser at once,
 more than 2 GB free (`free -m`) before starting a builder, a browser or a local app, and `TMPDIR` on disk
-(a scratch folder per agent). Never real Chrome; Patchright headless only. Stop every app you start by PID.
+(a scratch folder per agent). Patchright headless Google Chrome only (owner 2026-10-23). Stop every app you start by PID.
 
 ## Agent workflow
 

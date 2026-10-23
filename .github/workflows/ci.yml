@@ -107,17 +107,9 @@ jobs:
       # The project alone is built from this repo's source (`--no-binary-package crawlerai`) and installed
       # non-editable, and every later step runs without re-syncing.
       - run: uv sync --frozen --no-build --no-binary-package crawlerai --no-editable
-      # Full Chromium, run headless, for the `browser`-marked tests (SPEC-02 §6), at the build this Patchright version
-      # pins. The download is cached per Patchright version; the install still runs, for the system packages.
-      - id: patchright
-        run: |
-          version=$(uv run --no-sync --no-build python -c "import importlib.metadata as m; print(m.version('patchright'))")
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: chromium-patchright-${{ steps.patchright.outputs.version }}
-      - run: uv run --no-sync --no-build patchright install --with-deps --no-shell chromium
+      # Google Chrome stable, run headless, for the `browser`-marked tests (SPEC-02 §6), installed as the Patchright
+      # README sets it up (the browser rung's `chrome` channel).
+      - run: uv run --no-sync --no-build patchright install --with-deps chrome
       - name: Create databases and roles
         working-directory: .
         run: psql -v ON_ERROR_STOP=1 -h localhost -U postgres -f infra/postgres/init.sql

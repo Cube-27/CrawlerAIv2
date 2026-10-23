@@ -1,6 +1,6 @@
-"""Browser fetch with Patchright headless Chromium (acquisition spec, "HTTP and browser rungs"): one navigation, the one
-bounded wait (`acquire.browser_wait`), and what the render captures besides its document (`acquire.browser_capture`),
-in a tab of the site's profile (`acquire.browser_session`).
+"""Browser fetch with Patchright headless Google Chrome (acquisition spec, "HTTP and browser rungs"): one navigation,
+the one bounded wait (`acquire.browser_wait`), and what the render captures besides its document
+(`acquire.browser_capture`), in a tab of the site's profile (`acquire.browser_session`).
 
 As in `fetch_http`, every failure becomes an `error` outcome with a short reason that never contains the URL (D-0128).
 A page is read once it is ready (`settle`); every request the page makes loads, as in a user's browser (no request
@@ -43,13 +43,13 @@ from crawlerai.acquire.browser_session import (
     Failed,
     context_cookies,
     context_key,
+    context_locality,
     open_context,
 )
 from crawlerai.acquire.browser_wait import STEP_QUIET_S, MainFrame, called, ms_until, settle, until
 from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_label, count
 from crawlerai.acquire.classify import Redirect
 from crawlerai.acquire.headers import recorded
-from crawlerai.acquire.locality import locality
 from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
 from crawlerai.acquire.page_steps import run_steps, steps_budget_s
 from crawlerai.acquire.session import CookieExport, SessionCookie, SiteSessions
@@ -275,12 +275,12 @@ async def rendered(
     except SsrfRejected as e:
         raise Failed(str(e), None) from e
     key = context_key(url, policy, run.proxy)
-    locale = locality(policy.locale_hint)
+    locale = context_locality(policy, session, run.pool)
     held = None if key is None else await session.profiles.take(key, locale, connector)
     if held is None:
         await session.profiles.room()
         try:
-            held = await open_context(url, policy, session, connector, first, run.proxy, sessions, key)
+            held = await open_context(url, policy, session, connector, first, run.proxy, sessions, key, locale)
         except BaseException:
             session.profiles.busy -= 1
             raise

@@ -16,12 +16,12 @@ from crawlerai.acquire.api import JsonRequest, fetch_json
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.types import FetchPolicy, FetchResult, RequestContext
 from crawlerai.core.redaction import REDACTED, has_secrets
-from crawlerai.core.settings import IMPERSONATE_DEFAULT
 from crawlerai.services.fetch_options import (
     KEEP_SECRETS,
     FetchOptions,
 )
 from tests.local_server import LoopbackConnector, Reply, Server, serving
+from tests.stand_in import IMPERSONATE
 
 _PAGE = b'<html><body><a href="/a">a</a><a href="/b">b</a><p>words of a page</p></body></html>'
 
@@ -73,7 +73,7 @@ def _fetch(server: Server, url: str, context: RequestContext) -> FetchResult:
             url,
             FetchPolicy(context=context),
             engine_version="test",
-            impersonate=IMPERSONATE_DEFAULT,
+            impersonate=IMPERSONATE,
             connector=LoopbackConnector(server.port, {}),
         )
     )
@@ -108,7 +108,7 @@ def _fetch_json(server: Server, endpoint: str, context: RequestContext) -> Fetch
             JsonRequest(url=endpoint, page_url=server.url("/board")),
             FetchPolicy(context=context),
             engine_version="test",
-            impersonate=IMPERSONATE_DEFAULT,
+            impersonate=IMPERSONATE,
             connector=LoopbackConnector(server.port, {}),
         )
     )

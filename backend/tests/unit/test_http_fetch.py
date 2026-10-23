@@ -18,9 +18,9 @@ from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.core.settings import IMPERSONATE_DEFAULT
 from crawlerai.storage.capture_bundle import decode, encode
 from tests.local_server import LoopbackConnector, Reply, Server, serving
+from tests.stand_in import IMPERSONATE
 
 _LINKS = "".join(f'<a href="/item/{i}">Item {i}</a>' for i in range(8))
 _PAGE = f"<html><body><h1>Catalogue</h1>{_LINKS}</body></html>".encode()
@@ -39,9 +39,7 @@ def fetch(
 ) -> FetchResult:
     connector = connector or LoopbackConnector(server.port, _DNS)
     return asyncio.run(
-        fetch_http(
-            url, policy or FetchPolicy(), engine_version="test", impersonate=IMPERSONATE_DEFAULT, connector=connector
-        )
+        fetch_http(url, policy or FetchPolicy(), engine_version="test", impersonate=IMPERSONATE, connector=connector)
     )
 
 

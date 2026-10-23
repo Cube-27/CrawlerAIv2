@@ -179,10 +179,17 @@ answer joins the HTTP capture as one more network body at the frame's URL, which
   not fetched
 
 ### Requirement: HTTP and browser rungs
-The HTTP rung SHALL use `curl_cffi` impersonating Chrome (`CRAWLERAI_IMPERSONATE`, else the profile nearest the
-installed Patchright Chromium major, checked at startup by `acquire/impersonate.py`), at most 5 manual redirects, and
-record headers without cookies or proxy credentials, within `timeout_s` (10 s by default). The browser rung SHALL use Patchright's full Chromium build in
-headless mode, one Playwright driver per process shared by its page fetches (worker, API, scheduler) with at
+The HTTP rung SHALL use `curl_cffi` impersonating the browser rung's Chrome (`acquire/impersonate.py`): at startup the
+browser rung's Chrome is started once, loading no site (its navigation to an `.invalid` URL answered by Playwright's
+routing inside that browser), to read the headers that name it (`User-Agent` as the profiles send it, `sec-ch-ua`,
+`sec-ch-ua-mobile`, `sec-ch-ua-platform`, `Accept`, `Upgrade-Insecure-Requests`); every HTTP and JSON request sends those
+in place of the curl_cffi profile's own (a request's own header of the same name still wins), over the TLS and HTTP/2
+handshake of the curl_cffi Chrome profile nearest its major (a warning when none matches it exactly), so a site that
+sees both rungs and the cookies one hands the other sees one browser, version and platform. With a request locale, the
+HTTP and JSON rungs send the `Accept-Language` the browser's context sends for it (its BCP 47 locale alone). An
+operator's `CRAWLERAI_IMPERSONATE` is kept with its own headers, as is the default target when the browser cannot be
+started. The HTTP rung follows at most 5 manual redirects, records headers without cookies or proxy credentials, and
+finishes within `timeout_s` (10 s by default). The browser rung SHALL use Google Chrome stable in headless mode, one Playwright driver per process shared by its page fetches (worker, API, scheduler) with at
 most `BROWSER_CONTEXTS` (2) of them rendering at once (`acquire/shared_browser.py`; a listing scrape with browser actions
 renders in it too, holding one of them, and its render ends as a page's does: classified with the redirect rules, its
 challenge labelled, its `blocked` profile deleted, the site's sessions and the pool endpoint told), the browser's user
@@ -451,8 +458,9 @@ JSON fetches of the site in that domain through the same pool endpoint, and the 
 route (a pooled context picks its own endpoint; a kept profile holds its own cookies), in process memory, for at most 30
 min and 200 fetches; `blocked` drops it, as does a `shell` before any `ok`; a site whose sessions keep being refused
 starts in the browser (block history, above). The HTTP and JSON rungs send a session's cookies with their own identity
-headers (the impersonation's user agent and client hints), never the browser's: those would pair a browser's user agent
-with curl's TLS and HTTP/2 fingerprint. No cookie is logged or captured. Enforced by: cross-fetch, cross-site,
+headers, which name the browser rung's Chrome (its user agent and client hints, read at startup, "HTTP and browser
+rungs"), over the nearest Chrome TLS and HTTP/2 handshake; no header is copied from the fetch that earned the cookies.
+No cookie is logged or captured. Enforced by: cross-fetch, cross-site,
 cross-domain, cross-proxy, expiry, no-persistence and caller-cookie tests; active. Refs: §7.1, D-0321, D-0884, D-0902,
 owner #58, D-1350–D-1353, D-1433, owner plan 2026-10-19 P2, owner #76.
 #### Scenario: Next fetch to the same host
@@ -533,30 +541,35 @@ bundle and exits 0 whenever one is written.
 Refs: §15, D-0146, D-0250, owner #67.
 
 ### Requirement: Acquisition candidates stay unbuilt
-The system SHALL NOT include residential proxies, unblockers, CAPTCHA solving, challenge clicking, behaviour emulation,
-fingerprint spoofing or real Chrome until the owner admits one (C13); an authenticated crawl runs only on the caller's
+The system SHALL NOT include residential proxies, unblockers, CAPTCHA solving, challenge clicking, behaviour emulation
+or fingerprint spoofing until the owner admits one (C13; Google Chrome itself was admitted by the owner 2026-10-23); an authenticated crawl runs only on the caller's
 own cookies or headers (above), and browser actions are a single-URL listing scrape's (owner #52) and the caller's page
 actions (above); no action logs in, enters a credential or answers a CAPTCHA. Refs: §7.2, §22, owner #52, owner #58,
 owner delegation
 2026-10-17, D-1432, D-1438.
 
 ### Requirement: Patchright's documented browser setup (INV-42, INV-43, INV-44)
-The browser rung SHALL follow the Patchright README's setup (owner #50): INV-42, it launches Patchright's full
-Chromium build (`channel="chromium"`, installed with `patchright install --no-shell chromium`), never the headless
-shell; INV-43, it runs in a persistent profile (`launch_persistent_context`) with Playwright's fixed
+The browser rung SHALL follow the Patchright README's setup (owner #50 as amended 2026-10-23): INV-42, it launches
+Google Chrome stable (`channel="chrome"`, installed with `patchright install chrome`, as the README recommends; in the
+image by `infra/Dockerfile`, with the fonts and libraries its package depends on), never the headless shell; INV-43, it runs in a persistent profile (`launch_persistent_context`) with Playwright's fixed
 1280x720 viewport (owner #50 as amended 2026-10-21; the README's `no_viewport` leaves headless Chromium's 800x600
 window) and no launch argument (no flag Patchright removes, none that changes the fingerprint, never
 `--user-agent`; the guard's WebRTC policy is a profile preference, "HTTP and browser rungs", profiles); INV-44, no
 context, page or CDP call sets client hints, extra headers or init scripts, and `evaluate` runs only in Patchright's
 isolated world. The one identity change is the context's `user_agent` (owner #71 as amended 2026-10-21): the
-browser's own user agent, read once per driver from a browser started with no page (`Browser.getVersion`, its
-background requests sent to a closed loopback port), with only the `HeadlessChrome/` token replaced by `Chrome/`. The
+browser's own user agent, read once per process from a browser started for it that loads no site (the headers of its
+navigation to an `.invalid` URL, answered inside the browser; its background requests sent to a closed loopback port),
+with only the `HeadlessChrome/` token replaced by `Chrome/`; the HTTP and JSON rungs send the same. The
 page's and dedicated workers' `navigator.userAgent` and the request header then name `Chrome`, and the client hints
 stay the browser's own (brands, `fullVersionList`, platform). Service and shared workers keep `HeadlessChrome` in
 `navigator.userAgent`, and a service worker's `navigator.userAgentData` reports no brands or full versions, because
 Playwright applies the override to a service worker's requests only; that is a known gap, not a goal. The context's `locale` and
-`timezone_id` are the request's (`FetchPolicy.locale_hint`, `acquire/locality.py`): the locale as a BCP 47 tag, and
-the IANA tz database's zone of its region (`zone1970.tab`) when the region has one, else none. Refs: owner #50, owner
+`timezone_id` follow the request and the route (`acquire/locality.py`): the locale is the request's
+(`FetchPolicy.locale_hint`) as a BCP 47 tag, and the zone is the IANA tz database's zone (`zone1970.tab`) of the country
+the render goes out from ("Egress country": the pool's declared country through a pool, the machine's declared
+`CRAWLERAI_EGRESS_COUNTRY` on a direct route), so the zone a page reads agrees with the address it sees; without a
+declared egress country, the zone of the locale's region; a country with several zones, or none, sets no zone (the
+machine's own, which the operator sets with `TZ`). Refs: owner #50, owner
 #71 as amended 2026-10-21, D-1204, D-1205, owner plan 2026-10-19 P8, architecture v3 a.3.
 Enforced by: `tests/unit/test_browser_setup.py` (launch and context options, source scan); active.
 

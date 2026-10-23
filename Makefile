@@ -93,9 +93,9 @@ check-tools:
 # Same steps and order as CI's backend-static and backend jobs. The migration round trip and the tests (tests/db needs a
 # live Postgres) run against scratch databases recreated each run, so the dev database keeps its data: the tests run in
 # parallel (`-n auto`), each xdist worker in its own copy of the migrated `crawlerai_check` (`crawlerai_check_gw0`, ...,
-# `PYTEST_XDIST_AUTO_NUM_WORKERS`, else one per CPU: at least as many as `-n auto` starts). `browser` tests are skipped where Chromium is not installed (`uv
-# run patchright install --no-shell chromium` once). 127.0.0.1, not localhost: asyncpg can hang resolving localhost on
-# Windows.
+# `PYTEST_XDIST_AUTO_NUM_WORKERS`, else one per CPU: at least as many as `-n auto` starts). `browser` tests are skipped
+# where Google Chrome is not installed (`uv run patchright install chrome` once). 127.0.0.1, not localhost: asyncpg can
+# hang resolving localhost on Windows.
 CHECK_DATABASE_URL := postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai_check
 CHECK_PSQL = $(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -q -U postgres
 

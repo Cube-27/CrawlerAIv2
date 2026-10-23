@@ -1,12 +1,13 @@
 """The browser context's locality (acquisition spec, "Patchright's documented browser setup"): the request's locale
-(`FetchPolicy.locale_hint`) sets the context's `locale`, and its region the `timezone_id`, so a render shows the page as
-a visitor of that locale sees it.
+(`FetchPolicy.locale_hint`) sets the context's `locale` (and so the `Accept-Language` the browser sends), and the
+country the render goes out from sets the `timezone_id`, so the zone a page reads agrees with the address it sees.
+Without a declared egress country, the locale's region sets the zone, as a visitor of that locale has it.
 
 The locale is read by BCP 47's structure alone (RFC 5646 §2.1: a language subtag, an optional script, an optional
-region). The zone is the IANA tz database's own for the region (`zone1970.tab`, whose first country code on a line names
-the zone's principal country): a region that is the principal country of one zone gets it, a region principal to none
-gets the one zone it shares when there is just one. A region with several zones, or a locale with no region, sets no
-zone: the browser keeps the machine's, as no guess is made.
+region). The zone is the IANA tz database's own for a country (`zone1970.tab`, whose first country code on a line names
+the zone's principal country): a country that is the principal country of one zone gets it, a country principal to none
+gets the one zone it shares when there is just one. A country with several zones, or no country and a locale with no
+region, sets no zone: the browser keeps the machine's, as no guess is made.
 """
 
 from collections import defaultdict
@@ -14,27 +15,35 @@ from functools import cache
 from importlib.resources import files
 from typing import TypedDict
 
-__all__ = ["Locality", "locality"]
+__all__ = ["Locality", "language_headers", "locality"]
 
 
 class Locality(TypedDict, total=False):
-    """The browser context options the locale sets (Playwright's `new_context` options)."""
+    """The browser context options the locale and the egress country set (Playwright's `new_context` options)."""
 
     locale: str
     timezone_id: str
 
 
-def locality(hint: str | None) -> Locality:
-    """The context options of the request's locale `hint`; none for no hint or one that is not a BCP 47 tag."""
+def locality(hint: str | None, country: str | None = None) -> Locality:
+    """The context options of the request's locale `hint` (none for no hint or one that is not a BCP 47 tag) and of
+    `country`, the ISO 3166-1 alpha-2 country the render goes out from (None: undeclared)."""
     parsed = None if hint is None else _parsed(hint)
-    if parsed is None:
-        return {}
-    language, script, region = parsed
-    found: Locality = {"locale": "-".join(part for part in (language, script, region) if part)}
-    zone = None if region is None else _zone(region)
+    found: Locality = {}
+    if parsed is not None:
+        found["locale"] = "-".join(part for part in parsed if part)
+    place = country or (None if parsed is None else parsed[2])  # the egress country, else the locale's region
+    zone = None if place is None else _zone(place)
     if zone is not None:
         found["timezone_id"] = zone
     return found
+
+
+def language_headers(hint: str | None) -> dict[str, str]:
+    """The `Accept-Language` (RFC 9110 §12.5.4) the browser rung sends for the request's locale `hint`, its context's
+    `locale` alone, for the HTTP and JSON rungs to send as well; none without a locale (the impersonation's own)."""
+    locale = locality(hint).get("locale")
+    return {} if locale is None else {"Accept-Language": locale}
 
 
 def _parsed(hint: str) -> tuple[str, str | None, str | None] | None:

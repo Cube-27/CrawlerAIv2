@@ -55,7 +55,7 @@ WebhookDeliveryId = NewType("WebhookDeliveryId", uuid.UUID)
 
 FetchMethod = Literal["http", "browser"]
 PageKind = Literal["detail", "listing"]
-# The browser engines whose cookie state is kept apart (`site_cookie_state`): Patchright's Chromium.
+# The browser engines whose cookie state is kept apart (`site_cookie_state`): Patchright's (Google Chrome).
 BrowserEngine = Literal["patchright"]
 SchemaOrigin = Literal["preset", "user", "prompt_draft"]
 SchemaStatus = Literal["active", "retired"]

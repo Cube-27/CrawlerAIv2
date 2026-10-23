@@ -171,9 +171,9 @@ def browser(server: Server) -> Iterator[Browser]:
         try:
             session = runner.run(opened.__aenter__())
         except PlaywrightError as e:
-            if os.environ.get("CI") or "Executable doesn't exist" not in e.message:
+            if os.environ.get("CI") or "is not found at" not in e.message:
                 raise
-            pytest.skip("Chromium is not installed: run `uv run patchright install --no-shell chromium`")
+            pytest.skip("Google Chrome is not installed: run `uv run patchright install chrome`")
         try:
             yield Browser(runner, session, server)
             assert session.profiles.busy == 0
