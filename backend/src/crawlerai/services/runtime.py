@@ -134,7 +134,7 @@ async def open_fetching(
     )
     async with aclosing(
         SharedBrowser(
-            partial(open_browser, settings.browser_profiles, settings.direct),
+            partial(open_browser, settings.browser_profiles, settings.direct, headless=settings.browser_headless),
             fetch_in,
             lambda session: session.alive,
         )

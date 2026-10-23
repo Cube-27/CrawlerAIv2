@@ -34,7 +34,9 @@ Reasoning for a single change goes in its PR body.
 - **Real Chrome through Patchright** (`channel=chrome`), with the browser's own client hints through Chrome's override and
   the user agent through `--user-agent`, so service and shared workers present the same identity. Startup refuses a
   browser that still names headless mode.
-- **Viewport per site profile** (one common desktop screen per profile). **Stay headless.**
+- **Headless by default** (with the client-hint override and one common desktop screen per site profile). **Headful
+  option** (`CRAWLERAI_BROWSER_HEADLESS=false`) per the Patchright README's best practice exactly: no user agent, header,
+  screen or override of ours. Xvfb on Linux without a display. Why: owner 2026-10-23, the user chooses.
 - **Cookies are plain cookies.** Earned clearance cookies are kept and replayed like any other, in the site profile and session.
 - **Proxy framework built, not live-tested.** Our own runs go without proxies; no CAPTCHA solving.
 - **Exits declare their place.** A proxy pool states its country, timezone and locale, so the browser's zone and
