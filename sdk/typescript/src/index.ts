@@ -214,7 +214,7 @@ export class CrawlerAI {
     const left = deadline - Date.now();
     if (last || left <= 0) throw new JobTimeout(jobId, timeoutS);
     // Never sleep past the deadline: the last poll happens at it, not up to an interval after it. A poll after a sleep
-    // to the deadline is the last one, since a timer may fire a millisecond before Date.now() reaches it.
+    // to the deadline is the last one, since a timer may fire a millisecond before the clock reaches it.
     await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, left)));
     return this.#poll(jobId, intervalMs, deadline, timeoutS, intervalMs >= left);
   }
