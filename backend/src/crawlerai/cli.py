@@ -43,7 +43,7 @@ from crawlerai.services.fetch_options import FetchOptions, UnknownProxyPool, che
 from crawlerai.services.fetching import learning_replay
 from crawlerai.services.page_store import learning_extract
 from crawlerai.services.records import MAX_PAGE
-from crawlerai.services.runtime import load_drift_margins, load_engine_data, open_fetching
+from crawlerai.services.runtime import check_exits, load_drift_margins, load_engine_data, open_fetching
 from crawlerai.services.schedules import ScheduleListQuery, ScheduleNotFound, Submitting
 from crawlerai.services.scrape_paging import learning_render
 from crawlerai.storage import open_store
@@ -114,6 +114,7 @@ async def _schedule() -> None:
         engine_version=ENGINE_VERSION,
         impersonate=await rung_impersonation(settings, browser_rung=True),  # its `open_fetching` renders too
         pools=settings.proxy_pools,
+        direct=settings.direct,
     )
     # A schedule's run submits its job with the schema its creation resolved, so it drafts nothing: no LLM client.
     async with open_fetching(settings) as fetching:
@@ -130,8 +131,9 @@ async def _fetch(
     settings = AcquireSettings()
     options = options or FetchOptions()
     policy = fetch_policy(options, None)
+    check_exits(settings.proxy_pools, settings.direct)
     if options.in_browser:
-        async with open_browser(settings.browser_profiles, settings.egress_country) as session:
+        async with open_browser(settings.browser_profiles, settings.direct) as session:
             result = await fetch_browser(
                 url,
                 policy,
@@ -148,6 +150,7 @@ async def _fetch(
             impersonate=await rung_impersonation(settings, browser_rung=False),
             connector=connector,
             pools=settings.proxy_pools,
+            direct=settings.direct,
         )
     out.write_bytes(encode(result.bundle))
     manifest = result.bundle.manifest

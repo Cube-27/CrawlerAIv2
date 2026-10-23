@@ -11,7 +11,7 @@ from curl_cffi.requests import BrowserTypeLiteral
 from pydantic import BeforeValidator, Field, IPvAnyNetwork, PositiveFloat, PositiveInt, SecretStr
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from crawlerai.core.proxy import ProxyPool
+from crawlerai.core.proxy import ExitPlace, ProxyPool
 
 # `fs:///<absolute path>` or `s3://<bucket>[/<prefix>]`.
 OBJECT_STORE_URL_PATTERN = r"^(fs:///.+|s3://[^/]+(/.*)?)$"
@@ -48,12 +48,14 @@ class AcquireSettings(_Base):
     """The subset a fetch needs, so `crawlerai fetch` runs without a database or object store."""
 
     impersonate: BrowserTypeLiteral = IMPERSONATE_DEFAULT
-    # `CRAWLERAI_PROXY_POOLS`, JSON `{pool_name: proxy_url | {"endpoints": [proxy_url, ...], "mode": ...}}` (acquisition
-    # spec §3, OPEN_QUESTIONS #10, D-1323).
+    # `CRAWLERAI_PROXY_POOLS`, JSON `{pool_name: proxy_url | {"endpoints": [proxy_url, ...], "mode": ..., "country"?,
+    # "timezone"?, "locale"?}}` (`core.proxy`).
     proxy_pools: dict[str, ProxyPool] = Field(default_factory=dict)
-    # `CRAWLERAI_EGRESS_COUNTRY`: the ISO 3166-1 alpha-2 country this machine's direct fetches go out from, declared by
-    # the operator (acquisition spec, "Egress country"); unset: unknown.
+    # `CRAWLERAI_EGRESS_COUNTRY`, `_TIMEZONE`, `_LOCALE`: the ISO 3166-1 alpha-2 country, IANA time zone and BCP 47
+    # locale this machine's direct fetches go out from, declared by the operator (`direct`); unset: undeclared.
     egress_country: Annotated[str, Field(pattern=r"^[A-Z]{2}$")] | None = None
+    egress_timezone: str | None = None
+    egress_locale: str | None = None
     # `CRAWLERAI_DISABLED_ADAPTERS`, comma-separated: the platform adapters that do not run (adapters spec). Every
     # registered adapter runs unless named here (owner, 2026-10-16).
     disabled_adapters: Annotated[tuple[str, ...], NoDecode, BeforeValidator(_comma_separated)] = ()
@@ -61,6 +63,11 @@ class AcquireSettings(_Base):
     # (`acquire.browser_profiles`); deleting it resets them. Each profile holds its site's cookies in plaintext, so
     # the directory is the operator's to protect. Unset: each profile lasts only while its browser is open.
     browser_profiles: Path | None = None
+
+    @property
+    def direct(self) -> ExitPlace:
+        """The place this machine's direct fetches go out from."""
+        return ExitPlace(self.egress_country, self.egress_timezone, self.egress_locale)
 
 
 class ApiSettings(_Base):

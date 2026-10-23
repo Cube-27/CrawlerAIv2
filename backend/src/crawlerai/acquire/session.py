@@ -17,28 +17,26 @@ stored state (`after_browser`). A kept profile neither reads nor writes it: it h
 
 Sessions and the stored state hold the cookies of the site's registrable domain (RFC 6265 §5.1.3 domain matching, the
 Public Suffix List's registrable domain), are keyed by it, and serve requests in that domain. A live session lasts at
-most `SESSION_TTL` and `SESSION_FETCHES` fetches, and is dropped when a fetch it served is `blocked`; a `blocked`
-browser fetch on a direct route drops the stored state too. Sessions are keyed by the registrable domain and the
-fetch's proxy pool; a live session keeps the endpoint its cookies were earned through, and serves only requests sent
-through it.
+most `SESSION_TTL` and `SESSION_FETCHES` fetches (`core.proxy`, as a sticky exit does), and is dropped when a fetch it
+served is `blocked`; a `blocked` browser fetch on a direct route drops the stored state too. Sessions are keyed by
+the registrable domain and the fetch's proxy pool; a live session keeps the endpoint its cookies were earned through,
+and serves only requests sent through it, while the pool still serves the site through it (`ProxyPool.carries`: a
+sticky exit's end ends the sessions earned through it).
 """
 
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import timedelta
 from typing import Final, Protocol
 from urllib.parse import urlsplit
 
 from crawlerai.acquire.public_suffix import PublicSuffixes, default_suffixes
 from crawlerai.acquire.types import FetchResult
-from crawlerai.core.proxy import ProxyEndpoint
+from crawlerai.core.proxy import SESSION_FETCHES, SESSION_TTL, ProxyEndpoint
 from crawlerai.db.models import BrowserEngine
 
 __all__ = [
     "ENGINE",
-    "SESSION_FETCHES",
-    "SESSION_TTL",
     "CookieExport",
     "SessionCookie",
     "SiteSession",
@@ -47,8 +45,6 @@ __all__ = [
     "browser_cookies",
 ]
 
-SESSION_TTL: Final = timedelta(minutes=30)
-SESSION_FETCHES: Final = 200
 # The engine of the browser rung (`acquire.browser`), whose state the stored cookie state keeps.
 ENGINE: Final[BrowserEngine] = "patchright"
 

@@ -3,7 +3,7 @@ files. The API app and the MCP server's stdio process open one each from the set
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import aclosing, asynccontextmanager
 from dataclasses import dataclass
 from functools import partial
@@ -18,6 +18,7 @@ from crawlerai.acquire.cookie_store import CookieStore
 from crawlerai.acquire.host_turns import HostTurns
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.impersonate import rung_impersonation
+from crawlerai.acquire.locality import check_places
 from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs, adapter_registry
 from crawlerai.acquire.session import CookieExport, SiteSessions
@@ -32,6 +33,7 @@ from crawlerai.core.context_digest import configure as configure_context_digest
 from crawlerai.core.egress import Egresses
 from crawlerai.core.engine_version import ENGINE_VERSION, engine_data_dir
 from crawlerai.core.event_loop import quiet_peer_resets
+from crawlerai.core.proxy import ExitPlace, ProxyPool
 from crawlerai.core.settings import Settings
 from crawlerai.llm.client import LLMClient
 from crawlerai.llm.providers.from_settings import llm_from_settings
@@ -119,6 +121,7 @@ async def open_fetching(
         connector=connector,
         pools=pools,
         sessions=sessions,
+        direct=settings.direct,
     )
     json = partial(
         fetch_json,
@@ -127,10 +130,11 @@ async def open_fetching(
         connector=connector,
         pools=pools,
         sessions=sessions,
+        direct=settings.direct,
     )
     async with aclosing(
         SharedBrowser(
-            partial(open_browser, settings.browser_profiles, settings.egress_country),
+            partial(open_browser, settings.browser_profiles, settings.direct),
             fetch_in,
             lambda session: session.alive,
         )
@@ -163,11 +167,18 @@ async def open_fetching(
         )
         limiter = HostLimiter(shared=None if database is None else HostTurns(database))
         egresses = Egresses(pools, settings.egress_country)
-        # A declared country must be a real one: a typo would be recorded as a known egress.
-        declared = [pool.country for pool in pools.values()] + [settings.egress_country]
-        if not all(country is None or country in iso_3166_alpha2() for country in declared):
-            raise ValueError("an egress country is an ISO 3166-1 alpha-2 country code")
+        check_exits(pools, settings.direct)
         yield Fetching(rungs, connector, open_store(settings.object_store), limiter, egresses)
+
+
+def check_exits(pools: Mapping[str, ProxyPool], direct: ExitPlace) -> None:
+    """Refuse, at startup, a declared place that names no real country, zone or locale, of the `direct` egress or a
+    pool (`acquire.locality.check_places`). A declared country must be a real one: a typo would be recorded as a known
+    egress, and would win over the locale's region for the browser's zone."""
+    declared = [pool.place.country for pool in pools.values()] + [direct.country]
+    if not all(country is None or country in iso_3166_alpha2() for country in declared):
+        raise ValueError("an egress country is an ISO 3166-1 alpha-2 country code")
+    check_places(pools, direct)
 
 
 def _search(settings: Settings) -> SearchProvider | None:
