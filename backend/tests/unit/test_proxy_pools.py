@@ -1,6 +1,7 @@
 """Proxy pools (acquisition spec, D-1323, D-1324): a fetch whose policy names a configured pool goes
 through one of that pool's proxies, in every fetcher, picked in turn or kept per site, an endpoint that keeps failing
-left out for a while; and the SSRF guard still checks every host before it is requested, whichever endpoint carries it.
+left out for a while; a gateway's sticky exit keeps a site on one address, in every fetcher, until it ends; and the SSRF
+guard still checks every host before it is requested, whichever endpoint carries it.
 
 The proxy is a local stub speaking HTTP CONNECT (RFC 9110 §9.3.6). Like a real proxy it resolves names itself: it
 sends every tunnel to a local origin server, whatever host it names. The guard's resolver is a stub, so no test
@@ -10,6 +11,7 @@ touches DNS or the network.
 import asyncio
 import base64
 import contextlib
+import logging
 import os
 import socket
 import threading
@@ -23,12 +25,14 @@ import pytest
 from pydantic import ValidationError
 
 from crawlerai.acquire.api import JsonRequest, fetch_json
+from crawlerai.acquire.browser_session import context_key
 from crawlerai.acquire.http import fetch_http
+from crawlerai.acquire.locality import check_places
 from crawlerai.acquire.session import CookieExport, SessionCookie, SiteSessions
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.egress import UNKNOWN, Egress, Egresses
-from crawlerai.core.proxy import PoolMode, ProxyEndpoint, ProxyPool
+from crawlerai.core.proxy import SESSION_TTL, ExitPlace, PoolMode, ProxyEndpoint, ProxyPool, SiteExits
 from crawlerai.core.settings import AcquireSettings
 from tests.stand_in import IMPERSONATE
 
@@ -250,8 +254,9 @@ def test_pools_are_read_from_json_with_credentials_percent_decoded(monkeypatch: 
         '{"endpoints": ["http://user:secret-pw@a.example.com:1", "http://user:secret-pw@a.example.com:1"], '
         '"mode": "sticky"}',
         '{"endpoints": ["socks5://user:secret-pw@proxy.example.com:1080"], "mode": "rotate"}',
-        # A pool's country is an ISO 3166-1 alpha-2 code.
+        # A pool's country is an ISO 3166-1 alpha-2 code; its timezone and locale are strings.
         '{"endpoints": ["http://user:secret-pw@proxy.example.com:3128"], "mode": "rotate", "country": "gb"}',
+        '{"endpoints": ["http://user:secret-pw@proxy.example.com:3128"], "mode": "rotate", "timezone": 5}',
     ],
 )
 def test_a_proxy_url_other_than_http_host_port_is_refused_without_echoing_it(
@@ -275,6 +280,64 @@ def test_a_fetch_goes_out_from_its_pools_declared_country_else_the_machines_else
     assert egresses.of("missing") == UNKNOWN
     assert egresses.of(None) == Egress("US", "machine")
     assert Egresses().of(None) == UNKNOWN
+
+
+def test_an_exit_of_a_country_of_several_zones_declaring_none_is_logged_once_at_startup(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    us = {"endpoints": ["http://a.example.com:1"], "mode": "rotate", "country": "US"}
+    pools = {"us": ProxyPool.parse(us), "chicago": ProxyPool.parse(us | {"timezone": "America/Chicago"})}
+
+    with caplog.at_level(logging.WARNING, logger="crawlerai.acquire.locality"):
+        check_places(pools, ExitPlace("JP"))
+
+    # A zone declared for a country of several zones is the zone; the tz database names it, or startup stops.
+    assert [record.getMessage() for record in caplog.records] == [
+        "proxy pool 'us': country US has several time zones and none is declared; renders keep the machine's"
+    ]
+    with pytest.raises(ValueError, match="IANA"):
+        check_places({}, ExitPlace(timezone="Nowhere/Atlantis"))
+
+
+# --- sticky exits -----------------------------------------------------------------------------------------------
+
+
+def test_a_sites_sticky_exit_keys_its_profile_and_ends_with_its_ttl_or_a_block() -> None:
+    now = [0.0]
+    gateway = ProxyEndpoint.parse("http://user-{session}:pw@gate.example.com:7000")
+    pool = ProxyPool((gateway,), "rotate", exits=SiteExits(clock=lambda: now[0]))
+    policy = FetchPolicy(proxy_pool="dc")
+
+    first = pool.pick("example.test")
+    # Every fetch of the site, in any rung, goes out through the one exit, and its profile is keyed by it.
+    assert pool.pick("example.test") == first
+    assert first.username is not None
+    assert first.username.startswith("user-")
+    assert "{session}" not in first.username
+    assert context_key("http://shop.example.test/p", policy, first) == ("example.test", "dc", first)
+    assert pool.pick("example.org") != first  # another site, another exit
+
+    now[0] = SESSION_TTL.total_seconds()
+    second = pool.pick("example.test")
+    assert second != first
+    assert not pool.serves("example.test", first)  # a cookie session earned through it ends with it
+
+    pool.report(second, healthy=False)  # a block through it
+    third = pool.pick("example.test")
+    assert third not in (first, second)
+    assert pool.serves("example.test", third)
+
+
+def test_the_http_and_json_rungs_take_the_sites_sticky_exit(origin: Origin, proxy: StubProxy) -> None:
+    pools = _pools(proxy.endpoint(("user-{session}", "pw")))
+
+    assert _outcome(_fetch("http://shop.example.test/p", pools)) == (200, "ok", None)
+    assert _outcome(_fetch_json("http://shop.example.test/j", pools))[1] == "ok"
+
+    first, second = proxy.authorizations
+    assert first == second
+    assert first is not None
+    assert b"{session}" not in base64.b64decode(first.removeprefix("Basic "))
 
 
 # --- HTTP fetch --------------------------------------------------------------------------------------------------

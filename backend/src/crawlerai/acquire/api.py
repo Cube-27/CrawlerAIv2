@@ -24,14 +24,14 @@ from crawlerai.acquire.challenge import CHALLENGED, challenge_label, count
 from crawlerai.acquire.classify import classify
 from crawlerai.acquire.curl_client import Hop, Transport, Wire, send
 from crawlerai.acquire.impersonate import Impersonation
-from crawlerai.acquire.locality import language_headers
+from crawlerai.acquire.locality import exit_place, language_headers
 from crawlerai.acquire.outcome import Content, fetch_result, report_proxy
 from crawlerai.acquire.public_suffix import default_suffixes
 from crawlerai.acquire.session import SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.core import json_text
-from crawlerai.core.proxy import ProxyPool
+from crawlerai.core.proxy import UNDECLARED, ExitPlace, ProxyPool
 from crawlerai.storage.capture_bundle import HeaderList, decode_html
 
 __all__ = ["ACCEPT", "JsonFetcher", "JsonRequest", "fetch_json"]
@@ -96,8 +96,10 @@ async def fetch_json(
     pools: Mapping[str, ProxyPool] | None = None,
     transport: Transport | None = None,
     sessions: SiteSessions | None = None,
+    direct: ExitPlace = UNDECLARED,
 ) -> FetchResult:
-    """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every request. `transport`
+    """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every request, from its place
+    (`direct` without a pool), whose locale the request's language falls back to. `transport`
     replaces the network (tests). `sessions` are this process's site sessions: the page's site's goes with a request
     in its registrable domain, and is dropped when it is `blocked`."""
     fetched_at = datetime.now(UTC)
@@ -108,7 +110,7 @@ async def fetch_json(
     session = None if sessions is None else sessions.take(request.page_url, request.url, policy.proxy_pool)
     sent = await send(
         request.url,
-        _first_hop(request, policy.locale_hint),
+        _first_hop(request, language_headers(policy.locale_hint, exit_place(policy.proxy_pool, pools, direct))),
         policy,
         impersonate=impersonate,
         connector=connector or SafeConnector(),
@@ -168,9 +170,9 @@ def _outcome(status: int, body: bytes, raw: bool) -> tuple[BlockClass, str | Non
     return ("error", "unexpected_status") if block_class == "ok" else (block_class, None)
 
 
-def _first_hop(request: JsonRequest, locale: str | None) -> Hop:
+def _first_hop(request: JsonRequest, language: Mapping[str, str]) -> Hop:
     # The page's language goes with its script's calls, as the browser rung's context sends it (`acquire.locality`).
-    headers: dict[str, str | None] = {**language_headers(locale)}
+    headers: dict[str, str | None] = {**language}
     headers.update(_fetch_headers(request.page_url, request.url, request.method, "same-origin"))
     for name, value in request.headers:
         _replace(headers, name, value)

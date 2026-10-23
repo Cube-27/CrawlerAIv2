@@ -21,6 +21,7 @@ from crawlerai.acquire.browser import fetch_browser
 from crawlerai.acquire.browser_session import open_browser
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.impersonate import rung_impersonation
+from crawlerai.acquire.locality import check_places
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.api.app import create_app
 from crawlerai.api.webhooks import poster
@@ -130,8 +131,9 @@ async def _fetch(
     settings = AcquireSettings()
     options = options or FetchOptions()
     policy = fetch_policy(options, None)
+    check_places(settings.proxy_pools, settings.direct)
     if options.in_browser:
-        async with open_browser(settings.browser_profiles, settings.egress_country) as session:
+        async with open_browser(settings.browser_profiles, settings.direct) as session:
             result = await fetch_browser(
                 url,
                 policy,
@@ -148,6 +150,7 @@ async def _fetch(
             impersonate=await rung_impersonation(settings, browser_rung=False),
             connector=connector,
             pools=settings.proxy_pools,
+            direct=settings.direct,
         )
     out.write_bytes(encode(result.bundle))
     manifest = result.bundle.manifest

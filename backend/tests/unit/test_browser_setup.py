@@ -1,9 +1,10 @@
 """The browser rung runs Patchright's documented setup (INV-42, INV-43, INV-44; owner #50 as amended 2026-10-23):
 Google Chrome stable in headless mode, in a persistent profile with a fixed 1280x720 viewport and one launch argument,
 its own user agent with only its headless token renamed (owner #71 as amended), the WebRTC policy the guard needs in
-the profile's preferences, and no client hints or headers but its own. The context's zone is the egress country's, else
-the request locale's region's. A fake Playwright records what `open_browser` and `fetch_browser` ask for; no browser
-runs (what the real probe reads, and what pages present on the wire: `test_browser_fetch.py`).
+the profile's preferences, and no client hints or headers but its own. The context's zone is the exit's declared zone,
+else its country's, else the request locale's region's; its locale the request's, else the exit's. A fake Playwright
+records what `open_browser` and `fetch_browser` ask for; no browser runs (what the real probe reads, and what pages
+present on the wire: `test_browser_fetch.py`).
 """
 
 import asyncio
@@ -25,6 +26,7 @@ from crawlerai.acquire.browser_session import BrowserSession, HeadlessIdentity, 
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.core.proxy import UNDECLARED, ExitPlace
 
 _SRC = Path(crawlerai.__file__).parent
 
@@ -152,8 +154,8 @@ def recorder(monkeypatch: pytest.MonkeyPatch) -> _Recorder:
     return recorded
 
 
-async def _fetch_once(locale: str | None = None, country: str | None = None) -> None:
-    async with open_browser(country=country) as session:
+async def _fetch_once(locale: str | None = None, direct: ExitPlace = UNDECLARED) -> None:
+    async with open_browser(direct=direct) as session:
         assert isinstance(session, BrowserSession)
         await fetch_browser(
             "http://shop.example.test/item",
@@ -261,20 +263,27 @@ def test_open_shadow_roots_are_serialized_by_get_html_in_the_isolated_world_only
 
 
 @pytest.mark.parametrize(
-    ("country", "zone"),
-    [(None, "Europe/Berlin"), ("JP", "Asia/Tokyo"), ("US", None)],
-    ids=["locale-region", "egress-country", "egress-country-of-many-zones"],
+    ("hint", "direct", "zone"),
+    [
+        ("de-DE", UNDECLARED, "Europe/Berlin"),
+        ("de-DE", ExitPlace("JP"), "Asia/Tokyo"),
+        ("de-DE", ExitPlace("US"), None),
+        ("de-DE", ExitPlace("US", "America/Chicago", "en-US"), "America/Chicago"),
+        (None, ExitPlace("US", "America/Chicago", "de-DE"), "America/Chicago"),
+    ],
+    ids=["locale-region", "egress-country", "egress-country-of-many-zones", "declared-zone", "declared-locale"],
 )
 def test_inv44_a_profile_sets_only_the_proxy_downloads_viewport_and_the_locality(
-    recorder: _Recorder, country: str | None, zone: str | None
+    recorder: _Recorder, hint: str | None, direct: ExitPlace, zone: str | None
 ) -> None:
-    fetching = _fetch_once("de-DE", country)
+    fetching = _fetch_once(hint, direct)
     with pytest.raises(_Stop):
         asyncio.run(fetching)
 
-    # The guard's proxy, no downloads, the fixed viewport, the request's locale, and the zone of the machine's declared
-    # egress country, else of the locale's region (owner P8); a country of several zones sets none (the machine's).
-    # The browser's own user agent, renamed, as its one argument; no client hints or headers.
+    # The guard's proxy, no downloads, the fixed viewport, the request's locale (else the exit's declared one), and
+    # the exit's declared zone, else the zone of its declared country, else of the locale's region (owner P8); a
+    # country of several zones and no declared zone sets none (the machine's). The browser's own user agent, renamed,
+    # as its one argument; no client hints or headers.
     zoned = {} if zone is None else {"timezone_id": zone}
     assert {k: v for k, v in recorder.launch.items() if k in ("locale", "timezone_id")} == {"locale": "de-DE", **zoned}
     assert set(recorder.launch) == {

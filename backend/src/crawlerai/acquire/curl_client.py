@@ -33,6 +33,7 @@ from crawlerai.acquire.cookies import FetchCookies
 from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.impersonate import Impersonation
 from crawlerai.acquire.outcome import Exchange, Traffic
+from crawlerai.acquire.public_suffix import site_of
 from crawlerai.acquire.redirects import MAX_REDIRECTS
 from crawlerai.acquire.redirects import location as redirect_location
 from crawlerai.acquire.session import SessionCookie, SiteSession
@@ -160,7 +161,8 @@ async def send(
     except UnknownProxyPool as unknown:
         return Sent(None, str(unknown))
     session = _usable(session, pool)
-    proxy = session.proxy if session is not None else pool_endpoint(pool, url)
+    # A page's own requests go out through its site's exit, as the browser rung's render of it does.
+    proxy = session.proxy if session is not None else pool_endpoint(pool, site_of(page_url or url))
     limits = Limits(policy.max_body_bytes, policy.max_decompressed_bytes, started + policy.timeout_s)
     traffic = Traffic()
     try:
@@ -184,9 +186,12 @@ async def send(
 
 
 def _usable(session: SiteSession | None, pool: ProxyPool | None) -> SiteSession | None:
-    """`session` unless its endpoint is quarantined: its cookies were earned from that endpoint's address. A session
-    left out gets back the fetch `SiteSessions.take` spent on it, as it serves none."""
-    if session is None or pool is None or session.proxy is None or pool.health.available(session.proxy):
+    """`session` while the pool still serves its site through its endpoint (`ProxyPool.serves`: not quarantined, a
+    sticky exit not ended): its cookies were earned from that endpoint's address. A session left out gets back the
+    fetch `SiteSessions.take` spent on it, as it serves none."""
+    if session is None or pool is None or session.proxy is None:
+        return session
+    if pool.serves(session.registrable_domain, session.proxy):
         return session
     session.fetches_left += 1
     return None
