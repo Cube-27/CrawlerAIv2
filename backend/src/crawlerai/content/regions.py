@@ -291,16 +291,21 @@ def _page_level(element: HtmlElement) -> bool:
 def _collapsed_panels(tree: HtmlElement) -> frozenset[str]:
     """The ids of the panels a collapsed disclosure or tab control names (WAI-ARIA 1.2 `aria-controls` with
     `aria-expanded="false"` or `aria-selected="false"`; the Disclosure and Tabs patterns), read on the tree as the
-    earlier stages left it: a control inside dropped furniture names nothing. A control that opens a popup
-    (`aria-haspopup`: a menu, a dialog) is not a disclosure."""
+    earlier stages left it: a control inside dropped furniture, or one the page hides itself, names nothing.
+    A control that opens a popup (`aria-haspopup`: a menu, a dialog) is not a disclosure."""
     found: set[str] = set()
     for control in tree.iter():
         if not isinstance(control.tag, str) or not control.get("aria-controls"):
             continue
         state = control.get("aria-expanded") or control.get("aria-selected")
-        if (state or "").strip().lower() == "false" and (control.get("aria-haspopup") or "false").lower() == "false":
+        popup = (control.get("aria-haspopup") or "false").lower() != "false"
+        if (state or "").strip().lower() == "false" and not popup and not _concealed(control):
             found.update(tokens(control.get("aria-controls")))
     return frozenset(found)
+
+
+def _concealed(element: HtmlElement) -> bool:
+    return any(hidden(str(e.tag), dict(e.attrib)) for e in (element, *element.iterancestors()))
 
 
 def _disclosed(element: HtmlElement, panels: frozenset[str]) -> bool:

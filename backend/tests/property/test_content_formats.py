@@ -310,7 +310,9 @@ def test_a_collapsed_disclosure_panel_is_content_but_a_popup_is_not(state: str, 
         f"<button {state}='false' aria-controls='a1'>Question</button><div id='a1' {hiding}><p>Answer one.</p></div>"
         "<div hidden='until-found'><p>Answer two.</p></div>"
         "<button aria-expanded='false' aria-haspopup='dialog' aria-controls='m1'>Open</button>"
-        "<div id='m1' hidden><p>Modal text.</p></div><div hidden><p>Template text.</p></div></main></body></html>"
+        "<div id='m1' hidden><p>Modal text.</p></div>"
+        "<div hidden><button aria-expanded='false' aria-controls='t1'>More</button></div>"
+        "<div id='t1' hidden><p>Orphan text.</p></div><div hidden><p>Template text.</p></div></main></body></html>"
     )
 
     made = markdown(ParsedPage(page), FINAL_URL)
@@ -319,3 +321,4 @@ def test_a_collapsed_disclosure_panel_is_content_but_a_popup_is_not(state: str, 
     assert "Answer two." in made
     assert "Modal text." not in made
     assert "Template text." not in made
+    assert "Orphan text." not in made
