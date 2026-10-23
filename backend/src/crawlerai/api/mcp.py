@@ -12,9 +12,8 @@ from starlette.types import Receive, Scope, Send
 
 from crawlerai.api.auth import require_api_key
 from crawlerai.api.problems import ProblemError, problem_response
-from crawlerai.llm.draft_cap import KeyCapped
-from crawlerai.mcp_server.server import AnyContext, Caller, build_server
-from crawlerai.services.runtime import Runtime
+from crawlerai.mcp_server.server import AnyContext, build_server
+from crawlerai.services.runtime import Caller, Runtime
 
 PATH: Final = "/mcp"
 
@@ -38,17 +37,8 @@ class _Authenticated:
 
 async def _bind(ctx: AnyContext) -> Caller:
     request = cast(Request, ctx.request_context.request)  # the HTTP transport's request
-    state = request.app.state
-    runtime = Runtime(
-        database=state.database,
-        fetching=state.fetching,
-        llm=KeyCapped(state.llm, state.database, request.state.api_key_id),
-        engine_data=state.engine_data,
-        drift_margins=state.drift_margins,
-        llm_setup=state.llm_setup,
-        search=state.search,
-    )
-    return Caller(runtime, request.state.api_key_id)
+    runtime: Runtime = request.app.state.runtime
+    return Caller.of(runtime, request.state.api_key_id)
 
 
 def mount(app: FastAPI) -> None:

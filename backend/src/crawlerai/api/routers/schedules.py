@@ -8,16 +8,16 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 
-from crawlerai.api.auth import require_api_key
-from crawlerai.api.database import database
+from crawlerai.api.auth import caller, require_api_key
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.problems import invalid, not_found, target_refused
+from crawlerai.api.runtime import database
 from crawlerai.api.submissions import submission_problems
-from crawlerai.db.models import ApiKeyId, ScheduleId
-from crawlerai.llm.draft_cap import KeyCapped
+from crawlerai.db.models import ScheduleId
 from crawlerai.services import schedules
 from crawlerai.services.extract import NothingToExtract
 from crawlerai.services.fetching import TargetRejected
+from crawlerai.services.runtime import Caller
 from crawlerai.services.schedules import (
     InvalidUpdate,
     NewSchedule,
@@ -40,9 +40,9 @@ router = APIRouter(
 _SUBMITS: dict[int | str, dict[str, Any]] = {409: PROBLEM_RESPONSE, 502: PROBLEM_RESPONSE, 503: PROBLEM_RESPONSE}
 
 
-def _submitting(request: Request, key: ApiKeyId) -> Submitting:
-    llm = KeyCapped(request.app.state.llm, database(request), key)
-    return Submitting(request.app.state.fetching, request.app.state.engine_data, llm)
+def _submitting(caller: Caller) -> Submitting:
+    runtime = caller.runtime
+    return Submitting(runtime.fetching, runtime.engine_data, runtime.llm)
 
 
 @contextmanager
@@ -65,15 +65,15 @@ def _problems() -> Iterator[None]:
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, responses=_SUBMITS)
-async def create_schedule(
-    body: NewSchedule, request: Request, key: Annotated[ApiKeyId, Depends(require_api_key)]
-) -> ScheduleOut:
+async def create_schedule(body: NewSchedule, caller: Annotated[Caller, Depends(caller)]) -> ScheduleOut:
     """Store a recurring run of `request` (of `kind`: a scrape runs as the batch of its URL), at each time of the
     5-field `cron` expression in `timezone`, or every `interval_s` seconds (at least 60). The request is checked as
     its submission would be (targets, schema); a `records` schema is stored by id. Its jobs are submitted as this key's,
     which signs their webhooks."""
     with _problems():
-        return await schedules.create_schedule(database(request), _submitting(request, key), body, api_key_id=key)
+        return await schedules.create_schedule(
+            caller.runtime.database, _submitting(caller), body, api_key_id=caller.api_key_id
+        )
 
 
 @router.get("")
@@ -94,13 +94,12 @@ async def get_schedule(schedule_id: ScheduleId, request: Request) -> ScheduleOut
 async def update_schedule(
     schedule_id: ScheduleId,
     body: ScheduleUpdate,
-    request: Request,
-    key: Annotated[ApiKeyId, Depends(require_api_key)],
+    caller: Annotated[Caller, Depends(caller)],
 ) -> ScheduleOut:
     """Change the schedule's name, cadence, or run (`kind` with `request`, checked as at creation); a changed cadence
     is due at its first time after now."""
     with _problems():
-        return await schedules.update_schedule(database(request), _submitting(request, key), schedule_id, body)
+        return await schedules.update_schedule(caller.runtime.database, _submitting(caller), schedule_id, body)
 
 
 @router.delete("/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -129,9 +128,7 @@ async def resume_schedule(schedule_id: ScheduleId, request: Request) -> Schedule
 
 
 @router.post("/{schedule_id}/run", status_code=status.HTTP_202_ACCEPTED, responses=_SUBMITS)
-async def run_schedule(
-    schedule_id: ScheduleId, request: Request, key: Annotated[ApiKeyId, Depends(require_api_key)]
-) -> RunStarted:
+async def run_schedule(schedule_id: ScheduleId, caller: Annotated[Caller, Depends(caller)]) -> RunStarted:
     """Submit the schedule's job now, paused or not; its next due time stays as it is."""
     with _problems():
-        return await schedules.run_now(database(request), _submitting(request, key), schedule_id)
+        return await schedules.run_now(caller.runtime.database, _submitting(caller), schedule_id)

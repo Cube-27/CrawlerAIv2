@@ -5,7 +5,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator, Mapping
 from contextlib import aclosing, asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -35,7 +35,9 @@ from crawlerai.core.engine_version import ENGINE_VERSION, engine_data_dir
 from crawlerai.core.event_loop import quiet_peer_resets
 from crawlerai.core.proxy import ExitPlace, ProxyPool
 from crawlerai.core.settings import Settings
+from crawlerai.db.models import ApiKeyId
 from crawlerai.llm.client import LLMClient
+from crawlerai.llm.draft_cap import KeyCapped
 from crawlerai.llm.providers.from_settings import llm_from_settings
 from crawlerai.llm.setup import LLMSetup
 from crawlerai.normalize.dispatch import warm
@@ -79,6 +81,20 @@ class Runtime:
     drift_margins: DriftMargins | None
     llm_setup: LLMSetup  # checked in the background from when `open_runtime` opens (`crawlerai.llm.setup`)
     search: SearchProvider | None = None  # None without a configured provider: search answers 503
+
+
+@dataclass(frozen=True)
+class Caller:
+    """One call of an API key, over REST or MCP: the process's runtime, its LLM calls that no job pays for counted
+    against the key's draft cap (`KeyCapped`)."""
+
+    runtime: Runtime
+    api_key_id: ApiKeyId
+
+    @classmethod
+    def of(cls, runtime: Runtime, api_key_id: ApiKeyId) -> "Caller":
+        capped = replace(runtime, llm=KeyCapped(runtime.llm, runtime.database, api_key_id))
+        return cls(capped, api_key_id)
 
 
 @asynccontextmanager

@@ -2,6 +2,7 @@
 database behind the key lookup is a stub here; `tests/db/test_api_keys.py` runs the lookup against Postgres."""
 
 import asyncio
+from types import SimpleNamespace
 from typing import Annotated, Any
 
 import httpx
@@ -38,7 +39,7 @@ def _app(monkeypatch: pytest.MonkeyPatch, *, burst: int, trusted: str = "[]") ->
         return {"key": str(key)}
 
     app.include_router(router)
-    app.state.database = UnreachableDatabase()
+    app.state.runtime = SimpleNamespace(database=UnreachableDatabase())  # the lifespan never opens one here
     return app
 
 
@@ -72,7 +73,7 @@ def test_a_request_without_a_bearer_key_is_unauthorized_without_a_lookup(
     assert response.status_code == 401
     assert _problem_type(response) == "unauthorized"
     assert response.headers["www-authenticate"] == "Bearer"  # RFC 6750 §3
-    assert app.state.database.lookups == 0
+    assert app.state.runtime.database.lookups == 0
 
 
 def test_an_untrusted_peer_cannot_take_a_fresh_bucket_by_forwarding_another_address(

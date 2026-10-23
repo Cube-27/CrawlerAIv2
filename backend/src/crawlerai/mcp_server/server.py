@@ -11,7 +11,6 @@ with `UNEXPECTED`, as REST does (`crawlerai.core.errors`); the server logs that 
 import functools
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from typing import Any, Final
 
 from mcp.server.fastmcp import Context, FastMCP
@@ -22,7 +21,7 @@ from pydantic import ValidationError
 
 from crawlerai.config_ir.exporters.configs import ConfigFormat
 from crawlerai.core.errors import UNEXPECTED, Refusal
-from crawlerai.db.models import ApiKeyId, ExtractionConfigId, JobId, ScheduleId, SchemaStatus, WebhookDeliveryId
+from crawlerai.db.models import ExtractionConfigId, JobId, ScheduleId, SchemaStatus, WebhookDeliveryId
 from crawlerai.mcp_server.output import MAX_IMAGE_BYTES, InvalidCursor, MarkdownCursor, markdown_page, tool_result
 from crawlerai.schemas.types import Name
 from crawlerai.services import captures, configs, crawl, exports, extract, jobs, schedules, schemas
@@ -35,7 +34,7 @@ from crawlerai.services.extract import ExtractRequest
 from crawlerai.services.jobs import JobListQuery, ResultsQuery
 from crawlerai.services.map import MapRequest
 from crawlerai.services.records import RecordPage
-from crawlerai.services.runtime import Runtime
+from crawlerai.services.runtime import Caller, Runtime
 from crawlerai.services.schedules import NewSchedule, ScheduleListQuery, Submitting
 from crawlerai.services.schemas import NewSchema
 from crawlerai.services.scrape import ScrapeRequest
@@ -60,12 +59,6 @@ _WRITES = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHi
 _REFUSALS: Final = (Refusal, ToolError, InvalidCursor)
 
 AnyContext = Context[Any, Any, Any]
-
-
-@dataclass(frozen=True)
-class Caller:
-    runtime: Runtime
-    api_key_id: ApiKeyId
 
 
 Bind = Callable[[AnyContext], Awaitable[Caller]]

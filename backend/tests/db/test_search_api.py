@@ -1,7 +1,7 @@
 """`POST /v1/search`: what a client sends and gets back, with a stub provider; nothing leaves the process.
 How a provider is asked and its answer read is `tests/unit/test_search_providers.py`. Hosts are RFC 2606 names."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import httpx
@@ -36,7 +36,7 @@ HITS = [
 
 
 async def _search(app: FastAPI, client: httpx.AsyncClient, provider: Stub | None, **body: Any) -> httpx.Response:
-    app.state.search = provider
+    app.state.runtime = replace(app.state.runtime, search=provider)
     return await client.post("/v1/search", json=body)
 
 

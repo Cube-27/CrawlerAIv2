@@ -4,14 +4,12 @@ debugging; nothing is stored."""
 from fastapi import APIRouter, Depends, Request, Response
 
 from crawlerai.api.auth import require_api_key
-from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE, ReplayRequest, ReplayResult
 from crawlerai.api.problems import conflict, not_found, records_unavailable
+from crawlerai.api.runtime import database, runtime
 from crawlerai.db.models import CaptureId
-from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import captures
 from crawlerai.services.captures import CaptureNotFound, NotReplayable
-from crawlerai.services.fetching import Fetching
 from crawlerai.storage.artifacts import ARTIFACT_TYPES
 
 router = APIRouter(
@@ -26,10 +24,10 @@ router = APIRouter(
 async def replay_capture(capture_id: CaptureId, body: ReplayRequest, request: Request) -> ReplayResult:
     """The records the current engine makes from the capture, against the schemas of the records stored from
     it. 404: no such capture, or its bundle expired; 409: no record was made from it."""
-    data: EngineData | None = request.app.state.engine_data
+    data = runtime(request).engine_data
     if data is None:
         raise records_unavailable("the engine's data files are not installed")
-    fetching: Fetching = request.app.state.fetching
+    fetching = runtime(request).fetching
     try:
         made = await captures.replay(database(request), fetching.store, data, capture_id)
     except CaptureNotFound as e:
@@ -56,7 +54,7 @@ async def get_artifact(capture_id: CaptureId, name: str, request: Request) -> Re
     """The screenshot (`screenshot.png`) or PDF (`page.pdf`) the browser made of the capture's page, as the scrape,
     batch or crawl that asked for it named it in its answer. 404: no such capture, its files expired with it, or it has
     no such file."""
-    fetching: Fetching = request.app.state.fetching
+    fetching = runtime(request).fetching
     try:
         data = await captures.artifact(database(request), fetching.store, capture_id, name)
     except CaptureNotFound as e:

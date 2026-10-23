@@ -7,13 +7,12 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query, Request, Response
 
 from crawlerai.api.auth import require_api_key
-from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.problems import conflict, format_unavailable, not_found
+from crawlerai.api.runtime import database, runtime
 from crawlerai.config_ir.exporters.files import FileFormat, FormatUnavailable
 from crawlerai.db.models import JobId
 from crawlerai.services import exports, jobs
-from crawlerai.services.fetching import Fetching
 from crawlerai.services.job_outcomes import JobOutcomes, job_outcomes
 from crawlerai.services.jobs import (
     FILE_FORMATS,
@@ -131,7 +130,7 @@ async def job_results(
     unchanged. Pass a page's `next_cursor` as `cursor` for the page after it. 409: an export other than `json_values`
     of a job without a schema."""
     engine = database(request)
-    fetching: Fetching = request.app.state.fetching
+    fetching = runtime(request).fetching
     if query.format in FILE_FORMATS:
         return await _results_file(job_id, query, request)
     async with engine.connect() as conn:
@@ -180,7 +179,7 @@ async def job_llms_full_txt(job_id: JobId, request: Request) -> Response:
 
 
 async def _llms(job_id: JobId, request: Request, *, full: bool) -> Response:
-    fetching: Fetching = request.app.state.fetching
+    fetching = runtime(request).fetching
     async with database(request).connect() as conn:
         try:
             text = await exports.job_llms_txt(conn, fetching.store, job_id, full=full)

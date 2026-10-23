@@ -9,9 +9,9 @@ from fastapi import APIRouter, Depends, Header, Request
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from crawlerai.api.auth import require_api_key
-from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.problems import not_found
+from crawlerai.api.runtime import database
 from crawlerai.db.models import JobEventId, JobId
 from crawlerai.services import events
 from crawlerai.services.jobs import JobNotFound

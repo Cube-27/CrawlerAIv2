@@ -11,13 +11,12 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.api.auth import require_api_key
-from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE, ConfigList, LearnStarted
 from crawlerai.api.problems import conflict, invalid, not_found, records_unavailable
+from crawlerai.api.runtime import database, runtime
 from crawlerai.config_ir.corrections import Correction, InvalidCorrection
 from crawlerai.config_ir.exporters.configs import ConfigExport
 from crawlerai.db.models import ExtractionConfigId
-from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas.registry import SchemaNotFound
 from crawlerai.services import configs
 from crawlerai.services.configs import (
@@ -28,7 +27,6 @@ from crawlerai.services.configs import (
     LearnRequest,
     SiteNotFound,
 )
-from crawlerai.services.fetching import Fetching
 
 router = APIRouter(
     prefix="/v1",
@@ -75,10 +73,10 @@ async def correct_config(config_id: ExtractionConfigId, body: Correction, reques
     """Corrects or confirms fields (C5): the next version, `origin=operator`, validated on the site's held-out pages.
     It is `active` when validation keeps a field, else `draft`; its validation report says why. `config_id` must be
     the latest version of its site, schema and page kind; otherwise 409."""
-    data: EngineData | None = request.app.state.engine_data
+    data = runtime(request).engine_data
     if data is None:
         raise records_unavailable("the engine's data files are not installed, so no config can be validated")
-    fetching: Fetching = request.app.state.fetching
+    fetching = runtime(request).fetching
     async with _transaction(request) as conn:
         return await configs.correct(conn, fetching.store, data.vocabulary, config_id, body)
 
@@ -107,7 +105,7 @@ async def export_config(config_id: ExtractionConfigId, body: ExportRequest, requ
     and the release check on the pages the config was validated on: a field the independent release executor does not
     reproduce on every such page with an engine value while there are fewer than 10, or on 95% from 10 on, is
     `manual`."""
-    fetching: Fetching = request.app.state.fetching
+    fetching = runtime(request).fetching
     async with _transaction(request) as conn:
         return await configs.export(conn, fetching.store, config_id, body)
 

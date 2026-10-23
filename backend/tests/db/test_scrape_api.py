@@ -3,6 +3,7 @@ service's (`test_scrape_service.py`)."""
 
 import json
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from typing import Any
 
 import httpx
@@ -60,10 +61,9 @@ async def client(
     """The app with no LLM provider key, fetching `web`, its client asking `provider`."""
     app_env.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
     async with api(engine) as (app, client):
-        app.state.fetching = fetching
-        app.state.engine_data = data
+        app.state.runtime = replace(app.state.runtime, fetching=fetching, engine_data=data)
         if provider is not None:
-            app.state.llm = MeteredClient([provider], engine)
+            app.state.runtime = replace(app.state.runtime, llm=MeteredClient([provider], engine))
         yield client
 
 
