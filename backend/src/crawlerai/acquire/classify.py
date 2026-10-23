@@ -9,9 +9,10 @@ a 200 page is read in `acquire.challenge` from the adapter package's signature d
 structure-only rule. Other challenge pages served with 200 mostly present as shells and get a browser retry. An error or
 challenge page served with 200 that has text enough not to be a shell is told by its shape instead: it links nowhere. A
 site's pages are connected by hyperlinks (HTML Standard §4.6), so a page without one, whatever scripts, images or forms
-it holds, is not one of them. Nor is a document that declares a refresh (it navigates itself on, HTML Standard §4.2.5.3)
-and whose hyperlinks all lead to no web page (`mailto:`, `tel:`, RFC 6068, RFC 3966): a stand-in for the page while the
-site is busy or checking the client.
+it holds, is not one of them, unless it renders an order of magnitude more text than a shell (`_CARRIED_MIN_CHARS`):
+a stand-in states a line or two, and a page whose navigation a script drives still shows its article. Nor is a
+document that declares a refresh (it navigates itself on, HTML Standard §4.2.5.3) and whose hyperlinks all lead to no
+web page (`mailto:`, `tel:`, RFC 6068, RFC 3966): a stand-in for the page while the site is busy or checking the client.
 
 A 2xx document whose structured data states an item of a type the task reads the page for (the policy's
 `target_types`: a JSON-LD node or a microdata item typed so, or an OGP product price for a Product or Offer) is the
@@ -91,7 +92,8 @@ _HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
 _SHELL_MAX_TEXT_CHARS = 200
 _SHELL_MAX_LINKS = 5
 # A document carries its content unrendered when its scripts and concealed subtrees hold at least an order of magnitude
-# more text than a shell renders (`carries_unrendered`).
+# more text than a shell renders (`carries_unrendered`); a document that renders as much is the page, however it links
+# (`_no_site_page`).
 _CARRIED_MIN_CHARS = 10 * _SHELL_MAX_TEXT_CHARS
 # HTML Standard §6.1: an element with the `hidden` attribute is not rendered, nor one whose inline style sets
 # `display: none` (CSS Display 3 §2.5); a script may show either later.
@@ -168,10 +170,10 @@ def classify(
         return "ok" if usable else "blocked"
     if status >= 400:
         return "error"
+    if unread_media(status, headers):
+        return "unsupported_media"
     if not 200 <= status < 300:
         return "ok"
-    if not is_html(headers):
-        return "unsupported_media"
     return _document_class(text, headers, (page_kind, redirect), types, content_only=content_only)
 
 
@@ -447,10 +449,18 @@ def _links_within(tree: LexborHTMLParser, url: str) -> bool:
 def _no_site_page(tree: LexborHTMLParser) -> BlockClass | None:
     if _is_shell(tree):
         return "shell"
-    # After the shell rule: hyperlinks inside a `template` are not in the document, and the rule strips them.
-    if tree.css_first(_HYPERLINKS) is None:
+    # After the shell rule: hyperlinks inside a `template` are not in the document, and the rule strips them. A
+    # document that renders an order of magnitude more text than a shell (`_CARRIED_MIN_CHARS`) is the page however it
+    # links on (a script, a form): a stand-in states a line or two, not an article.
+    if tree.css_first(_HYPERLINKS) is None and _shown_chars(tree) < _CARRIED_MIN_CHARS:
         return "blocked"
     return None
+
+
+def unread_media(status: int, headers: HeaderList) -> bool:
+    """Whether a response is a 2xx answer (RFC 9110 §15.3) whose media type no page reader reads (`unsupported_media`),
+    told by its status and headers alone, before any of its body."""
+    return 200 <= status < 300 and not is_html(headers)
 
 
 def is_html(headers: HeaderList) -> bool:
@@ -464,10 +474,14 @@ def _is_shell(tree: LexborHTMLParser) -> bool:
     # Links first: most pages have enough of them, and then the body text need not be built.
     if len(tree.css("a[href]")) >= _SHELL_MAX_LINKS:
         return False
-    # Visible text is counted in non-whitespace characters: HTML rendering collapses whitespace, and counting
-    # only non-whitespace makes the count independent of how text nodes are joined.
-    text = tree.body.text() if tree.body is not None else ""
-    return len("".join(text.split())) < _SHELL_MAX_TEXT_CHARS
+    return _shown_chars(tree) < _SHELL_MAX_TEXT_CHARS
+
+
+def _shown_chars(tree: LexborHTMLParser) -> int:
+    """The body's text in non-whitespace characters, once the shell rule stripped what is never rendered: HTML
+    rendering collapses whitespace, and counting only non-whitespace makes the count independent of how text nodes
+    are joined."""
+    return _chars(tree.body.text()) if tree.body is not None else 0
 
 
 def _structured_rows(tree: LexborHTMLParser, documents: list[object]) -> bool:

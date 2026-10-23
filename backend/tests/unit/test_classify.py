@@ -43,6 +43,12 @@ def test_status_decides_before_the_body(status: int, expected: BlockClass) -> No
     assert classify(status, _HTML, _EMPTY_APP) == (expected if status >= 300 else "shell")
 
 
+def test_a_page_without_hyperlinks_is_a_stand_in_unless_it_renders_an_article() -> None:
+    assert classify(200, _HTML, _page(400, 0, "<script>void 0</script>")) == "blocked"
+    # Ten times a shell's text: an article whose navigation a script drives.
+    assert classify(200, _HTML, _page(2_000, 0, "<script>void 0</script>")) == "ok"
+
+
 # --- D-1262: a refusal that stands in for the page until it navigates on ----------------------------------------------
 
 _AT = "https://shop.example.test/item/1"

@@ -133,6 +133,11 @@ def test_inv30_a_body_over_the_cap_is_an_error_without_a_body(server: Server) ->
     result = fetch(server, server.url("/p"), FetchPolicy(max_body_bytes=10_000))
     assert outcome(result) == (200, "error", "body_cap")
     assert result.bundle.body == b""
+    # A 2xx answer no page reader reads is told by its media type, whatever its size: no body is kept either.
+    server.route("/f.pdf", Reply(200, (("Content-Type", "application/pdf"),), b"%PDF" * 20_000))
+    result = fetch(server, server.url("/f.pdf"), FetchPolicy(max_body_bytes=10_000))
+    assert outcome(result) == (200, "unsupported_media", "body_cap")
+    assert result.bundle.body == b""
 
 
 # --- caps and failures -------------------------------------------------------------------------------------------
