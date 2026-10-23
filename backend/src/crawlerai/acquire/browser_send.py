@@ -40,15 +40,23 @@ __all__ = ["send_in_page"]
 
 # RFC 9110 §15.5, §15.6: a warm page whose document has an error status is not one the site's scripts run in.
 _ERROR_STATUS: Final = 400
-# The page's own `fetch` (WHATWG Fetch §5.1), in its main world, so a hook the page set on it applies. The body comes
-# back as base64 (RFC 4648 §4), the only lossless form a string carries bytes in; one past `cap` comes back as null.
+# The page's own `fetch` (WHATWG Fetch §5.1), in its main world, so a hook the page set on it applies. The body is read
+# as a stream (WHATWG Streams §4) and cancelled once past `cap`, so no more than that is held; one past it comes back
+# as null. It comes back as base64 (RFC 4648 §4), the only lossless form a string carries bytes in.
 _SEND_JS: Final = """async ([url, method, headers, body, cap]) => {
   const response = await fetch(url, {method, headers, body, credentials: "include"});
-  const bytes = new Uint8Array(await response.arrayBuffer());
   const head = {status: response.status, url: response.url, headers: [...response.headers]};
-  if (bytes.length > cap) return {...head, body: null};
+  const chunks = [];
+  let size = 0;
+  const reader = response.body && response.body.getReader();
+  for (let read = reader && await reader.read(); read && !read.done; read = await reader.read()) {
+    size += read.value.length;
+    if (size > cap) { await reader.cancel(); return {...head, body: null}; }
+    chunks.push(read.value);
+  }
   let text = "";
-  for (let i = 0; i < bytes.length; i += 32768) text += String.fromCharCode(...bytes.subarray(i, i + 32768));
+  for (const chunk of chunks)
+    for (let i = 0; i < chunk.length; i += 32768) text += String.fromCharCode(...chunk.subarray(i, i + 32768));
   return {...head, body: btoa(text)};
 }"""
 
