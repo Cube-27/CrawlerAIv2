@@ -125,12 +125,14 @@ _SHARED_WORKER = (
   c.ports[0].onmessage = e => report(e['data']).then(r => c.ports[0].postMessage(r));
 };"""
 )
-# A page that writes down the screen, window and viewport it is laid out in (CSSOM View).
+# A page that writes down the screen, window and viewport it is laid out in (CSSOM View), at its first rendering
+# opportunity (HTML Standard §8.1.7.3 `requestAnimationFrame`): before it, headless Chrome may still report an
+# `outerWidth` and `outerHeight` of 0 to a new document, with or without a viewport.
 _GEOMETRY = b"""<html><body><p>Geometry page</p><pre id="geometry"></pre><script>
-document.getElementById('geometry').textContent = JSON.stringify({
+requestAnimationFrame(() => document.getElementById('geometry').textContent = JSON.stringify({
   width: screen.width, height: screen.height, availWidth: screen.availWidth, availHeight: screen.availHeight,
   outerWidth, outerHeight, innerWidth, innerHeight, devicePixelRatio, screenX, screenY,
-});
+}));
 </script></body></html>"""
 _FRAMED = b"<html><body><p>Framed</p><script>fetch('/api/n/8');</script></body></html>"
 
