@@ -1,6 +1,6 @@
 """What a page task's extraction step keeps, decided without storing anything: the config a page runs
 (`ActiveConfig`), the page's outcome and record drafts (`page_records`: a detail page's one, a listing's one per row),
-and what every record is stored with (`RecordSource`). `services.page_store` stores them.
+and what every record is stored with (`RecordSource`). `page_store` in services stores them.
 """
 
 from collections.abc import Sequence
