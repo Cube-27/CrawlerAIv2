@@ -5,7 +5,8 @@ the one bounded wait (`acquire.browser_wait`), and what the render captures besi
 As in `fetch_http`, every failure becomes an `error` outcome with a short reason that never contains the URL.
 A page is read once it is ready (`settle`); every request the page makes loads, as in a user's browser (no request
 interception). The caller's page steps run after that wait and before the read (`run_steps`), within the browser's
-time cap plus their own timeouts. Both browser rungs, the page (`fetch_browser`) and the listing with browser actions
+time cap plus their own timeouts; a page's fetch then scrolls it through (`acquire.browser_scroll`) within its own.
+Both browser rungs, the page (`fetch_browser`) and the listing with browser actions
 (`acquire.browser_tab.fetch_listing`), render through `rendered` and end through `Render`: the first document is
 classified with the redirect rules, a `blocked` or `shell` one labelled with the challenge it presents
 (`acquire.challenge`), the pool endpoint it went through told how it went (`core.proxy_health`), a `blocked` profile
@@ -38,6 +39,7 @@ from crawlerai.acquire.browser_capture import (
     item_areas,
     json_bodies,
 )
+from crawlerai.acquire.browser_scroll import SCROLL_MAX_S, scroll_through
 from crawlerai.acquire.browser_session import (
     BrowserSession,
     Failed,
@@ -104,11 +106,14 @@ class Render:
         self.proxy = pool_endpoint(self.pool, site_of(self.url))
         return True
 
-    async def read(self, page: "Rendered") -> None:
-        """Run the caller's page steps on the ready page, then read its document, the context's cookies, and classify
-        it with the redirect rules of where its navigation led (`classified`), labelled with its challenge."""
+    async def read(self, page: "Rendered", *, scroll: bool = False) -> None:
+        """Run the caller's page steps on the ready page and, with `scroll`, scroll it through (`scroll_through`), then
+        read its document, the context's cookies, and classify it with the redirect rules of where its navigation led
+        (`classified`), labelled with its challenge."""
         self.temporary = page.temporary
         self.steps = await stepped(page)  # kept by a failure after the steps ran too
+        if scroll:
+            await scroll_through(page.page, page.frame, page.calls)
         self.exchange, content = await read_state(page)
         self.cookies = await context_cookies(page.page.context)
         text = markup(content)
@@ -177,10 +182,10 @@ async def fetch_browser(
     run = Render(url, policy, engine_version)
     if run.route(pools):
         try:
-            extra_s = steps_budget_s(policy.steps) + (ARTIFACT_TIMEOUT_S if policy.captures_page else 0)
+            extra_s = steps_budget_s(policy.steps) + SCROLL_MAX_S + (ARTIFACT_TIMEOUT_S if policy.captures_page else 0)
             async with asyncio.timeout(policy.browser_timeout_s + extra_s):
                 async with rendered(url, policy, session, connector or SafeConnector(), run, sessions) as page:
-                    await run.read(page)
+                    await run.read(page, scroll=True)
                     run.artifacts = await capture_artifacts(page.page, policy)
             if export is not None:
                 export.cookies, export.proxy = run.cookies, run.proxy
