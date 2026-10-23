@@ -2,3 +2,5 @@
 backend/data/** -text
 # Shell scripts run under bash, which fails on CRLF line endings.
 *.sh text eol=lf
+*.envsh text eol=lf
+infra/web/*.template text eol=lf

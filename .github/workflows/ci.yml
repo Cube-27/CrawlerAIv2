@@ -209,13 +209,13 @@ jobs:
         run: uv sync --frozen --no-build --no-binary-package crawlerai --no-editable
       - name: API client freshness
         run: |
-          make api-client UV_RUN="uv run --no-sync --no-build"
+          UV_RUN="uv run --no-sync --no-build" python3 tools/dev.py api-client
           git diff --exit-code -- frontend/openapi.json frontend/src/api/schema.d.ts || {
-            echo "::error::API client out of date: run 'make api-client' and commit the result."
+            echo "::error::API client out of date: run 'uv run tools/dev.py api-client' and commit the result."
             exit 1
           }
 
-  # The SDKs (`make check-sdk`, rest-api "SDKs"): both regenerated from frontend/openapi.json and compared with the
+  # The SDKs (`tools/dev.py check-sdk`, rest-api "SDKs"): both regenerated from frontend/openapi.json and compared with the
   # committed files, then each SDK's type check, lint and tests.
   sdk:
     needs: changes
@@ -234,7 +234,7 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "0.11.28"
-      - run: make check-sdk
+      - run: python3 tools/dev.py check-sdk
 
   # The worker/queue concurrency model checked with TLC (.claude/skills/verify-worker-queue/SKILL.md), when a change
   # touches the code it models. The runner's Java runs TLC; the script fetches the pinned tla2tools.jar. Three shards

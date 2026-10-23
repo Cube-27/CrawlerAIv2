@@ -2,7 +2,7 @@
 
 What the code does today. One Docker image (linux/amd64 only: Google Chrome has no arm64 build), three roles (`crawlerai api|worker|scheduler`, `crawlerai/cli.py`);
 PostgreSQL is the store and the queue, an object store (`storage/`, fs or S3) holds captures.
-Layering is enforced by `backend/.importlinter` (`make check-backend`): `api > mcp_server > services > crawl/recurring/search
+Layering is enforced by `backend/.importlinter` (`tools/dev.py check-backend`): `api > mcp_server > services > crawl/recurring/search
 > config_ir > resolve/llm > collect > content > normalize > schemas > acquire/adapters > db/storage > core`.
 
 ## Request path
@@ -71,8 +71,8 @@ recurring diffing: `recurring/`; webhooks: `db/webhook_outbox.py`, `services/web
 
 REST under `/v1` (`scrape`, `batch/scrape`, `map`, `search`, `crawl`, `extract`, `schemas`, `records`, `captures`, `jobs`,
 `schedules`, `configs`/`sites`, `usage/llm`, `project/settings`; `GET /healthz`): the contract is `frontend/openapi.json`
-(`make api-client`). Bearer API keys (`crawlerai apikey create`). Schemas (presets in `schemas/presets/*.json`) are data.
-SDKs in `sdk/python`, `sdk/typescript` (`make sdk`); web UI in `frontend/`.
+(`tools/dev.py api-client`). Bearer API keys (`crawlerai apikey create`). Schemas (presets in `schemas/presets/*.json`) are data.
+SDKs in `sdk/python`, `sdk/typescript` (`tools/dev.py sdk`); web UI in `frontend/`.
 
 ## Pinned data
 

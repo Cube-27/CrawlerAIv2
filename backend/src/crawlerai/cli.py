@@ -28,7 +28,7 @@ from crawlerai.core.data import fetch_data
 from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.event_loop import quiet_peer_resets
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
-from crawlerai.db.keys import create_key, revoke_key
+from crawlerai.db.keys import authenticate, create_key, hash_key, revoke_key
 from crawlerai.db.models import ScheduleId
 from crawlerai.job_cli import add_job_commands
 from crawlerai.llm.client import NO_LLM
@@ -212,6 +212,18 @@ async def _apikey_create(label: str) -> None:
     )
 
 
+async def _apikey_ensure(label: str, path: Path) -> None:
+    """Keep a live key for `label` in the file `path`: nothing to do while the key in it is unrevoked, else create one
+    and write it there (the only copy outside its hash), for the process that attaches it to the web UI's requests."""
+    async with _transaction() as conn:
+        current = path.read_text(encoding="ascii").strip() if path.is_file() else ""
+        if current and await authenticate(conn, hash_key(current)) is not None:
+            return
+        created = await create_key(conn, label)
+    path.write_text(created.key, encoding="ascii")
+    print(f"created the {label} API key in {path}")
+
+
 async def _apikey_revoke(parser: argparse.ArgumentParser, key_id: uuid.UUID) -> None:
     async with _transaction() as conn:
         outcome = await revoke_key(conn, key_id)
@@ -289,6 +301,10 @@ def _parser() -> argparse.ArgumentParser:
     create = apikey.add_parser("create", help="create a key and print it, once, with its id")
     create.set_defaults(handler=_run_apikey_create)
     create.add_argument("--label", required=True, help="what the key is for")
+    ensure = apikey.add_parser("ensure", help="keep a live key in a file, creating one when it holds none")
+    ensure.set_defaults(handler=_run_apikey_ensure)
+    ensure.add_argument("--label", required=True, help="what the key is for")
+    ensure.add_argument("file", type=Path, help="the file that holds the key")
     revoke = apikey.add_parser("revoke", help="revoke a key: requests with it are refused from then on")
     revoke.set_defaults(handler=_run_apikey_revoke)
     revoke.add_argument("id", type=uuid.UUID, help="the key's id, as `apikey create` printed it")
@@ -407,6 +423,10 @@ def _run_schemas(parser: argparse.ArgumentParser, _args: argparse.Namespace) -> 
 
 def _run_apikey_create(_parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     asyncio.run(_apikey_create(args.label))
+
+
+def _run_apikey_ensure(_parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    asyncio.run(_apikey_ensure(args.label, args.file))
 
 
 def _run_apikey_revoke(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:

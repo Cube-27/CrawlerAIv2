@@ -1,0 +1,117 @@
+# The one way to run the app: `docker compose up`. Postgres, the migrations, the API, a worker, the scheduler and the
+# web UI, on http://localhost:8080 (the API itself on http://localhost:8000). Settings come from `.env` (copy
+# `.env.example`; without it every setting has its default). The images are built from this checkout, linux/amd64 only
+# (Google Chrome has no arm64 build; Apple Silicon builds and runs them under emulation).
+#
+# `docker compose up -d postgres` starts the database alone, for the tests that need one. `docker compose down` stops
+# everything and keeps the data; `down -v` deletes it too.
+#
+# The browser rung runs headless. With CRAWLERAI_BROWSER_HEADLESS=false in `.env` it runs headful under Xvfb inside
+# the container: no window appears on the host, which is how to run it headful on Windows and macOS.
+name: crawlerai
+
+# One image for the four backend services; `migrate` builds it, the others wait for it to finish.
+x-backend: &backend
+  image: crawlerai-backend
+  pull_policy: never
+  platform: linux/amd64
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    # Inside the compose network, whatever `.env` says for a host run.
+    CRAWLERAI_DATABASE_URL: postgresql+asyncpg://app:app@postgres:5432/crawlerai
+    CRAWLERAI_OBJECT_STORE: fs:///data/objects
+    CRAWLERAI_BROWSER_PROFILES: /data/browser-profiles
+  volumes:
+    - objects:/data/objects
+    - browser-profiles:/data/browser-profiles
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1:${CRAWLERAI_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Healthy only once the final server accepts TCP. On a fresh volume the entrypoint first runs init.sql on a
+      # temporary socket-only server, which a socket check would already count as ready.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "app", "-d", "crawlerai"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # Applies the migrations, syncs the preset schemas and keeps the web UI's API key in the `ui` volume, then exits.
+  migrate:
+    <<: *backend
+    build:
+      context: backend
+      dockerfile: ../infra/Dockerfile
+      args:
+        # The engine version names the commit, which the build cannot see: pass it to name one
+        # (`CRAWLERAI_GIT_SHA=$(git rev-parse HEAD) docker compose up --build`).
+        CRAWLERAI_GIT_SHA: ${CRAWLERAI_GIT_SHA:-0000000}
+    restart: "no"
+    command:
+      - sh
+      - -ec
+      - alembic upgrade head && crawlerai schemas sync && crawlerai apikey ensure --label ui /data/ui/key
+    volumes:
+      - ui:/data/ui
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *backend
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *backend
+    command: ["crawlerai", "worker"]
+    # Chrome needs more shared memory than Docker's 64 MB default.
+    shm_size: 1gb
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  scheduler:
+    <<: *backend
+    command: ["crawlerai", "scheduler"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/web/Dockerfile
+    image: crawlerai-web
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ui:/ui:ro
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  objects:
+  browser-profiles:
+  ui:

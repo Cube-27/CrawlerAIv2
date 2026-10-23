@@ -28,7 +28,7 @@ orchestrator made for your PR (`orchestrator.md`), beside the main clone in `../
 - Temporary files: `export TMPDIR=/data/workspace/scratch/tmp-<id>` on the VM (its `/tmp` is RAM); your own scratch
   folder, never a shared one.
 - Browser: only when your brief allows it, headless Patchright (`INSTABOX_HEADLESS=1` on the VM), one at a time,
-  closed when done. Never real Chrome. Stop any app you start (`make dev`, a worker) by PID once you have its output.
+  closed when done. Never real Chrome. Stop any app you start (`docker compose up`, a worker) once you have its output.
 - Never read `.env` or credential files. Remove any Docker image you build.
 
 ## Agents and subagents
@@ -49,7 +49,7 @@ orchestrator made for your PR (`orchestrator.md`), beside the main clone in `../
   - Runtime grounding: run the real path (`crawlerai` CLI or the worker) on public pages or a local fixture server, and
     read the output. This is the main evidence.
   - Every `.claude/skills/verify-*` skill whose paths your diff touches: run its one command.
-  - `uv run mypy src tests migrations` in `backend/`, ruff, and the test files you touched; `make api-client` when a
+  - `uv run mypy src tests migrations` in `backend/`, ruff, and the test files you touched; `uv run tools/dev.py api-client` when a
     route or response model changes (commit both generated files).
   - Extraction changes (C10): one regression run on the final code only, reported per field type.
 - Commits: `type(scope): subject` like the history, ending with

@@ -1,0 +1,25 @@
+# The web UI: the Vite build, and the API behind it with the UI's key attached, so the browser never holds one. nginx's
+# image fills ${UI_API_KEY} in at start (10-ui-key.envsh reads it from the file the migrate service wrote).
+server {
+    listen 8080;
+    root /usr/share/nginx/html;
+
+    # W3C Fetch Metadata: a request another site's page made (`cross-site`, `same-site`) is refused, since the key is
+    # attached here; the app's own (`same-origin`), a typed URL (`none`) and non-browser clients (no header) pass.
+    set $cross_site 0;
+    if ($http_sec_fetch_site ~ "^(cross-site|same-site)$") { set $cross_site 1; }
+
+    location ~ ^/(v1/|healthz$) {
+        if ($cross_site) { return 404; }
+        proxy_pass http://api:8000;
+        proxy_set_header Authorization "Bearer ${UI_API_KEY}";
+        proxy_http_version 1.1;
+        # Server-sent events (/v1/events) are streamed as they come.
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+    }
+
+    location / {
+        try_files $uri /index.html;
+    }
+}

@@ -66,6 +66,6 @@ console.log(summary.id, summary.status); // parseWebhook throws for a body not s
 
 ```sh
 pnpm check && pnpm test      # type-check, then the tests (node:test)
-pnpm gen                     # after `make api-client` changed frontend/openapi.json
+pnpm gen                     # after `uv run tools/dev.py api-client` changed frontend/openapi.json
 node examples/quickstart.mjs # against a running API, after `pnpm build`
 ```

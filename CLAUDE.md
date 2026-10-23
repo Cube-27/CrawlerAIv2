@@ -30,19 +30,18 @@ builder; its HARD RULES override the rest). Test output is cut to failures and t
 
 ## Commands
 
-Needs Docker, `uv`, `pnpm`, GNU make. From the repo root:
+Needs Docker, `uv` and `pnpm`. From the repo root:
 
 ```sh
-make dev            # Postgres, migrations, API on :8000
-make db             # Postgres only (`make db-down` stops it)
-make migrate        # alembic upgrade head, then `crawlerai schemas sync`
-make api-client     # regenerate frontend/openapi.json and src/api/schema.d.ts; commit both (CI fails on a diff)
-make check          # every CI check locally (`make check-backend`, ... per job)
+docker compose up                 # the whole app, the one way to run it: UI on :8080, API on :8000
+docker compose up -d postgres     # Postgres only, for the tests that need one
+uv run tools/dev.py api-client    # regenerate frontend/openapi.json and src/api/schema.d.ts; commit both (CI fails on a diff)
+uv run tools/dev.py check         # every CI check locally (`check-backend`, ... per job; no argument lists them)
 ```
 
 - `uv run mypy src tests migrations` (in `backend/`) must pass.
 - `browser` tests need Google Chrome stable: `uv run patchright install chrome` once.
-- DB tests need `make db` and `CRAWLERAI_DATABASE_URL` (`.env.example`); `tests/db` also need
+- DB tests need `docker compose up -d postgres` and `CRAWLERAI_DATABASE_URL` (`.env.example`); `tests/db` also need
   `CRAWLERAI_TEST_DATABASE_URL`, a database they own, never the dev one. `tools/orchestrator/test_db.sh up|drop`
   manages one per worktree.
 - Run only the test files you touched, one at a time; never the full suite or `pytest -n` locally.

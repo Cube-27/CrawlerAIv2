@@ -48,7 +48,7 @@ CI checks and the contract agents rely on. `CLAUDE.md` holds the full agent text
 - Greenfield: a model change edits the one baseline migration; no compatibility shims. An architecture change deletes what it
   supersedes in the same PR.
 - Frontend: visual values only in `frontend/src/app/theme.css`, UI only from `@heroui/react` (`tools/theme_only_check.py`).
-- `make api-client` output (`frontend/openapi.json`, `frontend/src/api/schema.d.ts`) is committed; CI fails on a diff.
+- `uv run tools/dev.py api-client` output (`frontend/openapi.json`, `frontend/src/api/schema.d.ts`) is committed; CI fails on a diff.
 - Branch `change/<id>` in a worktree (`tools/orchestrator/new_worktree.sh`); `main` takes PRs only; merge needs green CI and
   every review thread resolved; never merge your own PR.
 - Tests: only files you touched locally; `pytest.raises` blocks hold one call; verification is runtime grounding plus `.claude/skills/verify-*`.

@@ -1,6 +1,6 @@
 # Fast checks on staged files (budget: under 10 s for a typical change). mypy, the test suites and the
-# other CI jobs run in `make check` and CI. C11's complexity limit runs here on the staged files (complexipy, and the
-# Oxlint rule inside `vp check`); the file-length warning runs only in CI and `make check`.
+# other CI jobs run in `tools/dev.py check` and CI. C11's complexity limit runs here on the staged files (complexipy, and the
+# Oxlint rule inside `vp check`); the file-length warning runs only in CI and `tools/dev.py check`.
 # Install with `uvx pre-commit install` (pre-commit >= 4). The hook goes into the clone's shared hooks directory, so
 # it covers every worktree. The local hooks run the tools that backend/uv.lock and frontend/pnpm-lock.yaml pin: they
 # need `uv` and `pnpm install` in frontend/.

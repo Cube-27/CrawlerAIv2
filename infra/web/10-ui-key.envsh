@@ -1,0 +1,4 @@
+# Sourced by nginx's entrypoint (a `.envsh` file) before the template is filled in: the UI's API key, from the file `crawlerai apikey
+# ensure` wrote in the shared volume.
+UI_API_KEY=$(cat /ui/key)
+export UI_API_KEY

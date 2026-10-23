@@ -17,7 +17,7 @@ job description. Builders follow `builder-protocol.md`. The plan and its status 
 
 ## Starting on a machine (fresh or after a switch)
 
-The machine needs Docker, `uv`, `pnpm`, GNU make, `gh` (logged in) and herdr; everything else is in this repo
+The machine needs Docker, `uv`, `pnpm`, `gh` (logged in) and herdr; everything else is in this repo
 (`CLAUDE.md`, Commands).
 
 1. In herdr, open the `CrawlerAIv2` clone, run `claude --permission-mode auto`, and type `/crawlerai-orchestrator`.

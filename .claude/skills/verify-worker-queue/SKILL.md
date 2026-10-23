@@ -33,7 +33,7 @@ to `TASK_SLOTS`, `TASK_DEADLINE`, `CANCEL_GRACE`, `_LOCK_WAIT`, `_END_SESSION`, 
 ## Run
 
 ```sh
-make verify-worker-queue        # = python3 tools/verify/worker_queue.py: checks, findings, mutants (about 2 minutes)
+python3 tools/verify/worker_queue.py        # = `uv run tools/dev.py verify-worker-queue`: checks, findings, mutants (about 2 minutes)
 python3 tools/verify/worker_queue.py left-behind mutant-no-deadline   # only the named checks
 ```
 
