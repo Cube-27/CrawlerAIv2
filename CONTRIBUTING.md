@@ -49,8 +49,8 @@ Every PR answers these (the template carries them):
 
 A PR that changes extraction reports one e2e run on its final code (C1, C10). Procedure:
 
-1. Start from a fresh database (`docker compose -f infra/docker-compose.yml down -v`, then `make db migrate`;
-   `make migrate` alone keeps the existing data), the API and one worker, with the LLM enabled under a stated call
+1. Start from a fresh database (`docker compose down -v`, then `docker compose up`;
+   without `-v` the existing data is kept), the API and one worker, with the LLM enabled under a stated call
    budget.
 2. Send every page of the eval set, which lives outside the repo with its scorer, as a user would, through the API.
 3. Score the run with the one scorer and adjudicate every disagreement against the run's capture: a wrong expected

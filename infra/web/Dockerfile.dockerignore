@@ -1,0 +1,6 @@
+# The context is the repo root; the build copies only these.
+**
+!frontend
+!infra/web
+frontend/node_modules
+frontend/dist

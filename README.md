@@ -58,22 +58,34 @@ around a [generalization contract](docs/rules.md):
 | Frontend | Vite, React, TypeScript, HeroUI |
 | Deployment | One Docker image (linux/amd64 only: Google Chrome has no arm64 build, use `--platform=linux/amd64` emulation) running three roles (api, worker, scheduler), with S3-compatible object storage |
 
-## Getting started
+## Run in Docker
 
-You need Docker, [uv](https://github.com/astral-sh/uv), [pnpm](https://github.com/pnpm/pnpm) and GNU make.
+One command runs the whole app, on Windows, macOS and Linux. You need Docker
+(Compose included).
 
 ```sh
-make dev
+cp .env.example .env     # optional: every setting has a default
+docker compose up
 ```
 
-This copies `.env.example` to `.env` if there is none, starts Postgres in Docker, applies the migrations and runs
-the API on port 8000 (`GET /healthz`). The frontend runs separately: `cd frontend && pnpm install && pnpm dev`.
-The UI never asks for an API key: `pnpm dev` attaches `CRAWLERAI_UI_API_KEY` from `.env` to its API requests, so set
-it to a key from `cd backend && uv run crawlerai apikey create --label ui` first.
-To run everything at once (API, worker, scheduler and the frontend on http://localhost:5173, in one terminal; Ctrl+C
-stops all of them), use `make up` instead. It also creates the UI key and writes it to `.env` when that key is unset
-or no longer in the database (after the database is recreated).
-Every other command, including the checks CI runs, is in [CLAUDE.md](CLAUDE.md).
+This builds the images and starts Postgres, applies the migrations, and runs the API, a worker, the scheduler and
+the web UI. Open http://localhost:8080; the API is on http://localhost:8000 (`GET /healthz`). The web UI makes and
+uses its own API key; make one for your own clients with `docker compose exec api crawlerai apikey create --label me`.
+`docker compose down` stops everything and keeps the data (the database, captures and browser profiles live in Docker
+volumes); `docker compose down -v` deletes it too. After pulling, `docker compose up --build`.
+
+- **Headful browser.** The browser rung runs headless. Set `CRAWLERAI_BROWSER_HEADLESS=false` in `.env` to run it
+  headful under Xvfb inside the container: no window appears on the host, so this is the hidden-window option on
+  Windows and macOS.
+- **amd64 only.** Google Chrome has no Linux arm64 build, so the images are `linux/amd64`. Apple Silicon runs them
+  under emulation, slowly.
+- **Engine version.** The image names its commit in the engine version: `CRAWLERAI_GIT_SHA=$(git rev-parse HEAD)
+  docker compose up --build` sets it; without it the build uses `0000000`.
+
+Development tooling runs on the host with `uv` and `pnpm`: the tests (`docker compose up -d postgres` starts the
+database they need), the API client and SDK generators, and every check CI runs, as `uv run tools/dev.py <command>`
+(no command lists them). The frontend can also run on its dev server, `cd frontend && pnpm install && pnpm dev`,
+against the API on :8000. The rest is in [CLAUDE.md](CLAUDE.md).
 
 ## Repository layout
 
@@ -84,8 +96,9 @@ backend/                Python package `crawlerai` (src/crawlerai/), tests, alem
   .importlinter             one-module-per-field-type and layering contracts (C8)
 sdk/                    Python (pure httpx, pydantic) and TypeScript clients, generated from frontend/openapi.json
 frontend/               Vite + React + TypeScript + HeroUI v3; generated API client in src/api/
-infra/                  docker-compose.yml (Postgres), Dockerfile (the backend image), postgres/init.sql
-tools/                  repo checks: site-literal scan, data manifest, license scan, no-size-gates, file length
+docker-compose.yml      the one way to run the app: Postgres, migrations, API, worker, scheduler, web UI
+infra/                  Dockerfile (the backend image), web/ (the web UI image: Dockerfile, nginx), postgres/init.sql
+tools/                  dev.py (generators and every CI check), repo checks: site-literal scan, data manifest, license scan, no-size-gates, file length
 docs/                   architecture, rules, decisions, agent guides
 .github/                CI workflows and the pull request template
 .claude/skills/         agent procedures

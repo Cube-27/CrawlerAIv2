@@ -105,7 +105,7 @@ def test_names_of_tracked_files_and_modules_are_not_hosts_but_urls_are_checked(t
         {
             module_file: "",
             "README.md": "",
-            "Makefile": f"run:\n\tuvicorn {'.'.join(MODULE_PATH)}:app\n",
+            "run.sh": f"uvicorn {'.'.join(MODULE_PATH)}:app\n",
             "notes.txt": "See README.md and cli.py.\n",
             "link.txt": "https://readme.example/\n",
         },

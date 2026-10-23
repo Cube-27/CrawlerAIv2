@@ -12,7 +12,7 @@ secrets/
 /captures/
 /eval-private/
 /var/
-# Local filesystem object store used by `make dev`.
+# Local filesystem object store of a run on the host (the compose volumes hold the app's own).
 .data/
 *.zst
 eval-aggregate.json

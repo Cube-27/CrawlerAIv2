@@ -77,6 +77,6 @@ def handle(body: bytes, signature_header: str | None) -> None:
 ```sh
 uv venv && uv pip install -e ".[dev]"
 .venv/bin/ruff check src tests && .venv/bin/mypy src tests && .venv/bin/pytest
-./generate.sh          # after `make api-client` changed frontend/openapi.json
+./generate.sh          # after `uv run tools/dev.py api-client` changed frontend/openapi.json
 python examples/quickstart.py   # against a running API
 ```

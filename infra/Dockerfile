@@ -54,6 +54,8 @@ RUN patchright install --with-deps chrome \
         fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core fonts-roboto \
     && rm -rf /var/lib/apt/lists/* && fc-cache -f \
     && useradd --system --no-create-home crawlerai
+# The directories `docker-compose.yml` mounts volumes on; a new volume takes its owner from here.
+RUN mkdir /data /data/objects /data/browser-profiles /data/ui && chown crawlerai /data/objects /data/browser-profiles /data/ui
 USER crawlerai
 
 EXPOSE 8000

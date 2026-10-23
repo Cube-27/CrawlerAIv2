@@ -16,7 +16,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 LIMIT = 800
 SOURCE_SUFFIXES = (".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".sh")
-# Written by `make api-client` from the backend's OpenAPI document, never by hand.
+# Written by `tools/dev.py api-client` from the backend's OpenAPI document, never by hand.
 GENERATED = frozenset({"frontend/src/api/schema.d.ts"})
 
 

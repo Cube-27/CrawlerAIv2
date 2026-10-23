@@ -21,9 +21,9 @@ JOB_INPUTS: dict[str, tuple[str, ...]] = {
     "backend_static": ("backend/", "tools/", WORKFLOW),
     # The frontend checks.
     "frontend": ("frontend/", "tools/theme_only_check.py", WORKFLOW),
-    # The API client freshness check: regenerates the client from backend/ with the frontend's generator, through the
-    # Makefile.
-    "api_client": ("frontend/", "backend/", "Makefile", WORKFLOW),
+    # The API client freshness check: regenerates the client from backend/ with the frontend's generator, through
+    # tools/dev.py.
+    "api_client": ("frontend/", "backend/", "tools/dev.py", WORKFLOW),
     # The dependency licence scan reads only the lockfiles, the manifests they come from, and its own scripts.
     "licenses": (
         "backend/pyproject.toml",
@@ -65,8 +65,8 @@ JOB_INPUTS: dict[str, tuple[str, ...]] = {
         ".claude/skills/verify-money/",
         WORKFLOW,
     ),
-    # The SDKs (`make check-sdk`): regenerated from the API document and checked, through the Makefile.
-    "sdk": ("sdk/", "frontend/openapi.json", "Makefile", WORKFLOW),
+    # The SDKs (`tools/dev.py check-sdk`): regenerated from the API document and checked.
+    "sdk": ("sdk/", "frontend/openapi.json", "tools/dev.py", WORKFLOW),
 }
 
 
