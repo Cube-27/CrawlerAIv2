@@ -137,7 +137,9 @@ The blocks are those of the group the stated rows name most and of every other s
 of its row shape (or holding every required field it aligns and a field beyond the item URL), inner groups first (a
 department's jobs before the departments holding them), a group past the first eight only where its blocks lie at the
 chosen group's tag path (one template renders both), whose blocks lead, a quorum of them, to
-documents of the kind its blocks lead to (host, path depth, first segment), apart from blocks already read, fewer than
+documents of the kind its blocks lead to (host, path depth, first segment; and, when a quorum of the chosen group's
+item URLs start with one word, the first path segment's first word split at RFC 3986 §2.3's `-`, `.`, `_`, `~`, so a
+board's company cards beside its postings are another kind), apart from blocks already read, fewer than
 half of whose blocks lead to items the chosen group lists (else it is a featured or recently viewed copy) and not
 starting after the chosen group's `rel=next` link (past the listing's end); an item two sections show is one block
 (D-1776). Where one structured list is the page's `mainEntity`, only its entries are stated rows

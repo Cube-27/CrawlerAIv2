@@ -186,8 +186,8 @@ def _shared(kind: tuple[int, set[str]], rank: int) -> int:
 
 def url_kind(url: str) -> Kind:
     """The kind of document a URL names, as a site lays its items out: its host, its number of path segments and its
-    first one when it has more (RFC 3986 §3.3: a path's segments are its hierarchy), so `/p/7` is `/p/3`'s kind, while a
-    category page, an article or another site's page is not."""
+    first one when it has more (RFC 3986 §3.3: a path's segments are its hierarchy), so `/p/7` is `/p/3`'s kind,
+    while a category page, an article or another site's page is not."""
     split = urlsplit(url)
     segments = [segment for segment in split.path.split("/") if segment]
     return split.netloc, len(segments), segments[0] if len(segments) > 1 else ""
