@@ -4,7 +4,7 @@ Clean, normalized, typed records from any website, for any schema, plus an execu
 that a deterministic crawler can run.
 
 > **Status: architecture v3 built; handed over 2026-10-21.** Accuracy is measured only by the e2e run over an eval
-> set kept outside the repo. How to run it, what is frozen and what is open: [HANDOVER.md](HANDOVER.md).
+> set kept outside the repo. How it works: [docs/architecture.md](docs/architecture.md).
 
 **Agents: read CLAUDE.md before changing anything.**
 
@@ -32,7 +32,7 @@ that a deterministic crawler can run.
 ## Why v2 is built this way
 
 Two earlier versions did well on the sites they were tuned against and produced garbage on new ones. v2 is built
-around a [generalization contract](openspec/project.md#generalization-contract-c1c13):
+around a [generalization contract](docs/rules.md):
 - accuracy is measured by one e2e run over an eval set that grows in fresh batches, each scored once before anyone
   fixes anything on it;
 - generic code may encode only standards, types and HTML structure;
@@ -41,22 +41,14 @@ around a [generalization contract](openspec/project.md#generalization-contract-c
 
 ## Documentation
 
-The docs follow the [OpenSpec](https://github.com/Fission-AI/OpenSpec) layout: current behaviour as requirements per
-capability, in-flight work as change folders (deleted once their deltas are applied).
-
 | Document | Purpose |
 |---|---|
-| [HANDOVER.md](HANDOVER.md) | What the system is and is not, how to run it and the e2e, what is frozen, open items |
-| [CLAUDE.md](CLAUDE.md) | Rules for coding agents working in this repo, what to read, and every command |
-| [openspec/project.md](openspec/project.md) | Project context, the generalization contract C1–C13, open owner items |
-| [openspec/specs/](openspec/specs/) | The current behaviour, one `spec.md` of requirements per capability (invariants `INV-NN` included) |
-| [openspec/design/](openspec/design/overview.md) | Design rationale (goals, contract evidence, candidates register), the owner decisions, and [architecture-v3.md](openspec/design/architecture-v3.md): the architecture as built (frozen 2026-10-19, rewritten in place 2026-10-21) |
-| [openspec/decisions/](openspec/decisions/README.md) | How decisions are logged, and the cross-cutting log |
-| [openspec/archive/](openspec/archive/README.md) | Superseded documents (the former backlog and open questions), kept for history |
-| [openspec/conventions/](openspec/conventions/) | `ENGINEERING.md` (engineering principles), `DESIGN.md` (frontend conventions), `RECURRING.md` (recurring agent mistakes) |
+| [CLAUDE.md](CLAUDE.md) | Rules for coding agents working in this repo, and every command |
+| [docs/architecture.md](docs/architecture.md) | The pipeline as built and where each part lives |
+| [docs/rules.md](docs/rules.md) | The product and repo rules CI and agents enforce |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute: checks, pull requests, the e2e report |
-| [docs/agents/](docs/agents/) | The agent workflow: orchestrator guide, builder protocol, the last plan and its status |
-| [.claude/skills/](.claude/skills/) | The `verify-*` checks and `/crawlerai-orchestrator` |
+| [docs/agents/](docs/agents/) | The agent workflow: orchestrator guide and builder protocol |
+| [docs/archive/](docs/archive/README.md) | Historical (old specs, design, decisions), not maintained |
 
 ## Stack
 
@@ -94,7 +86,7 @@ sdk/                    Python (pure httpx, pydantic) and TypeScript clients, ge
 frontend/               Vite + React + TypeScript + HeroUI v3; generated API client in src/api/
 infra/                  docker-compose.yml (Postgres), Dockerfile (the backend image), postgres/init.sql
 tools/                  repo checks: site-literal scan, data manifest, license scan, no-size-gates, file length
-openspec/               project context, capability specs, design, decisions, conventions
+docs/                   architecture, rules, agent guides, historical archive
 .github/                CI workflows and the pull request template
 .claude/skills/         agent procedures
 ```

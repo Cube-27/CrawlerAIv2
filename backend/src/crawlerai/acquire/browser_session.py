@@ -375,7 +375,7 @@ async def present(page: Page, identity: Identity) -> None:
     place of those Playwright derives from the user agent string alone (`platformVersion` from the frozen reduced user
     agent, `architecture` x86 unless the string names ARM). A dedicated worker takes its page's. A cross-site frame,
     which renders in a process of its own, and a popup take it once Playwright reports them, so their first requests
-    may carry Playwright's; a service or shared worker is out of reach (acquisition spec, the known gaps)."""
+    may carry Playwright's; a service or shared worker is out of reach (known gaps)."""
     await _override(page, identity)
     page.on("framenavigated", lambda frame: _present_frame(frame, identity))
     page.on("popup", lambda popup: _present_popup(popup, identity))

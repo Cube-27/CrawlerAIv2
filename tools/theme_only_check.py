@@ -98,7 +98,7 @@ def main() -> int:
     if found:
         print(
             f"theme-only: {len(found)} findings. Visual values belong in {THEME} and UI comes from @heroui/react "
-            "(openspec/conventions/DESIGN.md, Theming and Stack).",
+            "(docs/rules.md).",
             file=sys.stderr,
         )
         return 1

@@ -1,20 +1,14 @@
 # Contributing
 
-CrawlerAI v2 is built mostly by coding agents working from OpenSpec changes, and the same rules apply to every
+CrawlerAI v2 is built mostly by coding agents, and the same rules apply to every
 contributor. Read `CLAUDE.md` before changing anything: the generalization contract C1–C13
-(`openspec/project.md`, applied in `CLAUDE.md`) is binding on every change, and breaking it is a defect even when
+(`docs/rules.md`, applied in `CLAUDE.md`) is binding on every change, and breaking it is a defect even when
 it fixes a site.
 
 ## Before you start
 
-- What is built, frozen and still open: `HANDOVER.md`. The last plan and its status: `docs/agents/plan.md`; any
-  in-flight change folder is in `openspec/changes/`.
-- The current behaviour, as requirements: `openspec/specs/<capability>/spec.md`, invariants (`INV-NN`) included.
-- One PR covers a batch of related tasks of one change (`openspec/changes/<change-id>/tasks.md`): one branch, one PR
-  (`CLAUDE.md`). New work starts as a change folder (proposal, tasks, spec deltas); a PR that completes a change
-  applies its deltas to `openspec/specs/` and deletes the folder.
-- How to write code here: `openspec/conventions/ENGINEERING.md`. Frontend conventions:
-  `openspec/conventions/DESIGN.md`.
+- What the code does: `docs/architecture.md`. The rules CI and agents enforce: `docs/rules.md`.
+- One PR covers one concern: one branch, one PR (`CLAUDE.md`). The PR description carries the reasoning.
 
 ## Setup and checks
 
@@ -32,7 +26,7 @@ fails if one appears in a workflow, a hook or a tool config.
 - Title in Conventional Commits form: `type(scope): subject`, for example
   `feat(normalize): decline ambiguous dollar symbols`.
 - Fill in `.github/pull_request_template.md`: why, what changed, scope, verification, the e2e report and
-  decisions. Behaviour changes come with a spec delta in the change folder.
+  decisions. `docs/` is updated if the change makes them wrong.
 - Tests come first: behaviour tests, Hypothesis properties for normalizers, replays of stored captures for
   extraction. No test is named after a site or asserts one site's output (C9). Fixtures are synthetic and use
   reserved names (`example.com`, `.test`).
@@ -45,16 +39,15 @@ Every PR answers these (the template carries them):
 - I did not add a site literal (C3). Adding a commercial site, retailer or job board to
   `tools/site_literal_allowlist.txt` is a C3 violation.
 - I did not add a list entry for a single page (C4, C5).
-- No §22 candidate implemented (C13).
+- No unadmitted candidate implemented (C13).
 - Aggregate report attached, required if `collect/`, `normalize/`, `resolve/`, `llm/`, `config_ir/`, `acquire/` or
   `adapters/` changed: e2e delta per field type shown, no unexplained precision drop (C10).
 - Property or replay tests added, no site-named tests (C9).
-- Decisions recorded in the change's `design.md` or `openspec/decisions/log.md` (`openspec/decisions/README.md`).
+- Decisions recorded in the PR body.
 
 ### The e2e report
 
-A PR that changes extraction reports one e2e run on its final code (C1, C10). The procedure is in `HANDOVER.md`
-("Running the e2e") and the `evaluation` capability (`openspec/specs/evaluation/spec.md`):
+A PR that changes extraction reports one e2e run on its final code (C1, C10). Procedure:
 
 1. Start from a fresh database (`docker compose -f infra/docker-compose.yml down -v`, then `make db migrate`;
    `make migrate` alone keeps the existing data), the API and one worker, with the LLM enabled under a stated call
@@ -70,10 +63,9 @@ Generalization claims come only from a fresh batch's first score, taken before a
 
 ## Decisions and escalation
 
-Implementation choices within a change's scope are decided and logged (the change's `design.md` or
-`openspec/decisions/log.md`; listed in the PR body under `## Decisions`). Changes to `openspec/design/` (the
-former ARCHITECTURE.md), the contract, open owner items (`openspec/project.md`), §22 candidates, evaluation access
-and secrets are escalated to the owner. `CLAUDE.md` has the procedure.
+Implementation choices within a change's scope are decided and listed in the PR body under `## Decisions`. Changes to the
+contract (`docs/rules.md`), a public API, the evaluation procedure, candidates and secrets are escalated to the owner.
+`CLAUDE.md` has the procedure.
 
 ## Licensing and the public repo
 

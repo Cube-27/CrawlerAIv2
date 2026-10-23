@@ -2,16 +2,22 @@
 
 CrawlerAI v2 is a schema-driven web extraction engine; see `README.md`.
 
+## Project charter
+
+1. **Objective.** Improve crawl and extraction coverage and accuracy in general. Keep one coherent browser/HTTP
+   fingerprint. Keep the code machine-agnostic (Windows and Linux).
+2. **Bug.** An extracted value differs from the live page AND it is a pattern, not a site-specific issue. Site-only
+   problems are fixed by config or data (C5).
+3. **Decisions** are kept until proven wrong; then they are flagged to the owner instead of followed. No technology or
+   decision is frozen.
+
 ## Layout
 
 - `backend/` (Python, `src/crawlerai/`, `tests/`, `migrations/`), `frontend/` (Vite+, React), `sdk/`, `infra/`,
   `tools/` (repo checks and `tools/orchestrator/` worktree/CI scripts).
-- `openspec/project.md`: the contract C1–C13 and repo checks. `openspec/specs/<capability>/spec.md`: current
-  behaviour, the source of truth; a behaviour change edits the spec it touches. `openspec/design/`: goals, owner
-  decisions, candidates register, and `architecture-v3.md` (frozen 2026-10-19, rewritten in place 2026-10-21: the
-  architecture as built). `HANDOVER.md`: how to run it, the e2e procedure, what is frozen, open items.
-  `openspec/conventions/ENGINEERING.md` (code), `DESIGN.md` (frontend).
-- Read only what your change needs. Where a spec, the design and the contract disagree, stop and ask the owner.
+- `docs/architecture.md`: what the code does and where. `docs/rules.md`: the rules CI and agents enforce. `docs/archive/`:
+  historical record (old specs, design, decisions, handover), not maintained; the code wins over it.
+- Read only what your change needs. Where the docs and the contract disagree, stop and ask the owner.
 - Work on a branch `change/<id>` in a worktree made by `tools/orchestrator/new_worktree.sh <id> change/<id>`, never
   in the main checkout. `main` takes PRs only. Never merge your own PR.
 
@@ -19,8 +25,7 @@ CrawlerAI v2 is a schema-driven web extraction engine; see `README.md`.
 
 One orchestrator and at most two builders, each a Claude session in its own herdr tab:
 `docs/agents/orchestrator.md` (the orchestrator, `/crawlerai-orchestrator`), `docs/agents/builder-protocol.md` (every
-builder; its HARD RULES override the rest), `docs/agents/plan.md` (the ordered PR list and its status). Test output is
-cut to failures and the summary by `.claude/hooks/test_output_hook.py` (`TEST_FILTER=0` shows it all).
+builder; its HARD RULES override the rest). Test output is cut to failures and the summary by `.claude/hooks/test_output_hook.py` (`TEST_FILTER=0` shows it all).
 
 ## Commands
 
@@ -41,7 +46,7 @@ make check          # every CI check locally (`make check-backend`, ... per job)
   manages one per worktree.
 - Run only the test files you touched, one at a time; never the full suite or `pytest -n` locally.
 
-## Contract (binding; `openspec/project.md`)
+## Contract (binding; `docs/rules.md`)
 
 A bug fix repairs the layer whose rule failed, for the whole class of pages. Data the page does not state stays
 unpublished. No site-specific steps, no speculative layers, no second path for existing logic (C8).
@@ -51,7 +56,7 @@ unpublished. No site-specific steps, no speculative layers, no second path for e
   The set grows in fresh batches (20–30 pages, one per host not in it before, stratified by schema, language,
   platform and render mode); a batch is scored once, before any change is made on it, and that first score is the
   only generalization number; then it joins the set. Never look at a fresh batch's pages before that score.
-  Calibration, precedence and drift margins are frozen as fitted on 2026-10-18; a refit needs the owner. The set, its
+  Calibration, precedence and drift margins are as fitted on 2026-10-18; a refit is flagged to the owner. The set, its
   URLs, values and captures stay out of the repo (C3).
 - **C2.** Every generic rule names its standard (schema.org, ISO, CLDR, RFC, HTML) or structural property in a
   comment. "Site X does Y" is never a justification.
@@ -73,7 +78,7 @@ unpublished. No site-specific steps, no speculative layers, no second path for e
 - **C11.** Cognitive complexity at most 15 per function (hard check); files over 800 lines only warn. Add no other
   LOC, complexity, coverage or ratchet gate.
 - **C12.** Never read, copy or port from the `Invoro` or CrawlerAI v1 repositories.
-- **C13.** Nothing in the candidates register (`openspec/design/overview.md` §22) is built until the owner admits it.
+- **C13.** Nothing in the candidates register (owner's candidates list) is built until the owner admits it.
 
 ## Other rules
 
@@ -83,15 +88,13 @@ unpublished. No site-specific steps, no speculative layers, no second path for e
 - No AGPL, GPL, SSPL or non-commercial dependencies (CI enforces).
 - Greenfield: no versioning, migration chains or compatibility shims; a model change edits the one baseline
   migration. Record versions, draft and active configs and `engine_version` stay.
-- An architecture change deletes what it supersedes in the same PR. Code comments cite the spec requirement or the
-  standard, not `D-NNNN`, `ARCHITECTURE §N` or `SPEC-NN`.
+- An architecture change deletes what it supersedes in the same PR. Code comments cite the standard, not `D-NNNN`, `ARCHITECTURE §N` or `SPEC-NN`.
 - Verification is runtime grounding on real pages plus the `.claude/skills/verify-*` checks (formal or property) for
   the paths a change touches, not new example tests. A test is added only for a behaviour nothing else covers; tests a
   change makes redundant are deleted. No eval loops: one timeboxed regression run per PR, on the final code, gives the
   C10 before/after report; generalization claims come only from a fresh batch's first score (C1). A `pytest.raises`
   block holds one call.
 - Decisions within one change's scope are yours: write them in the PR body only. Escalate to the owner anything that
-  alters the contract, `openspec/design/`, a public API or schema other capabilities rely on, the evaluation procedure
-  or labels, or needs credentials: say so in your report and move on. The orchestrator asks the owner and records the
-  answer in `openspec/design/owner-decisions.md`.
+  alters the contract, a public API or schema other capabilities rely on, the evaluation procedure
+  or labels, or needs credentials: say so in your report and move on. The orchestrator asks the owner.
 - Merge needs green CI and every review thread (any bot) fixed or answered and resolved.
