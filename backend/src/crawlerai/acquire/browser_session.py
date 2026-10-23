@@ -36,7 +36,7 @@ from crawlerai.acquire.display import ensure_display
 from crawlerai.acquire.locality import Locality, locality
 from crawlerai.acquire.outcome import Exchange, Traffic
 from crawlerai.acquire.public_suffix import site_of
-from crawlerai.acquire.session import SessionCookie, SiteSessions, browser_cookies
+from crawlerai.acquire.session import SessionCookie, SessionScope, browser_cookies
 from crawlerai.acquire.shared_browser import BROWSER_CONTEXTS
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import SafeConnector, Target
@@ -508,14 +508,14 @@ async def open_context(
     connector: SafeConnector,
     first: Target,
     proxy: ProxyEndpoint | None,
-    sessions: SiteSessions | None,
+    scope: SessionScope | None,
     key: ContextKey | None,
     locale: Locality,
 ) -> _Context:
     """The site profile of `key` (a temporary one without a key, `acquire.browser_profiles`), launched as a persistent
     context behind a guard of its own, in the session's mode (`_mode_options`: headless, on the screen of the page's
     site, pool and endpoint even in a temporary profile), holding the caller's cookies, or, in a temporary profile of
-    the site, the cookies `sessions` give (`SiteSessions.for_browser`; a kept profile holds its own), with the `locale`
+    the site, the cookies `scope` gives (`SiteSessions.for_browser`; a kept profile holds its own), with the `locale`
     and `timezone_id` of `locale` (`context_locality`). Nothing intercepts its requests: Playwright's request routing
     turns the HTTP cache off, so every request carries `Cache-Control: no-cache` and `Pragma: no-cache`, which no user's
     browser sends on a first load."""
@@ -542,7 +542,7 @@ async def open_context(
         context.on("close", lambda _: _closed(session, held))
         await present_workers(context, session)
         temporary = profile.lock is None and key is not None
-        if temporary and sessions is not None and (seeded := await sessions.for_browser(url, policy.proxy_pool)):
+        if temporary and scope is not None and (seeded := await scope.for_browser(url)):
             await context.add_cookies(seeded_cookies(seeded))
         if policy.context is not None and policy.context.cookies:
             await context.add_cookies(caller_cookies(url, policy.context))
@@ -561,13 +561,13 @@ def _closed(session: BrowserSession, held: _Context) -> None:
         session.profiles.forget(held)
 
 
-def context_key(url: str, policy: FetchPolicy, proxy: ProxyEndpoint | None) -> ContextKey | None:
+def context_key(url: str, scope: SessionScope | None, proxy: ProxyEndpoint | None) -> ContextKey | None:
     """The profile a page renders in (`acquire.browser_profiles`): the page's site (HTML Standard §7.1.1) and the
     proxy pool and endpoint its guard goes through, a sticky exit's session id included (`core.proxy`). None for a
-    fetch with the caller's own cookies, which are no site's state: it gets a temporary profile, never kept."""
-    if policy.context is not None or urlsplit(url).hostname is None:
+    fetch outside any site `scope` (`SiteSessions.scope_for`): it gets a temporary profile, never kept."""
+    if scope is None or urlsplit(url).hostname is None:
         return None
-    return _site_key(url, policy, proxy)
+    return (site_of(url), scope.pool, proxy)
 
 
 def _site_key(url: str, policy: FetchPolicy, proxy: ProxyEndpoint | None) -> ContextKey:

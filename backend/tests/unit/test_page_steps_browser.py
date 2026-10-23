@@ -21,6 +21,7 @@ from pydantic import SecretStr, TypeAdapter
 
 from crawlerai.acquire.browser import fetch_browser
 from crawlerai.acquire.browser_session import BrowserSession, open_browser
+from crawlerai.acquire.session import SiteSessions
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, Target
 from crawlerai.acquire.types import FetchPolicy, FetchResult, RequestContext
 from crawlerai.config_ir.page_actions import Action, WaitFor, to_steps
@@ -175,6 +176,7 @@ class Browser:
                 session=self.session,
                 engine_version=ENGINE_VERSION,
                 connector=_Local(self.server.port),
+                scope=SiteSessions().scope_for(policy),
             )
         )
 

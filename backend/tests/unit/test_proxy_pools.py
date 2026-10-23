@@ -205,15 +205,16 @@ def _pools(*endpoints: ProxyEndpoint, mode: PoolMode = "rotate") -> dict[str, Pr
 def _fetch(
     url: str, pools: dict[str, ProxyPool], pool: str | None = "dc", sessions: SiteSessions | None = None
 ) -> FetchResult:
+    policy = FetchPolicy(proxy_pool=pool, timeout_s=5)
     return asyncio.run(
         fetch_http(
             url,
-            FetchPolicy(proxy_pool=pool, timeout_s=5),
+            policy,
             engine_version="test",
             impersonate=IMPERSONATE,
             connector=StubConnector(),
             pools=pools,
-            sessions=sessions,
+            scope=None if sessions is None else sessions.scope_for(policy),
         )
     )
 
@@ -315,7 +316,8 @@ def test_a_sites_sticky_exit_keys_its_profile_and_ends_with_its_ttl_or_a_block()
     assert first.username is not None
     assert first.username.startswith("user-")
     assert "{session}" not in first.username
-    assert context_key("http://shop.example.test/p", policy, first) == ("example.test", "dc", first)
+    scope = SiteSessions().scope_for(policy)
+    assert context_key("http://shop.example.test/p", scope, first) == ("example.test", "dc", first)
     assert pool.pick("example.org") != first  # another site, another exit
 
     now[0] = SESSION_TTL.total_seconds()
@@ -436,13 +438,15 @@ def test_a_browser_fetch_naming_a_pool_goes_through_its_proxy(origin: Origin, pr
         async with open_browser() as session:
 
             async def fetch(pool: str) -> FetchResult:
+                policy = FetchPolicy(proxy_pool=pool, browser_timeout_s=10)
                 return await fetch_browser(
                     "http://shop.example.test/p",
-                    FetchPolicy(proxy_pool=pool, browser_timeout_s=10),
+                    policy,
                     session=session,
                     engine_version="test",
                     connector=StubConnector(),
                     pools=_pools(proxy.endpoint()),
+                    scope=SiteSessions().scope_for(policy),
                 )
 
             return await fetch("dc"), await fetch("other")

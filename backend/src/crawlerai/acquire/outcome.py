@@ -2,10 +2,12 @@
 fetcher."""
 
 import time
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
+from crawlerai.acquire.challenge import count
 from crawlerai.acquire.politeness import retry_after
+from crawlerai.acquire.session import SessionScope, SiteSession
 from crawlerai.acquire.ssrf import SSRF_REJECTED
 from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult, StepOutcome
 from crawlerai.core.capture import CaptureMethod
@@ -21,7 +23,7 @@ from crawlerai.storage.capture_bundle import (
     sha256_hex,
 )
 
-__all__ = ["Content", "Exchange", "Traffic", "as_error", "fetch_result", "report_proxy"]
+__all__ = ["Content", "Exchange", "Route", "Sending", "Traffic", "as_error", "fetch_result", "report_proxy"]
 
 
 @dataclass(frozen=True)
@@ -170,3 +172,64 @@ def _not_the_endpoints(error: str | None) -> bool:
     """A failure of our own limits or guard, not of the endpoint: a cap or a decoding error keeps the status of an
     answer the endpoint did relay, which says nothing either way."""
     return error is not None and (error in _OWN_FAILURES or error.startswith(SSRF_REJECTED))
+
+
+@dataclass(frozen=True)
+class Route:
+    """How a fetch's requests went out: the pool endpoint, the site session they carried, the bytes they moved."""
+
+    pool: ProxyPool | None = None
+    proxy: ProxyEndpoint | None = None
+    session: SiteSession | None = None
+    transferred: int = 0
+
+
+@dataclass(frozen=True)
+class Sending:
+    """One fetch of the HTTP or JSON rung (`curl_client`), from when it begins: its requests carry the site session
+    `session` gives, and `finish` makes its result and records it. `url` is the page the capture stands for; `scope` the
+    fetch's site state (`SiteSessions.scope_for`), None for none."""
+
+    url: str
+    method: CaptureMethod
+    policy: FetchPolicy
+    engine_version: str
+    scope: SessionScope | None
+    fetched_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    started: float = field(default_factory=time.monotonic)
+
+    def session(self, url: str) -> SiteSession | None:
+        """The site session that goes with a request to `url`, one of its fetches spent (`SiteSessions.take`)."""
+        return None if self.scope is None else self.scope.take(self.url, url)
+
+    def finish(
+        self,
+        *,
+        exchange: Exchange | None,
+        content: Content,
+        block_class: BlockClass,
+        error: str | None,
+        challenge: str | None,
+        route: Route,
+    ) -> FetchResult:
+        """The fetch's result, its challenge label counted, the pool endpoint told how it went and the site session
+        it carried settled (`SiteSessions.settle`)."""
+        count(challenge, self.method)
+        result = fetch_result(
+            url=self.url,
+            method=self.method,
+            policy=self.policy,
+            engine_version=self.engine_version,
+            fetched_at=self.fetched_at,
+            started=self.started,
+            exchange=exchange,
+            content=content,
+            block_class=block_class,
+            error=error,
+            challenge=challenge,
+            transferred=route.transferred,
+        )
+        report_proxy(route.pool, route.proxy, result)
+        if self.scope is not None:
+            self.scope.settle(route.session, result)
+        return result

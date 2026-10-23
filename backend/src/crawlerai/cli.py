@@ -21,6 +21,7 @@ from crawlerai.acquire.browser import fetch_browser
 from crawlerai.acquire.browser_session import open_browser
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.impersonate import rung_impersonation
+from crawlerai.acquire.session import SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.api.app import create_app
 from crawlerai.api.webhooks import poster
@@ -151,6 +152,7 @@ async def _fetch(
                 engine_version=ENGINE_VERSION,
                 connector=connector,
                 pools=settings.proxy_pools,
+                scope=SiteSessions().scope_for(policy),
             )
     else:
         result = await fetch_http(
@@ -160,6 +162,7 @@ async def _fetch(
             impersonate=await rung_impersonation(settings, browser_rung=False),
             connector=connector,
             pools=settings.proxy_pools,
+            scope=SiteSessions().scope_for(policy),
             direct=settings.direct,
         )
     out.write_bytes(encode(result.bundle))

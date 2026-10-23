@@ -431,16 +431,15 @@ def _documented(result: FetchResult) -> ProductJson | None:
 
 async def _browser_retry(url: str, policy: FetchPolicy, rungs: Rungs, result: FetchResult) -> FetchResult:
     """The browser attempt after the HTTP `result`. When HTTP was refused (`shell` or `blocked`) and the process keeps
-    site sessions, the browser's `ok` opens the site's session with the context's cookies, and
-    its attempt says so (`site_session`)."""
-    sessions, exporting = rungs.sessions, rungs.exporting
-    # A fetch with the caller's own context opens no session: its cookies are the caller's, not the site's.
-    handoff = policy.context is None and result.block_class in _BROWSER_EVIDENCE
-    if sessions is None or exporting is None or not handoff:
+    site sessions and the fetch is in their scope (`SiteSessions.scope_for`), the browser's `ok` opens the site's
+    session with the context's cookies, and its attempt says so (`site_session`)."""
+    scope = None if rungs.sessions is None else rungs.sessions.scope_for(policy)
+    exporting = rungs.exporting
+    if scope is None or exporting is None or result.block_class not in _BROWSER_EVIDENCE:
         return await rungs.browser(url, policy)
     export = CookieExport()
     retry = await exporting(url, policy, export=export)
-    if retry.block_class != "ok" or sessions.open(url, policy.proxy_pool, export) is None:
+    if retry.block_class != "ok" or scope.open(url, export) is None:
         return retry
     opened = tuple(a.model_copy(update={"site_session": True}) for a in retry.attempts)
     return retry.model_copy(update={"attempts": opened})
