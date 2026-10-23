@@ -28,7 +28,7 @@ PageFormat = Literal[
 
 
 class Input(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_serialization_defaults_required=True)
 
 
 # The description of the `min_confidence` member of the requests that extract `records`: a field whose calibrated bucket

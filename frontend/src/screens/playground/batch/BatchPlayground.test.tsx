@@ -4,7 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { JobSummary, JsonValuesItem } from "../../../api/jobs";
 import { stubApi, type Call } from "../../../test/api";
 import { catchDownloads } from "../../../test/downloads";
-import { jobSummary } from "../../../test/jobs";
+import { jobSummary, storedBatch } from "../../../test/jobs";
 import { quietEvents, runApi, SCHEMA_ID, valuesPage } from "../../../test/runs";
 import {
   closeOptions,
@@ -49,7 +49,7 @@ function batchApi(replies: Parameters<typeof stubApi>[0] = {}): Call[] {
       jobId: JOB_ID,
       kind: "batch_scrape",
       job: job(),
-      request: { urls: [FIRST.url], formats: ["records"], schema: { id: SCHEMA_ID } },
+      request: storedBatch({ urls: [FIRST.url], formats: ["records"], schema: { id: SCHEMA_ID } }),
       items: [FIRST, SECOND, THIRD],
     },
     replies,
@@ -224,18 +224,21 @@ describe("batch playground: runs", () => {
   it("shows a run's request read-only, and edit and re-run starts a new job, keeping the old one", async () => {
     const calls = batchApi({
       [`GET ${JOB}/request`]: () =>
-        Response.json({
-          urls: ["https://shop.test/a", "https://shop.test/b"],
-          formats: ["links", "metadata"],
-          schema: null,
-          page_kind: "listing",
-          fetch: { method_hint: "browser", respect_robots: true, max_rows: 60 },
-          budget: { llm_calls: 40 },
-          webhook_url: null,
-        }),
+        Response.json(
+          storedBatch(
+            {
+              urls: ["https://shop.test/a", "https://shop.test/b"],
+              formats: ["links", "metadata"],
+              page_kind: "listing",
+              budget: { llm_calls: 40 },
+            },
+            { method_hint: "browser", respect_robots: true, max_rows: 60 },
+          ),
+        ),
       "POST /v1/batch/scrape": () => Response.json({ job_id: OLDER }),
       [`GET /v1/jobs/${OLDER}`]: () => Response.json(job({ id: OLDER })),
-      [`GET /v1/jobs/${OLDER}/request`]: () => Response.json({ urls: ["https://shop.test/a"] }),
+      [`GET /v1/jobs/${OLDER}/request`]: () =>
+        Response.json(storedBatch({ urls: ["https://shop.test/a"] })),
       [`GET /v1/jobs/${OLDER}/events`]: quietEvents,
       [`GET /v1/jobs/${OLDER}/results`]: () => valuesPage([]),
     });

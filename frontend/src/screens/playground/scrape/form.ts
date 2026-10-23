@@ -32,19 +32,14 @@ import {
   screenshotArea,
   minConfidence,
 } from "../pageRequest";
+import type { StoredJobRequest } from "../../../api/jobs";
 import {
-  count,
   llmCalls,
-  maxRows,
-  member,
-  methodHint,
+  minConfidencePercent,
+  orEmpty,
   pageFormats,
-  pageKind,
   schemaFields,
   schemaId,
-  text,
-  type StoredRequest,
-  minConfidencePercent,
 } from "../run/storedRequest";
 
 /** The settings in the options panel: each is a `ScrapeRequest` member, except `metadataInJson`, a view
@@ -163,35 +158,16 @@ function browserActions(
   };
 }
 
-const PAGING_HINTS: readonly PagingHint[] = [
-  "load_more",
-  "show_more",
-  "pagination",
-  "next",
-  "scroll",
-];
-
-/** The stored request's `browser_actions` as the options show them. */
-function storedBrowserActions(
-  request: StoredRequest,
-): Pick<ScrapeOptions, "browserActions" | "records" | "pagingHint"> {
-  const actions = request["browser_actions"];
-  const stored = member(request, "browser_actions");
-  const hint = PAGING_HINTS.find((option) => option === stored["hint"]) ?? null;
-  return {
-    browserActions: actions !== undefined && actions !== null,
-    records: count(stored, "records"),
-    pagingHint: hint,
-  };
-}
-
-/** The form that shows the stored `request` of a scrape job. A stored schema's page kind is the request's. */
-export function scrapeForm(request: StoredRequest): ScrapeFormState {
+/** The form that shows the stored request of a scrape job, null for a job of another kind. A stored schema's page kind is the request's. */
+export function scrapeForm(stored: StoredJobRequest): ScrapeFormState | null {
+  if (stored.kind !== "scrape") return null;
+  const { request } = stored;
   const { formats, metadataInJson } = pageFormats(request);
   const id = schemaId(request);
-  const kind = pageKind(request);
+  const kind = request.page_kind;
+  const actions = request.browser_actions;
   return {
-    url: text(request, "url"),
+    url: request.url,
     formats,
     schemaId: id,
     schemaPageKind: id === "" ? null : kind,
@@ -199,14 +175,16 @@ export function scrapeForm(request: StoredRequest): ScrapeFormState {
       pageKind: id === "" ? kind : null,
       metadataInJson,
       fields: schemaFields(request),
-      methodHint: methodHint(request),
-      maxAge: count(request, "max_age"),
-      timeoutS: count(request, "timeout_s"),
+      methodHint: request.fetch.method_hint,
+      maxAge: request.max_age,
+      timeoutS: request.timeout_s,
       llmCalls: llmCalls(request),
-      maxRows: maxRows(request),
+      maxRows: orEmpty(request.fetch.max_rows),
       minConfidence: minConfidencePercent(request),
-      advanced: storedAdvanced(request),
-      ...storedBrowserActions(request),
+      advanced: storedAdvanced(request.fetch),
+      browserActions: actions !== null,
+      records: orEmpty(actions?.records ?? null),
+      pagingHint: actions?.hint ?? null,
       ...storedFormatSettings(request),
     },
   };

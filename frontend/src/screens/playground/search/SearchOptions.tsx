@@ -1,3 +1,4 @@
+import { LIMITS } from "../../../api/limits";
 import { NumberRow, OptionsPanel, SwitchRow } from "../OptionsPanel";
 import { MetadataRow } from "../rows";
 import { DEFAULT_SEARCH_OPTIONS, type SearchOptions as Options } from "./form";
@@ -19,8 +20,8 @@ export function SearchOptions({
         help="The most results. Empty: the server default."
         name="limit"
         value={options.limit}
-        minValue={1}
-        maxValue={50}
+        minValue={LIMITS.SearchRequest.limit.minimum}
+        maxValue={LIMITS.SearchRequest.limit.maximum}
         onChange={(limit) => {
           onChange({ ...options, limit });
         }}

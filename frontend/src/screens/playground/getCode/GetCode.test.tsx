@@ -12,6 +12,7 @@ import {
 } from "../../../test/playground";
 import { runApi, schemaList } from "../../../test/runs";
 import { curlBody } from "../../../test/shell";
+import { storedBatch, storedExtract } from "../../../test/jobs";
 
 // Every mode's Get code against what its primary action posts. `fetch` answers each submit with the
 // shapes the API defines; the scrape is refused, as only its body matters here.
@@ -47,7 +48,13 @@ const CASES: Readonly<Record<string, ModeCase>> = {
   batch: {
     route: "/batch",
     action: "Start batch",
-    stub: () => runApi({ submit: "POST /v1/batch/scrape", jobId: JOB_ID, kind: "batch_scrape" }),
+    stub: () =>
+      runApi({
+        submit: "POST /v1/batch/scrape",
+        jobId: JOB_ID,
+        kind: "batch_scrape",
+        request: storedBatch({ urls: ["https://shop.test/a"] }),
+      }),
     fillForm: () =>
       fill(
         screen.getByRole("textbox", { name: "URLs" }),
@@ -57,7 +64,13 @@ const CASES: Readonly<Record<string, ModeCase>> = {
   extract: {
     route: "/extract",
     action: "Extract",
-    stub: () => runApi({ submit: "POST /v1/extract", jobId: JOB_ID, kind: "extract" }),
+    stub: () =>
+      runApi({
+        submit: "POST /v1/extract",
+        jobId: JOB_ID,
+        kind: "extract",
+        request: storedExtract(),
+      }),
     fillForm: async () => {
       await typeUrl("https://shop.test/items/1");
       await pick(/Schema$/, "From a prompt");

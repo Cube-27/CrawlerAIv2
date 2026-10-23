@@ -1,17 +1,11 @@
 import { AdvancedRows } from "../AdvancedRows";
 import type { PageKind, PagingHint, ScrapeFormat } from "../../../api/scrape";
 import { NumberRow, OptionsPanel, SelectRow, SwitchRow } from "../OptionsPanel";
-import {
-  FetchMethodRow,
-  FieldsRow,
-  FormatRows,
-  LlmCallsRow,
-  MinConfidenceRow,
-  MaxRowsRow,
-  MetadataRow,
-  PageKindRow,
-} from "../rows";
+import { LlmCallsRow, PageFetchRows, PageOutputRows } from "../rows";
+import { LIMITS } from "../../../api/limits";
 import { browserActionsApply, DEFAULT_OPTIONS, type ScrapeOptions as Options } from "./form";
+
+const MAX_TIMEOUT_S = LIMITS["ScrapeRequest-Input"].timeout_s.maximum;
 
 /** Scrape's options: page kind, fetch method, max age, timeout, the LLM call limit, Metadata in JSON,
  * fields and a listing's browser actions. */
@@ -34,25 +28,11 @@ export function ScrapeOptions({
         onChange(DEFAULT_OPTIONS);
       }}
     >
-      <PageKindRow
-        value={options.pageKind}
+      <PageFetchRows
+        options={options}
         hasSchema={hasSchema}
         schemaPageKind={schemaPageKind}
-        onChange={(pageKind) => {
-          onChange({ ...options, pageKind });
-        }}
-      />
-      <FetchMethodRow
-        value={options.methodHint}
-        onChange={(methodHint) => {
-          onChange({ ...options, methodHint });
-        }}
-      />
-      <MaxRowsRow
-        value={options.maxRows}
-        onChange={(maxRows) => {
-          onChange({ ...options, maxRows });
-        }}
+        onChange={onChange}
       />
       <NumberRow
         label="Max age (s)"
@@ -64,14 +44,13 @@ export function ScrapeOptions({
           onChange({ ...options, maxAge });
         }}
       />
-      {/* The request is bounded by `timeout_s`, at most 120. */}
       <NumberRow
         label="Timeout (s)"
-        help="How long the scrape may take, in seconds, at most 120. Empty: the server default."
+        help={`How long the scrape may take, in seconds, at most ${String(MAX_TIMEOUT_S)}. Empty: the server default.`}
         name="timeout_s"
         value={options.timeoutS}
         minValue={1}
-        maxValue={120}
+        maxValue={MAX_TIMEOUT_S}
         onChange={(timeoutS) => {
           onChange({ ...options, timeoutS });
         }}
@@ -83,15 +62,7 @@ export function ScrapeOptions({
           onChange({ ...options, llmCalls });
         }}
       />
-      <MinConfidenceRow options={options} onChange={onChange} />
-      <MetadataRow
-        isSelected={options.metadataInJson}
-        onChange={(metadataInJson) => {
-          onChange({ ...options, metadataInJson });
-        }}
-      />
-      <FieldsRow options={options} onChange={onChange} />
-      <FormatRows options={options} formats={formats} onChange={onChange} />
+      <PageOutputRows options={options} formats={formats} onChange={onChange} />
       <BrowserActionsRows
         options={options}
         applies={browserActionsApply(options, hasSchema ? schemaPageKind : options.pageKind)}

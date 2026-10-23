@@ -383,7 +383,7 @@
         "title": "AttrStep",
         "type": "object"
       },
-      "BatchScrapeRequest": {
+      "BatchScrapeRequest-Input": {
         "additionalProperties": false,
         "description": "The body of `POST /v1/batch/scrape`. The formats, `schema`, `page_kind`, `fetch` and `locale` are a\nscrape's, for every URL. A batch's results are either records or page outputs, so `records` is\nasked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),\nand `schema.fields` is drafted while the caller waits. Role C fills a page's gaps as in a scrape;\n`budget.llm_calls` bounds the job's calls, and without a `budget` the project's cap does, as for every job\nkind. The webhook options are `WebhookOptions`.",
         "properties": {
@@ -400,7 +400,7 @@
           "chunking": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ChunkOptions"
+                "$ref": "#/components/schemas/ChunkOptions-Input"
               },
               {
                 "type": "null"
@@ -408,7 +408,7 @@
             ]
           },
           "fetch": {
-            "$ref": "#/components/schemas/FetchOptions",
+            "$ref": "#/components/schemas/FetchOptions-Input",
             "default": {
               "actions": [],
               "cache": "default",
@@ -422,7 +422,7 @@
           "fit": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/FitOptions"
+                "$ref": "#/components/schemas/FitOptions-Input"
               },
               {
                 "type": "null"
@@ -490,7 +490,7 @@
             "title": "Page Kind"
           },
           "render": {
-            "$ref": "#/components/schemas/RenderOptions",
+            "$ref": "#/components/schemas/RenderOptions-Input",
             "default": {
               "fields": [],
               "mode": "off"
@@ -503,7 +503,7 @@
                 "$ref": "#/components/schemas/SchemaById"
               },
               {
-                "$ref": "#/components/schemas/SchemaInline"
+                "$ref": "#/components/schemas/SchemaInline-Input"
               },
               {
                 "$ref": "#/components/schemas/SchemaFields"
@@ -569,6 +569,204 @@
         "title": "BatchScrapeRequest",
         "type": "object"
       },
+      "BatchScrapeRequest-Output": {
+        "additionalProperties": false,
+        "description": "The body of `POST /v1/batch/scrape`. The formats, `schema`, `page_kind`, `fetch` and `locale` are a\nscrape's, for every URL. A batch's results are either records or page outputs, so `records` is\nasked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),\nand `schema.fields` is drafted while the caller waits. Role C fills a page's gaps as in a scrape;\n`budget.llm_calls` bounds the job's calls, and without a `budget` the project's cap does, as for every job\nkind. The webhook options are `WebhookOptions`.",
+        "properties": {
+          "budget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Budget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chunking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChunkOptions-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fetch": {
+            "$ref": "#/components/schemas/FetchOptions-Output",
+            "default": {
+              "actions": [],
+              "cache": "default",
+              "cookies": {},
+              "headers": {},
+              "method_hint": "auto",
+              "respect_robots": false,
+              "screenshot": "viewport"
+            }
+          },
+          "fit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FitOptions-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "formats": {
+            "items": {
+              "enum": [
+                "markdown",
+                "markdown_fit",
+                "chunks",
+                "html",
+                "raw_html",
+                "links",
+                "metadata",
+                "screenshot",
+                "pdf",
+                "records"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Formats",
+            "type": "array"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "min_confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            "title": "Min Confidence"
+          },
+          "page_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "detail",
+                  "listing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Kind"
+          },
+          "render": {
+            "$ref": "#/components/schemas/RenderOptions-Output",
+            "default": {
+              "fields": [],
+              "mode": "off"
+            },
+            "description": "How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SchemaById"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaInline-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaFields"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema"
+          },
+          "urls": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Urls",
+            "type": "array"
+          },
+          "webhook_batch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebhookBatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "webhook_events": {
+            "items": {
+              "enum": [
+                "page",
+                "record",
+                "record_changed",
+                "url_gone",
+                "job_completed",
+                "job_failed",
+                "job_cancelled"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Webhook Events",
+            "type": "array"
+          },
+          "webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Url"
+          }
+        },
+        "required": [
+          "webhook_url",
+          "webhook_events",
+          "webhook_batch",
+          "urls",
+          "formats",
+          "schema",
+          "page_kind",
+          "fetch",
+          "locale",
+          "budget",
+          "fit",
+          "chunking",
+          "min_confidence",
+          "render"
+        ],
+        "title": "BatchScrapeRequest",
+        "type": "object"
+      },
       "BatchSubmitted": {
         "properties": {
           "job_id": {
@@ -583,7 +781,7 @@
         "title": "BatchSubmitted",
         "type": "object"
       },
-      "BrowserActions": {
+      "BrowserActions-Input": {
         "additionalProperties": false,
         "description": "A single-URL listing scrape's browser actions. `records` is a soft target: the run stops once it\nhas seen at least that many rows, so it may pass it by one page or batch. Without a `hint` the mechanism is\ndetected.",
         "properties": {
@@ -612,6 +810,42 @@
             "type": "integer"
           }
         },
+        "title": "BrowserActions",
+        "type": "object"
+      },
+      "BrowserActions-Output": {
+        "additionalProperties": false,
+        "description": "A single-URL listing scrape's browser actions. `records` is a soft target: the run stops once it\nhas seen at least that many rows, so it may pass it by one page or batch. Without a `hint` the mechanism is\ndetected.",
+        "properties": {
+          "hint": {
+            "anyOf": [
+              {
+                "enum": [
+                  "load_more",
+                  "show_more",
+                  "pagination",
+                  "next",
+                  "scroll"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          },
+          "records": {
+            "default": 100,
+            "exclusiveMinimum": 0.0,
+            "title": "Records",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "records",
+          "hint"
+        ],
         "title": "BrowserActions",
         "type": "object"
       },
@@ -663,7 +897,7 @@
         "title": "Chunk",
         "type": "object"
       },
-      "ChunkOptions": {
+      "ChunkOptions-Input": {
         "additionalProperties": false,
         "description": "`chunks`' options: the `strategy`, the `size` of a chunk and the `overlap` between chunks, in words, and the\nmarkdown the chunks are cut from (`markdown_fit` is pruned, so the chunks hold the page's content only).",
         "properties": {
@@ -702,7 +936,52 @@
         "title": "ChunkOptions",
         "type": "object"
       },
-      "ClickAction": {
+      "ChunkOptions-Output": {
+        "additionalProperties": false,
+        "description": "`chunks`' options: the `strategy`, the `size` of a chunk and the `overlap` between chunks, in words, and the\nmarkdown the chunks are cut from (`markdown_fit` is pruned, so the chunks hold the page's content only).",
+        "properties": {
+          "overlap": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Overlap",
+            "type": "integer"
+          },
+          "size": {
+            "default": 400,
+            "exclusiveMinimum": 0.0,
+            "title": "Size",
+            "type": "integer"
+          },
+          "source": {
+            "default": "markdown",
+            "enum": [
+              "markdown",
+              "markdown_fit"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "strategy": {
+            "default": "heading",
+            "enum": [
+              "heading",
+              "sentence",
+              "token"
+            ],
+            "title": "Strategy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy",
+          "size",
+          "overlap",
+          "source"
+        ],
+        "title": "ChunkOptions",
+        "type": "object"
+      },
+      "ClickAction-Input": {
         "additionalProperties": false,
         "description": "Click an element, or the first visible element whose text holds `text`.",
         "properties": {
@@ -755,6 +1034,69 @@
             "title": "Xpath"
           }
         },
+        "title": "ClickAction",
+        "type": "object"
+      },
+      "ClickAction-Output": {
+        "additionalProperties": false,
+        "description": "Click an element, or the first visible element whose text holds `text`.",
+        "properties": {
+          "selector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selector"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "timeout_ms": {
+            "default": 5000,
+            "maximum": 15000.0,
+            "minimum": 1.0,
+            "title": "Timeout Ms",
+            "type": "integer"
+          },
+          "type": {
+            "const": "click",
+            "default": "click",
+            "title": "Type",
+            "type": "string"
+          },
+          "xpath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xpath"
+          }
+        },
+        "required": [
+          "timeout_ms",
+          "selector",
+          "xpath",
+          "type",
+          "text"
+        ],
         "title": "ClickAction",
         "type": "object"
       },
@@ -1141,7 +1483,7 @@
         "title": "CostReport",
         "type": "object"
       },
-      "CrawlRequest": {
+      "CrawlRequest-Input": {
         "additionalProperties": false,
         "description": "The body of `POST /v1/crawl`. The formats, `schema`, `fetch` and `locale` are a batch's, for every\n    page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is\n    drafted\n    while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap\n    does.\n`include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which\n    pages are extracted. The webhook options are `WebhookOptions`.\n\n    `strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the\n    links that best match `query` and `keywords` first (`crawl.scoring`). `allow_subdomains`\n    keeps the start host's subdomains without an `include`, and `allow_external` any host.",
         "properties": {
@@ -1168,7 +1510,7 @@
           "chunking": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ChunkOptions"
+                "$ref": "#/components/schemas/ChunkOptions-Input"
               },
               {
                 "type": "null"
@@ -1184,7 +1526,7 @@
             "type": "array"
           },
           "fetch": {
-            "$ref": "#/components/schemas/FetchOptions",
+            "$ref": "#/components/schemas/FetchOptions-Input",
             "default": {
               "actions": [],
               "cache": "default",
@@ -1198,7 +1540,7 @@
           "fit": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/FitOptions"
+                "$ref": "#/components/schemas/FitOptions-Input"
               },
               {
                 "type": "null"
@@ -1300,7 +1642,7 @@
             "title": "Query"
           },
           "render": {
-            "$ref": "#/components/schemas/RenderOptions",
+            "$ref": "#/components/schemas/RenderOptions-Input",
             "default": {
               "fields": [],
               "mode": "off"
@@ -1313,7 +1655,7 @@
                 "$ref": "#/components/schemas/SchemaById"
               },
               {
-                "$ref": "#/components/schemas/SchemaInline"
+                "$ref": "#/components/schemas/SchemaInline-Input"
               },
               {
                 "$ref": "#/components/schemas/SchemaFields"
@@ -1380,6 +1722,270 @@
         "required": [
           "url",
           "formats"
+        ],
+        "title": "CrawlRequest",
+        "type": "object"
+      },
+      "CrawlRequest-Output": {
+        "additionalProperties": false,
+        "description": "The body of `POST /v1/crawl`. The formats, `schema`, `fetch` and `locale` are a batch's, for every\n    page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is\n    drafted\n    while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap\n    does.\n`include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which\n    pages are extracted. The webhook options are `WebhookOptions`.\n\n    `strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the\n    links that best match `query` and `keywords` first (`crawl.scoring`). `allow_subdomains`\n    keeps the start host's subdomains without an `include`, and `allow_external` any host.",
+        "properties": {
+          "allow_external": {
+            "default": false,
+            "title": "Allow External",
+            "type": "boolean"
+          },
+          "allow_subdomains": {
+            "default": false,
+            "title": "Allow Subdomains",
+            "type": "boolean"
+          },
+          "budget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Budget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chunking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChunkOptions-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exclude": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Exclude",
+            "type": "array"
+          },
+          "fetch": {
+            "$ref": "#/components/schemas/FetchOptions-Output",
+            "default": {
+              "actions": [],
+              "cache": "default",
+              "cookies": {},
+              "headers": {},
+              "method_hint": "auto",
+              "respect_robots": false,
+              "screenshot": "viewport"
+            }
+          },
+          "fit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FitOptions-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "formats": {
+            "items": {
+              "enum": [
+                "markdown",
+                "markdown_fit",
+                "chunks",
+                "html",
+                "raw_html",
+                "links",
+                "metadata",
+                "screenshot",
+                "pdf",
+                "records"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Formats",
+            "type": "array"
+          },
+          "include": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Include",
+            "type": "array"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Keywords",
+            "type": "array"
+          },
+          "limit": {
+            "default": 500,
+            "description": "At most this many pages are fetched.",
+            "maximum": 5000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "max_depth": {
+            "default": 3,
+            "minimum": 0.0,
+            "title": "Max Depth",
+            "type": "integer"
+          },
+          "min_confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            "title": "Min Confidence"
+          },
+          "page_kind_rules": {
+            "items": {
+              "$ref": "#/components/schemas/PageKindRule"
+            },
+            "title": "Page Kind Rules",
+            "type": "array"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          },
+          "render": {
+            "$ref": "#/components/schemas/RenderOptions-Output",
+            "default": {
+              "fields": [],
+              "mode": "off"
+            },
+            "description": "How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SchemaById"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaInline-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaFields"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema"
+          },
+          "strategy": {
+            "default": "bfs",
+            "enum": [
+              "bfs",
+              "dfs",
+              "best_first"
+            ],
+            "title": "Strategy",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "webhook_batch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebhookBatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "webhook_events": {
+            "items": {
+              "enum": [
+                "page",
+                "record",
+                "record_changed",
+                "url_gone",
+                "job_completed",
+                "job_failed",
+                "job_cancelled"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Webhook Events",
+            "type": "array"
+          },
+          "webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Url"
+          }
+        },
+        "required": [
+          "webhook_url",
+          "webhook_events",
+          "webhook_batch",
+          "url",
+          "include",
+          "exclude",
+          "max_depth",
+          "limit",
+          "strategy",
+          "query",
+          "keywords",
+          "allow_subdomains",
+          "allow_external",
+          "formats",
+          "schema",
+          "page_kind_rules",
+          "fetch",
+          "locale",
+          "budget",
+          "fit",
+          "chunking",
+          "min_confidence",
+          "render"
         ],
         "title": "CrawlRequest",
         "type": "object"
@@ -1890,7 +2496,7 @@
         "title": "ExportRequest",
         "type": "object"
       },
-      "ExtractRequest": {
+      "ExtractRequest-Input": {
         "additionalProperties": false,
         "description": "The body of `POST /v1/extract`. `urls` are URLs and URL globs; `schema` names a schema by id, gives it\ninline, or asks for a draft from a `prompt` or from field names (`fields`), and its page kind must\nbe `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` (else the project's cap) bounds a prompt's\ndraft. The `fetch` and `locale` are a scrape's, for every URL. The webhook options are\n`WebhookOptions`.",
         "properties": {
@@ -1905,7 +2511,7 @@
             ]
           },
           "fetch": {
-            "$ref": "#/components/schemas/FetchOptions",
+            "$ref": "#/components/schemas/FetchOptions-Input",
             "default": {
               "actions": [],
               "cache": "default",
@@ -1962,7 +2568,7 @@
                 "$ref": "#/components/schemas/SchemaById"
               },
               {
-                "$ref": "#/components/schemas/SchemaInline"
+                "$ref": "#/components/schemas/SchemaInline-Input"
               },
               {
                 "$ref": "#/components/schemas/SchemaPrompt"
@@ -2025,6 +2631,153 @@
           "urls",
           "schema",
           "page_kind"
+        ],
+        "title": "ExtractRequest",
+        "type": "object"
+      },
+      "ExtractRequest-Output": {
+        "additionalProperties": false,
+        "description": "The body of `POST /v1/extract`. `urls` are URLs and URL globs; `schema` names a schema by id, gives it\ninline, or asks for a draft from a `prompt` or from field names (`fields`), and its page kind must\nbe `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` (else the project's cap) bounds a prompt's\ndraft. The `fetch` and `locale` are a scrape's, for every URL. The webhook options are\n`WebhookOptions`.",
+        "properties": {
+          "budget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Budget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fetch": {
+            "$ref": "#/components/schemas/FetchOptions-Output",
+            "default": {
+              "actions": [],
+              "cache": "default",
+              "cookies": {},
+              "headers": {},
+              "method_hint": "auto",
+              "respect_robots": false,
+              "screenshot": "viewport"
+            }
+          },
+          "limit": {
+            "default": 1000,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "min_confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            "title": "Min Confidence"
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SchemaById"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaInline-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaPrompt"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaFields"
+              }
+            ],
+            "title": "Schema"
+          },
+          "urls": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Urls",
+            "type": "array"
+          },
+          "webhook_batch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebhookBatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "webhook_events": {
+            "items": {
+              "enum": [
+                "page",
+                "record",
+                "record_changed",
+                "url_gone",
+                "job_completed",
+                "job_failed",
+                "job_cancelled"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Webhook Events",
+            "type": "array"
+          },
+          "webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Url"
+          }
+        },
+        "required": [
+          "webhook_url",
+          "webhook_events",
+          "webhook_batch",
+          "urls",
+          "schema",
+          "page_kind",
+          "limit",
+          "fetch",
+          "locale",
+          "budget",
+          "min_confidence"
         ],
         "title": "ExtractRequest",
         "type": "object"
@@ -2204,7 +2957,7 @@
         "title": "Fetch",
         "type": "object"
       },
-      "FetchOptions": {
+      "FetchOptions-Input": {
         "additionalProperties": false,
         "description": "How a request's pages are fetched. `headers` go over HTTP to the page's own host only, never in the browser,\nand `cookies` to that host in either; `wait_for` and `actions` run in the browser, so they make the fetch\n    a browser one and refuse `method_hint` `http`, and a browser fetch takes no `headers`.",
         "properties": {
@@ -2213,29 +2966,29 @@
             "items": {
               "discriminator": {
                 "mapping": {
-                  "click": "#/components/schemas/ClickAction",
-                  "press": "#/components/schemas/PressAction",
-                  "scroll": "#/components/schemas/ScrollAction",
-                  "type": "#/components/schemas/TypeAction",
-                  "wait": "#/components/schemas/WaitAction"
+                  "click": "#/components/schemas/ClickAction-Input",
+                  "press": "#/components/schemas/PressAction-Input",
+                  "scroll": "#/components/schemas/ScrollAction-Input",
+                  "type": "#/components/schemas/TypeAction-Input",
+                  "wait": "#/components/schemas/WaitAction-Input"
                 },
                 "propertyName": "type"
               },
               "oneOf": [
                 {
-                  "$ref": "#/components/schemas/WaitAction"
+                  "$ref": "#/components/schemas/WaitAction-Input"
                 },
                 {
-                  "$ref": "#/components/schemas/ClickAction"
+                  "$ref": "#/components/schemas/ClickAction-Input"
                 },
                 {
-                  "$ref": "#/components/schemas/ScrollAction"
+                  "$ref": "#/components/schemas/ScrollAction-Input"
                 },
                 {
-                  "$ref": "#/components/schemas/PressAction"
+                  "$ref": "#/components/schemas/PressAction-Input"
                 },
                 {
-                  "$ref": "#/components/schemas/TypeAction"
+                  "$ref": "#/components/schemas/TypeAction-Input"
                 }
               ]
             },
@@ -2340,6 +3093,149 @@
             "title": "Wait For"
           }
         },
+        "title": "FetchOptions",
+        "type": "object"
+      },
+      "FetchOptions-Output": {
+        "additionalProperties": false,
+        "description": "How a request's pages are fetched. `headers` go over HTTP to the page's own host only, never in the browser,\nand `cookies` to that host in either; `wait_for` and `actions` run in the browser, so they make the fetch\n    a browser one and refuse `method_hint` `http`, and a browser fetch takes no `headers`.",
+        "properties": {
+          "actions": {
+            "default": [],
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "click": "#/components/schemas/ClickAction-Output",
+                  "press": "#/components/schemas/PressAction-Output",
+                  "scroll": "#/components/schemas/ScrollAction-Output",
+                  "type": "#/components/schemas/TypeAction-Output",
+                  "wait": "#/components/schemas/WaitAction-Output"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/WaitAction-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/ClickAction-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/ScrollAction-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/PressAction-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/TypeAction-Output"
+                }
+              ]
+            },
+            "maxItems": 20,
+            "title": "Actions",
+            "type": "array"
+          },
+          "cache": {
+            "default": "default",
+            "enum": [
+              "default",
+              "bypass",
+              "only"
+            ],
+            "title": "Cache",
+            "type": "string"
+          },
+          "cookies": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Cookies",
+            "type": "object"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Headers",
+            "type": "object"
+          },
+          "max_rows": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Rows"
+          },
+          "method_hint": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "http",
+              "browser"
+            ],
+            "title": "Method Hint",
+            "type": "string"
+          },
+          "proxy_pool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proxy Pool"
+          },
+          "respect_robots": {
+            "default": false,
+            "title": "Respect Robots",
+            "type": "boolean"
+          },
+          "screenshot": {
+            "default": "viewport",
+            "enum": [
+              "viewport",
+              "full_page"
+            ],
+            "title": "Screenshot",
+            "type": "string"
+          },
+          "wait_for": {
+            "anyOf": [
+              {
+                "maximum": 15000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wait For"
+          }
+        },
+        "required": [
+          "method_hint",
+          "screenshot",
+          "respect_robots",
+          "proxy_pool",
+          "max_rows",
+          "headers",
+          "cookies",
+          "wait_for",
+          "actions",
+          "cache"
+        ],
         "title": "FetchOptions",
         "type": "object"
       },
@@ -2994,7 +3890,7 @@
         "title": "FieldsDraft",
         "type": "object"
       },
-      "FitOptions": {
+      "FitOptions-Input": {
         "additionalProperties": false,
         "description": "`markdown_fit`'s options: the `query` the content is kept relevant to, and at most `max_blocks` blocks of it.",
         "properties": {
@@ -3023,6 +3919,42 @@
             "title": "Query"
           }
         },
+        "title": "FitOptions",
+        "type": "object"
+      },
+      "FitOptions-Output": {
+        "additionalProperties": false,
+        "description": "`markdown_fit`'s options: the `query` the content is kept relevant to, and at most `max_blocks` blocks of it.",
+        "properties": {
+          "max_blocks": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Blocks"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          }
+        },
+        "required": [
+          "query",
+          "max_blocks"
+        ],
         "title": "FitOptions",
         "type": "object"
       },
@@ -3965,7 +4897,7 @@
         "title": "ListingSpec",
         "type": "object"
       },
-      "MapRequest": {
+      "MapRequest-Input": {
         "additionalProperties": false,
         "description": "The body of `POST /v1/map`.",
         "properties": {
@@ -4021,6 +4953,73 @@
         },
         "required": [
           "url"
+        ],
+        "title": "MapRequest",
+        "type": "object"
+      },
+      "MapRequest-Output": {
+        "additionalProperties": false,
+        "description": "The body of `POST /v1/map`.",
+        "properties": {
+          "exclude": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Exclude",
+            "type": "array"
+          },
+          "include": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Include",
+            "type": "array"
+          },
+          "limit": {
+            "default": 5000,
+            "maximum": 5000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "llms_txt": {
+            "default": false,
+            "title": "Llms Txt",
+            "type": "boolean"
+          },
+          "respect_robots": {
+            "default": false,
+            "title": "Respect Robots",
+            "type": "boolean"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "use_links": {
+            "default": true,
+            "title": "Use Links",
+            "type": "boolean"
+          },
+          "use_sitemaps": {
+            "default": true,
+            "title": "Use Sitemaps",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "url",
+          "include",
+          "exclude",
+          "limit",
+          "use_sitemaps",
+          "use_links",
+          "llms_txt",
+          "respect_robots"
         ],
         "title": "MapRequest",
         "type": "object"
@@ -4194,7 +5193,7 @@
             "type": "boolean"
           },
           "request": {
-            "$ref": "#/components/schemas/BatchScrapeRequest"
+            "$ref": "#/components/schemas/BatchScrapeRequest-Input"
           },
           "timezone": {
             "default": "UTC",
@@ -4254,7 +5253,7 @@
             "type": "boolean"
           },
           "request": {
-            "$ref": "#/components/schemas/CrawlRequest"
+            "$ref": "#/components/schemas/CrawlRequest-Input"
           },
           "timezone": {
             "default": "UTC",
@@ -4314,7 +5313,7 @@
             "type": "boolean"
           },
           "request": {
-            "$ref": "#/components/schemas/ExtractRequest"
+            "$ref": "#/components/schemas/ExtractRequest-Input"
           },
           "timezone": {
             "default": "UTC",
@@ -4330,7 +5329,7 @@
         "title": "NewExtractSchedule",
         "type": "object"
       },
-      "NewSchema": {
+      "NewSchema-Input": {
         "additionalProperties": false,
         "properties": {
           "fields": {
@@ -4371,6 +5370,54 @@
         },
         "required": [
           "page_kind",
+          "fields",
+          "name"
+        ],
+        "title": "NewSchema",
+        "type": "object"
+      },
+      "NewSchema-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "minProperties": 1,
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "$ref": "#/components/schemas/FieldSpec-Output"
+              }
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "name": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "title": "Name",
+            "type": "string"
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "required_groups": {
+            "default": [],
+            "items": {
+              "items": {
+                "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Required Groups",
+            "type": "array"
+          }
+        },
+        "required": [
+          "page_kind",
+          "required_groups",
           "fields",
           "name"
         ],
@@ -4421,7 +5468,7 @@
             "type": "boolean"
           },
           "request": {
-            "$ref": "#/components/schemas/ScrapeRequest"
+            "$ref": "#/components/schemas/ScrapeRequest-Input"
           },
           "timezone": {
             "default": "UTC",
@@ -5001,7 +6048,7 @@
         "title": "PlatformDraft",
         "type": "object"
       },
-      "PressAction": {
+      "PressAction-Input": {
         "additionalProperties": false,
         "properties": {
           "key": {
@@ -5024,6 +6071,36 @@
           }
         },
         "required": [
+          "key"
+        ],
+        "title": "PressAction",
+        "type": "object"
+      },
+      "PressAction-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "pattern": "^(?:(?:Shift|Control|Alt|Meta|ControlOrMeta)\\+)*(?:[A-Za-z][A-Za-z0-9]*|\\S)$",
+            "title": "Key",
+            "type": "string"
+          },
+          "timeout_ms": {
+            "default": 5000,
+            "maximum": 15000.0,
+            "minimum": 1.0,
+            "title": "Timeout Ms",
+            "type": "integer"
+          },
+          "type": {
+            "const": "press",
+            "default": "press",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timeout_ms",
+          "type",
           "key"
         ],
         "title": "PressAction",
@@ -5688,7 +6765,7 @@
         "title": "ReleaseReport",
         "type": "object"
       },
-      "RenderOptions": {
+      "RenderOptions-Input": {
         "additionalProperties": false,
         "description": "The `render` member: its mode, and the schema fields `locate` looks for (else the\nfields the HTTP extraction left missing). Pinned with the request.",
         "properties": {
@@ -5712,6 +6789,37 @@
             "type": "string"
           }
         },
+        "title": "RenderOptions",
+        "type": "object"
+      },
+      "RenderOptions-Output": {
+        "additionalProperties": false,
+        "description": "The `render` member: its mode, and the schema fields `locate` looks for (else the\nfields the HTTP extraction left missing). Pinned with the request.",
+        "properties": {
+          "fields": {
+            "items": {
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Fields",
+            "type": "array"
+          },
+          "mode": {
+            "default": "off",
+            "enum": [
+              "off",
+              "locate",
+              "always"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "fields"
+        ],
         "title": "RenderOptions",
         "type": "object"
       },
@@ -6216,11 +7324,24 @@
         "title": "SchemaFields",
         "type": "object"
       },
-      "SchemaInline": {
+      "SchemaInline-Input": {
         "additionalProperties": false,
         "properties": {
           "inline": {
-            "$ref": "#/components/schemas/NewSchema"
+            "$ref": "#/components/schemas/NewSchema-Input"
+          }
+        },
+        "required": [
+          "inline"
+        ],
+        "title": "SchemaInline",
+        "type": "object"
+      },
+      "SchemaInline-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "inline": {
+            "$ref": "#/components/schemas/NewSchema-Output"
           }
         },
         "required": [
@@ -6308,14 +7429,14 @@
         "title": "SchemaRef",
         "type": "object"
       },
-      "ScrapeRequest": {
+      "ScrapeRequest-Input": {
         "additionalProperties": false,
         "description": "The body of `POST /v1/scrape`. `records` needs a schema and a `page_kind`, and the schema's page kind\nmust be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds\nits draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched\nwithin that many seconds. `browser_actions` collects more of a listing's rows in the browser; a listing\nscrape for `records` in `auto` without it takes the default actions where its page is rendered.",
         "properties": {
           "browser_actions": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/BrowserActions"
+                "$ref": "#/components/schemas/BrowserActions-Input"
               },
               {
                 "type": "null"
@@ -6335,7 +7456,7 @@
           "chunking": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ChunkOptions"
+                "$ref": "#/components/schemas/ChunkOptions-Input"
               },
               {
                 "type": "null"
@@ -6343,7 +7464,7 @@
             ]
           },
           "fetch": {
-            "$ref": "#/components/schemas/FetchOptions",
+            "$ref": "#/components/schemas/FetchOptions-Input",
             "default": {
               "actions": [],
               "cache": "default",
@@ -6357,7 +7478,7 @@
           "fit": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/FitOptions"
+                "$ref": "#/components/schemas/FitOptions-Input"
               },
               {
                 "type": "null"
@@ -6431,7 +7552,7 @@
             "title": "Page Kind"
           },
           "render": {
-            "$ref": "#/components/schemas/RenderOptions",
+            "$ref": "#/components/schemas/RenderOptions-Input",
             "default": {
               "fields": [],
               "mode": "off"
@@ -6444,7 +7565,7 @@
                 "$ref": "#/components/schemas/SchemaById"
               },
               {
-                "$ref": "#/components/schemas/SchemaInline"
+                "$ref": "#/components/schemas/SchemaInline-Input"
               },
               {
                 "$ref": "#/components/schemas/SchemaPrompt"
@@ -6473,6 +7594,187 @@
         "required": [
           "url",
           "formats"
+        ],
+        "title": "ScrapeRequest",
+        "type": "object"
+      },
+      "ScrapeRequest-Output": {
+        "additionalProperties": false,
+        "description": "The body of `POST /v1/scrape`. `records` needs a schema and a `page_kind`, and the schema's page kind\nmust be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds\nits draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched\nwithin that many seconds. `browser_actions` collects more of a listing's rows in the browser; a listing\nscrape for `records` in `auto` without it takes the default actions where its page is rendered.",
+        "properties": {
+          "browser_actions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BrowserActions-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "budget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Budget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chunking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChunkOptions-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fetch": {
+            "$ref": "#/components/schemas/FetchOptions-Output",
+            "default": {
+              "actions": [],
+              "cache": "default",
+              "cookies": {},
+              "headers": {},
+              "method_hint": "auto",
+              "respect_robots": false,
+              "screenshot": "viewport"
+            }
+          },
+          "fit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FitOptions-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "formats": {
+            "items": {
+              "enum": [
+                "markdown",
+                "markdown_fit",
+                "chunks",
+                "html",
+                "raw_html",
+                "links",
+                "metadata",
+                "screenshot",
+                "pdf",
+                "records"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Formats",
+            "type": "array"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "max_age": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Max Age",
+            "type": "integer"
+          },
+          "min_confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            "title": "Min Confidence"
+          },
+          "page_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "detail",
+                  "listing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Kind"
+          },
+          "render": {
+            "$ref": "#/components/schemas/RenderOptions-Output",
+            "default": {
+              "fields": [],
+              "mode": "off"
+            },
+            "description": "How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SchemaById"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaInline-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaPrompt"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaFields"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema"
+          },
+          "timeout_s": {
+            "default": 60,
+            "exclusiveMinimum": 0.0,
+            "maximum": 120.0,
+            "title": "Timeout S",
+            "type": "number"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "formats",
+          "schema",
+          "page_kind",
+          "max_age",
+          "fetch",
+          "locale",
+          "timeout_s",
+          "budget",
+          "browser_actions",
+          "fit",
+          "chunking",
+          "min_confidence",
+          "render"
         ],
         "title": "ScrapeRequest",
         "type": "object"
@@ -6693,7 +7995,7 @@
         "title": "ScrapedRecord",
         "type": "object"
       },
-      "ScrollAction": {
+      "ScrollAction-Input": {
         "additionalProperties": false,
         "description": "Scroll to the end (`to: bottom`), by `by` CSS pixels, or until the document stops growing (`until: stable`).",
         "properties": {
@@ -6748,6 +8050,71 @@
             "title": "Until"
           }
         },
+        "title": "ScrollAction",
+        "type": "object"
+      },
+      "ScrollAction-Output": {
+        "additionalProperties": false,
+        "description": "Scroll to the end (`to: bottom`), by `by` CSS pixels, or until the document stops growing (`until: stable`).",
+        "properties": {
+          "by": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": -100000.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By"
+          },
+          "timeout_ms": {
+            "default": 5000,
+            "maximum": 15000.0,
+            "minimum": 1.0,
+            "title": "Timeout Ms",
+            "type": "integer"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "const": "bottom",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          },
+          "type": {
+            "const": "scroll",
+            "default": "scroll",
+            "title": "Type",
+            "type": "string"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "const": "stable",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "required": [
+          "timeout_ms",
+          "type",
+          "to",
+          "by",
+          "until"
+        ],
         "title": "ScrollAction",
         "type": "object"
       },
@@ -6871,7 +8238,7 @@
             ]
           },
           "fetch": {
-            "$ref": "#/components/schemas/FetchOptions",
+            "$ref": "#/components/schemas/FetchOptions-Input",
             "default": {
               "actions": [],
               "cache": "default",
@@ -6937,7 +8304,7 @@
                 "$ref": "#/components/schemas/SchemaById"
               },
               {
-                "$ref": "#/components/schemas/SchemaInline"
+                "$ref": "#/components/schemas/SchemaInline-Input"
               },
               {
                 "$ref": "#/components/schemas/SchemaFields"
@@ -6995,6 +8362,78 @@
           "outcome"
         ],
         "title": "StepOutcome",
+        "type": "object"
+      },
+      "StoredBatchScrape": {
+        "properties": {
+          "kind": {
+            "const": "batch_scrape",
+            "title": "Kind",
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/BatchScrapeRequest-Output"
+          }
+        },
+        "required": [
+          "kind",
+          "request"
+        ],
+        "title": "StoredBatchScrape",
+        "type": "object"
+      },
+      "StoredCrawl": {
+        "properties": {
+          "kind": {
+            "const": "crawl",
+            "title": "Kind",
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/CrawlRequest-Output"
+          }
+        },
+        "required": [
+          "kind",
+          "request"
+        ],
+        "title": "StoredCrawl",
+        "type": "object"
+      },
+      "StoredExtract": {
+        "properties": {
+          "kind": {
+            "const": "extract",
+            "title": "Kind",
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/ExtractRequest-Output"
+          }
+        },
+        "required": [
+          "kind",
+          "request"
+        ],
+        "title": "StoredExtract",
+        "type": "object"
+      },
+      "StoredMap": {
+        "properties": {
+          "kind": {
+            "const": "map",
+            "title": "Kind",
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/MapRequest-Output"
+          }
+        },
+        "required": [
+          "kind",
+          "request"
+        ],
+        "title": "StoredMap",
         "type": "object"
       },
       "StoredRecord": {
@@ -7110,6 +8549,24 @@
           "egress_basis"
         ],
         "title": "StoredRecord",
+        "type": "object"
+      },
+      "StoredScrape": {
+        "properties": {
+          "kind": {
+            "const": "scrape",
+            "title": "Kind",
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/ScrapeRequest-Output"
+          }
+        },
+        "required": [
+          "kind",
+          "request"
+        ],
+        "title": "StoredScrape",
         "type": "object"
       },
       "SubFieldMeta": {
@@ -7291,7 +8748,7 @@
         "title": "TrimOp",
         "type": "object"
       },
-      "TypeAction": {
+      "TypeAction-Input": {
         "additionalProperties": false,
         "description": "Type `text` into an element; refused in the browser for a password or credential field.",
         "properties": {
@@ -7337,6 +8794,61 @@
           }
         },
         "required": [
+          "text"
+        ],
+        "title": "TypeAction",
+        "type": "object"
+      },
+      "TypeAction-Output": {
+        "additionalProperties": false,
+        "description": "Type `text` into an element; refused in the browser for a password or credential field.",
+        "properties": {
+          "selector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selector"
+          },
+          "text": {
+            "maxLength": 1000,
+            "title": "Text",
+            "type": "string"
+          },
+          "timeout_ms": {
+            "default": 5000,
+            "maximum": 15000.0,
+            "minimum": 1.0,
+            "title": "Timeout Ms",
+            "type": "integer"
+          },
+          "type": {
+            "const": "type",
+            "default": "type",
+            "title": "Type",
+            "type": "string"
+          },
+          "xpath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xpath"
+          }
+        },
+        "required": [
+          "timeout_ms",
+          "selector",
+          "xpath",
+          "type",
           "text"
         ],
         "title": "TypeAction",
@@ -7440,7 +8952,7 @@
         "title": "ValidationReport",
         "type": "object"
       },
-      "WaitAction": {
+      "WaitAction-Input": {
         "additionalProperties": false,
         "description": "Wait `ms` milliseconds, for an element to be visible, or for the network to be idle (`network_idle`).",
         "properties": {
@@ -7498,6 +9010,75 @@
             "title": "Xpath"
           }
         },
+        "title": "WaitAction",
+        "type": "object"
+      },
+      "WaitAction-Output": {
+        "additionalProperties": false,
+        "description": "Wait `ms` milliseconds, for an element to be visible, or for the network to be idle (`network_idle`).",
+        "properties": {
+          "ms": {
+            "anyOf": [
+              {
+                "maximum": 15000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ms"
+          },
+          "network_idle": {
+            "default": false,
+            "title": "Network Idle",
+            "type": "boolean"
+          },
+          "selector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selector"
+          },
+          "timeout_ms": {
+            "default": 5000,
+            "maximum": 15000.0,
+            "minimum": 1.0,
+            "title": "Timeout Ms",
+            "type": "integer"
+          },
+          "type": {
+            "const": "wait",
+            "default": "wait",
+            "title": "Type",
+            "type": "string"
+          },
+          "xpath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xpath"
+          }
+        },
+        "required": [
+          "timeout_ms",
+          "selector",
+          "xpath",
+          "type",
+          "ms",
+          "network_idle"
+        ],
         "title": "WaitAction",
         "type": "object"
       },
@@ -7661,7 +9242,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/BatchScrapeRequest"
+                "$ref": "#/components/schemas/BatchScrapeRequest-Input"
               }
             }
           },
@@ -8615,7 +10196,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CrawlRequest"
+                "$ref": "#/components/schemas/CrawlRequest-Input"
               }
             }
           },
@@ -8742,7 +10323,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ExtractRequest"
+                "$ref": "#/components/schemas/ExtractRequest-Input"
               }
             }
           },
@@ -9729,7 +11310,7 @@
     },
     "/v1/jobs/{job_id}/request": {
       "get": {
-        "description": "The request the job was submitted with, as the server validated and stored it (defaults filled in).",
+        "description": "The request the job was submitted with, with its `kind`: the kind's request model as the server validated and\nstored it (defaults filled in, `fetch` header and cookie values redacted). 404 for a `learn` job, which the system\nstarts without one.",
         "operationId": "get_job_request_v1_jobs__job_id__request_get",
         "parameters": [
           {
@@ -9748,9 +11329,34 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Job Request V1 Jobs  Job Id  Request Get",
-                  "type": "object"
+                  "discriminator": {
+                    "mapping": {
+                      "batch_scrape": "#/components/schemas/StoredBatchScrape",
+                      "crawl": "#/components/schemas/StoredCrawl",
+                      "extract": "#/components/schemas/StoredExtract",
+                      "map": "#/components/schemas/StoredMap",
+                      "scrape": "#/components/schemas/StoredScrape"
+                    },
+                    "propertyName": "kind"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/StoredScrape"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StoredBatchScrape"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StoredMap"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StoredCrawl"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StoredExtract"
+                    }
+                  ],
+                  "title": "Response Get Job Request V1 Jobs  Job Id  Request Get"
                 }
               }
             },
@@ -10182,7 +11788,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/MapRequest"
+                "$ref": "#/components/schemas/MapRequest-Input"
               }
             }
           },
@@ -11658,7 +13264,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NewSchema"
+                "$ref": "#/components/schemas/NewSchema-Input"
               }
             }
           },
@@ -12316,7 +13922,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ScrapeRequest"
+                "$ref": "#/components/schemas/ScrapeRequest-Input"
               }
             }
           },

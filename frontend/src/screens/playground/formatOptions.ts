@@ -6,8 +6,9 @@ import type {
   ScrapeFormat,
   ScreenshotArea,
 } from "../../api/scrape";
+import type { StoredRequestOf } from "../../api/jobs";
 import { optionalNumber } from "./pageRequest";
-import { count, member, text, type StoredRequest } from "./run/storedRequest";
+import { orEmpty } from "./run/storedRequest";
 
 /** The options of the formats that take any, in every mode with a Format select (Scrape, Batch, Crawl):
  * the area of a `screenshot`, `markdown_fit`'s query and block limit, and `chunks`' strategy, size, overlap and source.
@@ -60,29 +61,18 @@ export function formatMembers(
   };
 }
 
-const AREAS: readonly ScreenshotArea[] = ["viewport", "full_page"];
-const STRATEGIES: readonly ChunkStrategy[] = ["heading", "sentence", "token"];
-const SOURCES: readonly ChunkSource[] = ["markdown", "markdown_fit"];
-
-function choice<T extends string>(options: readonly T[], value: unknown, empty: T): T {
-  return options.find((option) => option === value) ?? empty;
-}
-
 /** The settings a stored request shows (`GET /v1/jobs/{id}/request`): what it holds, else the defaults. */
-export function storedFormatSettings(request: StoredRequest): FormatSettings {
-  const fit = member(request, "fit");
-  const chunking = member(request, "chunking");
+export function storedFormatSettings(
+  request: StoredRequestOf<"scrape" | "batch_scrape" | "crawl">,
+): FormatSettings {
+  const { fit, chunking } = request;
   return {
-    screenshot: choice(
-      AREAS,
-      member(request, "fetch")["screenshot"],
-      DEFAULT_FORMAT_SETTINGS.screenshot,
-    ),
-    fitQuery: text(fit, "query"),
-    fitMaxBlocks: count(fit, "max_blocks"),
-    chunkStrategy: choice(STRATEGIES, chunking["strategy"], DEFAULT_FORMAT_SETTINGS.chunkStrategy),
-    chunkSize: count(chunking, "size"),
-    chunkOverlap: count(chunking, "overlap"),
-    chunkSource: choice(SOURCES, chunking["source"], DEFAULT_FORMAT_SETTINGS.chunkSource),
+    screenshot: request.fetch.screenshot,
+    fitQuery: fit?.query ?? "",
+    fitMaxBlocks: orEmpty(fit?.max_blocks ?? null),
+    chunkStrategy: chunking?.strategy ?? DEFAULT_FORMAT_SETTINGS.chunkStrategy,
+    chunkSize: orEmpty(chunking?.size ?? null),
+    chunkOverlap: orEmpty(chunking?.overlap ?? null),
+    chunkSource: chunking?.source ?? DEFAULT_FORMAT_SETTINGS.chunkSource,
   };
 }

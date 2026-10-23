@@ -5,8 +5,9 @@ import type {
   PageAction,
   ScreenshotArea,
 } from "../../api/scrape";
+import { LIMITS } from "../../api/limits";
+import type { StoredRequestOf } from "../../api/jobs";
 import { optionalNumber } from "./pageRequest";
-import { member, text, type StoredRequest } from "./run/storedRequest";
 
 /** The Advanced options every page request shares: the caller's headers and cookies, a proxy pool,
  * what the browser waits for, the cache mode and the page actions, as the `fetch` members they become. */
@@ -42,8 +43,8 @@ export const ACTION_MODES: Readonly<Record<ActionType, readonly ActionMode[]>> =
   type: ["selector"],
 };
 
-/** The server's cap on steps (`MAX_ACTIONS` of `page_actions` in `config_ir`). */
-export const MAX_ACTIONS = 20;
+/** The server's cap on steps. */
+export const MAX_ACTIONS = LIMITS["FetchOptions-Input"].actions.maxItems;
 
 export interface AdvancedFetch {
   /** One `Name: value` per line. */
@@ -204,62 +205,51 @@ export function withFetchErrors(
   return method === null && headers === null ? errors : { ...errors, ...method, ...headers };
 }
 
-const CACHE_MODES: readonly CacheMode[] = ["default", "bypass", "only"];
+type StoredFetch = StoredRequestOf<"scrape">["fetch"];
+type StoredAction = StoredFetch["actions"][number];
 
-/** The Advanced settings of a stored request. Header and cookie values come back redacted, so they are not
+/** The Advanced settings of a stored request's `fetch`. Header and cookie values come back redacted, so they are not
  * shown again: a re-run sends none until they are entered anew. */
-export function storedAdvanced(request: StoredRequest): AdvancedFetch {
-  const fetch = member(request, "fetch");
-  const wait = fetch["wait_for"];
-  const actions = Array.isArray(fetch["actions"]) ? fetch["actions"] : [];
+export function storedAdvanced(fetch: StoredFetch): AdvancedFetch {
   return {
     ...DEFAULT_ADVANCED,
-    proxyPool: text(fetch, "proxy_pool"),
-    waitFor: storedWaitFor(wait),
-    cache: CACHE_MODES.find((mode) => mode === fetch["cache"]) ?? "default",
-    actions: actions.map(storedAction).filter((row) => row !== null),
+    proxyPool: fetch.proxy_pool ?? "",
+    waitFor: fetch.wait_for === null ? "" : String(fetch.wait_for),
+    cache: fetch.cache,
+    actions: fetch.actions.map(storedAction),
   };
 }
 
-function storedWaitFor(wait: unknown): string {
-  if (typeof wait === "number") return String(wait);
-  return typeof wait === "string" ? wait : "";
+function row(type: ActionType, mode: ActionMode, value = "", typed = ""): ActionRow {
+  return { key: crypto.randomUUID(), type, mode, value, text: typed };
 }
 
-/** A stored number member as the value field shows it; "" when it is not a number. */
-function numberText(value: unknown): string {
-  return typeof value === "number" ? String(value) : "";
+function storedWait(action: Extract<StoredAction, { type: "wait" }>): ActionRow {
+  if (action.network_idle) return row("wait", "network_idle");
+  return action.selector === null
+    ? row("wait", "ms", action.ms === null ? "" : String(action.ms))
+    : row("wait", "selector", action.selector);
 }
 
-function storedAction(stored: unknown): ActionRow | null {
-  if (typeof stored !== "object" || stored === null) return null;
-  const action = stored as StoredRequest;
-  const row = (type: ActionType, mode: ActionMode, value = "", typed = ""): ActionRow => ({
-    key: crypto.randomUUID(),
-    type,
-    mode,
-    value,
-    text: typed,
-  });
-  const selector = text(action, "selector");
-  switch (action["type"]) {
+/** A stored step as the actions editor shows it; a step on an `xpath` shows as the selector modes do. */
+function storedAction(action: StoredAction): ActionRow {
+  switch (action.type) {
     case "wait":
-      if (action["network_idle"] === true) return row("wait", "network_idle");
-      return selector === ""
-        ? row("wait", "ms", numberText(action["ms"]))
-        : row("wait", "selector", selector);
+      return storedWait(action);
     case "click":
-      return selector === ""
-        ? row("click", "text", text(action, "text"))
-        : row("click", "selector", selector);
+      return action.selector === null
+        ? row("click", "text", action.text ?? "")
+        : row("click", "selector", action.selector);
     case "scroll":
-      if (typeof action["by"] === "number") return row("scroll", "by", String(action["by"]));
-      return row("scroll", action["until"] === "stable" ? "stable" : "bottom");
+      if (action.by !== null) return row("scroll", "by", String(action.by));
+      return row("scroll", action.until === "stable" ? "stable" : "bottom");
     case "press":
-      return row("press", "key", text(action, "key"));
+      return row("press", "key", action.key);
     case "type":
-      return row("type", "selector", selector, text(action, "text"));
-    default:
-      return null;
+      return row("type", "selector", action.selector ?? "", action.text);
+    default: {
+      const _exhaustive: never = action;
+      return _exhaustive;
+    }
   }
 }

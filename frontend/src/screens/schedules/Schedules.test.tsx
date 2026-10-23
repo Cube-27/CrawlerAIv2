@@ -8,6 +8,7 @@ import { stubApi, type Call } from "../../test/api";
 import { fill, openPlayground, posted } from "../../test/playground";
 import { runApi } from "../../test/runs";
 import { scheduleChange } from "./cadence";
+import { storedCrawl } from "../../test/jobs";
 
 // `fetch` answers `/v1/schedules` and `/v1/jobs` with the shapes the API defines.
 
@@ -41,7 +42,12 @@ async function openAt(path: string, heading: string) {
 
 function crawlApi(replies: Parameters<typeof stubApi>[0] = {}): Call[] {
   return runApi(
-    { submit: "POST /v1/crawl", jobId: JOB_ID, kind: "crawl" },
+    {
+      submit: "POST /v1/crawl",
+      jobId: JOB_ID,
+      kind: "crawl",
+      request: storedCrawl({ url: "https://shop.test/" }),
+    },
     {
       "POST /v1/schedules": () => Response.json(schedule(), { status: 201 }),
       [`GET /v1/schedules/${SCHEDULE_ID}`]: () => Response.json(schedule()),

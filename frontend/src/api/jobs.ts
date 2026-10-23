@@ -8,7 +8,7 @@ import type { components, operations } from "./schema";
 type Schemas = components["schemas"];
 
 /** A job's schema: by id, inline (a SchemaDef the server validates), or field names to draft one from (UI). `BatchScrapeRequest` and `CrawlRequest` take no prompt. */
-export type JobSchemaRef = NonNullable<Schemas["BatchScrapeRequest"]["schema"]>;
+export type JobSchemaRef = NonNullable<Schemas["BatchScrapeRequest-Input"]["schema"]>;
 
 export type JobSummary = Schemas["JobSummary"];
 export type JobPage = Schemas["JobPage"];
@@ -31,14 +31,30 @@ export type MapResult = Schemas["MapResult"];
 export type WebhookDelivery = Schemas["DeliveryOut"];
 export type WebhookDeliveryPage = Schemas["DeliveryPage"];
 /** A webhook event a queued request can ask for. */
-export type WebhookEvent = NonNullable<Schemas["BatchScrapeRequest"]["webhook_events"]>[number];
+export type WebhookEvent = NonNullable<
+  Schemas["BatchScrapeRequest-Input"]["webhook_events"]
+>[number];
 
 /** The requests, as the API's schemas define them: a member the form leaves out takes the server's default. */
-export type BatchRequest = Schemas["BatchScrapeRequest"];
-export type CrawlRequest = Schemas["CrawlRequest"];
+export type BatchRequest = Schemas["BatchScrapeRequest-Input"];
+export type CrawlRequest = Schemas["CrawlRequest-Input"];
 export type CrawlStrategy = NonNullable<CrawlRequest["strategy"]>;
-export type ExtractRequest = Schemas["ExtractRequest"];
-export type MapRequest = Schemas["MapRequest"];
+export type ExtractRequest = Schemas["ExtractRequest-Input"];
+export type MapRequest = Schemas["MapRequest-Input"];
+
+/** `GET /v1/jobs/{id}/request`: the job's `kind` and its request as the server validated and stored it, every
+ * default filled in. */
+export type StoredJobRequest =
+  | Schemas["StoredScrape"]
+  | Schemas["StoredBatchScrape"]
+  | Schemas["StoredMap"]
+  | Schemas["StoredCrawl"]
+  | Schemas["StoredExtract"];
+/** The stored request of a job of `kind`. */
+export type StoredRequestOf<K extends StoredJobRequest["kind"]> = Extract<
+  StoredJobRequest,
+  { kind: K }
+>["request"];
 
 /** A job's results page in `format=json`: its records, or, for a job without a schema, its page outputs. */
 export type ResultsPage =
@@ -117,11 +133,8 @@ export function getJob(client: ApiClient, id: string): Promise<ApiResult<JobSumm
   );
 }
 
-/** The request the job was submitted with, as the server stored it (defaults filled in). */
-export function getJobRequest(
-  client: ApiClient,
-  id: string,
-): Promise<ApiResult<Readonly<Record<string, unknown>>>> {
+/** The request the job was submitted with, with its kind, as the server stored it (defaults filled in). */
+export function getJobRequest(client: ApiClient, id: string): Promise<ApiResult<StoredJobRequest>> {
   return apiResult(
     () => client.GET("/v1/jobs/{job_id}/request", { params: { path: { job_id: id } } }),
     "Loading the job's request",

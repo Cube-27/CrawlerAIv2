@@ -49,19 +49,22 @@ describe("advanced fetch settings", () => {
   });
 
   it("shows a stored request's settings again, without the redacted header and cookie values", () => {
+    const target = { selector: null, xpath: null, timeout_ms: 5000 };
     const stored = storedAdvanced({
-      fetch: {
-        headers: { Authorization: "**********" },
-        cookies: { sid: "**********" },
-        proxy_pool: "eu",
-        wait_for: 2000,
-        cache: "only",
-        actions: [
-          { type: "click", text: "More", selector: null },
-          { type: "scroll", until: "stable" },
-          { type: "type", selector: "#q", text: "lamp" },
-        ],
-      },
+      method_hint: "auto",
+      max_rows: null,
+      respect_robots: false,
+      screenshot: "viewport",
+      headers: { Authorization: "**********" },
+      cookies: { sid: "**********" },
+      proxy_pool: "eu",
+      wait_for: 2000,
+      cache: "only",
+      actions: [
+        { ...target, type: "click", text: "More" },
+        { type: "scroll", to: null, by: null, until: "stable", timeout_ms: 5000 },
+        { ...target, type: "type", selector: "#q", text: "lamp" },
+      ],
     });
 
     expect(fetchMember("browser", Number.NaN, stored)).toEqual({

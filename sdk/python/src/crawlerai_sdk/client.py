@@ -145,32 +145,32 @@ class CrawlerAI:
         _raise_for(response)
         return call.read(response.json())
 
-    def scrape(self, request: models.ScrapeRequest | None = None, /, **fields: Any) -> models.ScrapeResult:
+    def scrape(self, request: models.ScrapeRequestInput | None = None, /, **fields: Any) -> models.ScrapeResult:
         """`POST /v1/scrape`: one page, fetched while you wait."""
-        return self._run(_Calls.post("/v1/scrape", models.ScrapeRequest, models.ScrapeResult, request, fields))
+        return self._run(_Calls.post("/v1/scrape", models.ScrapeRequestInput, models.ScrapeResult, request, fields))
 
-    def map(self, request: models.MapRequest | None = None, /, **fields: Any) -> models.MapResult:
+    def map(self, request: models.MapRequestInput | None = None, /, **fields: Any) -> models.MapResult:
         """`POST /v1/map`: the URLs of a site."""
-        return self._run(_Calls.post("/v1/map", models.MapRequest, models.MapResult, request, fields))
+        return self._run(_Calls.post("/v1/map", models.MapRequestInput, models.MapResult, request, fields))
 
     def search(self, request: models.SearchRequest | None = None, /, **fields: Any) -> models.SearchResult:
         """`POST /v1/search`: web results; `scrape={...}` scrapes them in a batch job (`job_id` of the answer). Raises
         `APIError` with type `search_unavailable` (503) when the operator has configured no search provider."""
         return self._run(_Calls.post("/v1/search", models.SearchRequest, models.SearchResult, request, fields))
 
-    def crawl(self, request: models.CrawlRequest | None = None, /, **fields: Any) -> models.CrawlSubmitted:
+    def crawl(self, request: models.CrawlRequestInput | None = None, /, **fields: Any) -> models.CrawlSubmitted:
         """`POST /v1/crawl`: queue a crawl; `strategy="best_first"` with a `query` fetches the best-matching pages first."""
-        return self._run(_Calls.post("/v1/crawl", models.CrawlRequest, models.CrawlSubmitted, request, fields))
+        return self._run(_Calls.post("/v1/crawl", models.CrawlRequestInput, models.CrawlSubmitted, request, fields))
 
-    def batch_scrape(self, request: models.BatchScrapeRequest | None = None, /, **fields: Any) -> models.BatchSubmitted:
+    def batch_scrape(self, request: models.BatchScrapeRequestInput | None = None, /, **fields: Any) -> models.BatchSubmitted:
         """`POST /v1/batch/scrape`: queue a scrape of many URLs."""
         return self._run(
-            _Calls.post("/v1/batch/scrape", models.BatchScrapeRequest, models.BatchSubmitted, request, fields)
+            _Calls.post("/v1/batch/scrape", models.BatchScrapeRequestInput, models.BatchSubmitted, request, fields)
         )
 
-    def extract(self, request: models.ExtractRequest | None = None, /, **fields: Any) -> models.ExtractSubmitted:
+    def extract(self, request: models.ExtractRequestInput | None = None, /, **fields: Any) -> models.ExtractSubmitted:
         """`POST /v1/extract`: queue the extraction of a record from each URL."""
-        return self._run(_Calls.post("/v1/extract", models.ExtractRequest, models.ExtractSubmitted, request, fields))
+        return self._run(_Calls.post("/v1/extract", models.ExtractRequestInput, models.ExtractSubmitted, request, fields))
 
     def job(self, job_id: JobId) -> models.JobSummary:
         """`GET /v1/jobs/{id}`."""
@@ -249,28 +249,28 @@ class AsyncCrawlerAI:
         _raise_for(response)
         return call.read(response.json())
 
-    async def scrape(self, request: models.ScrapeRequest | None = None, /, **fields: Any) -> models.ScrapeResult:
-        return await self._run(_Calls.post("/v1/scrape", models.ScrapeRequest, models.ScrapeResult, request, fields))
+    async def scrape(self, request: models.ScrapeRequestInput | None = None, /, **fields: Any) -> models.ScrapeResult:
+        return await self._run(_Calls.post("/v1/scrape", models.ScrapeRequestInput, models.ScrapeResult, request, fields))
 
-    async def map(self, request: models.MapRequest | None = None, /, **fields: Any) -> models.MapResult:
-        return await self._run(_Calls.post("/v1/map", models.MapRequest, models.MapResult, request, fields))
+    async def map(self, request: models.MapRequestInput | None = None, /, **fields: Any) -> models.MapResult:
+        return await self._run(_Calls.post("/v1/map", models.MapRequestInput, models.MapResult, request, fields))
 
     async def search(self, request: models.SearchRequest | None = None, /, **fields: Any) -> models.SearchResult:
         return await self._run(_Calls.post("/v1/search", models.SearchRequest, models.SearchResult, request, fields))
 
-    async def crawl(self, request: models.CrawlRequest | None = None, /, **fields: Any) -> models.CrawlSubmitted:
-        return await self._run(_Calls.post("/v1/crawl", models.CrawlRequest, models.CrawlSubmitted, request, fields))
+    async def crawl(self, request: models.CrawlRequestInput | None = None, /, **fields: Any) -> models.CrawlSubmitted:
+        return await self._run(_Calls.post("/v1/crawl", models.CrawlRequestInput, models.CrawlSubmitted, request, fields))
 
     async def batch_scrape(
-        self, request: models.BatchScrapeRequest | None = None, /, **fields: Any
+        self, request: models.BatchScrapeRequestInput | None = None, /, **fields: Any
     ) -> models.BatchSubmitted:
         return await self._run(
-            _Calls.post("/v1/batch/scrape", models.BatchScrapeRequest, models.BatchSubmitted, request, fields)
+            _Calls.post("/v1/batch/scrape", models.BatchScrapeRequestInput, models.BatchSubmitted, request, fields)
         )
 
-    async def extract(self, request: models.ExtractRequest | None = None, /, **fields: Any) -> models.ExtractSubmitted:
+    async def extract(self, request: models.ExtractRequestInput | None = None, /, **fields: Any) -> models.ExtractSubmitted:
         return await self._run(
-            _Calls.post("/v1/extract", models.ExtractRequest, models.ExtractSubmitted, request, fields)
+            _Calls.post("/v1/extract", models.ExtractRequestInput, models.ExtractSubmitted, request, fields)
         )
 
     async def job(self, job_id: JobId) -> models.JobSummary:

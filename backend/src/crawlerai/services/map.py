@@ -58,7 +58,7 @@ Source = Literal["sitemap", "links"]
 class MapRequest(BaseModel):
     """The body of `POST /v1/map`."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_serialization_defaults_required=True)
 
     url: str
     include: Patterns = []
