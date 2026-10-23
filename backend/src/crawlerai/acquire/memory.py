@@ -125,15 +125,17 @@ def refused(attempt: AttemptRecord) -> bool:
 def lesson(result: FetchResult) -> Lesson | None:
     """What an `auto` fetch that tried HTTP and kept an `ok` teaches; None for any other fetch (a job's own method, a
     page that started in the browser or was served by an API: nothing new about HTTP). An HTTP `ok` teaches the
-    default. A browser `ok` teaches the browser, unless HTTP was `refused`, the render ran no browser steps, and its
-    cookies went on to HTTP (an attempt's `site_session`): then it was needed only to pass the block, `handoff`, and the
-    pages stay on HTTP."""
+    default. A browser `ok` teaches the browser (one its attempt classed `shell`, kept as the last rung's page by
+    `rungs`, teaches nothing: the browser passed nothing HTTP did not), unless HTTP was `refused`, the render ran no
+    browser steps, and its cookies went on to HTTP (an attempt's `site_session`): then it was needed only to pass the
+    block, `handoff`, and the pages stay on HTTP."""
     http = [attempt for attempt in result.attempts if attempt.method == "http"]
     if result.bundle.manifest.fetch_policy.get("method_hint") != "auto" or result.block_class != "ok" or not http:
         return None
     if result.method == "http":
         return Lesson("http")
-    if result.method != "browser":
+    rendered = [attempt.block_class for attempt in result.attempts if attempt.method == "browser"]
+    if result.method != "browser" or rendered[-1:] != ["ok"]:
         return None
     stepped = any(attempt.steps for attempt in result.attempts if attempt.method == "browser")
     carried = any(attempt.site_session for attempt in result.attempts)

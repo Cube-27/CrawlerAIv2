@@ -29,12 +29,17 @@ this client, and keep the browser outcome only when `ok`:
 | 429 (owner decision 2026-10-23) | yes, once per task, after the site's pause (`politeness.backoff`: its `Retry-After`) | browser `ok` only; else the task ends `blocked` with no further try |
 | `shell` that a challenge names (`acquire/challenge.py`) | yes | browser `ok` only |
 | `error` whose reason is `network_error` or `timeout` | yes (never the same transport again) | browser `ok` only |
-| `shell` with no challenge (a script-only document) | yes, once per page (owner #72), after its adapter referral ([adapters](../adapters/spec.md) "Referral from a tenant's own host") serves nothing | the referral's `ok`, with no render; else browser `ok` only; else the HTTP `shell` |
+| `shell` with no challenge (a script-only document) | yes, once per page (owner #72), after its adapter referral ([adapters](../adapters/spec.md) "Referral from a tenant's own host") serves nothing | the referral's `ok`, with no render; else browser `ok`; else the HTTP page if it is `ok` as below; else the browser's `shell` with no challenge, as `ok`; else the HTTP `shell` |
 | `ok`, whatever it lacks (offer, rows, a requested field) | **no** | HTTP |
 | `auth_wall`, `not_found`, `soft_404`, other `error`, redirect classes | no | HTTP |
 
 An HTTP shell kept with no browser outcome is `ok` when it is a shell by the listing rule or the content rule alone
-(Structural outcome classification). Any later
+(Structural outcome classification). The last rung's page (the browser's, or HTTP's when no browser attempt is made:
+`method_hint` `http`, the budget or the site's rate leaves none) that is a `shell` no challenge names is `ok` (owner
+decision 2026-10-23): the server gave this client the page, a 2xx document with no vendor's signature, and its short
+text (a launch notice, a parked domain) is published as it shows; its attempt stays `shell`, and a browser page kept so
+teaches no fetch method. A `shell` a challenge names, a `blocked` stand-in, and an HTTP page kept after a failed
+browser attempt stay as they are. Any later
 request of a fetch is sent only when `admit_next` allows, and no browser retry starts with less than `BROWSER_MIN_S`
 (20 s) left of the task's budget (a worker task's `TASK_DEADLINE`, a scrape's `timeout_s`): the HTTP outcome is kept.
 The browser MUST NOT be the default: it is also used when `method_hint` is `browser`, the block history says
@@ -42,7 +47,8 @@ browser-first, the site's contract says `browser`, or the page's fetch plan does
 surface's active config alone, `config_ir/active.fetch_plan`): a running field of the config needs the render
 (`needs: browser`, [learning-configs](../learning-configs/spec.md) "Locate run"), or the surface's `render_mode` is
 `always`. Role C runs once, on the kept capture. Refs: §7.1, D-0009, D-0203, D-0865, D-0900, D-1202,
-D-1261, D-1263, D-1472, owner #70, owner #72, owner decision 2026-10-23 (429), architecture v3 a.3.
+D-1261, D-1263, D-1472, owner #70, owner #72, owner decisions 2026-10-23 (429; the last rung's short page),
+architecture v3 a.3.
 #### Scenario: Rate limited over HTTP
 - **WHEN** an `auto` fetch answers HTTP 429 with `Retry-After: 7`
 - **THEN** the browser is tried once, no sooner than 7 s later, and a browser outcome other than `ok` ends the task
@@ -52,7 +58,12 @@ D-1261, D-1263, D-1472, owner #70, owner #72, owner decision 2026-10-23 (429), a
 - **THEN** no browser attempt is made and the HTTP capture is kept
 #### Scenario: Budget nearly spent
 - **WHEN** an HTTP `shell` arrives with 15 s of the task's budget left
-- **THEN** no browser attempt is made and the HTTP outcome is kept
+- **THEN** no browser attempt is made and the HTTP outcome is kept, as the last rung's page
+#### Scenario: Short page on the last rung
+- **WHEN** an `auto` fetch answers HTTP 200 with a script-only document of a few words, and the browser renders it as a
+  `shell` no challenge names
+- **THEN** the browser capture is kept as `ok` and its text published; had the browser's attempt been named by a
+  challenge, the HTTP `shell` would be kept
 #### Scenario: Listing shell whose render fails
 - **WHEN** a listing answers HTTP with site structure but no repeated items, and the browser render is `blocked`
 - **THEN** the HTTP capture is kept as `ok` and its attempt stays `shell`
@@ -74,10 +85,11 @@ and is learned in short transactions of its own, never in a task's (D-1786):
   the method the pages start with, the browser engine that taught it, `handoff`, and the field coverage (`found`,
   `missing`) of the last extraction with a record; the site's platform is `site.platform` ("Platform fingerprints").
   It is learned only from an `auto` fetch that tried HTTP and kept an `ok`: an HTTP `ok` teaches the default (and
-  leaves a contract on HTTP as it is); a browser `ok` teaches `browser`, unless HTTP was refused, the render ran no
-  browser steps, and its cookies went on to HTTP (a site session, D-1353): then it was needed only to pass the block,
-  `handoff` is set and the pages stay on `http`, their later fetches carrying the site session's cookies (browser to
-  HTTP only). A site's API is replayed by its learned config's API recipe alone
+  leaves a contract on HTTP as it is); a browser `ok` teaches `browser` (one whose attempt is `shell`, kept as the
+  last rung's page, teaches nothing), unless HTTP was refused, the render ran no browser steps, and its cookies went
+  on to HTTP (a site session, D-1353): then it was needed only to pass the block, `handoff` is set and the pages stay
+  on `http`, their later fetches carrying the site session's cookies (browser to HTTP only). A site's API is replayed
+  by its learned config's API recipe alone
   ([adapters](../adapters/spec.md), "Recipe execution and fallback"), never by the contract. An unchanged contract is
   not rewritten. A contract is stale after `STALE_FAILURES` (2) consecutive caller-supplied pages extracted without a
   record, and a block (never extracted) is never one; a stale contract is kept but not used, and an extraction with a
