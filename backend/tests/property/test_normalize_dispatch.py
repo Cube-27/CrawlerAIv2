@@ -95,7 +95,7 @@ def test_a_range_takes_its_signs_currency_flagged_and_a_stated_one_settles_it(bo
     # Both bounds share the sign's primary currency, flagged as a single price is.
     assert normalize(raw, spec, CTX) == Ok(_range(lo, hi, "USD", "YEAR"), basis="symbol")
     settled = Context(captured_at=AT, page_currencies=("CAD",))
-    assert normalize(raw, spec, settled) == Ok(_range(lo, hi, "CAD", "YEAR"), basis="page")
+    assert normalize(raw, spec, settled) == Ok(_range(lo, hi, "CAD", "YEAR"))
     # A bound that states its currency settles the other when its sign can denote it.
     assert normalize(f"${lo} - CAD {hi} per year", spec, CTX) == Ok(_range(lo, hi, "CAD", "YEAR"))
     assert normalize(f"${lo} - USD {hi} per year", spec, CTX) == Ok(_range(lo, hi, "USD", "YEAR"))

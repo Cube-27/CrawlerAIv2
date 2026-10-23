@@ -32,6 +32,7 @@ from crawlerai.normalize import locales, numbers, vocab
 from crawlerai.normalize.base import (
     BASES,
     Ambiguous,
+    Basis,
     Context,
     Invalid,
     NormalizeResult,
@@ -346,7 +347,7 @@ def _shared(
     sign can denote it (`$10 - CAD 20` is CAD: the page's currency as that one reads the other bound again); two
     currencies the bounds cannot share stay unknown."""
     explicit = {code for r in (lo, hi) if r.basis is None and (code := _amount(r.value)[1]) is not None}
-    weakest = max((r.basis for r in (lo, hi) if r.basis is not None), key=BASES.index)
+    weakest: Basis | None = max((r.basis for r in (lo, hi) if r.basis is not None), key=BASES.index)
     if explicit and again is not None:
         # The currency a bound states is the page's for the other.
         low, high = again(ctx.model_copy(update={"page_currencies": tuple(explicit)}))
