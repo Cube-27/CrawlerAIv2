@@ -23,15 +23,18 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from crawlerai.acquire.host_turns import EXPIRE_BATCH as HOST_TURN_BATCH
 from crawlerai.acquire.host_turns import expire_host_turns
 from crawlerai.acquire.rungs import Rung
-from crawlerai.api.webhooks import DELIVERY_BATCH, Poster, deliver_webhooks
+from crawlerai.acquire.ssrf import SafeConnector
+from crawlerai.api.webhooks import DELIVERY_BATCH, Poster, deliver_webhooks, poster
 from crawlerai.config_ir.learning import EXPIRE_BATCH, expire_learn_runs
 from crawlerai.config_ir.progressive import TRIGGER_BATCH, trigger_learning
 from crawlerai.core.settings import Settings
 from crawlerai.db.queue import LEASE_BATCH, STALLED_BATCH, fail_stalled_jobs, release_expired_leases
 from crawlerai.db.webhook_outbox import FORM_BATCH, form_deliveries
+from crawlerai.llm.client import NO_LLM
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.recheck import RECHECK_BATCH, recheck_fetch_method
 from crawlerai.scheduler.retention import RETENTION_BATCH, expire_candidates, expire_captures, expire_webhooks
+from crawlerai.services.runtime import Runtime
 from crawlerai.services.schedules import SCHEDULE_BATCH, Submitting, run_due_schedules
 from crawlerai.storage.base import ObjectStore
 
@@ -125,6 +128,15 @@ def periodic(store: ObjectStore, fetch: Rung, post: Poster, submitting: Submitti
             batch=DELIVERY_BATCH,
         ),
     )
+
+
+async def serve(settings: Settings, runtime: Runtime, stop: asyncio.Event) -> None:
+    """The scheduler process's entries on `runtime`, until `stop` is set: its HTTP rung re-checks fetch methods. A
+    schedule's run submits its job with the schema its creation resolved, so it drafts nothing: no LLM client."""
+    fetching = runtime.fetching
+    submitting = Submitting(fetching, runtime.engine_data, NO_LLM)
+    entries = periodic(fetching.store, fetching.rungs.http, poster(SafeConnector()), submitting)
+    await run_scheduler(settings, entries, stop)
 
 
 async def run_scheduler(settings: Settings, entries: Sequence[Periodic], stop: asyncio.Event) -> None:

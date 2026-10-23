@@ -1,6 +1,8 @@
 # Architecture
 
-What the code does today. One Docker image (linux/amd64 only: Google Chrome has no arm64 build), three roles (`crawlerai api|worker|scheduler`, `crawlerai/cli.py`);
+What the code does today. One Docker image (linux/amd64 only: Google Chrome has no arm64 build), three roles (`crawlerai api|worker|scheduler`, `crawlerai/cli.py`,
+which only parses and dispatches); each role runs on one `services/runtime.py` runtime, whose `open_rungs` is the one
+builder of the fetching rungs (the `fetch` command's too);
 PostgreSQL is the store and the queue, an object store (`storage/`, fs or S3) holds captures.
 Layering is enforced by `backend/.importlinter` (`tools/dev.py check-backend`): `api > mcp_server > services > crawl/recurring/search
 > config_ir > resolve/llm > collect > content > normalize > schemas > acquire/adapters > db/storage > core`.
