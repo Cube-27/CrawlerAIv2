@@ -111,7 +111,7 @@ async def open_fetching(
             sessions=sessions,
         )
 
-    impersonate = await rung_impersonation(settings)
+    impersonate = await rung_impersonation(settings, browser_rung=True)
     http = partial(
         fetch_http,
         engine_version=ENGINE_VERSION,

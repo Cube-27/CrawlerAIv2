@@ -105,9 +105,9 @@ user's browser sends), network capture, caller steps. The ready condition is fix
   `NetworkBody` with `resource_type` and `content_type`; caps unchanged (`JSON_BODIES_MAX`, `JSON_PAGE_MAX_BYTES`
   apply to all captured bodies together).
 - locale: the job's locality (`#333`) sets the context's `locale` and `timezone_id` (Playwright context options the
-  owner's P8 asks for; INV-44 is amended to name them as allowed, see (h)). No client hints or extra headers are set
-  (owner #50 and INV-44); the user agent is the browser's own with `HeadlessChrome/` renamed `Chrome/` (owner #71,
-  decision 1 in (g)).
+  owner's P8 asks for; INV-44 is amended to name them as allowed, see (h)). No extra headers are set and client hints
+  only to the browser's own (owner #50 and INV-44); the user agent is the browser's own with `HeadlessChrome/` renamed
+  `Chrome/` (owner #71, decision 1 in (g)).
 
 ### a.4 Sources: readers over the capture
 
@@ -700,7 +700,8 @@ owner decisions #71–#74 (the framework itself is #70). No question is open.
 
 **Decision 1 — browser identity: the browser's own user agent, headless token renamed** (owner #71). The context's
 `user_agent` is the browser's own with only `HeadlessChrome/` replaced by `Chrome/`, never the `--user-agent` launch
-switch; client hints and every other header stay the browser's own (owner #50, INV-44). A page blocked by a
+switch; client hints and every other header stay the browser's own (owner #50, INV-44; since 2026-10-23 set with the
+user agent through Chrome's user agent override, as the browser reports them). A page blocked by a
 header-checking vendor stays `blocked` with its label; the owner's residential proxies and customer-supplied access
 are the way through.
 
