@@ -63,6 +63,22 @@ _ROUTES = {
         "n += 1; const d = document.createElement('div'); d.className = 'added'; d.style.height = '3000px';"
         "d.textContent = 'block ' + n; document.body.appendChild(d); } });</script>"
     ),
+    # Content that renders only on scroll: a section filled once it enters the viewport (Intersection Observer), a
+    # virtualized list that keeps only the rows in view, and a loader at the end that is replaced once it shows.
+    "/scrolled": _page(
+        '<div style="height: 2500px">top</div><div id="lazy"></div><div id="rows" style="position: relative;'
+        ' height: 12000px"></div><div id="end">loader 7f</div><script>'
+        "new IntersectionObserver(([e], o) => { if (e.isIntersecting) { o.disconnect();"
+        " e.target.textContent = 'lazy section text'; } }).observe(document.getElementById('lazy'));"
+        "const rows = document.getElementById('rows');"
+        "const draw = () => { const top = rows.getBoundingClientRect().top; rows.replaceChildren();"
+        " for (let i = 0; i < 30; i++) { const y = top + i * 400; if (y + 400 < 0 || y > innerHeight) continue;"
+        " const r = document.createElement('p'); r.style.cssText = `position: absolute; top: ${i * 400}px`;"
+        " r.textContent = 'row number ' + i; rows.append(r); } };"
+        "addEventListener('scroll', draw); draw();"
+        "new IntersectionObserver(([e]) => { if (e.isIntersecting) e.target.textContent = 'list ends'; })"
+        ".observe(document.getElementById('end'));</script>"
+    ),
 }
 
 
@@ -206,3 +222,14 @@ def test_the_callers_cookie_reaches_a_gated_page_and_no_capture_holds_its_value(
     assert admitted.bundle.manifest.status_code == 200
     assert b"members only" in admitted.bundle.body
     assert "s3cret" not in admitted.bundle.manifest.model_dump_json()
+
+
+def test_the_page_is_read_scrolled_through_with_what_it_rendered_on_the_way(browser: Browser) -> None:
+    body = browser.fetch("/scrolled").bundle.body.decode()
+
+    assert "lazy section text" in body
+    rows = [body.find(f"row number {i}<") for i in range(30)]
+    assert -1 not in rows  # the rows scrolled past are read where they were, in order
+    assert rows == sorted(rows)
+    assert "list ends" in body
+    assert "loader 7f" not in body  # replaced in view: not something scrolled past

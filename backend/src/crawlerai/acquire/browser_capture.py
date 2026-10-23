@@ -358,7 +358,52 @@ def header_list(headers: Sequence[Mapping[str, object]]) -> HeaderList:
 # `<template shadowrootmode="open">`, which the HTML reader flattens. Run in Patchright's isolated world with `evaluate`
 # (no init script); a closed root is not reachable and stays out. The doctype and the root element's own tag
 # are written around `getHTML`, which serializes the children; a browser without it gives `outerHTML`.
-DOCUMENT_HTML_JS: Final = """() => {
+# What the page removed once the scroll pass had scrolled past it (`browser_scroll`, `__scrolledPast`) is serialized
+# back where it left, latest removal first so that each lands among the siblings it left (at the parent's start when
+# none is left: it lay above what the parent shows): each node not back in the document whose text the document does
+# not hold (its run of text nodes outside scripts, styles and templates, each trimmed and its whitespace collapsed,
+# matched whole: "item 1" is not held by "item 10"). The nodes are put back, the document serialized and the nodes
+# removed again in one task, so the page's scripts never run on a document holding them.
+_PUT_BACK_JS: Final = """() => {
+  const placed = [];
+  const past = globalThis.__scrolledPast;
+  if (past === undefined || past.length === 0) return placed;
+  const SKIPPED = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE']);
+  const { SHOW_ELEMENT, SHOW_TEXT, FILTER_REJECT, FILTER_ACCEPT } = NodeFilter;
+  // Each text node's text between NUL separators, which no text node holds (HTML Standard §13.2.5: the tokenizer
+  // replaces U+0000 in text).
+  const text = (node) => {
+    const parts = [];
+    const add = (data) => {
+      const part = data.replace(/\\s+/g, ' ').trim();
+      if (part !== '') parts.push(part);
+    };
+    if (node.nodeType === Node.TEXT_NODE) add(node.nodeValue);
+    const walker = document.createTreeWalker(node, SHOW_ELEMENT | SHOW_TEXT, (child) => (
+      child.nodeType === Node.ELEMENT_NODE && SKIPPED.has(child.tagName) ? FILTER_REJECT : FILTER_ACCEPT));
+    for (let child = walker.nextNode(); child !== null; child = walker.nextNode()) {
+      if (child.nodeType === Node.TEXT_NODE) add(child.nodeValue);
+    }
+    return parts.length === 0 ? '' : `\\0${parts.join('\\0')}\\0`;
+  };
+  let held = text(document.documentElement);
+  for (const { nodes, parent, prev, next } of past.slice().reverse()) {
+    if (!parent.isConnected) continue;
+    const back = nodes.filter((node) => {
+      const said = text(node);
+      if (node.isConnected || said === '' || held.includes(said)) return false;
+      held += said;
+      return true;
+    });
+    if (back.length === 0) continue;
+    if (prev && prev.parentNode === parent) prev.after(...back);
+    else if (next && next.parentNode === parent) next.before(...back);
+    else parent.prepend(...back);
+    placed.push(...back);
+  }
+  return placed;
+}"""
+_SERIALIZE_JS: Final = """() => {
   const roots = [];
   const walk = (root) => {
     for (const element of root.querySelectorAll('*')) {
@@ -376,6 +421,14 @@ DOCUMENT_HTML_JS: Final = """() => {
   const inner = html.getHTML({ serializableShadowRoots: true, shadowRoots: roots });
   return `${doctype}<html${attributes}>${inner}</html>`;
 }"""
+DOCUMENT_HTML_JS: Final = f"""() => {{
+  const placed = ({_PUT_BACK_JS})();
+  try {{
+    return ({_SERIALIZE_JS})();
+  }} finally {{
+    for (const node of placed) node.remove();
+  }}
+}}"""
 
 
 async def document_html(page: Page) -> str:
