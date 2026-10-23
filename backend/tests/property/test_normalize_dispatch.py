@@ -99,8 +99,8 @@ def test_a_range_takes_its_signs_currency_flagged_and_a_stated_one_settles_it(bo
     # A bound that states its currency settles the other when its sign can denote it.
     assert normalize(f"${lo} - CAD {hi} per year", spec, CTX) == Ok(_range(lo, hi, "CAD", "YEAR"))
     assert normalize(f"${lo} - USD {hi} per year", spec, CTX) == Ok(_range(lo, hi, "USD", "YEAR"))
-    # Currencies the bounds cannot share stay unknown.
-    assert normalize(f"€{lo} - CAD {hi} per year", spec, CTX) == Ambiguous("currency_unknown", ())
+    # Currencies the bounds really conflict in decline.
+    assert normalize(f"€{lo} - CAD {hi} per year", spec, CTX) == Invalid("currency_mismatch")
 
 
 def test_a_list_is_as_checked_as_its_least_checked_item_and_as_settled_as_its_weakest() -> None:
