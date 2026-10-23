@@ -157,12 +157,14 @@ class Resources:
 
 async def capture_artifacts(page: Page, policy: FetchPolicy) -> dict[str, bytes]:
     """The files `policy` asks of the rendered page, by artifact name: a PNG of the viewport or the whole page, and a
-    PDF print (HTML Standard §6.6 print media). Reading changes nothing in the page (INV-42). A file the browser could
-    not make in `ARTIFACT_TIMEOUT_S`, or one past `_ARTIFACT_MAX_BYTES`, is left out: the fetch still reached its
-    page."""
+    PDF print (HTML Standard §6.6 print media). A PNG has one pixel per CSS pixel (CSSOM View), whatever the screen's
+    `devicePixelRatio` (`acquire.desktop_screen`). Reading changes nothing in the page (INV-42). A file the browser
+    could not make in `ARTIFACT_TIMEOUT_S`, or one past `_ARTIFACT_MAX_BYTES`, is left out: the fetch still reached
+    its page."""
     asked: list[tuple[str, Callable[[], Awaitable[bytes]]]] = []
     if (screenshot := policy.screenshot) is not None:
-        asked.append((SCREENSHOT, lambda: page.screenshot(type="png", full_page=screenshot == "full_page")))
+        full_page = screenshot == "full_page"
+        asked.append((SCREENSHOT, lambda: page.screenshot(type="png", full_page=full_page, scale="css")))
     if policy.pdf:
         asked.append((PDF, lambda: page.pdf(print_background=True)))
     # One budget for all the files; each is made on its own, so one the browser fails to make leaves out only itself.

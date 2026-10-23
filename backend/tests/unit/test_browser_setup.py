@@ -1,10 +1,10 @@
 """The browser rung runs Patchright's documented setup (INV-42, INV-43, INV-44; owner #50 as amended 2026-10-23):
-Google Chrome stable in headless mode, in a persistent profile with a fixed 1280x720 viewport and one launch argument,
-its own user agent with only its headless token renamed (owner #71 as amended), the WebRTC policy the guard needs in
-the profile's preferences, and no client hints or headers but its own. The context's zone is the exit's declared zone,
-else its country's, else the request locale's region's; its locale the request's, else the exit's. A fake Playwright
-records what `open_browser` and `fetch_browser` ask for; no browser runs (what the real probe reads, and what pages
-present on the wire: `test_browser_fetch.py`).
+Google Chrome stable in headless mode, in a persistent profile, with its own user agent with only its headless token
+renamed (owner #71 as amended) and the window and screen of its site as its launch arguments, the WebRTC policy the
+guard needs in the profile's preferences, and no client hints or headers but its own. The context's zone is the exit's
+declared zone, else its country's, else the request locale's region's; its locale the request's, else the exit's. A
+fake Playwright records what `open_browser` and `fetch_browser` ask for; no browser runs (what the real probe reads,
+and what pages present on the wire: `test_browser_fetch.py`).
 """
 
 import asyncio
@@ -22,7 +22,9 @@ from patchright.async_api import Playwright
 import crawlerai
 from crawlerai.acquire import browser_session
 from crawlerai.acquire.browser import fetch_browser
+from crawlerai.acquire.browser_profiles import profile_name
 from crawlerai.acquire.browser_session import BrowserSession, HeadlessIdentity, browser_identity, open_browser
+from crawlerai.acquire.desktop_screen import desktop_screen
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.core.engine_version import ENGINE_VERSION
@@ -171,13 +173,17 @@ def test_inv42_inv43_chrome_headless_in_a_profile_with_the_guards_webrtc_policy(
     with pytest.raises(_Stop):
         asyncio.run(fetching)
 
-    # `chrome` is Google Chrome stable (`patchright install chrome`), Patchright's recommended build; one launch
-    # argument, its user agent; WebRTC's proxy policy, which the SSRF guard needs (INV-16), is a profile preference.
+    # `chrome` is Google Chrome stable (`patchright install chrome`), Patchright's recommended build; its launch
+    # arguments are its user agent and the window and screen of the site's profile; WebRTC's proxy policy, which the
+    # SSRF guard needs (INV-16), is a profile preference.
     assert {k: v for k, v in recorder.launch.items() if k != "proxy"} == {
         "channel": "chrome",
         "headless": True,
-        "viewport": {"width": 1280, "height": 720},
-        "args": ["--user-agent=" + _OWN_UA.replace("HeadlessChrome/", "Chrome/")],
+        "no_viewport": True,
+        "args": [
+            "--user-agent=" + _OWN_UA.replace("HeadlessChrome/", "Chrome/"),
+            *desktop_screen(profile_name("example.test", None, None)).launch_args(),
+        ],
         "accept_downloads": False,
     }
     # The browser started to read its headers is the same build, loads no site and sends nothing around the guard.
@@ -273,23 +279,23 @@ def test_open_shadow_roots_are_serialized_by_get_html_in_the_isolated_world_only
     ],
     ids=["locale-region", "egress-country", "egress-country-of-many-zones", "declared-zone", "declared-locale"],
 )
-def test_inv44_a_profile_sets_only_the_proxy_downloads_viewport_and_the_locality(
+def test_inv44_a_profile_sets_only_the_proxy_downloads_screen_and_the_locality(
     recorder: _Recorder, hint: str | None, direct: ExitPlace, zone: str | None
 ) -> None:
     fetching = _fetch_once(hint, direct)
     with pytest.raises(_Stop):
         asyncio.run(fetching)
 
-    # The guard's proxy, no downloads, the fixed viewport, the request's locale (else the exit's declared one), and
+    # The guard's proxy, no downloads, the profile's screen, the request's locale (else the exit's declared one), and
     # the exit's declared zone, else the zone of its declared country, else of the locale's region (owner P8); a
     # country of several zones and no declared zone sets none (the machine's). The browser's own user agent, renamed,
-    # as its one argument; no client hints or headers.
+    # as an argument; no client hints or headers.
     zoned = {} if zone is None else {"timezone_id": zone}
     assert {k: v for k, v in recorder.launch.items() if k in ("locale", "timezone_id")} == {"locale": "de-DE", **zoned}
     assert set(recorder.launch) == {
         "channel",
         "headless",
-        "viewport",
+        "no_viewport",
         "args",
         "proxy",
         "accept_downloads",
