@@ -244,8 +244,11 @@ def _furniture(element: HtmlElement, panels: frozenset[str]) -> Sign | None:
     if element.tag in _PAGE_LEVEL and _page_level(element):
         return "scoped" if element.tag == _HEADER and not element.cssselect(_NAVIGATION) else "stated"
     attributes: dict[str, str | None] = dict(element.attrib)
-    if hidden(str(element.tag), attributes) and not _disclosed(element, panels) and not _alternative(element):
-        return "hidden"
+    if hidden(str(element.tag), attributes):
+        if _disclosed(element, panels):
+            return None
+        if not _alternative(element):
+            return "hidden"
     return "named" if _furniture_names(element) else None
 
 
@@ -312,9 +315,9 @@ def _disclosed(element: HtmlElement, panels: frozenset[str]) -> bool:
     """Whether a hidden element is a collapsed disclosure's panel: `hidden="until-found"` (HTML Standard §6.1), or one
     a collapsed control names (`_collapsed_panels`) that is not itself a window (a `dialog`, `alertdialog` or `menu`
     role: WAI-ARIA 1.2 §5.4)."""
-    if (element.get("hidden") or "").strip().lower() == "until-found":
-        return True
-    return element.get("id") in panels and _role(element) not in _WINDOWS
+    if _role(element) in _WINDOWS:
+        return False
+    return (element.get("hidden") or "").strip().lower() == "until-found" or element.get("id") in panels
 
 
 def _alternative(element: HtmlElement) -> bool:

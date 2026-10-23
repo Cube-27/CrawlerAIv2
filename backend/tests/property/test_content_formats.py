@@ -311,6 +311,7 @@ def test_a_collapsed_disclosure_panel_is_content_but_a_popup_is_not(state: str, 
         "<div hidden='until-found'><p>Answer two.</p></div>"
         "<button aria-expanded='false' aria-haspopup='dialog' aria-controls='m1'>Open</button>"
         "<div id='m1' hidden><p>Modal text.</p></div>"
+        "<div hidden='until-found' role='menu'><p>Menu text.</p></div>"
         "<div hidden><button aria-expanded='false' aria-controls='t1'>More</button></div>"
         "<div id='t1' hidden><p>Orphan text.</p></div><div hidden><p>Template text.</p></div></main></body></html>"
     )
@@ -322,3 +323,4 @@ def test_a_collapsed_disclosure_panel_is_content_but_a_popup_is_not(state: str, 
     assert "Modal text." not in made
     assert "Template text." not in made
     assert "Orphan text." not in made
+    assert "Menu text." not in made
