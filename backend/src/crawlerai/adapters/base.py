@@ -61,7 +61,9 @@ class Shape:
     the order the platform's page shows them: its one value is the HTML text of them all (`Section`). `fallbacks` names
     the properties the API fills from the platform's own record of the item, not from what the item's page states
     (Shopify's `vendor`, the name the merchant files a product under: its brand or any other label): their values
-    stand in only where the page states none (resolution spec, "Candidate score": a fallback)."""
+    stand in only where the page states none (resolution spec, "Candidate score": a fallback). `epoch_ms` names the
+    properties the documentation states as a timestamp, an integer count of milliseconds since the Unix epoch: each
+    value is read as the RFC 3339 date-time in UTC it names, and any other value of it is dropped."""
 
     type: str
     at: Members = ()
@@ -74,6 +76,7 @@ class Shape:
     booleans: Mapping[str, Booleans] = field(default_factory=dict)
     sections: Mapping[str, tuple["Section", ...]] = field(default_factory=dict)
     fallbacks: frozenset[str] = frozenset()
+    epoch_ms: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
