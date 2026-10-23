@@ -59,3 +59,30 @@ def test_a_capture_is_a_har_log_of_its_document_and_its_calls() -> None:
     for entry in entries:
         assert {"startedDateTime", "time", "request", "response", "cache", "timings"} <= entry.keys()
         assert entry["request"]["cookies"] == entry["response"]["cookies"] == []
+
+
+def test_a_page_a_step_submitted_a_form_to_is_its_document_posted_once() -> None:
+    form = (("Content-Type", "application/x-www-form-urlencoded"),)
+    answer = b"<html><body>results</body></html>"
+    bundle = capture(
+        answer,
+        method="browser",
+        network=(
+            call(
+                0,
+                PAGE_URL,
+                answer,
+                content_type="text/html",
+                method="POST",
+                resource_type="document",
+                request_body="q=shoes",
+                request_headers=form,
+                action=1,
+            ),
+        ),
+    )
+
+    entries: Any = json.loads(json.dumps(har(bundle)))["log"]["entries"]
+
+    assert [(e["request"]["method"], e["request"]["url"]) for e in entries] == [("POST", PAGE_URL)]
+    assert entries[0]["request"]["postData"]["text"] == "q=shoes"

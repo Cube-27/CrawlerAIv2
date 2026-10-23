@@ -5,7 +5,9 @@ The archive holds what the bundle holds and nothing else: headers as the capture
 (`acquire.headers.recorded`) and with the values of the caller's own headers masked (`acquire.outcome`); no cookie
 lists. What the bundle does not keep is written as HAR says an unknown is: `-1` for a size or a timing that may be
 unknown, the empty string for the HTTP version, and 0 for the timings that must be known (`send`, `wait`, `receive`).
-Every entry starts when the page's fetch started (`fetched_at`): a call's own start is not kept.
+Every entry starts when the page's fetch started (`fetched_at`): a call's own start is not kept. The page's document is
+its main frame's latest navigation: when a page step submitted a form, that is the kept `document` call to the page's
+URL, so the document entry takes that call's request and the call is not written twice.
 """
 
 import base64
@@ -16,7 +18,7 @@ from urllib.parse import parse_qsl, urlsplit
 from pydantic import JsonValue
 
 from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.storage.capture_bundle import CaptureBundle, HeaderList
+from crawlerai.storage.capture_bundle import CaptureBundle, HeaderList, NetworkBody
 
 __all__ = ["HAR_VERSION", "har"]
 
@@ -31,12 +33,14 @@ def har(bundle: CaptureBundle) -> dict[str, JsonValue]:
     """The capture `bundle` as a HAR 1.2 log (module docstring)."""
     manifest = bundle.manifest
     started = manifest.fetched_at.isoformat()
+    navigated = _navigated(manifest.network_bodies, manifest.final_url)
+    request = manifest.network_bodies[navigated] if navigated is not None else None
     document = _entry(
         started,
-        method="GET",
+        method=(request.method if request else None) or "GET",
         url=manifest.final_url,
         request_headers=manifest.headers.request,
-        request_body=None,
+        request_body=request.request_body if request else None,
         status=manifest.status_code,
         response_headers=manifest.headers.response,
         content_type=_header(manifest.headers.response, "content-type"),
@@ -54,7 +58,8 @@ def har(bundle: CaptureBundle) -> dict[str, JsonValue]:
             content_type=entry.content_type,
             answer=data,
         )
-        for entry, data in zip(manifest.network_bodies, bundle.network, strict=True)
+        for index, (entry, data) in enumerate(zip(manifest.network_bodies, bundle.network, strict=True))
+        if index != navigated
     ]
     page: dict[str, JsonValue] = {
         "startedDateTime": started,
@@ -69,6 +74,15 @@ def har(bundle: CaptureBundle) -> dict[str, JsonValue]:
         "entries": [document, *calls],
     }
     return {"log": log}
+
+
+def _navigated(entries: Sequence[NetworkBody], url: str) -> int | None:
+    """The index of the page's own document among the kept calls: the last main-frame navigation (`document`), when it
+    is to the page's URL; None when the page's document is its first load."""
+    documents = [index for index, entry in enumerate(entries) if entry.resource_type == "document"]
+    if documents and entries[documents[-1]].url == url:
+        return documents[-1]
+    return None
 
 
 def _entry(
