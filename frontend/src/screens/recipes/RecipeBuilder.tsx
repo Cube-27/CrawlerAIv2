@@ -99,7 +99,8 @@ function CallSteps({
   main: Endpoint | null;
   proposal: ReturnType<typeof useProposal>;
   onPick: (endpoint: Endpoint) => void;
-  onAdd: (endpoint: Endpoint) => void;
+  /** Adds a group as an extra call; null while none can be added. */
+  onAdd: ((endpoint: Endpoint) => void) | null;
 }>) {
   const calls = useCallList(ids);
   const problem = problemOf(calls.error);
@@ -171,6 +172,7 @@ function RecipeSteps({
   sampleUrls,
   addProblem,
   replaces,
+  isDrafting,
   handlers,
 }: Readonly<{
   host: string;
@@ -180,6 +182,8 @@ function RecipeSteps({
   sampleUrls: readonly string[];
   addProblem: Problem | null;
   replaces: string | null;
+  /** A new draft is being read: the recipe shown is the last one's, so it is neither tested nor saved. */
+  isDrafting: boolean;
   handlers: EditHandlers;
 }>) {
   const test = useTestRecipe();
@@ -194,8 +198,20 @@ function RecipeSteps({
         handlers={handlers}
       />
       <ExtrasStep recipe={recipe} fields={fields} problem={addProblem} handlers={handlers} />
-      <TestStep recipe={recipe} sampleUrls={sampleUrls} test={test} fieldTypes={fieldTypes} />
-      <SaveStep host={host} recipe={recipe} replaces={replaces} handlers={handlers} />
+      <TestStep
+        recipe={recipe}
+        sampleUrls={sampleUrls}
+        test={test}
+        isDrafting={isDrafting}
+        fieldTypes={fieldTypes}
+      />
+      <SaveStep
+        host={host}
+        recipe={recipe}
+        replaces={replaces}
+        isDrafting={isDrafting}
+        handlers={handlers}
+      />
     </>
   );
 }
@@ -231,6 +247,9 @@ function Builder({
   const addCall = useProposeCall();
   const base = proposal.data?.recipe ?? stored;
   const recipe = base === null ? null : applied(base, edits);
+  const isDrafting = proposal.isPlaceholderData || proposal.isFetching;
+  // One extra call at a time, each on the draft it was asked for: two at once would read the same fields and name.
+  const canAdd = recipe !== null && ids.length >= MIN_SAMPLES && !isDrafting && !addCall.isPending;
   const handlers: EditHandlers = {
     edits,
     onEdit: (part, value) => {
@@ -241,7 +260,7 @@ function Builder({
     },
   };
   const onAdd = (endpoint: Endpoint) => {
-    if (recipe === null || ids.length < MIN_SAMPLES) return;
+    if (!canAdd) return;
     setAddProblem(null);
     addCall.mutate(
       { capture_ids: [...ids], main: endpointRef(endpoint), schema_id: schema.id },
@@ -279,7 +298,13 @@ function Builder({
         />
       </Section>
       {samples.length === 0 ? null : (
-        <CallSteps ids={ids} main={main} proposal={proposal} onPick={setMain} onAdd={onAdd} />
+        <CallSteps
+          ids={ids}
+          main={main}
+          proposal={proposal}
+          onPick={setMain}
+          onAdd={canAdd ? onAdd : null}
+        />
       )}
       {recipe === null ? null : (
         <RecipeSteps
@@ -290,6 +315,7 @@ function Builder({
           sampleUrls={samples.map(({ result }) => result.url)}
           addProblem={addProblem}
           replaces={replaces}
+          isDrafting={isDrafting}
           handlers={handlers}
         />
       )}

@@ -149,7 +149,8 @@ export function CallList({
   sampleOf: SampleNumber;
   main: string | null;
   onPick: (endpoint: Endpoint) => void;
-  onAdd: (endpoint: Endpoint) => void;
+  /** Null while no extra call can be added: before a main call, while a draft or another addition is read. */
+  onAdd: ((endpoint: Endpoint) => void) | null;
 }>) {
   const [open, setOpen] = useState<CallSummary | null>(null);
   return (
@@ -168,7 +169,7 @@ export function CallList({
               onPick(endpoint);
             }}
             onAdd={
-              main === null
+              main === null || onAdd === null
                 ? null
                 : () => {
                     onAdd(endpoint);

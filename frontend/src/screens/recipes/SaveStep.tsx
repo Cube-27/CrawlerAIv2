@@ -45,11 +45,13 @@ export function SaveStep({
   host,
   recipe,
   replaces,
+  isDrafting,
   handlers,
 }: Readonly<{
   host: string;
   recipe: CustomRecipe;
   replaces: string | null;
+  isDrafting: boolean;
   handlers: EditHandlers;
 }>) {
   const save = useSaveRecipe(host, replaces);
@@ -84,6 +86,7 @@ export function SaveStep({
       <FormActions>
         <Button
           isPending={save.isPending}
+          isDisabled={isDrafting}
           onPress={() => {
             save.mutate(recipe, {
               onSuccess: (saved) => {

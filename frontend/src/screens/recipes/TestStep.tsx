@@ -89,11 +89,13 @@ export function TestStep({
   recipe,
   sampleUrls,
   test,
+  isDrafting,
   fieldTypes,
 }: Readonly<{
   recipe: CustomRecipe;
   sampleUrls: readonly string[];
   test: ReturnType<typeof useTestRecipe>;
+  isDrafting: boolean;
   fieldTypes: FieldTypes;
 }>) {
   // The samples' URLs until the engineer types others.
@@ -101,6 +103,9 @@ export function TestStep({
   const text = typed ?? sampleUrls.join("\n");
   const urls = urlsOf(text);
   const problem = problemOf(test.error);
+  // The results are of the recipe and URLs the last test sent, which later edits may have changed.
+  const sent = test.variables;
+  const isStale = sent !== undefined && JSON.stringify(sent) !== JSON.stringify({ recipe, urls });
   return (
     <Section title="7. Test">
       <Lines
@@ -112,7 +117,7 @@ export function TestStep({
       <div>
         <Button
           isPending={test.isPending}
-          isDisabled={urls.length === 0 || urls.length > MAX_TEST_URLS}
+          isDisabled={isDrafting || urls.length === 0 || urls.length > MAX_TEST_URLS}
           onPress={() => {
             test.mutate({ recipe, urls });
           }}
@@ -121,11 +126,16 @@ export function TestStep({
         </Button>
       </div>
       {problem === null ? null : <ProblemAlert problem={problem} />}
+      {isStale && test.data !== undefined ? (
+        <Typography.Paragraph size="sm" color="muted">
+          The recipe or the URLs changed since this test: test again to see what they give.
+        </Typography.Paragraph>
+      ) : null}
       {test.data?.urls.map((result) => (
         <UrlResult
           key={result.url}
           result={result}
-          sentByBrowser={recipe.sent_by === "browser"}
+          sentByBrowser={sent?.recipe.sent_by === "browser"}
           fieldTypes={fieldTypes}
         />
       ))}

@@ -21,6 +21,14 @@ function warmUpKind(recipe: CustomRecipe): WarmUpKind {
   return recipe.warm_up.url == null ? "page" : "url";
 }
 
+/** Whether a parameter of a call reads the warm-up's answer (a `warm_up*` binder). */
+function readsWarmUp(recipe: CustomRecipe): boolean {
+  const calls = [recipe.main, ...Object.values(recipe.calls ?? {})];
+  return calls.some((call) =>
+    Object.values(call.params_from_url ?? {}).some((binder) => binder.startsWith("warm_up")),
+  );
+}
+
 /** The request the calls follow, whose cookies they carry and whose answer `warm_up` binders read: none, the page
  * itself, or a fixed URL whose `{name}` placeholders are the URL pattern's parameters. */
 function WarmUpEditor({
@@ -28,12 +36,17 @@ function WarmUpEditor({
   handlers,
 }: Readonly<{ recipe: CustomRecipe; handlers: EditHandlers }>) {
   const kind = warmUpKind(recipe);
+  const isRead = readsWarmUp(recipe);
   return (
     <div className="flex flex-col gap-2">
       <Choices
         label="Warm-up"
         options={WARM_UPS}
         value={kind}
+        disabled={isRead ? ["none"] : []}
+        {...(isRead
+          ? { description: "A parameter reads the warm-up's answer: bind it otherwise first." }
+          : {})}
         onChange={(next) => {
           handlers.onEdit(
             ["warm_up"],
@@ -65,8 +78,12 @@ function PageFieldRow({
   field: PageField | undefined;
   onChange: (next: PageField | undefined) => void;
 }>) {
-  const [first] = field?.steps ?? [];
-  const xpath = first !== undefined && "xpath" in first ? first.xpath : "";
+  const steps = field?.steps ?? [];
+  const [first] = steps;
+  const isXPath = first !== undefined && "xpath" in first;
+  const xpath = isXPath ? first.xpath : "";
+  // The XPath edited is the first step; the steps after it stay, in order (the first valid value wins).
+  const rest = isXPath ? steps.slice(1) : steps;
   const needs = field?.needs ?? "http";
   return (
     <li className="flex flex-wrap items-end gap-2">
@@ -75,14 +92,15 @@ function PageFieldRow({
         value={xpath}
         placeholder="//h1"
         onChange={(next) => {
-          onChange(next === "" ? undefined : { steps: [{ xpath: next }], needs });
+          const kept = next === "" ? rest : [{ ...(isXPath ? first : {}), xpath: next }, ...rest];
+          onChange(kept.length === 0 ? undefined : { steps: kept, needs });
         }}
       />
       <Switch
         isSelected={needs === "browser"}
         isDisabled={field === undefined}
         onChange={(isSelected) => {
-          onChange({ steps: [{ xpath }], needs: isSelected ? "browser" : "http" });
+          onChange({ steps, needs: isSelected ? "browser" : "http" });
         }}
       >
         <Switch.Content>
