@@ -41,7 +41,7 @@ Text = Annotated[str, StringConstraints(min_length=1, max_length=1_000)]
 
 
 class _Action(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_serialization_defaults_required=True)
 
     timeout_ms: Timeout = _DEFAULT_TIMEOUT_MS
 

@@ -33,7 +33,7 @@ from functools import partial
 from typing import Final, Self, TypedDict
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, field_validator, model_serializer, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
@@ -96,6 +96,7 @@ from crawlerai.services.records import RecordField, ScrapedRecord
 from crawlerai.services.scrape_paging import Actions, actions_deadline, check_browser_actions
 from crawlerai.services.scrape_request import (
     MIN_CONFIDENCE_DESCRIPTION,
+    RENDER_AS_GIVEN,
     RENDER_DESCRIPTION,
     Input,
     PageFormat,
@@ -108,6 +109,7 @@ from crawlerai.services.scrape_request import (
     check_render,
     check_usable,
     named_schema,
+    render_as_given,
     stored_request,
 )
 from crawlerai.services.stored_captures import NOT_CACHED, NotCached
@@ -149,6 +151,9 @@ class ScrapeRequest(Input):
     chunking: ChunkOptions | None = None  # `chunks`' strategy, size and overlap
     min_confidence: Probability | None = Field(default=None, description=MIN_CONFIDENCE_DESCRIPTION)
     render: RenderOptions = Field(default=RenderOptions(), description=RENDER_DESCRIPTION)
+
+    model_config = RENDER_AS_GIVEN
+    _render_as_given = model_serializer(mode="wrap")(render_as_given)
 
     @field_validator("url")
     @classmethod

@@ -13,6 +13,7 @@ import {
   posted,
   toggleFormats,
 } from "../../../test/playground";
+import { storedCrawl } from "../../../test/jobs";
 
 // `fetch` answers the crawl, job, results and events endpoints with the shapes the API defines.
 
@@ -30,7 +31,7 @@ function crawlApi(replies: Parameters<typeof stubApi>[0] = {}): Call[] {
       submit: "POST /v1/crawl",
       jobId: JOB_ID,
       kind: "crawl",
-      request: { url: "https://shop.test/", formats: ["markdown"] },
+      request: storedCrawl({ url: "https://shop.test/" }),
       items: [ITEM],
     },
     replies,

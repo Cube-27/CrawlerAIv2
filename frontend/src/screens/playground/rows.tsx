@@ -1,3 +1,4 @@
+import { LIMITS } from "../../api/limits";
 import type { WebhookEvent } from "../../api/jobs";
 import type {
   ChunkSource,
@@ -136,8 +137,8 @@ export function MinConfidenceRow<O extends { minConfidence: number }>({
       help="Records only: leave a field unpublished when its calibrated confidence is below this. Empty: every value publishes with its confidence."
       name="min_confidence"
       value={options.minConfidence}
-      minValue={0}
-      maxValue={100}
+      minValue={LIMITS["ScrapeRequest-Input"].min_confidence.minimum * 100}
+      maxValue={LIMITS["ScrapeRequest-Input"].min_confidence.maximum * 100}
       fractionDigits={4}
       placeholder="Publish all"
       onChange={(minConfidence) => {
@@ -379,6 +380,78 @@ export function FormatRows<O extends FormatSettings>({
           onChange({ ...options, chunkSource });
         }}
       />
+    </>
+  );
+}
+
+/** The page kind, fetch method and `fetch.max_rows` rows of a page request's options. */
+export function PageFetchRows<
+  O extends { pageKind: PageKind | null; methodHint: MethodHint; maxRows: number },
+>({
+  options,
+  hasSchema,
+  schemaPageKind,
+  onChange,
+}: Readonly<{
+  options: O;
+  hasSchema: boolean;
+  schemaPageKind: PageKind | null;
+  onChange: (options: O) => void;
+}>) {
+  return (
+    <>
+      <PageKindRow
+        value={options.pageKind}
+        hasSchema={hasSchema}
+        schemaPageKind={schemaPageKind}
+        onChange={(pageKind) => {
+          onChange({ ...options, pageKind });
+        }}
+      />
+      <FetchMethodRow
+        value={options.methodHint}
+        onChange={(methodHint) => {
+          onChange({ ...options, methodHint });
+        }}
+      />
+      <MaxRowsRow
+        value={options.maxRows}
+        onChange={(maxRows) => {
+          onChange({ ...options, maxRows });
+        }}
+      />
+    </>
+  );
+}
+
+/** The rows of what a page request answers: the minimum confidence, Metadata in JSON, the fields and the formats'
+ * options. */
+export function PageOutputRows<
+  O extends FormatSettings & {
+    minConfidence: number;
+    metadataInJson: boolean;
+    fields: readonly string[];
+  },
+>({
+  options,
+  formats,
+  onChange,
+}: Readonly<{
+  options: O;
+  formats: readonly ScrapeFormat[];
+  onChange: (options: O) => void;
+}>) {
+  return (
+    <>
+      <MinConfidenceRow options={options} onChange={onChange} />
+      <MetadataRow
+        isSelected={options.metadataInJson}
+        onChange={(metadataInJson) => {
+          onChange({ ...options, metadataInJson });
+        }}
+      />
+      <FieldsRow options={options} onChange={onChange} />
+      <FormatRows options={options} formats={formats} onChange={onChange} />
     </>
   );
 }

@@ -21,7 +21,7 @@ from crawlerai.db.models import Capture, Job
 from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.fetch_options import UnknownProxyPool
 from crawlerai.services.fetching import Fetching
-from crawlerai.services.jobs import job_request
+from crawlerai.services.job_request import job_request
 from crawlerai.services.scrape import ScrapeRequest, scrape
 from crawlerai.services.stored_captures import NotCached
 from tests.db.support import Web, fetching_from, resolve
@@ -105,9 +105,10 @@ async def test_a_batch_keeps_the_cookie_for_its_workers_and_answers_it_redacted(
         stored: dict[str, Any] = (
             await conn.execute(select(Job.request).where(Job.id == submitted.job_id))
         ).scalar_one()
-        answered = await job_request(conn, submitted.job_id)
+        answered = (await job_request(conn, submitted.job_id)).model_dump(mode="json", by_alias=True)
     assert stored["fetch"]["cookies"] == {"sid": "s3cret"}
-    assert answered["fetch"]["cookies"] == {"sid": REDACTED}
+    assert answered["kind"] == "batch_scrape"
+    assert answered["request"]["fetch"]["cookies"] == {"sid": REDACTED}
 
 
 async def test_a_proxy_pool_not_configured_is_refused_before_any_job(

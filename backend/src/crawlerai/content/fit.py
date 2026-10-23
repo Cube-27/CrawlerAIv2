@@ -42,7 +42,7 @@ _TAG_OVERHEAD = 5
 class FitOptions(BaseModel):
     """`markdown_fit`'s options: the `query` the content is kept relevant to, and at most `max_blocks` blocks of it."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_serialization_defaults_required=True)
 
     query: str | None = Field(default=None, min_length=1)
     max_blocks: PositiveInt | None = None

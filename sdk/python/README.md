@@ -48,7 +48,7 @@ with CrawlerAI(os.environ["CRAWLERAI_API_KEY"], "http://localhost:8000") as clie
         print(result["url"], result["status"])
 ```
 
-A request is the endpoint's model (`models.CrawlRequest`) or its members as keyword arguments. Members are validated
+A request is the endpoint's model (`models.CrawlRequestInput`) or its members as keyword arguments. Members are validated
 before anything is sent, and only the ones you give are sent, so the server's defaults apply to the rest. Every
 failure answered by the API is an `APIError` with `status`, `type` (`validation`, `ssrf_rejected`,
 `search_unavailable`, ...), `detail` and, for a 422, `errors`. `AsyncCrawlerAI` has the same methods, awaited

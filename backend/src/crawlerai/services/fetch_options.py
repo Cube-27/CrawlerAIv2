@@ -107,7 +107,7 @@ class FetchOptions(BaseModel):
     and `cookies` to that host in either; `wait_for` and `actions` run in the browser, so they make the fetch
         a browser one and refuse `method_hint` `http`, and a browser fetch takes no `headers`."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_serialization_defaults_required=True)
 
     method_hint: Literal["auto", "http", "browser"] = "auto"
     screenshot: Literal["viewport", "full_page"] = "viewport"  # the area a `screenshot` format shows

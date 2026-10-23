@@ -4,7 +4,7 @@ import type { components } from "./schema";
 
 /** `/v1/schemas`, in the generated shapes. */
 export type SchemaDef = components["schemas"]["SchemaDef"];
-export type NewSchema = components["schemas"]["NewSchema"];
+export type NewSchema = components["schemas"]["NewSchema-Input"];
 export type SchemaContent = components["schemas"]["SchemaContent"];
 export type FieldSpecInput = components["schemas"]["FieldSpec-Input"];
 export type FieldType = components["schemas"]["FieldType"];
