@@ -252,16 +252,15 @@ async def _extractions(
         latest.c.fetched_at.desc(), latest.c.id.desc()
     )
     found: list[tuple[CaptureId, str, ExtractionId]] = []
-    if limit <= 0:
-        return found
     # Read in batches of `limit`, the latest first, until `limit` are kept or none are left.
-    async with conn.stream(query.execution_options(yield_per=limit)) as rows:
-        async for row in rows:
-            if keep is None or keep(row.url):
-                found.append((row.id, row.object_key, row.extraction_id))
-            if len(found) == limit:
-                break
-    return found
+    offset = 0
+    while limit > 0 and len(found) < limit:
+        batch = (await conn.execute(query.offset(offset).limit(limit))).all()
+        found += [(row.id, row.object_key, row.extraction_id) for row in batch if keep is None or keep(row.url)]
+        if len(batch) < limit:
+            break
+        offset += limit
+    return found[:limit]
 
 
 def _latest(schema: SchemaDef, *, listed_nothing: bool = False) -> Select[CaptureId, str, ExtractionId]:
