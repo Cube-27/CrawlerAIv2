@@ -95,7 +95,12 @@ function CallSteps({
 export function RecipeBuilder() {
   const { host = "" } = useParams();
   const [schema, setSchema] = useState<SchemaDef | null>(null);
-  const [samples, setSamples] = useState<readonly Sample[]>([]);
+  const [captured, setSamples] = useState<readonly Sample[]>([]);
+  // A capture still running when the schema changed was read for the old one: it is not a sample.
+  const samples = useMemo(
+    () => captured.filter((sample) => sample.schemaId === schema?.id),
+    [captured, schema],
+  );
   const [main, setMain] = useState<string | null>(null);
   const fieldTypes = useMemo(
     () => (schema === null ? {} : parseFieldTypes(schema.fields, schema.field_order)),
