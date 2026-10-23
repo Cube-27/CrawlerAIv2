@@ -27,8 +27,6 @@ _SERVER_NAME: Final = 0x0000  # RFC 6066 §3
 _SIGNATURE_ALGORITHMS: Final = 0x000D  # RFC 8446 §4.2.3
 _ALPN: Final = 0x0010  # RFC 7301 §3.1
 _SUPPORTED_VERSIONS: Final = 0x002B  # RFC 8446 §4.2.1
-# draft-ietf-tls-trust-anchor-ids §4.1 `trust_anchors`, at BoringSSL's provisional code point.
-_TRUST_ANCHORS: Final = 0xCA34
 # JA4's version labels (FoxIO JA4 specification, TLS client, part a): TLS 1.3 to SSL 2, then DTLS 1.0, 1.2, 1.3.
 _VERSIONS: Final = {
     0x0304: "13",
@@ -54,7 +52,6 @@ class ClientHello:
     supported_versions: tuple[int, ...] = ()
     signature_algorithms: tuple[int, ...] = ()
     alpn: tuple[bytes, ...] = ()
-    trust_anchors: tuple[str, ...] | None = None  # relative OIDs; None: the extension is absent
 
 
 class _Reader:
@@ -112,8 +109,6 @@ def _read_extension(kind: int, data: _Reader, fields: dict[str, object]) -> None
     elif kind == _ALPN:
         names = data.vector(2)
         fields["alpn"] = tuple(_items(names, 1))
-    elif kind == _TRUST_ANCHORS:
-        fields["trust_anchors"] = tuple(_relative_oid(anchor) for anchor in _items(data.vector(2), 1))
 
 
 def _numbers(reader: _Reader, size: int) -> tuple[int, ...]:
@@ -126,19 +121,6 @@ def _numbers(reader: _Reader, size: int) -> tuple[int, ...]:
 def _items(reader: _Reader, length_size: int) -> Iterator[bytes]:
     while reader:
         yield reader.take(reader.number(length_size))
-
-
-def _relative_oid(encoded: bytes) -> str:
-    """A relative object identifier's dotted form (ITU-T X.690 §8.20: base-128 subidentifiers, high bit set on all
-    but the last octet of each)."""
-    arcs = []
-    value = 0
-    for octet in encoded:
-        value = value << 7 | octet & 0x7F
-        if not octet & 0x80:
-            arcs.append(value)
-            value = 0
-    return ".".join(map(str, arcs))
 
 
 def _grease(value: int) -> bool:

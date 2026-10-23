@@ -1,8 +1,7 @@
 """Which Chrome the HTTP and JSON rungs impersonate: the browser rung's Chrome, read once per
-process, its headers sent in place of the nearest curl_cffi profile's own and its ClientHello's trust anchors added to
-the profile's TLS, a JA4 differing from the browser's logged; an operator's explicit target is kept with its own
-headers; a process that renders does not start without them. The headers go out on the wire through the real curl
-transport to a local server."""
+process, its headers sent in place of the nearest curl_cffi profile's own, a JA4 differing from the browser's logged;
+an operator's explicit target is kept with its own headers; a process that renders does not start without them. The
+headers go out on the wire through the real curl transport to a local server."""
 
 import asyncio
 import logging
@@ -37,11 +36,11 @@ _BROWSER = (
 )
 
 
-# A ClientHello no curl_cffi profile sends (synthetic: one cipher, trust anchors under RFC 5612's documentation PEN).
-_HELLO = ClientHello(0x0303, (0x1301,), (0x002B, 0xCA34), (0x0304,), trust_anchors=("32473.1", "32473.2"))
+# A ClientHello no curl_cffi profile sends (synthetic: one cipher, two extensions).
+_HELLO = ClientHello(0x0303, (0x1301,), (0x002B, 0x000D), (0x0304,))
 
 
-def test_unset_the_target_follows_the_browser_and_sends_its_headers_and_trust_anchors(
+def test_unset_the_target_follows_the_browser_and_sends_its_headers(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     async def read() -> Identity:
@@ -52,7 +51,7 @@ def test_unset_the_target_follows_the_browser_and_sends_its_headers_and_trust_an
     with caplog.at_level(logging.WARNING):
         chosen = asyncio.run(rung_impersonation(AcquireSettings(), browser_rung=True))
 
-    assert chosen == Impersonation(nearest_target(_PROFILES[-1]), _BROWSER, _HELLO.trust_anchors)
+    assert chosen == Impersonation(nearest_target(_PROFILES[-1]), _BROWSER)
     assert f"Chrome {_NEWER}" in caplog.text
     # The HTTP rung's own ClientHello, read on the loopback address, is not the browser's: both JA4s are logged.
     assert "the browser rung's t13i0102" in caplog.text

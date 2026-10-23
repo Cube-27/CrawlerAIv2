@@ -313,20 +313,19 @@ async def curl_transport(
     impersonate: Impersonation, proxy: ProxyEndpoint | None, limits: Limits, traffic: Traffic
 ) -> AsyncIterator[Transport]:
     """A transport over one curl_cffi session for one fetch, through `proxy` when a pool carries it, adding the bytes
-    each request moves to `traffic`; every request sends the impersonation's TLS options, and its headers unless it
-    sets its own."""
+    each request moves to `traffic`; every request sends the impersonation's headers unless it sets its own."""
     # Cookies are kept by `FetchCookies`, not libcurl's engine, which this build runs without the public-suffix list
     # (RFC 6265 §5.3 step 5): the session discards what curl parsed, and each request clears curl's list before
     # sending only the cookies passed in. `trust_env=False` stops curl_cffi reading the proxy environment variables;
     # libcurl reads them itself, so each request also sets CURLOPT_PROXY, and a pool request CURLOPT_NOPROXY:
     # proxies come only from the pools.
     async with _Session(impersonate=impersonate.target, trust_env=False, discard_cookies=True) as session:
-        yield partial(_request, session, impersonate, proxy, limits, traffic)
+        yield partial(_request, session, impersonate.headers, proxy, limits, traffic)
 
 
 async def _request(
     session: AsyncSession[Response],
-    impersonate: Impersonation,
+    defaults: HeaderList,
     proxy: ProxyEndpoint | None,
     limits: Limits,
     traffic: Traffic,
@@ -358,7 +357,6 @@ async def _request(
             sent.append(data)
 
     options: dict[CurlOpt, object] = {
-        **impersonate.tls_options(),
         **(pinned(target) if proxy is None else _through(proxy)),
         # curl speaks only the schemes the guard admits, whatever URL reaches it (CURLOPT_PROTOCOLS_STR).
         CurlOpt.PROTOCOLS_STR: "http,https",
@@ -377,7 +375,7 @@ async def _request(
         response = await session.request(
             hop.method,
             target.url,
-            headers=_merged(impersonate.headers, hop.headers),
+            headers=_merged(defaults, hop.headers),
             data=hop.body,
             allow_redirects=False,
             timeout=remaining,

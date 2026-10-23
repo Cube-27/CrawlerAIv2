@@ -5,12 +5,12 @@ At startup the browser rung's Chrome is started once, loading no site, to read t
 (`browser_session.browser_identity`: its user agent as its profiles send it, its client hints, `Accept` and
 `Accept-Language`) and the TLS ClientHello it opens a connection with. The rungs send those headers in place of their
 impersonation's own, and impersonate curl_cffi's Chrome profile nearest its major for the TLS and HTTP/2 handshake, with
-a warning when none matches it exactly, adding the trust anchors the browser's ClientHello requests (no profile sends
-that extension). The HTTP rung's ClientHello is then read the same way, and a JA4 that differs from the browser's is
-logged once: a Chrome update the profile does not follow. A target the operator sets (`CRAWLERAI_IMPERSONATE`) is
-kept with its own headers and TLS and starts no browser. A process that runs the browser rung does not start when that
-Chrome cannot be read (`BrowserUnread`): its HTTP rung would name another browser than its renders. A process without
-it (`crawlerai fetch` over HTTP) keeps the default target's own headers, with a warning.
+a warning when none matches it exactly. The HTTP rung's ClientHello is then read the same way, and a JA4 that differs
+from the browser's is logged once: what the profile does not reproduce, or a Chrome update it does not follow. A target
+the operator sets (`CRAWLERAI_IMPERSONATE`) is kept with its own headers and starts no browser. A process that runs
+the browser rung does not start when that Chrome cannot be read (`BrowserUnread`): its HTTP rung would name another
+browser than its renders. A process without it (`crawlerai fetch` over HTTP) keeps the default target's own headers,
+with a warning.
 """
 
 import contextlib
@@ -48,18 +48,11 @@ class BrowserUnread(RuntimeError):
 
 @dataclass(frozen=True)
 class Impersonation:
-    """The curl_cffi target whose TLS, HTTP/2 and header order the rungs send, the headers that replace the
-    target's own of the same name (lowercase names; none: the target's own), and the trust anchors its ClientHello
-    requests (draft-ietf-tls-trust-anchor-ids, relative OIDs; none: the target's own TLS)."""
+    """The curl_cffi target whose TLS, HTTP/2 and header order the rungs send, and the headers that replace the
+    target's own of the same name (lowercase names; none: the target's own)."""
 
     target: BrowserTypeLiteral
     headers: HeaderList = ()
-    trust_anchors: tuple[str, ...] | None = None
-
-    def tls_options(self) -> dict[CurlOpt, object]:
-        """The curl options set over the target's TLS: CURLOPT_TLS_TRUST_ANCHORS (curl-impersonate), the anchors
-        comma-separated, which curl sends in an order it draws for each connection."""
-        return {} if self.trust_anchors is None else {CurlOpt.TLS_TRUST_ANCHORS: ",".join(self.trust_anchors)}
 
 
 async def rung_impersonation(settings: AcquireSettings, *, browser_rung: bool) -> Impersonation:
@@ -78,9 +71,8 @@ async def rung_impersonation(settings: AcquireSettings, *, browser_rung: bool) -
     target = nearest_target(int(major.group(1)))
     if _major(target) != int(major.group(1)):
         log.warning("no curl_cffi Chrome profile for Chrome %s: impersonating %s", major.group(1), target)
-    hello = identity.hello
-    chosen = Impersonation(target, identity.headers, None if hello is None else hello.trust_anchors)
-    await _compare_hellos(hello, chosen)
+    chosen = Impersonation(target, identity.headers)
+    await _compare_hellos(identity.hello, chosen)
     return chosen
 
 
@@ -114,7 +106,7 @@ async def _compare_hellos(browser: ClientHello | None, chosen: Impersonation) ->
 async def _sent_hello(chosen: Impersonation) -> ClientHello | None:
     """The ClientHello the HTTP rung's impersonation sends, read on the loopback address (`hello_listener`), with no
     proxy (CURLOPT_PROXY empty: not even the environment's)."""
-    options = cast(dict[CurlOpt, str], {**chosen.tls_options(), CurlOpt.PROXY: ""})
+    options = {CurlOpt.PROXY: ""}
     async with hello_listener() as (url, hello):
         async with AsyncSession[Response](impersonate=chosen.target, trust_env=False, curl_options=options) as session:
             with contextlib.suppress(RequestException):  # the listener closes the connection after the ClientHello
