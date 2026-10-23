@@ -7,6 +7,7 @@ import asyncio
 import os
 from collections.abc import Iterator
 from dataclasses import dataclass
+from functools import partial
 
 import pytest
 from patchright.async_api import Error as PlaywrightError
@@ -54,7 +55,7 @@ class Sender:
         return self.runner.run(sending)
 
 
-def _endpoint(server: Server) -> Reply:
+def _endpoint(server: Server, _host: str) -> Reply:
     headers = dict((name.lower(), value) for name, value in server.requests[-1][1])
     if headers.get("x-page-token") != "k7":
         return Reply(403, _JSON, b'{"error": "refused"}')
@@ -66,7 +67,7 @@ def server() -> Iterator[Server]:
     for srv in serving():
         srv.route("/hooked/1", Reply(200, _HTML, _HOOKED))
         srv.route("/plain/1", Reply(200, _HTML, _PLAIN))
-        srv.route("/api/item?id=1", lambda _host: _endpoint(srv))
+        srv.route("/api/item?id=1", partial(_endpoint, srv))
         yield srv
 
 

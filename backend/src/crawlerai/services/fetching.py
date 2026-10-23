@@ -207,8 +207,8 @@ def recipe_rung(
         robots.txt (`rules`) allows it, at that host's rate, waiting in place for a turn of its own when it needs one; a
         request robots.txt keeps from being sent leaves the page unserved, and `acquire` fetches it the configured way.
         A custom recipe's (`custom`) calls also wait for its own interval (`RecipePaces`); one sent by the browser
-        (`sent_by`) sends them from its site's warm page (the rungs' `in_page`), at the same rates, and fetches the HTML page
-        over HTTP.
+        (`sent_by`) sends them from its site's warm page (the rungs' `in_page`), at the same rates, and fetches the
+        HTML page over HTTP.
     None without the rung that sends its calls."""
     json = _calls(fetching.rungs, custom)
     if json is None:
