@@ -14,17 +14,18 @@ from collections.abc import Iterable
 
 WORKFLOW = ".github/workflows/ci.yml"
 DEV = "tools/dev.py"
+BACKEND = "backend/"
 
 # The path prefixes each gated job reads. Directory prefixes end in "/".
 JOB_INPUTS: dict[str, tuple[str, ...]] = {
     # Migrations and tests of backend/; the job runs infra/postgres/init.sql.
-    "backend": ("backend/", "infra/", DEV, WORKFLOW),
+    "backend": (BACKEND, "infra/", DEV, WORKFLOW),
     # Lint, types, import contracts and complexity of backend/; complexipy also covers ../tools.
-    "backend_static": ("backend/", "tools/", WORKFLOW),
+    "backend_static": (BACKEND, "tools/", WORKFLOW),
     # The frontend checks.
     "frontend": ("frontend/", "tools/theme_only_check.py", DEV, WORKFLOW),
     # The API client freshness check: regenerates the client from backend/ with the frontend's generator.
-    "api_client": ("frontend/", "backend/", DEV, WORKFLOW),
+    "api_client": ("frontend/", BACKEND, DEV, WORKFLOW),
     # The dependency licence scan reads only the lockfiles, the manifests they come from, and its own scripts.
     "licenses": (
         "backend/pyproject.toml",
