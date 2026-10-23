@@ -49,8 +49,8 @@ COPY migrations ./migrations
 # DejaVu, Noto with CJK and colour emoji, and Roboto. The Microsoft core fonts are not redistributable, so Liberation
 # stands in for them.
 RUN patchright install --with-deps chrome \
-    && apt-get install -y --no-install-recommends fonts-liberation fonts-dejavu fonts-noto-core fonts-noto-cjk \
-        fonts-noto-color-emoji fonts-roboto fonts-crosextra-carlito fonts-crosextra-caladea \
+    && apt-get install -y --no-install-recommends fonts-crosextra-caladea fonts-crosextra-carlito fonts-dejavu fonts-liberation \
+        fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core fonts-roboto \
     && rm -rf /var/lib/apt/lists/* && fc-cache -f \
     && useradd --system --no-create-home crawlerai
 USER crawlerai
