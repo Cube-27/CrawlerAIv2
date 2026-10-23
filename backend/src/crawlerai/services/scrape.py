@@ -100,6 +100,7 @@ from crawlerai.services.scrape_request import (
     Input,
     PageFormat,
     RenderOptions,
+    RendersFields,
     SchemaPrompt,
     SchemaRequest,
     SchemaUnusable,
@@ -128,7 +129,7 @@ class Budget(Input):
     llm_calls: NonNegativeInt
 
 
-class ScrapeRequest(Input):
+class ScrapeRequest(RendersFields):
     """The body of `POST /v1/scrape`. `records` needs a schema and a `page_kind`, and the schema's page kind
     must be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds
     its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched

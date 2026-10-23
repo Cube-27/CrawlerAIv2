@@ -761,8 +761,7 @@
           "budget",
           "fit",
           "chunking",
-          "min_confidence",
-          "render"
+          "min_confidence"
         ],
         "title": "BatchScrapeRequest",
         "type": "object"
@@ -1984,8 +1983,7 @@
           "budget",
           "fit",
           "chunking",
-          "min_confidence",
-          "render"
+          "min_confidence"
         ],
         "title": "CrawlRequest",
         "type": "object"
@@ -7773,8 +7771,7 @@
           "browser_actions",
           "fit",
           "chunking",
-          "min_confidence",
-          "render"
+          "min_confidence"
         ],
         "title": "ScrapeRequest",
         "type": "object"

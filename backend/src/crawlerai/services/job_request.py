@@ -3,7 +3,7 @@ the playground and the SDKs read it typed and a renamed member fails here rather
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -49,7 +49,10 @@ class StoredExtract(_Stored):
 StoredJobRequest = Annotated[
     StoredScrape | StoredBatchScrape | StoredMap | StoredCrawl | StoredExtract, Field(discriminator="kind")
 ]
-_STORED: TypeAdapter[StoredJobRequest] = TypeAdapter(StoredJobRequest)
+
+
+class _AnyStored(RootModel[StoredJobRequest]):
+    pass
 
 
 async def job_request(conn: AsyncConnection, job_id: JobId) -> StoredJobRequest:
@@ -60,4 +63,4 @@ async def job_request(conn: AsyncConnection, job_id: JobId) -> StoredJobRequest:
         raise JobNotFound(f"no job {job_id}")
     if job.kind == "learn":
         raise JobNotFound(f"job {job_id} is a learn job: it was not submitted with a request")
-    return _STORED.validate_python({"kind": job.kind, "request": job.request})
+    return _AnyStored.model_validate({"kind": job.kind, "request": job.request}).root

@@ -490,9 +490,8 @@ def _as_batch(scrape: ScrapeRequest) -> BatchScrapeRequest:
     """The batch of a scrape's one URL, with its formats, schema, page kind, fetch, locale, budget and `render`."""
     if scrape.browser_actions is not None:
         raise Unschedulable("browser actions run in a scrape answered while the caller waits, not on a schedule")
-    # A `render` the caller left out stays out, so the batch inherits its surface's render mode (`stored_request`).
-    included = _BATCH_MEMBERS if "render" in scrape.model_fields_set else _BATCH_MEMBERS - {"render"}
-    members = scrape.model_dump(by_alias=True, include=included, exclude_none=True)
+    # A `render` the caller left out stays out, so the batch inherits its surface's render mode (`RendersFields`).
+    members = scrape.model_dump(by_alias=True, include=_BATCH_MEMBERS, exclude_none=True)
     try:
         return BatchScrapeRequest.model_validate({"urls": [scrape.url], **members})
     except ValidationError as e:

@@ -42,6 +42,7 @@ from crawlerai.services.scrape_request import (
     RENDER_DESCRIPTION,
     PageFormat,
     RenderOptions,
+    RendersFields,
     SchemaById,
     SchemaFields,
     SchemaInline,
@@ -52,7 +53,7 @@ from crawlerai.services.scrape_request import (
 from crawlerai.services.webhook_options import WebhookOptions
 
 
-class CrawlRequest(WebhookOptions):
+class CrawlRequest(WebhookOptions, RendersFields):
     """The body of `POST /v1/crawl`. The formats, `schema`, `fetch` and `locale` are a batch's, for every
         page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is
         drafted

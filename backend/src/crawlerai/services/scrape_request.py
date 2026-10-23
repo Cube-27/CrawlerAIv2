@@ -5,7 +5,7 @@ and the request as a job row stores it.
 
 from typing import Any, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, field_validator, model_serializer
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.content.chunks import ChunkOptions
@@ -53,6 +53,27 @@ class RenderOptions(Input):
 
     mode: RenderMode = "off"
     fields: list[Name] = Field(default_factory=list, max_length=MAX_RENDER_FIELDS)
+
+
+def _render_not_required(schema: dict[str, Any]) -> None:
+    required = schema.get("required")
+    if isinstance(required, list) and "render" in required:
+        required.remove("render")
+
+
+class RendersFields(Input):
+    """A request with a `render` member. One the caller left out is left out of the request's dump too, so the job
+    stored with it inherits its surface's render mode and reads it back absent; it is never required in the schema."""
+
+    model_config = ConfigDict(json_schema_extra=_render_not_required)
+
+    # Unannotated: pydantic takes a serializer's return annotation as the model's serialization schema.
+    @model_serializer(mode="wrap")
+    def _render_as_given(self, handler: SerializerFunctionWrapHandler):  # type: ignore[no-untyped-def]
+        dumped = handler(self)
+        if "render" not in self.model_fields_set:
+            dumped.pop("render", None)
+        return dumped
 
 
 def absolute_http_url(url: str) -> str:
@@ -174,11 +195,8 @@ async def _stated_schema(
 
 
 def stored_request(request: BaseModel, context: dict[str, object] | None = None) -> dict[str, Any]:
-    """`request` as a job row stores it; a `render` member the caller left out is left out, so the job inherits the
-    surface's render mode."""
+    """`request` as a job row stores it (a `render` the caller left out stays out: `RendersFields`)."""
     stored: dict[str, Any] = request.model_dump(mode="json", by_alias=True, context=context)
-    if "render" in type(request).model_fields and "render" not in request.model_fields_set:
-        stored.pop("render", None)
     return stored
 
 

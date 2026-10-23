@@ -54,6 +54,7 @@ from crawlerai.services.scrape_request import (
     RENDER_DESCRIPTION,
     PageFormat,
     RenderOptions,
+    RendersFields,
     SchemaById,
     SchemaFields,
     SchemaInline,
@@ -68,7 +69,7 @@ from crawlerai.services.webhook_options import WebhookOptions
 MAX_URLS: Final = 1000
 
 
-class BatchScrapeRequest(WebhookOptions):
+class BatchScrapeRequest(WebhookOptions, RendersFields):
     """The body of `POST /v1/batch/scrape`. The formats, `schema`, `page_kind`, `fetch` and `locale` are a
     scrape's, for every URL. A batch's results are either records or page outputs, so `records` is
     asked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),

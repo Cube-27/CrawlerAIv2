@@ -226,9 +226,8 @@ function row(type: ActionType, mode: ActionMode, value = "", typed = ""): Action
 
 function storedWait(action: Extract<StoredAction, { type: "wait" }>): ActionRow {
   if (action.network_idle) return row("wait", "network_idle");
-  return action.selector === null
-    ? row("wait", "ms", action.ms === null ? "" : String(action.ms))
-    : row("wait", "selector", action.selector);
+  if (action.selector !== null) return row("wait", "selector", action.selector);
+  return row("wait", "ms", action.ms === null ? "" : String(action.ms));
 }
 
 /** A stored step as the actions editor shows it; a step on an `xpath` shows as the selector modes do. */

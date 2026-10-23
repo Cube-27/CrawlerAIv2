@@ -1078,7 +1078,7 @@ export interface components {
              *       "mode": "off"
              *     }
              */
-            render: components["schemas"]["RenderOptions-Output"];
+            render?: components["schemas"]["RenderOptions-Output"];
             /** Schema */
             schema: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline-Output"] | components["schemas"]["SchemaFields"] | null;
             /** Urls */
@@ -1584,7 +1584,7 @@ export interface components {
              *       "mode": "off"
              *     }
              */
-            render: components["schemas"]["RenderOptions-Output"];
+            render?: components["schemas"]["RenderOptions-Output"];
             /** Schema */
             schema: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline-Output"] | components["schemas"]["SchemaFields"] | null;
             /**
@@ -3755,7 +3755,7 @@ export interface components {
              *       "mode": "off"
              *     }
              */
-            render: components["schemas"]["RenderOptions-Output"];
+            render?: components["schemas"]["RenderOptions-Output"];
             /** Schema */
             schema: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline-Output"] | components["schemas"]["SchemaPrompt"] | components["schemas"]["SchemaFields"] | null;
             /**

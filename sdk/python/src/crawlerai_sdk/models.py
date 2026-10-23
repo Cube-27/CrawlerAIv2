@@ -1844,11 +1844,11 @@ class ScrapeRequestOutput(BaseModel):
     ] = None
     page_kind: Annotated[PageKind | None, Field(title="Page Kind")] = None
     render: Annotated[
-        RenderOptionsOutput,
+        RenderOptionsOutput | None,
         Field(
             description="How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
         ),
-    ]
+    ] = {"fields": [], "mode": "off"}
     schema_: Annotated[
         SchemaById | SchemaInlineOutput | SchemaPrompt | SchemaFields | None,
         Field(alias="schema", title="Schema"),
@@ -2002,11 +2002,11 @@ class BatchScrapeRequestOutput(BaseModel):
     ] = None
     page_kind: Annotated[PageKind | None, Field(title="Page Kind")] = None
     render: Annotated[
-        RenderOptionsOutput,
+        RenderOptionsOutput | None,
         Field(
             description="How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
         ),
-    ]
+    ] = {"fields": [], "mode": "off"}
     schema_: Annotated[
         SchemaById | SchemaInlineOutput | SchemaFields | None,
         Field(alias="schema", title="Schema"),
@@ -2124,11 +2124,11 @@ class CrawlRequestOutput(BaseModel):
     page_kind_rules: Annotated[list[PageKindRule], Field(title="Page Kind Rules")]
     query: Annotated[Query | None, Field(title="Query")] = None
     render: Annotated[
-        RenderOptionsOutput,
+        RenderOptionsOutput | None,
         Field(
             description="How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
         ),
-    ]
+    ] = {"fields": [], "mode": "off"}
     schema_: Annotated[
         SchemaById | SchemaInlineOutput | SchemaFields | None,
         Field(alias="schema", title="Schema"),
