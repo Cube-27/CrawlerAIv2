@@ -11,9 +11,10 @@ orchestrator made for your PR (`orchestrator.md`), beside the main clone in `../
    whole suite. CI runs everything.
 2. **No example-test bloat.** Add a test only for a behaviour nothing else covers, and delete tests your change makes
    redundant.
-3. **Ready means `tools/orchestrator/pr_ready.sh <n>` printed `READY TO MERGE`.** Run it in the background after each
-   push; it waits for CI and CodeAnt itself. CI or a bot still running is never a reason to end your turn or report
-   `BLOCKED`.
+3. **Ready means `tools/orchestrator/pr_ready.sh <n>` printed `READY TO MERGE`.** Run it after each push with
+   `run_in_background`; it waits for CI and CodeAnt itself and wakes you once, when it exits. Never wait with the
+   Monitor tool, a `/loop`, `sleep` polls or reads of its output file: each wake re-sends your whole context. CI or a
+   bot still running is never a reason to end your turn or report `BLOCKED`.
 4. **Batch your pushes.** Push the PR once, then all review fixes together as one commit per round.
 5. **Don't merge `main` into your branch until the orchestrator says you are next to merge.** Never rebase.
 6. Builders never merge, never push to `main`, never force-push. Never ask a bot to re-review, in any form.

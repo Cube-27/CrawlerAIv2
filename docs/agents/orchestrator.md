@@ -71,7 +71,9 @@ r12 (17 PRs of about 450 changed lines), that cost (about 20 minutes) outweighed
 4. Watch every builder with one background watcher, re-armed after each event:
    `bash tools/orchestrator/watch_agents.sh <id> <id>` (run_in_background). It exits with the builder's new
    `READY TO MERGE` / `BLOCKED` line, `BLOCKED-DIALOG <id>` (read it; ask the owner before answering anything that
-   isn't routine) or `GONE <id>`. Never one wait per agent.
+   isn't routine) or `GONE <id>`. Never one wait per agent, and never the Monitor tool, a `/loop` or `sleep` polls
+   to watch: the watcher costs no tokens while it runs and wakes you once per event, while each Monitor line or loop
+   tick is a full-context turn.
 5. Every later prompt to a builder (send-back, update, "continue") ends with the standing line: "builder-protocol.md
    HARD RULES apply; end with READY TO MERGE #<n> <sha7> or BLOCKED #<n>: <reason>." A builder that reports
    `BLOCKED` because CI or a bot is still running broke HARD RULE 3: tell it to run `pr_ready.sh` and wait.
