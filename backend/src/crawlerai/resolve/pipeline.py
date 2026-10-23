@@ -233,10 +233,9 @@ async def extract_page(
             except Exception:
                 log.exception(_FAILED)
                 return _result("error", mode, candidates=candidates, llm_calls=llm_calls, diagnostics=diagnostics)
-        if reply.failure is not None:
-            fields = _unanswered(fields, missing, reply.failure)
-        fields = _unanswered(fields, reply.unverified, UNVERIFIED)
-    fields = _unpublished_reasons(source, _absent(fields, page.config.absent))
+        fields = _finish(source, page.config.absent, fields, reply, missing)
+    else:
+        fields = _finish(source, page.config.absent, fields)
     return ExtractionResult(
         outcome="extracted" if is_complete(schema, fields) else "partial",
         entity=fields,
@@ -583,18 +582,21 @@ class _Listing:
             return ()
         return block_texts(self.page.page, self.blocks, lacking)
 
-    def with_reply(self, reply: ListingGapReply, asked: tuple[str, ...]) -> "_Listing":
+    def with_reply(self, reply: ListingGapReply) -> "_Listing":
         """The listing with role C's candidates, owned by the blocks' rows and the page entity: the rows and the page
         fields resolve again with them."""
         candidates = (*self.candidates, *reply.candidates)
         fields, rows = self.page.resolve_listing(candidates, self.entities)
-        if reply.failure is not None:
-            fields = _unanswered(fields, asked, reply.failure)
-        fields = _unanswered(fields, reply.unverified, UNVERIFIED)
         diagnostics = (*self.diagnostics, *reply.diagnostics)
         return replace(
             self, fields=fields, rows=rows, candidates=candidates, diagnostics=diagnostics, llm_calls=reply.llm_calls
         )
+
+    def finished(self, source: _Source, reply: GapReply | None = None, asked: tuple[str, ...] = ()) -> "_Listing":
+        """The listing with `_finish` run on its page fields and on each of its rows."""
+        absent = self.page.config.absent
+        fields = _finish(source, absent, self.fields, reply, asked)
+        return replace(self, fields=fields, rows=tuple(_finish(source, absent, row) for row in self.rows))
 
     def _records(self) -> list[FieldSet]:
         # Each row's record holds the page's fields too (`resolve.records.assemble_listing`).
@@ -630,16 +632,17 @@ async def _extract_listing(source: _Source, role_c: RoleC | None, mode: Extracti
     except Exception:  # §4.14, as for a detail page
         log.exception(_FAILED)
         return _result("error", mode)
-    if role_c is not None and (request := await asyncio.to_thread(listing.gap)) is not None:
-        reply = await role_c.listing(request)
-        try:
-            listing = await asyncio.to_thread(listing.with_reply, reply, request.page_missing)
-        except Exception:
-            log.exception(_FAILED)
-            candidates = (*listing.candidates, *reply.candidates)
-            diagnostics = (*listing.diagnostics, *reply.diagnostics)
-            return _result("error", mode, candidates=candidates, llm_calls=reply.llm_calls, diagnostics=diagnostics)
-    return listing.result(mode)
+    if role_c is None or (request := await asyncio.to_thread(listing.gap)) is None:
+        return listing.finished(source).result(mode)
+    reply = await role_c.listing(request)
+    try:
+        listing = await asyncio.to_thread(listing.with_reply, reply)
+    except Exception:
+        log.exception(_FAILED)
+        candidates = (*listing.candidates, *reply.candidates)
+        diagnostics = (*listing.diagnostics, *reply.diagnostics)
+        return _result("error", mode, candidates=candidates, llm_calls=reply.llm_calls, diagnostics=diagnostics)
+    return listing.finished(source, reply, request.page_missing).result(mode)
 
 
 def _holder(graph: EntityGraph, candidate: Candidate) -> str:
@@ -697,6 +700,25 @@ def _askable(schema: SchemaDef, row_fields: Sequence[str]) -> list[str]:
 
 def _holds_objects(spec: FieldSpec) -> bool:
     return spec.type is FieldType.OBJECT or (spec.item is not None and spec.item.type is FieldType.OBJECT)
+
+
+def _finish(
+    source: _Source,
+    absent: frozenset[str],
+    fields: FieldSet,
+    reply: GapReply | None = None,
+    asked: tuple[str, ...] = (),
+) -> FieldSet:
+    """The one stage after resolution, run on a detail page's fields, a listing's page fields and each listing row:
+    every unpublished field's reason, in order role C's (`_unanswered`, with `reply`, the call that asked `asked`), the
+    config's (`_absent`), then the page's own evidence (`_unpublished_reasons`). Role C's reasons are never a row's:
+    a listing's reply names the page fields' failure and unverified fields only (`ListingGapReply`), so rows pass no
+    `reply`. A reason stage added here applies to all three."""
+    if reply is not None:
+        if reply.failure is not None:
+            fields = _unanswered(fields, asked, reply.failure)
+        fields = _unanswered(fields, reply.unverified, UNVERIFIED)
+    return _unpublished_reasons(source, _absent(fields, absent))
 
 
 def _absent(fields: FieldSet, absent: frozenset[str]) -> FieldSet:

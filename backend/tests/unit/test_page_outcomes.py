@@ -186,3 +186,42 @@ def test_a_field_the_outcome_explains_is_not_left_to_a_render() -> None:
     statuses = _statuses(_fetched("http", _product("OutOfStock")), config)
     assert statuses["price"] == ("missing", "out_of_stock")
     assert statuses["size"] == ("interaction_required", "render_bound")
+
+
+LISTING = SCHEMA.model_copy(
+    update={
+        "page_kind": "listing",
+        "fields": {
+            **{name: spec.model_copy(update={"scope": "row"}) for name, spec in SCHEMA.fields.items()},
+            "url": FieldSpec(type=FieldType.URL, description="d", scope="row", schema_org="Product.url"),
+        },
+    }
+)
+
+
+def _listing(*availabilities: str) -> str:
+    items = [
+        {
+            "@type": "ListItem",
+            "position": i + 1,
+            "item": {
+                "@type": "Product",
+                "name": f"Widget {i}",
+                "url": f"https://shop.example.test/p/{i}",
+                "offers": {"@type": "Offer", "availability": f"https://schema.org/{availability}"},
+            },
+        }
+        for i, availability in enumerate(availabilities)
+    ]
+    node = {"@context": "https://schema.org", "@type": "ItemList", "itemListElement": items}
+    return f'<html lang="en"><head><script type="application/ld+json">{json.dumps(node)}</script></head></html>'
+
+
+def test_a_listing_row_gets_the_reasons_a_detail_page_gets() -> None:
+    result = _fetched("http", _listing("OutOfStock", "InStock"))
+    extracted = asyncio.run(extract_page(result.bundle, LISTING, SIZE_IN_BROWSER, None, data=DATA))
+    rows = [{name: (row[name].status, row[name].reason) for name in ("price", "size")} for row in extracted.rows]
+    assert rows == [
+        {"price": ("missing", "out_of_stock"), "size": ("interaction_required", "render_bound")},
+        {"price": ("missing", "no_candidates"), "size": ("interaction_required", "render_bound")},
+    ]
