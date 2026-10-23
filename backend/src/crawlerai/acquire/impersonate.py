@@ -2,13 +2,13 @@
 a site that sees both rungs, and the cookies one hands the other, sees one browser on one platform.
 
 At startup the browser rung's Chrome is started once, loading no site, to read the headers that name it on a navigation
-(`browser_session.browser_identity`: its user agent as its profiles send it, its client hints, `Accept` and
-`Accept-Language`). The rungs send those in place of their impersonation's own, and impersonate curl_cffi's Chrome
-profile nearest its major for the TLS and HTTP/2 handshake, with a warning when none matches it exactly. A target the
-operator sets (`CRAWLERAI_IMPERSONATE`) is kept with its own headers and starts no browser. A process that runs the
-browser rung does not start when that Chrome cannot be read (`BrowserUnread`): its HTTP rung would name another browser
-than its renders. A process without it (`crawlerai fetch` over HTTP) keeps the default target's own headers, with a
-warning.
+(`browser_session.browser_identity`, in the browser rung's mode: its user agent as its profiles send it, its client
+hints, `Accept` and `Accept-Language`). The rungs send those in place of their impersonation's own, and impersonate
+curl_cffi's Chrome profile nearest its major for the TLS and HTTP/2 handshake, with a warning when none matches it
+exactly. A target the operator sets (`CRAWLERAI_IMPERSONATE`) is kept with its own headers and starts no browser. A
+process that runs the browser rung does not start when that Chrome cannot be read (`BrowserUnread`): its HTTP rung would
+name another browser than its renders. A process without it (`crawlerai fetch` over HTTP) keeps the default target's own
+headers, with a warning.
 """
 
 import logging
@@ -18,9 +18,8 @@ from typing import Final, cast, get_args
 
 from curl_cffi.requests import BrowserTypeLiteral
 from patchright.async_api import Error as PlaywrightError
-from patchright.async_api import async_playwright
 
-from crawlerai.acquire.browser_session import browser_identity
+from crawlerai.acquire.browser_session import browser_identity, open_driver
 from crawlerai.core.settings import AcquireSettings
 from crawlerai.storage.capture_bundle import HeaderList
 
@@ -55,7 +54,7 @@ async def rung_impersonation(settings: AcquireSettings, *, browser_rung: bool) -
     if _IMPERSONATE in settings.model_fields_set:
         return Impersonation(configured)
     try:
-        headers = await _read_headers()
+        headers = await _read_headers(settings.browser_headless)
     except (PlaywrightError, OSError) as e:  # the driver or the browser could not be started
         return _unread("did not start", configured, browser_rung, e)
     agent = next((value for name, value in headers if name == "user-agent"), "")
@@ -79,9 +78,9 @@ def _unread(
     return Impersonation(configured)
 
 
-async def _read_headers() -> HeaderList:
-    async with async_playwright() as playwright:
-        return (await browser_identity(playwright)).headers
+async def _read_headers(headless: bool) -> HeaderList:
+    async with open_driver(headless) as playwright:
+        return (await browser_identity(playwright, headless=headless)).headers
 
 
 def nearest_target(major: int) -> BrowserTypeLiteral:

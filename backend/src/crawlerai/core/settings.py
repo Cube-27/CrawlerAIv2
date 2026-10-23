@@ -63,6 +63,11 @@ class AcquireSettings(_Base):
     # (`acquire.browser_profiles`); deleting it resets them. Each profile holds its site's cookies in plaintext, so
     # the directory is the operator's to protect. Unset: each profile lasts only while its browser is open.
     browser_profiles: Path | None = None
+    # `CRAWLERAI_BROWSER_HEADLESS`: the browser rung's mode (`acquire.browser_session`). True: headless, presenting the
+    # browser's own identity with its headless token renamed, on its site profile's screen. False: headful, a browser
+    # window as the Patchright README's best practice runs it; on Linux with no display, on a virtual one
+    # (`acquire.display`, Xvfb).
+    browser_headless: bool = True
 
     @property
     def direct(self) -> ExitPlace:

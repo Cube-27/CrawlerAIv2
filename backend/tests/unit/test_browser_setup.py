@@ -1,7 +1,8 @@
 """The browser rung runs Patchright's documented setup:
-Google Chrome stable in headless mode, in a persistent profile, with its own user agent with only its headless token
-renamed and the window and screen of its site as its launch arguments, the WebRTC policy the
-guard needs in the profile's preferences, and no client hints or headers but its own. The context's zone is the exit's
+Google Chrome stable in a persistent profile, with the WebRTC policy the guard needs in the profile's preferences, and
+no client hints or headers but its own. Headless (the default), its own user agent with only its headless token renamed
+and the window and screen of its site are its launch arguments, and its identity is set on its workers; headful, the
+Patchright README's best practice, nothing of ours, on a display. The context's zone is the exit's
 declared zone, else its country's, else the request locale's region's; its locale the request's, else the exit's. A
 fake Playwright records what `open_browser` and `fetch_browser` ask for; no browser runs (what the real probe reads,
 and what pages present on the wire: `test_browser_fetch.py`).
@@ -35,6 +36,8 @@ _SRC = Path(crawlerai.__file__).parent
 
 class _Recorder:
     def __init__(self) -> None:
+        self.displays = 0
+        self.overrides: list[str] = []
         self.launch: dict[str, Any] = {}
         self.probe: dict[str, Any] = {}
         self.probes = 0
@@ -43,7 +46,8 @@ class _Recorder:
 
 
 class _Stop(Exception):
-    """Raised where the fake stops: only the launch and context options are under test."""
+    """Raised where the fake stops, at the first page event a fetch listens to: only the launch and context options and
+    the identity set on the tab are under test."""
 
 
 class _Session:
@@ -55,18 +59,40 @@ class _Session:
 
 
 class _ContextBrowser:
+    def __init__(self, recorder: _Recorder) -> None:
+        self._recorder = recorder
+
     async def new_browser_cdp_session(self) -> _Session:
+        self._recorder.overrides.append("workers")
         return _Session()
 
 
+class _Tab:
+    def __init__(self, context: "_Context") -> None:
+        self.context = context
+        self.page = self  # `_override` takes a target that is no `Page` for a frame, and its page from it
+
+    def on(self, _event: str, _handler: object) -> None:
+        raise _Stop
+
+    async def close(self) -> None:
+        return None
+
+
 class _Context:
-    browser = _ContextBrowser()
+    def __init__(self, recorder: _Recorder) -> None:
+        self._recorder = recorder
+        self.browser = _ContextBrowser(recorder)
 
     def on(self, _event: str, _handler: object) -> None:
         return None
 
-    async def new_page(self) -> object:
-        raise _Stop
+    async def new_page(self) -> _Tab:
+        return _Tab(self)
+
+    async def new_cdp_session(self, _target: object) -> _Session:
+        self._recorder.overrides.append("tab")
+        return _Session()
 
     async def close(self) -> None:
         return None
@@ -130,7 +156,7 @@ class _Chromium:
     async def launch_persistent_context(self, user_data_dir: Path, **options: Any) -> _Context:
         self._recorder.launch = options
         self._recorder.preferences = json.loads((user_data_dir / "Default" / "Preferences").read_text())
-        return _Context()
+        return _Context(self._recorder)
 
 
 class _Playwright:
@@ -151,13 +177,17 @@ def recorder(monkeypatch: pytest.MonkeyPatch) -> _Recorder:
     async def fake_playwright() -> Any:
         yield _Playwright(recorded)
 
+    def display() -> None:
+        recorded.displays += 1
+
     monkeypatch.setattr(browser_session, "async_playwright", fake_playwright)
-    monkeypatch.setattr(browser_session, "_IDENTITY", {})  # the identity is read once per process
+    monkeypatch.setattr(browser_session, "ensure_display", display)
+    monkeypatch.setattr(browser_session, "_IDENTITY", {})  # the identity is read once per process and mode
     return recorded
 
 
-async def _fetch_once(locale: str | None = None, direct: ExitPlace = UNDECLARED) -> None:
-    async with open_browser(direct=direct) as session:
+async def _fetch_once(locale: str | None = None, direct: ExitPlace = UNDECLARED, *, headless: bool = True) -> None:
+    async with open_browser(direct=direct, headless=headless) as session:
         assert isinstance(session, BrowserSession)
         await fetch_browser(
             "http://shop.example.test/item",
@@ -168,32 +198,45 @@ async def _fetch_once(locale: str | None = None, direct: ExitPlace = UNDECLARED)
         )
 
 
-def test_inv42_inv43_chrome_headless_in_a_profile_with_the_guards_webrtc_policy(recorder: _Recorder) -> None:
-    fetching = _fetch_once()
-    with pytest.raises(_Stop):
-        asyncio.run(fetching)
-
-    # `chrome` is Google Chrome stable (`patchright install chrome`), Patchright's recommended build; its launch
-    # arguments are its user agent and the window and screen of the site's profile; WebRTC's proxy policy, which the
-    # SSRF guard needs, is a profile preference.
-    assert {k: v for k, v in recorder.launch.items() if k != "proxy"} == {
-        "channel": "chrome",
+# Headless: its user agent and the window and screen of the site's profile as launch arguments. Headful: the Patchright
+# README's best practice, no argument of ours.
+_MODES: dict[bool, dict[str, object]] = {
+    True: {
         "headless": True,
-        "no_viewport": True,
         "args": [
             "--user-agent=" + _OWN_UA.replace("HeadlessChrome/", "Chrome/"),
             *desktop_screen(profile_name("example.test", None, None)).launch_args(),
         ],
-        "accept_downloads": False,
-    }
-    # The browser started to read its headers is the same build, loads no site and sends nothing around the guard.
-    # It goes only to a listener of this process on 127.0.0.1, the one address its proxy bypasses.
-    proxy = {"server": "socks5://127.0.0.1:9", "bypass": "127.0.0.1"}
-    assert recorder.probe == {"channel": "chrome", "headless": True, "proxy": proxy}
-    assert [urlsplit(url).hostname for url in recorder.navigated] == ["127.0.0.1"]
-    # Read once per process: a session opened again (a restart) starts no second browser.
+    },
+    False: {"headless": False},
+}
+
+
+@pytest.mark.parametrize("headless", [True, False], ids=["headless", "headful"])
+def test_inv42_inv43_chrome_in_a_profile_with_the_guards_webrtc_policy_in_each_mode(
+    recorder: _Recorder, headless: bool
+) -> None:
+    fetching = _fetch_once(headless=headless)
     with pytest.raises(_Stop):
-        asyncio.run(_fetch_once())
+        asyncio.run(fetching)
+
+    # `chrome` is Google Chrome stable (`patchright install chrome`), Patchright's recommended build, in the mode's
+    # launch options; WebRTC's proxy policy, which the SSRF guard needs, is a profile preference.
+    recorder_launch = {k: v for k, v in recorder.launch.items() if k != "proxy"}
+    launch_expected = {"channel": "chrome", "no_viewport": True, "accept_downloads": False, **_MODES[headless]}
+    assert recorder_launch == launch_expected
+    # Headless, the browser's identity is set on its workers and its tab; headful, nothing is set, on a display.
+    set_on = (recorder.overrides, recorder.displays)
+    set_expected = (["workers", "tab"], 0) if headless else ([], 1)
+    assert set_on == set_expected
+    # The browser started to read its headers is the same build in the same mode, loads no site and sends nothing
+    # around the guard. It goes only to a listener of this process on 127.0.0.1, the one address its proxy bypasses.
+    proxy = {"server": "socks5://127.0.0.1:9", "bypass": "127.0.0.1"}
+    assert recorder.probe == {"channel": "chrome", "headless": headless, "proxy": proxy}
+    assert [urlsplit(url).hostname for url in recorder.navigated] == ["127.0.0.1"]
+    # Read once per process and mode: a session opened again (a restart) starts no second browser.
+    with pytest.raises(_Stop):
+        asyncio.run(_fetch_once(headless=headless))
     assert recorder.probes == 1
     assert recorder.preferences["webrtc"] == {
         "ip_handling_policy": "disable_non_proxied_udp",

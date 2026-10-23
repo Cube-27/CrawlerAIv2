@@ -124,16 +124,26 @@ async def _schedule() -> None:
 
 
 async def _fetch(
-    url: str, out: Path, connector: SafeConnector | None = None, options: FetchOptions | None = None
+    url: str,
+    out: Path,
+    connector: SafeConnector | None = None,
+    options: FetchOptions | None = None,
+    *,
+    headful: bool = False,
 ) -> None:
     """Fetch `url` into a bundle at `out`: over HTTP, or in the browser when `options` ask for it or for page steps,
-    with the caller's request context and proxy pool."""
+    with the caller's request context and proxy pool; `headful` runs the browser headful whatever
+    `CRAWLERAI_BROWSER_HEADLESS` says."""
     settings = AcquireSettings()
+    if headful:
+        settings = settings.model_copy(update={"browser_headless": False})
     options = options or FetchOptions()
     policy = fetch_policy(options, None)
     check_exits(settings.proxy_pools, settings.direct)
     if options.in_browser:
-        async with open_browser(settings.browser_profiles, settings.direct) as session:
+        async with open_browser(
+            settings.browser_profiles, settings.direct, headless=settings.browser_headless
+        ) as session:
             result = await fetch_browser(
                 url,
                 policy,
@@ -270,6 +280,9 @@ def _parser() -> argparse.ArgumentParser:
         "--out", type=Path, required=True, help="the bundle file to write (zstd-compressed tar), under this directory"
     )
     _add_fetch_options(fetch)
+    fetch.add_argument(
+        "--headful", action="store_true", help="run the browser headful (CRAWLERAI_BROWSER_HEADLESS=false), this once"
+    )
     schemas = commands.add_parser("schemas", help="schema definitions").add_subparsers(
         dest="schemas_command", required=True
     )
@@ -355,7 +368,7 @@ def _run_fetch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> Non
         check_proxy_pool(options, AcquireSettings().proxy_pools)
     except UnknownProxyPool as e:
         parser.error(str(e))
-    asyncio.run(_fetch(args.url, out, options=options))
+    asyncio.run(_fetch(args.url, out, options=options, headful=args.headful))
 
 
 def _add_fetch_options(fetch: argparse.ArgumentParser) -> None:

@@ -45,7 +45,7 @@ def _hermetic_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(impersonate, "_read_headers", _no_browser)
 
 
-async def _no_browser() -> HeaderList:
+async def _no_browser(_headless: bool) -> HeaderList:
     return STAND_IN_BROWSER
 
 
