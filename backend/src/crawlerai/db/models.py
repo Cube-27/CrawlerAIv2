@@ -360,12 +360,14 @@ class ExtractionConfig(Base):
         CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
         CheckConstraint(one_of("status", ConfigStatus), name="status"),
         CheckConstraint(one_of("origin", ConfigOrigin), name="origin"),
-        # One `active` config per (site, schema, page_kind).
+        # One `active` config per (site, schema, page_kind) and pattern shape: the learned config (`''`) and each
+        # custom recipe's pattern set.
         Index(
             "uq_extraction_config_active",
             "site_id",
             "schema_id",
             "page_kind",
+            "pattern_shape",
             unique=True,
             postgresql_where=text("status = 'active'"),
         ),
@@ -383,6 +385,10 @@ class ExtractionConfig(Base):
     validation_report: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     # Per field, `[matched, valid]` for each of the last pages the config ran on.
     drift_window: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=empty_object_default())
+    # A custom recipe's URL patterns (`ir.patterns`) and their shape (`url_pattern.patterns_shape`); `[]` and `''`
+    # for a learned config.
+    patterns: Mapped[list[str]] = mapped_column(JSONB, server_default=empty_array_default())
+    pattern_shape: Mapped[str] = mapped_column(Text, server_default=text("''"))
 
 
 class ProgressiveState(Base):

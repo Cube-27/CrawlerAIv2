@@ -70,6 +70,14 @@ drift (`activation.py`, `drift.py`), operator corrections (`corrections.py`), AP
 (`executor.py`, `release_executor.py`, which shares no code with the engine). Configs keep selectors and cookies, never
 values. Learn jobs: `learn_job.py` (the job's lifecycle around the pipeline) and `worker/learn.py`.
 
+Custom recipes (`custom_recipe.py`) are `operator` configs an engineer saves through `POST /v1/sites/{host}/configs`
+(edits: `PUT /v1/configs/{id}/recipe`): a main call, extra calls, an optional warm-up and page fields, serving the URLs
+their patterns match (`url_pattern.py`: host and path template, `{name}`, `*`, trailing `**`, `?key={name}`). A scope
+(site, schema, page kind) holds one active learned config and any number of active recipes, one per pattern shape
+(`extraction_config.pattern_shape`, `''` for the learned one); saving a recipe changes no other row, and the
+progressive state names the learned config only. Selection (`active.py`): the recipe whose pattern matches the URL
+most specifically, else the learned config; a job pins every active config of a host and picks per URL.
+
 ## Jobs and data
 
 `db/models.py` is the schema (one baseline migration in `backend/migrations/`). Crawl frontier: `crawl/frontier.py`;

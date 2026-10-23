@@ -141,6 +141,7 @@ def test_a_listing_s_paged_calls_become_a_listing_recipe_validated_on_two_pages(
     assert (recipe.method, recipe.url, recipe.params_from_url) == ("GET", f"{API}?cat={{p1}}&page=1", {"p1": "path:1"})
     assert recipe.pagination == ParamPagination(kind="param", where="query", name="page", start=1, step=1, rows=ROWS)
     assert recipe.map == {"title": "$['name']", "price": "$['cost']+$['cur']"}
+    assert recipe.proof is not None
     assert recipe.proof.validated_on == [_capture(5), _capture(6), _capture(7)]
     assert learned.report.fields == {name: RecipeFieldReport(published=3, reproduced=3) for name in ("title", "price")}
     # Each page is replayed for its first two pages: the five samples to prove the headers, then the held-out three.
@@ -162,6 +163,7 @@ def test_role_d_binds_an_ambiguous_listing_request_and_the_pagination_joins_its_
     learned, _, _ = _learn(scripted_api, [_page(n, numbered=True) for n in range(8)], client=client)
 
     assert learned.recipe is not None, learned.report
+    assert learned.recipe.proof is not None
     assert learned.recipe.proof.bound_by == "role_d"
     assert learned.recipe.pagination == ParamPagination(
         kind="param", where="query", name="page", start=1, step=1, rows=ROWS

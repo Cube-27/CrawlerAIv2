@@ -1,9 +1,13 @@
-"""The configs service: a site's configs, operator corrections, forced
+"""The configs service: a site's configs, operator corrections, custom recipes, forced
 learning and exports, over a connection.
 
 A correction is applied to the latest version of its (site, schema, page kind), so an edit never silently
 drops a version someone else added, and the result is always stored as the next version: validated on the site's
 held-out pages and active when validation keeps it, else a `draft` whose report says why not.
+
+A custom recipe (`config_ir.custom_recipe`) is saved as its scope's next version, active at once beside the learned
+config, which stays active; an edit is the next version replacing the recipe, made from its shape's latest version.
+Saving needs no validation, approval or audit: the engineer tested the recipe.
 
 An export carries the release check run on the pages the config was validated on
 (`provenance.validated_on`) that are still stored; a field with no engine value left on any of them is `manual`.
@@ -14,16 +18,26 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import RowMapping, func, select
+from sqlalchemy import RowMapping, Text, column, func, select
+from sqlalchemy.dialects.postgresql import JSONB, aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir import corrections
-from crawlerai.config_ir.activation import NotPending, approve, reject, store_correction
+from crawlerai.config_ir.activation import (
+    NotActive,
+    NotPending,
+    ShapeTaken,
+    approve,
+    reject,
+    store_correction,
+    store_recipe,
+)
 from crawlerai.config_ir.corrections import Correction
+from crawlerai.config_ir.custom_recipe import CustomRecipe, InvalidRecipe, recipe_ir
 from crawlerai.config_ir.exporters.configs import ConfigExport, ConfigFormat, export_config
 from crawlerai.config_ir.held_out import load_captures, load_held_out
-from crawlerai.config_ir.model import ExtractionConfigIR
+from crawlerai.config_ir.model import ExtractionConfigIR, SentBy
 from crawlerai.config_ir.progressive import LEARN_AFTER_PAGES, StateKey, lock_state, request_learning
 from crawlerai.config_ir.validation import ValidationReport, validate
 from crawlerai.core.engine_version import ENGINE_VERSION
@@ -61,6 +75,11 @@ class ConfigSummary(_Out):
     origin: ConfigOrigin
     field_status: dict[str, FieldStatus]
     validation_report: ValidationReport | None
+    # A custom recipe's URL patterns (`custom`), the fields only a render fills, and who sends its calls.
+    patterns: list[str]
+    custom: bool
+    renders: list[str]
+    sent_by: SentBy
 
 
 class ConfigDetail(ConfigSummary):
@@ -90,6 +109,13 @@ class ConfigConflict(Refusal):
     """The request is valid, but the stored configs or learning state don't allow it now."""
 
 
+# The page fields whose source is the browser's render, by name.
+_FIELD = func.jsonb_each(ExtractionConfig.ir["fields"]).table_valued(column("key", Text), column("value", JSONB))
+_RENDERS = (
+    select(func.coalesce(func.jsonb_agg(aggregate_order_by(_FIELD.c.key, _FIELD.c.key)), func.jsonb_build_array()))
+    .where(_FIELD.c.value["needs"].astext == "browser")
+    .scalar_subquery()
+)
 _COLUMNS = (
     ExtractionConfig.id,
     Site.host,
@@ -101,10 +127,14 @@ _COLUMNS = (
     ExtractionConfig.origin,
     ExtractionConfig.field_status,
     ExtractionConfig.validation_report,
+    ExtractionConfig.patterns,
+    (ExtractionConfig.pattern_shape != "").label("custom"),
+    _RENDERS.label("renders"),
+    func.coalesce(ExtractionConfig.ir["sent_by"].astext, "http").label("sent_by"),
 )
 # A list leaves out each version's IR, the largest column.
 _SUMMARIES = select(*_COLUMNS).join(Site, Site.id == ExtractionConfig.site_id)
-_DETAILS = _SUMMARIES.add_columns(ExtractionConfig.ir)
+_DETAILS = _SUMMARIES.add_columns(ExtractionConfig.ir, ExtractionConfig.pattern_shape)
 
 
 def _model[M: ConfigSummary](model: type[M], row: RowMapping) -> M:
@@ -135,9 +165,11 @@ async def correct(
     the site's held-out pages and store it as the next version; the new version. Raises `InvalidCorrection` when the
     correction does not fit the config."""
     row = await _row(conn, config_id)
+    if row["custom"]:
+        raise ConfigConflict(f"config {config_id} is a custom recipe: edit it with PUT /v1/configs/{config_id}/recipe")
     key = StateKey(row["site_id"], row["schema_id"], row["page_kind"])
     await lock_state(conn, key)
-    latest = await _latest_version(conn, key)
+    latest = await _latest_version(conn, key, "")
     if row["version"] != latest:
         raise ConfigConflict(f"config {config_id} is version {row['version']}; correct the latest, version {latest}")
     schema = await registry.get_by_id(conn, key.schema_id)
@@ -151,6 +183,44 @@ async def correct(
     # Both executors run on every page: CPU work, so a thread keeps the event loop serving meanwhile.
     validated = await asyncio.to_thread(validate, corrected, schema, held_out, vocabulary)
     return await get(conn, await store_correction(conn, key, corrected, validated, correction.operated()))
+
+
+async def create_recipe(conn: AsyncConnection, host: str, recipe: CustomRecipe) -> ConfigDetail:
+    """Save `recipe` as the site's next config version for its schema and page kind, active beside the learned
+    config. Raises `InvalidRecipe` when it does not fit the site or schema, and `ConfigConflict` when an active
+    recipe of the scope serves a URL pattern of the same shape."""
+    site_id = await _site_id(conn, host)
+    return await _save_recipe(conn, StateKey(site_id, recipe.schema_id, recipe.page_kind), host, recipe, None)
+
+
+async def edit_recipe(conn: AsyncConnection, config_id: ExtractionConfigId, recipe: CustomRecipe) -> ConfigDetail:
+    """Save `recipe` as the next version replacing the custom recipe `config_id`, which must be active and the latest
+    version of its pattern shape; raises like `create_recipe`, and `ConfigConflict` for a config that is not a custom
+    recipe, not active or not its shape's latest."""
+    row = await _row(conn, config_id)
+    if not row["custom"]:
+        raise ConfigConflict(f"config {config_id} is not a custom recipe: correct it with PUT /v1/configs/{config_id}")
+    if (recipe.schema_id, recipe.page_kind) != (row["schema_id"], row["page_kind"]):
+        raise InvalidRecipe([("schema_id", f"config {config_id} is for schema {row['schema_id']}, {row['page_kind']}")])
+    key = StateKey(row["site_id"], row["schema_id"], row["page_kind"])
+    await lock_state(conn, key)
+    latest = await _latest_version(conn, key, row["pattern_shape"])
+    if row["version"] != latest or row["status"] != "active":
+        # An edit suspends the recipe it replaces, whatever shape the new version has.
+        raise ConfigConflict(f"config {config_id} is {row['status']} version {row['version']}; edit the active latest")
+    return await _save_recipe(conn, key, row["host"], recipe, config_id)
+
+
+async def _save_recipe(
+    conn: AsyncConnection, key: StateKey, host: str, recipe: CustomRecipe, replaces: ExtractionConfigId | None
+) -> ConfigDetail:
+    schema = await registry.get_by_id(conn, key.schema_id)
+    ir = recipe_ir(recipe, host, schema, at=datetime.now(UTC), engine_version=ENGINE_VERSION)
+    try:
+        config_id = await store_recipe(conn, key, ir, replaces=replaces)
+    except (ShapeTaken, NotActive) as e:
+        raise ConfigConflict(str(e)) from e
+    return await get(conn, config_id)
 
 
 async def approve_config(conn: AsyncConnection, config_id: ExtractionConfigId) -> ConfigDetail:
@@ -220,7 +290,10 @@ async def _row(conn: AsyncConnection, config_id: ExtractionConfigId) -> RowMappi
     return row
 
 
-async def _latest_version(conn: AsyncConnection, key: StateKey) -> int:
-    query = select(func.max(ExtractionConfig.version)).where(*key.config_scope())
+async def _latest_version(conn: AsyncConnection, key: StateKey, pattern_shape: str) -> int:
+    """The latest version of `key`'s configs of one pattern shape (`''`: the learned config's)."""
+    query = select(func.max(ExtractionConfig.version)).where(
+        *key.config_scope(), ExtractionConfig.pattern_shape == pattern_shape
+    )
     version: int = (await conn.execute(query)).scalar_one()
     return version

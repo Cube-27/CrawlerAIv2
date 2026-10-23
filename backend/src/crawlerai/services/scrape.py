@@ -376,7 +376,7 @@ async def _run(
     allow is read instead of fetching (`read_stored`)."""
     async with engine.begin() as conn:
         site = await site_row(conn, urlsplit(request.url).hostname or "", request.page_kind)
-        config = await _config(conn, site.id, work)
+        config = await _config(conn, site.id, work, request.url)
     records = None
     if work.schema is not None and work.data is not None:
         records = Records(work.schema, work.data, config, work.margins, work.render)
@@ -508,11 +508,12 @@ def _growth(request: ScrapeRequest, fetching: Fetching) -> Growth | None:
     return Growth(BrowserActions(), actions_deadline(request.timeout_s))
 
 
-async def _config(conn: AsyncConnection, site_id: SiteId, work: _Work) -> ActiveConfig | None:
-    """The site's active config for the schema `records` names; a prompt's draft is new, so it has none."""
+async def _config(conn: AsyncConnection, site_id: SiteId, work: _Work, url: str) -> ActiveConfig | None:
+    """The site's active config for the schema `records` names that serves `url`; a prompt's draft is new, so it has
+    none."""
     if work.schema is None or work.data is None:
         return None
-    return await active_config(conn, site_id, work.schema, work.data.vocabulary)
+    return await active_config(conn, site_id, work.schema, work.data.vocabulary, url)
 
 
 async def _derive(

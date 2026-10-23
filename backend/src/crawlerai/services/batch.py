@@ -135,14 +135,15 @@ OWN_TRANSACTION: Final = Placement()
 class JobPins(BaseModel):
     """What a records job pins when it is submitted: the job's schema as it is then, so an edit made while
     the job runs applies to later jobs only; the engine data's precedence orders and calibration; and per host the
-    config that was active for the schema and page kind. A host without one has its pages extracted cold (`adhoc`) for
-    the whole job, even if a config activates while it runs."""
+    configs that were active for the schema and page kind: the learned config and the custom recipes, of which each
+    page runs with the one that serves its URL (`active.pinned_config`). A host without one has its pages extracted
+    cold (`adhoc`) for the whole job, even if a config activates while it runs."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", validate_by_name=True, serialize_by_alias=True)
 
     schema_: SchemaDef = Field(alias="schema")
     engine_data: PinnedData
-    configs: dict[str, ExtractionConfigId]
+    configs: dict[str, list[ExtractionConfigId]]
 
 
 class BatchSubmitted(BaseModel):
@@ -276,8 +277,11 @@ async def job_pins(conn: AsyncConnection, data: EngineData, urls: list[str], sch
     return pins.model_dump(mode="json")
 
 
-async def active_configs(conn: AsyncConnection, urls: list[str], schema: SchemaDef) -> dict[str, ExtractionConfigId]:
-    """Per host of `urls`, the config active for `schema` and its page kind, where its site has one."""
+async def active_configs(
+    conn: AsyncConnection, urls: list[str], schema: SchemaDef
+) -> dict[str, list[ExtractionConfigId]]:
+    """Per host of `urls`, the configs active for `schema` and its page kind (the learned one and the custom recipes),
+    where its site has one, in id order."""
     hosts = {urlsplit(url).hostname or "" for url in urls}
     configs = ExtractionConfig
     rows = await conn.execute(
@@ -289,5 +293,9 @@ async def active_configs(conn: AsyncConnection, urls: list[str], schema: SchemaD
             configs.page_kind == schema.page_kind,
             configs.status == "active",
         )
+        .order_by(Site.host, configs.id)
     )
-    return dict(rows.tuples().all())
+    pinned: dict[str, list[ExtractionConfigId]] = {}
+    for host, config_id in rows.tuples():
+        pinned.setdefault(host, []).append(config_id)
+    return pinned

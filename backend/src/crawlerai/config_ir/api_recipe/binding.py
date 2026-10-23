@@ -17,13 +17,14 @@ import re
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Final, NamedTuple
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import quote, quote_plus, unquote, urlsplit
 
 from pydantic import JsonValue, ValidationError
 
 from crawlerai.collect import json_doc
 from crawlerai.collect.network_match import url_shape
 from crawlerai.config_ir.api_recipe.model import (
+    CUSTOM_KINDS,
     PAGE_DATA_KINDS,
     PLACEHOLDER,
     Binder,
@@ -77,7 +78,10 @@ class Ambiguous:
 
 
 def resolve(binder: Binder, page_url: str, page_data: PageData) -> str | None:
-    """The value `binder` reads from the page, decoded; `None` when the page has no non-empty value there."""
+    """The value `binder` reads from the page, decoded; `None` when the page has no non-empty value there, and for a
+    custom recipe's binder, which reads what serving the recipe fetched, not the page."""
+    if binder.kind in CUSTOM_KINDS:
+        return None
     kind = _DATA_KINDS.get(binder.kind)
     value = _url_value(binder, _Url.split(page_url)) if kind is None else _data_value(kind, binder.arg, page_data)
     return value or None
@@ -149,8 +153,12 @@ def page_data(page: ParsedPage) -> PageData:
     return {kind: documents(kind, page) for kind in PAGE_DATA_KINDS}
 
 
-def render_body(template: str, params: Mapping[str, str]) -> str:
-    """`template` with each placeholder replaced by its value, escaped as JSON string content (RFC 8259 §7)."""
+def render_body(template: str, params: Mapping[str, str], encoding: str = "json") -> str:
+    """`template` with each placeholder replaced by its value, escaped as JSON string content (RFC 8259 §7), or for a
+    `form` body percent-encoded as application/x-www-form-urlencoded writes a value (HTML §4.10.21.7, WHATWG URL §5.2:
+    every byte but the unreserved ones, a space as `+`)."""
+    if encoding == "form":
+        return PLACEHOLDER.sub(lambda found: quote_plus(params[found[1]], safe="*"), template)
     return PLACEHOLDER.sub(lambda found: json.dumps(params[found[1]], ensure_ascii=False)[1:-1], template)
 
 

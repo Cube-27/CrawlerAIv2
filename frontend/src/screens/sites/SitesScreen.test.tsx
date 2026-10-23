@@ -76,6 +76,10 @@ function summary(overrides: Partial<ConfigSummary> = {}): ConfigSummary {
     origin: "induced",
     field_status: { title: "corroborated", price: "uncorroborated" },
     validation_report: report,
+    patterns: [],
+    custom: false,
+    renders: [],
+    sent_by: "http",
     ...overrides,
   };
 }
@@ -95,6 +99,10 @@ const detail: ConfigDetail = {
     api_recipe: null,
     recipes: {},
     absent: [],
+    patterns: [],
+    warm_up: null,
+    sent_by: "http",
+    rate_ms: null,
     fields: {
       title: {
         needs: "http",

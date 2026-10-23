@@ -175,6 +175,14 @@ export const LIMITS = {
       "minLength": 1
     }
   },
+  "CustomRecipe": {
+    "patterns": {
+      "minItems": 1
+    },
+    "rate_ms": {
+      "minimum": 0.0
+    }
+  },
   "ExtractRequest-Input": {
     "limit": {
       "maximum": 1000.0,
@@ -216,6 +224,9 @@ export const LIMITS = {
     }
   },
   "ExtractionConfigIR": {
+    "rate_ms": {
+      "minimum": 0.0
+    },
     "site": {
       "minLength": 1
     }
@@ -367,6 +378,11 @@ export const LIMITS = {
       "minLength": 1
     }
   },
+  "PageField": {
+    "steps": {
+      "minItems": 1
+    }
+  },
   "ParamPagination": {
     "name": {
       "minLength": 1
@@ -429,7 +445,12 @@ export const LIMITS = {
       "maxItems": 50
     }
   },
-  "RequestBody": {
+  "RequestBody-Input": {
+    "template": {
+      "minLength": 1
+    }
+  },
+  "RequestBody-Output": {
     "template": {
       "minLength": 1
     }
