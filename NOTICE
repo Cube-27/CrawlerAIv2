@@ -5,7 +5,7 @@ This project includes material adapted from third-party works:
 
 ------------------------------------------------------------------------
 pstack — https://github.com/cursor/plugins/tree/main/pstack
-Used in: openspec/conventions/ENGINEERING.md, .claude/skills/*
+Used in: docs/archive/conventions/ENGINEERING.md, .claude/skills/*
 (principles, playbooks and skills, selected and rewritten for this project)
 
 MIT License

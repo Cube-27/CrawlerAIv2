@@ -77,7 +77,7 @@ Then decide:
   sign: `-%1`); `0,1 mil Mg` in `es-ES` (the longer unit ` mil M` starts a word, so the shorter ` mil` applies,
   correctly); `EUR 1Br` (`Br` is a CLDR currency symbol, so the text writes two currencies). Fix the generator or the expectation, with a comment saying why.
 
-If in doubt, read the normalization spec's "money" section (`openspec/specs/`) and the module docstring: the
+If in doubt, read `docs/rules.md` and the module docstring: the
 property must follow them, not the other way round.
 
 ## Known findings (open)
@@ -88,7 +88,7 @@ When a finding is fixed, delete its `assume(...)` and its entry here in the same
 
 ## Updating the properties when behaviour changes on purpose
 
-1. The owner decision or spec change comes first (`openspec/specs/`, decision id in the PR).
+1. The owner decision comes first (stated in the PR body).
 2. Change the property's expectation (and the table above) in the same PR as the code; keep the property general:
    no per-site or per-case literals, no fixed example where a generator can draw it.
 3. Run the one command, then break the property on a scratch edit of the code to confirm it still fails, and revert.

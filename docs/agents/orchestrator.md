@@ -2,12 +2,12 @@
 
 CrawlerAI v2 is built by one orchestrator agent and up to two builder agents, all Claude, each in its own
 [herdr](https://herdr.dev) tab on one machine (Linux, or Windows with Git Bash). This file is the orchestrator's
-job description. Builders follow `builder-protocol.md`. The roadmap and its status are in `plan.md`.
+job description. Builders follow `builder-protocol.md`. The plan and its status are the owner's, kept outside the repo (briefs, notes).
 
 ## Roles (owner rules)
 
 - **Orchestrator** (you): start, brief, watch and stop builders, run the merge queue, verify and merge, and run the
-  e2e evaluations (`plan.md` E-phases). **Never edit, commit or push on a builder's branch.** Anything you find while
+  e2e evaluations (the plan's e2e phases). **Never edit, commit or push on a builder's branch.** Anything you find while
   verifying (a Sonar issue, an open thread, a red check) goes back to that PR's builder.
 - **Builder**: one agent per plan PR, in its own worktree and herdr tab, on the main model in auto mode. It may use
   Sonnet subagents for exploration or mechanical building. It takes its PR to green and ends its turn with
@@ -22,17 +22,17 @@ The machine needs Docker, `uv`, `pnpm`, GNU make, `gh` (logged in) and herdr; ev
 
 1. In herdr, open the `CrawlerAIv2` clone, run `claude --permission-mode auto`, and type `/crawlerai-orchestrator`.
 2. Rebuild state from GitHub, not memory: `gh pr list --state open`, `git worktree list`, `herdr agent list`, and the
-   status table in `plan.md`. An open PR whose builder isn't running gets a fresh builder on its existing branch (the
+   plan's status. An open PR whose builder isn't running gets a fresh builder on its existing branch (the
    brief says "continue PR #n").
 3. Memory: on a small machine (8 GB, no swap) check `free -m` shows more than 2 GB available before starting each
    builder, browser or local app.
 
 ## Starting a builder
 
-1. Pick the next plan PRs whose `Deps:` have all merged (`plan.md`). Start a PR as soon as its deps merge; keep at most
+1. Pick the next plan PRs whose deps have all merged. Start a PR as soon as its deps merge; keep at most
    two running, and give the browser to at most one of them.
 2. Write its brief to a file outside the repo (for example `../briefs/<id>.txt`, beside the clone). A brief holds:
-   - the plan id, branch `change/<id>` and its section in `plan.md`;
+   - the plan id, branch `change/<id>` and its section of the plan;
    - "Read `docs/agents/builder-protocol.md` first; its HARD RULES override everything";
    - 5 to 10 lines of the rules that matter for this PR, and follow-ups earlier PRs left to it;
    - whether it may start a browser (only one builder at a time);
@@ -92,7 +92,7 @@ bash tools/orchestrator/cleanup_worktree.sh <id> change/<id>   # worktree, branc
 git pull --ff-only
 ```
 
-Then tick the PR in `plan.md`'s status table (in the next PR that touches `docs/agents/`, or a small docs PR).
+Then tick the PR in the plan's status.
 
 ### Rebases
 
@@ -112,7 +112,7 @@ and point you at that file, and nudge you after a long idle. Builders keep worki
 
 ## Evaluation phases
 
-E-phases in `plan.md` are yours, not a builder's: one e2e run over the eval set with the scorer, both kept outside
+The plan's e2e phases are yours, not a builder's: one e2e run over the eval set with the scorer, both kept outside
 this repo (C1). Start the API and one worker for the run, stop them by PID as soon as the results are pulled, and
 write the report outside the repo. A report classifies each regression (engine PR, LLM variance, bot block, live
 drift). An engine regression becomes a plan PR for a builder.
@@ -128,9 +128,9 @@ drift). An engine regression becomes a plan PR for a builder.
 
 ## Owner logbooks
 
-Owner decisions are recorded in `openspec/design/owner-decisions.md`. Machine-local notes (eval set, scorer, reports,
+Owner decisions are recorded in the PR body and the owner's notes; rules that code or CI enforce go in `docs/rules.md`. Machine-local notes (eval set, scorer, reports,
 handoff) live outside this public repo; ask the owner for them when a choice needs their call. Until answered,
-builders use the defaults in the specs and list the choice under "Deviations".
+builders use the defaults in `docs/rules.md` and list the choice under "Deviations".
 
 ## Tooling in this repo
 

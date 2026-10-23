@@ -2,8 +2,8 @@
 
 Every builder agent follows this file. You are a Claude agent in your own herdr tab, in a git worktree the
 orchestrator made for your PR (`orchestrator.md`), beside the main clone in `../CrawlerAIv2-worktrees/<id>`, on branch
-`change/<id>`. The roadmap is `docs/agents/plan.md`; the rules are `CLAUDE.md` and
-`openspec/conventions/ENGINEERING.md`; the behaviour is `openspec/specs/`. Read only what your PR needs.
+`change/<id>`. The brief names your PR; the rules are `CLAUDE.md` and `docs/rules.md`; what the code does is in
+`docs/architecture.md`. Read only what your PR needs.
 
 ## HARD RULES (owner). Read these first; they override anything below
 
@@ -39,11 +39,11 @@ orchestrator made for your PR (`orchestrator.md`), beside the main clone in `../
 
 ## Build
 
-- Scope = your PR's section of `plan.md`. Do not start other PRs' work. If the plan is wrong or blocked, pick the
-  option most faithful to the specs and the contract, note it under "Deviations" in the PR, and keep going. Anything
-  that alters the contract, `openspec/design/`, a public API or the evaluation goes in your report for the owner.
+- Scope = your brief. Do not start other PRs' work. If the brief is wrong or blocked, pick the
+  option most faithful to the contract, note it under "Deviations" in the PR, and keep going. Anything
+  that alters the contract, a public API or the evaluation goes in your report for the owner.
 - The smallest change that fixes the class (C8). An architecture change deletes what it supersedes in the same PR. A
-  behaviour change edits the capability spec it touches.
+  change that makes `docs/` wrong updates them.
 - Verify, in this order:
   - Runtime grounding: run the real path (`crawlerai` CLI or the worker) on public pages or a local fixture server, and
     read the output. This is the main evidence.
