@@ -216,6 +216,31 @@ def test_no_browser_retry_starts_too_close_to_the_deadline() -> None:
 # --- D-1263: a 503 interstitial gets one browser attempt after the site's pause ---
 
 
+# --- owner decision 2026-10-23: an HTTP 429 gets one browser attempt after the pause it asks for ---
+
+
+def test_a_429_is_answered_once_in_the_browser_after_its_pause() -> None:
+    stubs = web("blocked", "ok", http_status=429)
+    stubs.http.retry_after = timedelta(seconds=7)
+    pauses: list[timedelta] = []
+
+    async def admit(*, after: timedelta = timedelta(0)) -> bool:
+        pauses.append(after)
+        return after <= timedelta(minutes=1)  # a caller waits in place this long at most
+
+    rungs = Rungs(http=stubs.http, browser=stubs.browser)
+    result = asyncio.run(acquire(URL, POLICY, Remembered(), rungs, admit_next=admit))
+
+    assert _attempts(result) == [("http", "blocked"), ("browser", "ok")]
+    assert pauses == [timedelta(seconds=7)]
+    # A pause longer than the caller waits sends nothing more: the 429 is kept.
+    stubs = web("blocked", "ok", http_status=429)
+    stubs.http.retry_after = timedelta(minutes=5)
+    rungs = Rungs(http=stubs.http, browser=stubs.browser)
+    result = asyncio.run(acquire(URL, POLICY, Remembered(), rungs, admit_next=admit))
+    assert (_attempts(result), stubs.browser.calls) == ([("http", "blocked")], [])
+
+
 # --- adapters spec "Referral from a tenant's own host": a shell asks its referral before the render ---------------
 
 PLATFORM = "https://jobs.example.test/board"

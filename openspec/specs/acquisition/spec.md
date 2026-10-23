@@ -26,6 +26,7 @@ this client, and keep the browser outcome only when `ok`:
 |---|---|---|
 | `blocked` other than 429/503 | yes | browser `ok` only |
 | 503 that `classify.interstitial` judges to stand in for the page | yes, after the site's pause (`politeness.backoff`) | browser `ok` only |
+| 429 (owner decision 2026-10-23) | yes, once per task, after the site's pause (`politeness.backoff`: its `Retry-After`) | browser `ok` only; else the task ends `blocked` with no further try |
 | `shell` that a challenge names (`acquire/challenge.py`) | yes | browser `ok` only |
 | `error` whose reason is `network_error` or `timeout` | yes (never the same transport again) | browser `ok` only |
 | `shell` with no challenge (a script-only document) | yes, once per page (owner #72), after its adapter referral ([adapters](../adapters/spec.md) "Referral from a tenant's own host") serves nothing | the referral's `ok`, with no render; else browser `ok` only; else the HTTP `shell` |
@@ -41,7 +42,11 @@ browser-first, the site's contract says `browser`, or the page's fetch plan does
 surface's active config alone, `config_ir/active.fetch_plan`): a running field of the config needs the render
 (`needs: browser`, [learning-configs](../learning-configs/spec.md) "Locate run"), or the surface's `render_mode` is
 `always`. Role C runs once, on the kept capture. Refs: §7.1, D-0009, D-0203, D-0865, D-0900, D-1202,
-D-1261, D-1263, D-1472, owner #70, owner #72, architecture v3 a.3.
+D-1261, D-1263, D-1472, owner #70, owner #72, owner decision 2026-10-23 (429), architecture v3 a.3.
+#### Scenario: Rate limited over HTTP
+- **WHEN** an `auto` fetch answers HTTP 429 with `Retry-After: 7`
+- **THEN** the browser is tried once, no sooner than 7 s later, and a browser outcome other than `ok` ends the task
+  `blocked` without another try
 #### Scenario: Script-rendered offer over HTTP
 - **WHEN** an `auto` fetch of a detail page answers HTTP `ok` with no JSON-LD, Open Graph tag or price
 - **THEN** no browser attempt is made and the HTTP capture is kept
@@ -279,7 +284,8 @@ D-0010, D-0540, D-1311, D-1312, D-1369, owner plan 2026-10-19 (crawl speed).
 ### Requirement: Structural outcome classification (INV-24)
 The system SHALL classify each final response, before extraction, from status and structure (the classes and the shell,
 linkless page, self-refreshing page and listing-shell rules in `acquire/classify.py`: a 2xx HTML page that is no shell
-and has no hyperlink, or that declares a refresh and has hyperlinks but none to a web page (even one short enough to be
+and has no hyperlink while it renders under 2,000 non-space characters (ten times the shell's text: a stand-in states a
+line or two, a page whose navigation a script drives still shows its article), or that declares a refresh and has hyperlinks but none to a web page (even one short enough to be
 a shell), is `blocked`; a listing is a shell unless its structured data lists items or a group of its repeated items
 shows `MIN_ITEMS` blocks with more than a link (an image, or text in two or more runs) and copies no navigation, as the
 item layer requires of a group (listings spec, "Rows from blocks"; a tag cloud, a pager or the menu's category tiles
@@ -364,12 +370,17 @@ never containing the URL; it stores no body but keeps the last status and header
 
 ### Requirement: Bounded bodies (INV-30)
 The system SHALL bound untrusted bodies by `max_body_bytes` (compressed) and `max_decompressed_bytes` while streaming,
-on every rung, before anything is kept; an oversize body MUST be `error`/`body_cap` with no capture body. A browser
+on every rung, before anything is kept; an oversize body MUST be `error`/`body_cap` with no capture body, except that
+a 2xx HTTP answer whose media type no reader reads is `unsupported_media` (its status and headers class it, as
+"Structural outcome classification" does any size), with the attempt's error `body_cap` and no body. A browser
 capture keeps at most 10 MB of network bodies in all (`acquire/browser_capture.py`), each read only once its request is done:
 a body that never ends (a stream, a beacon held open) is left out, never waited for past the fetch's budget.
 Enforced by: oversize and over-decompressing body tests, the per-page network cap test and the unending-body test;
 active.
 Refs: §7.1, §18, Appendix A #59, D-0320, D-1311.
+#### Scenario: PDF over the cap
+- **WHEN** a page's HTTP fetch answers 200 with `Content-Type: application/pdf` and a body past `max_body_bytes`
+- **THEN** the class is `unsupported_media`, the attempt's error is `body_cap`, and the bundle has no body
 #### Scenario: Compression bomb
 - **WHEN** a gzip body decompresses past `max_decompressed_bytes`
 - **THEN** the outcome is `error`/`body_cap` and the bundle has no body
@@ -494,8 +505,8 @@ a turn and its hold are taken in one statement, and a hold is a 1-minute lease i
 and gives up as the fetch is cancelled, so a process that dies holds a host at most that long; the scheduler deletes rows whose turn is due and that no lease holds (`expire_host_turns`). It SHALL double a host's spacing on a 429, a 503 or a challenge (at most 15 min),
 shrinking it by 10% after 20 `ok` answers in a row, never below that interval. On 429/503 it SHALL pause the host by
 one rule (`acquire/politeness.backoff`): the `Retry-After`, else 30 s doubling per try, at most 15 min, a `Retry-After`
-past 15 min ending the fetch `blocked`; each answer spends an attempt; a further request of a fetch (the 503
-interstitial's one browser attempt) waits out that pause within the caller's bound for waiting in place (the worker's
+past 15 min ending the fetch `blocked`; each answer spends an attempt; a further request of a fetch (the 429's or the
+503 interstitial's one browser attempt) waits out that pause within the caller's bound for waiting in place (the worker's
 `QUEUED` bound, a third of the task deadline; a service's one minute), and is not sent past it. Refs: §7.1, D-0163,
 D-0165, D-0901, D-1263, D-1327, master plan 2026-10-18 §4 item 5.
 #### Scenario: Spacing after a slow-down

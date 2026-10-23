@@ -255,7 +255,8 @@ PageTurn(r) ==
     /\ UNCHANGED <<status, attempts, leaseLeft, backoff, holder, job, stale, fresh, deaths, hangs, lefts>>
 
 (* The first request answers: an ok page (Finished), a 429/503 (pause_host pauses the host; the handler returns  *)
-(* Failed(transient)), or a page that needs the browser rung (the rungs escalate, acquire/rungs.py). An answer   *)
+(* Failed(transient)), or a page that needs the browser rung (the rungs escalate, acquire/rungs.py: a block, a   *)
+(* shell, a 503 interstitial or a 429, the last two after the pause admit_next waits out). An answer            *)
 (* the handler ends with is extracted, then counted (count_fetch: UPDATE job.usage, which waits for the job row).  *)
 HttpDone(r) ==
     LET w == r[1]  h == HostOf[run[r].task] IN
