@@ -49,6 +49,9 @@ from crawlerai.adapters.platforms import ProductJson, product_json
 from crawlerai.adapters.registry import Registry, platform_adapters
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
+# A custom recipe's call sent from its site's warm page (`acquire.browser_send.send_in_page`), the page opened at the
+# URL given third when the site's profile has none.
+InPage = Callable[[JsonRequest, FetchPolicy, str], Awaitable[FetchResult]]
 # The eager fragments a document at a URL declares, as (id, absolute URL) pairs (`content.fragments.eager_frames`,
 # which sits above `acquire`, so the process hands it in).
 FramePlan = Callable[[str, str], Sequence[tuple[str, str]]]
@@ -112,6 +115,8 @@ class Rungs:
     # JSON over HTTP (`acquire.api.fetch_json`), which an active config's API recipe sends its request with;
     # without it no recipe serves a page.
     json: JsonFetcher | None = None
+    # The calls of a custom recipe sent by the browser (`sent_by = browser`); without it no such recipe serves a page.
+    in_page: InPage | None = None
     # A listing with browser actions (`acquire.browser_tab.fetch_listing`); the API process sets it.
     listing: ListingRung | None = None
     # The site sessions of this process, which the HTTP and JSON rungs were bound to, and the browser rung's exporting

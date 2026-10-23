@@ -140,7 +140,7 @@ def _custom(config_id: ExtractionConfigId, ir: ExtractionConfigIR) -> Custom | N
     if not ir.patterns:
         return None
     page_fields = bool(_page_fields(ir))
-    return Custom(str(config_id), tuple(ir.patterns), ir.recipes, ir.warm_up, page_fields, ir.rate_ms)
+    return Custom(str(config_id), tuple(ir.patterns), ir.recipes, ir.warm_up, page_fields, ir.rate_ms, ir.sent_by)
 
 
 def _page_fields(ir: ExtractionConfigIR) -> dict[str, FieldSteps]:

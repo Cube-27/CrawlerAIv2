@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from crawlerai.acquire.api import JsonRequest, fetch_json
 from crawlerai.acquire.browser import fetch_browser
+from crawlerai.acquire.browser_send import send_in_page
 from crawlerai.acquire.browser_session import BrowserSession, open_browser
 from crawlerai.acquire.browser_tab import Drive, fetch_listing
 from crawlerai.acquire.cookie_store import CookieStore
@@ -190,11 +191,27 @@ async def open_rungs(
                 )
             )
 
+        async def in_page(request: JsonRequest, policy: FetchPolicy, warm_url: str) -> FetchResult:
+            # A recipe's call sent from its site's warm page holds one of the shared session's slots, as a render does.
+            return await browser.render(
+                lambda session: send_in_page(
+                    request,
+                    policy,
+                    warm_url,
+                    session=session,
+                    engine_version=ENGINE_VERSION,
+                    connector=connector,
+                    pools=pools,
+                    scope=sessions.scope_for(policy),
+                )
+            )
+
         yield Rungs(
             http=http,
             browser=browser.fetch,
             adapters=adapter_registry(settings.disabled_adapters),
             json=json,
+            in_page=in_page,
             sessions=sessions,
             exporting=browser.fetch,
             listing=listing,

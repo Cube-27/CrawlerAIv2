@@ -206,9 +206,11 @@ def recipe_rung(
         HTML page the recipe fetches to bind, or else its endpoint. An endpoint is requested only where its host's
         robots.txt (`rules`) allows it, at that host's rate, waiting in place for a turn of its own when it needs one; a
         request robots.txt keeps from being sent leaves the page unserved, and `acquire` fetches it the configured way.
-        A custom recipe's (`custom`) calls also wait for its own interval (`RecipePaces`).
-    None without the JSON rung."""
-    json = fetching.rungs.json
+        A custom recipe's (`custom`) calls also wait for its own interval (`RecipePaces`); one sent by the browser
+        (`sent_by`) sends them from its site's warm page (the rungs' `in_page`), at the same rates, and fetches the HTML page
+        over HTTP.
+    None without the rung that sends its calls."""
+    json = _calls(fetching.rungs, custom)
     if json is None:
         return None
     turn = _Turn(page_host)
@@ -229,6 +231,22 @@ def recipe_rung(
         return await via_page(JsonRequest(url, url), policy)
 
     return RecipeRung(recipe, send, page, ENGINE_VERSION, custom)
+
+
+def _calls(rungs: Rungs, custom: Custom | None) -> JsonFetcher | None:
+    """What sends a recipe's calls: the JSON rung, or the warm page of the site's profile for a custom recipe sent by
+    the browser, opened at its warm URL (`Custom.warm_url`)."""
+    if custom is None or custom.sent_by == "http":
+        return rungs.json
+    in_page = rungs.in_page
+    if in_page is None:
+        return None
+    warm_url = custom.warm_url
+
+    async def send(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
+        return await in_page(request, policy, warm_url(request.page_url))
+
+    return send
 
 
 def _unshared(rules: ReadRules) -> ReadRules:

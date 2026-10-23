@@ -56,6 +56,7 @@ class Web(SharedWeb):
     html: dict[str, bytes] = field(default_factory=dict)
     requested: list[JsonRequest] = field(default_factory=list)
     adapters: Registry = field(default_factory=lambda: Registry(()))
+    warm_urls: list[str] = field(default_factory=list)  # each call sent from a warm page: the URL it opens at
 
     async def json(self, request: JsonRequest, policy: FetchPolicy) -> FetchResult:
         self.requested.append(request)
@@ -67,8 +68,12 @@ class Web(SharedWeb):
         body = json.dumps(self.endpoints[request.url]).encode()
         return self.fetch_result(request.page_url, 200, body, method="api")
 
+    async def in_page(self, request: JsonRequest, policy: FetchPolicy, warm_url: str) -> FetchResult:
+        self.warm_urls.append(warm_url)
+        return await self.json(request, policy)
+
     def rungs(self) -> Rungs:
-        return replace(super().rungs(), json=self.json, adapters=self.adapters)
+        return replace(super().rungs(), json=self.json, in_page=self.in_page, adapters=self.adapters)
 
 
 @pytest.fixture
@@ -354,6 +359,28 @@ async def test_an_html_answer_is_read_by_xpath_with_a_parameter_the_warm_up_answ
         f"api:{config}:normalize-space(//h2)",
     )
     assert price.value == {"amount": 19.5, "currency": "EUR"}
+
+
+async def test_a_recipe_sent_by_the_browser_sends_every_call_from_the_warm_page_of_its_warm_up(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    site: SiteId,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    warm_up = {"url": f"{own_origin}/session/{{slug}}"}
+    await _custom(engine, own_origin, site, kettle_schema, main=_items(own_origin), warm_up=warm_up, sent_by="browser")
+    web.endpoints[f"{own_origin}/session/desk-lamp"] = {}
+    web.endpoints[f"{own_origin}/api/items/desk-lamp"] = PRODUCT
+
+    result = await scrape(engine, fetching, _scrape(f"{own_origin}/item/desk-lamp", kettle_schema), data=engine_data)
+
+    assert result.fetch is not None
+    assert result.fetch.method == "api"
+    assert [r.url for r in web.requested] == [f"{own_origin}/session/desk-lamp", f"{own_origin}/api/items/desk-lamp"]
+    assert web.warm_urls == [f"{own_origin}/session/desk-lamp"] * 2  # both from the page the warm-up opens
 
 
 async def test_a_page_field_is_read_from_the_page_the_recipe_fetched(
