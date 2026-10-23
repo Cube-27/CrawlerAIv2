@@ -15,7 +15,7 @@ are crawl-discovered: a page whose required fields don't all publish ends `no_ma
 from typing import Any, Self
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -39,21 +39,22 @@ from crawlerai.services.map import MAX_LIMIT  # a crawl enqueues at most what a 
 from crawlerai.services.scrape import Budget
 from crawlerai.services.scrape_request import (
     MIN_CONFIDENCE_DESCRIPTION,
+    RENDER_AS_GIVEN,
     RENDER_DESCRIPTION,
     PageFormat,
     RenderOptions,
-    RendersFields,
     SchemaById,
     SchemaFields,
     SchemaInline,
     absolute_http_url,
     check_formats,
     check_records,
+    render_as_given,
 )
 from crawlerai.services.webhook_options import WebhookOptions
 
 
-class CrawlRequest(WebhookOptions, RendersFields):
+class CrawlRequest(WebhookOptions):
     """The body of `POST /v1/crawl`. The formats, `schema`, `fetch` and `locale` are a batch's, for every
         page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is
         drafted
@@ -86,6 +87,9 @@ class CrawlRequest(WebhookOptions, RendersFields):
     chunking: ChunkOptions | None = None  # `chunks`' strategy, size and overlap
     min_confidence: Probability | None = Field(default=None, description=MIN_CONFIDENCE_DESCRIPTION)
     render: RenderOptions = Field(default=RenderOptions(), description=RENDER_DESCRIPTION)
+
+    model_config = RENDER_AS_GIVEN
+    _render_as_given = model_serializer(mode="wrap")(render_as_given)
 
     @model_validator(mode="before")
     @classmethod

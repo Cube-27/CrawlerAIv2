@@ -33,7 +33,7 @@ from functools import partial
 from typing import Final, Self, TypedDict
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, field_validator, model_serializer, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
@@ -96,11 +96,11 @@ from crawlerai.services.records import RecordField, ScrapedRecord
 from crawlerai.services.scrape_paging import Actions, actions_deadline, check_browser_actions
 from crawlerai.services.scrape_request import (
     MIN_CONFIDENCE_DESCRIPTION,
+    RENDER_AS_GIVEN,
     RENDER_DESCRIPTION,
     Input,
     PageFormat,
     RenderOptions,
-    RendersFields,
     SchemaPrompt,
     SchemaRequest,
     SchemaUnusable,
@@ -109,6 +109,7 @@ from crawlerai.services.scrape_request import (
     check_render,
     check_usable,
     named_schema,
+    render_as_given,
     stored_request,
 )
 from crawlerai.services.stored_captures import NOT_CACHED, NotCached
@@ -129,7 +130,7 @@ class Budget(Input):
     llm_calls: NonNegativeInt
 
 
-class ScrapeRequest(RendersFields):
+class ScrapeRequest(Input):
     """The body of `POST /v1/scrape`. `records` needs a schema and a `page_kind`, and the schema's page kind
     must be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds
     its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched
@@ -150,6 +151,9 @@ class ScrapeRequest(RendersFields):
     chunking: ChunkOptions | None = None  # `chunks`' strategy, size and overlap
     min_confidence: Probability | None = Field(default=None, description=MIN_CONFIDENCE_DESCRIPTION)
     render: RenderOptions = Field(default=RenderOptions(), description=RENDER_DESCRIPTION)
+
+    model_config = RENDER_AS_GIVEN
+    _render_as_given = model_serializer(mode="wrap")(render_as_given)
 
     @field_validator("url")
     @classmethod
