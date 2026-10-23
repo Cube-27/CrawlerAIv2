@@ -50,15 +50,19 @@ def test_the_currency_comes_from_the_best_evidence_with_weaker_evidence_noted() 
     )
     assert money.normalize("$12.99", MONEY, _ctx(html_lang="en-AU")) == _ok("12.99", "AUD", "locale")
     assert money.normalize("$12.99", MONEY, _ctx(html_lang="en", cctld_territory="CA")) == _ok("12.99", "CAD", "locale")
-    # A language alone is every territory it is used in: `en` settles no shared sign, though it settles a separator.
-    assert money.normalize("$12.99", MONEY, _ctx(html_lang="en")) == _ok("12.99", None, "unknown")
+    # A language alone is every territory it is used in: `en` settles no shared sign, so the sign's primary currency
+    # (CLDR's English locale) does, flagged `symbol`; so with no hint at all, and a `¥` is yen.
+    assert money.normalize("$12.99", MONEY, _ctx(html_lang="en")) == _ok("12.99", "USD", "symbol")
+    assert money.normalize("$5", MONEY, _ctx()) == _ok("5", "USD", "symbol")
+    assert money.normalize("¥500", MONEY, _ctx()) == _ok("500", "JPY", "symbol")
+    assert money.normalize("$5", MONEY, _ctx(page_currencies=("AUD",))) == _ok("5", "AUD")
     cctld = "ca"  # RFC 1591: a two-letter ISO 3166-1 code; the host is synthetic, under RFC 2606's `example` label
     assert money.normalize("$5", MONEY, _ctx(page_url=f"https://shop.example.{cctld}/p")) == _ok("5", "CAD", "locale")
     assert money.normalize("$5", MONEY, _ctx(content_language=("en-NZ",))) == _ok("5", "NZD", "locale")
     # The locale a request asked for is the caller's, not the page's; two territories that read `$` differently settle
     # nothing.
-    assert money.normalize("$5", MONEY, _ctx(request_locale="en-AU")) == _ok("5", None, "unknown")
-    assert money.normalize("$5", MONEY, _ctx(html_lang="en-US", og_locale="en-CA")) == _ok("5", None, "unknown")
+    assert money.normalize("$5", MONEY, _ctx(request_locale="en-AU")) == _ok("5", "USD", "symbol")
+    assert money.normalize("$5", MONEY, _ctx(html_lang="en-US", og_locale="en-CA")) == _ok("5", "USD", "symbol")
 
 
 def _cctld(code: str) -> str:
@@ -108,9 +112,8 @@ def test_a_lone_separator_is_ambiguous_until_the_page_locale_or_convention_settl
         "1.234", "KWD"
     )
     assert money.normalize("1.234", MONEY, _ctx(page_convention=".")) == _ok("1.234", None, "unknown", checked=False)
-    assert money.normalize("$10.999", MONEY, CTX) == Ambiguous(
-        "decimal_separator", ({"amount": "10.999", "currency": None}, {"amount": "10999", "currency": None})
-    )
+    # With no currency settled, the sign's primary one (USD: two decimals) leaves the one reading it fits.
+    assert money.normalize("$10.999", MONEY, CTX) == _ok("10999", "USD", "symbol")
 
 
 def test_a_reading_with_more_decimals_than_the_currency_minor_unit_is_no_amount_of_it() -> None:

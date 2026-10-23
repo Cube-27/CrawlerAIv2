@@ -17,8 +17,8 @@ Accepts:
 A grounded amount always gives a value; its currency comes from the best evidence (normalization spec, "money"): the
 sign or code written with it, the item's structured data, a page-level declaration, the page's locale and region
 narrowing a shared sign to one currency, then the territory the page's URL names (owner 2026-10-19, basis `url`),
-else none (`null`, basis `unknown`). Nothing is invented: a currency is only ever one the page, its locale or its URL
-names. Any other JSON value is `Invalid("not_money")`; an amount the locales
+then the currency CLDR's English locale gives a sign shared by several (`$` is USD, `¥` JPY; owner 2026-10-23, basis
+`symbol`), else none (`null`, basis `unknown`). Any other JSON value is `Invalid("not_money")`; an amount the locales
 read differently is `Ambiguous`.
 """
 
@@ -212,8 +212,8 @@ def _narrowed(signs: Sequence[str], denoted: frozenset[str], ctx: Context) -> _C
     """Of the currencies a written sign can denote, the one the evidence settles, strongest first: the page's
     structured data (schema.org `priceCurrency`), its page-level declarations in its own name, then its state members,
     then its locale and region (CLDR currency symbols of the locales its language tags and ccTLD name), then the
-    currency its URL names. Each step
-    narrows what the one before left; none settling it leaves the currency unknown, never a default (C7)."""
+    currency its URL names. Each step narrows what the one before left; none settling it leaves the sign's primary
+    currency (`_primary`), flagged `symbol`, if it has one, else the currency unknown."""
     if len(denoted) == 1:
         return _Currency(next(iter(denoted)), None, True)
     steps: tuple[tuple[Callable[[], frozenset[str]], Basis | None], ...] = (
@@ -229,7 +229,21 @@ def _narrowed(signs: Sequence[str], denoted: frozenset[str], ctx: Context) -> _C
         if len(narrowed) == 1:
             return _Currency(next(iter(narrowed)), basis, True)
         left = narrowed or left
+    primary = left & _primary(signs)
+    if len(primary) == 1:
+        return _Currency(next(iter(primary)), "symbol", True)
     return _Currency(None, "unknown", True)
+
+
+def _primary(signs: Sequence[str]) -> frozenset[str]:
+    """The currencies every sign stands for in CLDR's English locale, the one reading a sign shared by several
+    currencies has without a regional hint (`$` is USD, `£` GBP, `¥` JPY; `CA$`, `CN¥` are the others')."""
+    reading = _locale_symbols("en")
+    forms = [
+        {c for form in _sign_forms(unicodedata.normalize("NFKC", sign)) for c in reading.get(form, ())}
+        for sign in signs
+    ]
+    return frozenset.intersection(*map(frozenset, forms)) if forms else frozenset()
 
 
 def _regional(signs: Sequence[str], ctx: Context) -> frozenset[str]:

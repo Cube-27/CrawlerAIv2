@@ -19,8 +19,8 @@ from crawlerai.schemas.types import FieldSpec
 # normalization spec, money: where a value's currency came from when the value itself does not state it. `page` is a
 # page-level declaration, `locale` the page's language and region narrowing a shared sign, `url` the territory its URL
 # names (a locale path segment, a country subdomain or the ccTLD), `unknown` none (the currency is null). Weakest last.
-Basis = Literal["page", "locale", "url", "unknown"]
-BASES: tuple[Basis, ...] = ("page", "locale", "url", "unknown")
+Basis = Literal["page", "locale", "url", "symbol", "unknown"]
+BASES: tuple[Basis, ...] = ("page", "locale", "url", "symbol", "unknown")
 
 
 @dataclass(frozen=True, slots=True)

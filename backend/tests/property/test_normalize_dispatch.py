@@ -91,7 +91,7 @@ def test_a_dollar_sign_is_ambiguous_without_evidence_and_settled_by_a_page_curre
     lo, hi = bounds
     raw = f"${lo} - ${hi} per year"
 
-    # C7: never USD by default; a range states one currency or none (the money rules leave `$` unknown).
+    # A range has no basis to flag a sign's default currency, so it states none until the page names one.
     assert normalize(raw, _spec(FieldType.RANGE), CTX) == Ambiguous("currency_unknown", ())
     settled = Context(captured_at=AT, page_currencies=("CAD",))
     assert normalize(raw, _spec(FieldType.RANGE), settled) == Ok(_range(lo, hi, "CAD", "YEAR"))
@@ -100,7 +100,7 @@ def test_a_dollar_sign_is_ambiguous_without_evidence_and_settled_by_a_page_curre
 def test_a_list_is_as_checked_as_its_least_checked_item_and_as_settled_as_its_weakest() -> None:
     prices = FieldSpec(type=FieldType.LIST, item=FieldSpec(type=FieldType.MONEY))
     page = CTX.model_copy(update={"page_currencies": ("EUR",)})
-    assert normalize(["EUR 5", "$7"], prices, page) == Ok(
+    assert normalize(["EUR 5", "kr 7"], prices, page) == Ok(
         [{"amount": "5", "currency": "EUR"}, {"amount": "7", "currency": None}],
         basis="unknown",
         checked=True,
