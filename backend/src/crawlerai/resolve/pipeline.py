@@ -582,15 +582,16 @@ class _Listing:
             return ()
         return block_texts(self.page.page, self.blocks, lacking)
 
-    def with_reply(self, reply: ListingGapReply) -> "_Listing":
+    def with_reply(self, source: _Source, reply: ListingGapReply, asked: tuple[str, ...]) -> "_Listing":
         """The listing with role C's candidates, owned by the blocks' rows and the page entity: the rows and the page
-        fields resolve again with them."""
+        fields resolve again with them, then are `finished` with the reply to the call that asked `asked`."""
         candidates = (*self.candidates, *reply.candidates)
         fields, rows = self.page.resolve_listing(candidates, self.entities)
         diagnostics = (*self.diagnostics, *reply.diagnostics)
-        return replace(
+        answered = replace(
             self, fields=fields, rows=rows, candidates=candidates, diagnostics=diagnostics, llm_calls=reply.llm_calls
         )
+        return answered.finished(source, reply, asked)
 
     def finished(self, source: _Source, reply: GapReply | None = None, asked: tuple[str, ...] = ()) -> "_Listing":
         """The listing with `_finish` run on its page fields and on each of its rows."""
@@ -633,16 +634,21 @@ async def _extract_listing(source: _Source, role_c: RoleC | None, mode: Extracti
         log.exception(_FAILED)
         return _result("error", mode)
     if role_c is None or (request := await asyncio.to_thread(listing.gap)) is None:
-        return listing.finished(source).result(mode)
+        try:
+            finished = await asyncio.to_thread(listing.finished, source)
+        except Exception:
+            log.exception(_FAILED)
+            return _result("error", mode, candidates=listing.candidates, diagnostics=listing.diagnostics)
+        return finished.result(mode)
     reply = await role_c.listing(request)
     try:
-        listing = await asyncio.to_thread(listing.with_reply, reply)
+        listing = await asyncio.to_thread(listing.with_reply, source, reply, request.page_missing)
     except Exception:
         log.exception(_FAILED)
         candidates = (*listing.candidates, *reply.candidates)
         diagnostics = (*listing.diagnostics, *reply.diagnostics)
         return _result("error", mode, candidates=candidates, llm_calls=reply.llm_calls, diagnostics=diagnostics)
-    return listing.finished(source, reply, request.page_missing).result(mode)
+    return listing.result(mode)
 
 
 def _holder(graph: EntityGraph, candidate: Candidate) -> str:
