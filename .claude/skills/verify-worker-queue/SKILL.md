@@ -24,7 +24,10 @@ after its cancellation.
 { git diff --name-only origin/main...; git diff --name-only HEAD; } | sort -u | grep -E 'worker/loop\.py|worker/handlers/|db/queue\.py|db/jobs\.py|db/usage\.py|crawl/frontier\.py|scheduler/loop\.py|services/polite\.py|acquire/politeness\.py|acquire/shared_browser\.py|tools/verify/'
 ```
 
-(The first diff is your commits, the second what is not committed yet.) Any output: run the check. Also run it when a change elsewhere alters what these rely on: a new await or transaction
+(The first diff is your commits, the second what is not committed yet.) Any output: CI runs the check on your PR (in
+parallel shards, faster than a local run); run it locally only when you change the model or the runner
+(`tools/verify/`), to reproduce a CI failure, or when asked whether a design keeps the properties. CI's path filter
+misses a change elsewhere that alters what these rely on, so run it locally for one: a new await or transaction
 between a task's claim and its result, a new lock on `url_task` or `job` rows, a new caller of `claim_tasks`,
 `fail_task` or `HostLimiter` (`admit`, `wait`, `holding`), a request sent outside `polite_fetch`'s hold, or a change
 to `TASK_SLOTS`, `TASK_DEADLINE`, `CANCEL_GRACE`, `_LOCK_WAIT`, `_END_SESSION`, `LEASE`, `MAX_ATTEMPTS`,

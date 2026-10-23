@@ -18,6 +18,7 @@ github.com  # source hosting and GitHub Actions
 pypi.org  # Python package registry
 registry.npmjs.org  # npm package registry
 ghcr.io  # GitHub container registry, for pinned tool images
+sonarcloud.io  # SonarCloud, the code analysis service whose PR results `tools/orchestrator/pr_ready.sh` reads
 
 # Reserved names (RFC 2606, RFC 6761). Synthetic test fixtures use only these.
 .example.com  # RFC 2606

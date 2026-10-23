@@ -1,6 +1,7 @@
 #!/bin/bash
 # wait_ci.sh PR SHA7 [TIMEOUT_MIN] — waits until every check run on commit SHA7 of the PR has finished, then prints
-# them. The "SonarCloud Code Analysis" check's conclusion is the PR's quality gate. Waiting on the head SHA avoids
+# them. The "SonarCloud Code Analysis" check is waited for (its analysis must exist) but its conclusion is not judged
+# here: its quality gate also fails on code smells, and `pr_ready.sh` judges SonarCloud by issue type. Waiting on the head SHA avoids
 # reading the previous commit's results. Exits 0 only when every check passed (SUCCESS, NEUTRAL or SKIPPED); 1 on a
 # failed check, a moved head or TIMEOUT_MIN (default 45). Right after a push GitHub may still report the old head,
 # so a different head is an error once it is neither SHA7 nor the head seen first, or after 3 minutes.
@@ -17,7 +18,7 @@ err() { echo "ERROR $*" >&2; exit 1; }
 check_conflict() {
   local state=$1
   case "$state" in
-    *CONFLICTING*|*DIRTY*) err "PR #$pr conflicts with main: rebase onto origin/main" ;;
+    *CONFLICTING*|*DIRTY*) err "PR #$pr conflicts with main: merge origin/main into the branch" ;;
     *) return 0 ;;
   esac
 }
@@ -42,8 +43,7 @@ drop_superseded() {
 while (( $(date +%s) < deadline )); do
   out=$(gh pr view "$pr" --json headRefOid,mergeable,mergeStateStatus,statusCheckRollup --jq '
     "\(.headRefOid[:7]) \(.mergeable) \(.mergeStateStatus)",
-    (.statusCheckRollup[] | select(.__typename=="CheckRun") | select(.name|test("CodeRabbit")|not)
-    | "\(.name) \(.status) \(.conclusion)")' 2>/dev/null)
+    (.statusCheckRollup[] | select(.__typename=="CheckRun") | "\(.name) \(.status) \(.conclusion)")' 2>/dev/null)
   read -r head merge <<< "${out%%$'\n'*}"
   [[ -z $first ]] && first=$head
   if [[ -n $head && $head != "$sha" ]]; then
@@ -56,7 +56,7 @@ while (( $(date +%s) < deadline )); do
   check_ci_started "$checks"
   if grep -q '^SonarCloud' <<< "$checks" && grep -q '^backend ' <<< "$checks" && ! grep -qv ' COMPLETED ' <<< "$checks"; then
     echo "$checks"
-    if grep -qvE ' (SUCCESS|NEUTRAL|SKIPPED)$' <<< "$checks"; then err "a check did not pass"; fi
+    if grep -v '^SonarCloud' <<< "$checks" | grep -qvE ' (SUCCESS|NEUTRAL|SKIPPED)$'; then err "a check did not pass"; fi
     exit 0
   fi
   sleep "$poll"
