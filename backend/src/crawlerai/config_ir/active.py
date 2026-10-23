@@ -45,10 +45,21 @@ async def active_config(
 ) -> ActiveConfig | None:
     """The active config of `site_id` for `schema` and its page kind that serves `url` (`select_config`), bound to
     its executor; None in cold mode."""
-    configs = ExtractionConfig
+    return await _bound_row(conn, select_config(await _active_rows(conn, site_id, schema), url), vocabulary)
+
+
+async def learned_config(
+    conn: AsyncConnection, site_id: SiteId, schema: SchemaDef, vocabulary: Vocabulary
+) -> ActiveConfig | None:
+    """The active learned config of `site_id` for `schema` and its page kind (the one without URL patterns), bound to
+    its executor: what serves a URL no recipe's pattern matches; None in cold mode."""
+    learned = next((row for row in await _active_rows(conn, site_id, schema) if not row.patterns), None)
+    return await _bound_row(conn, learned, vocabulary)
+
+
+async def _active_rows(conn: AsyncConnection, site_id: SiteId, schema: SchemaDef) -> Sequence[_Config]:
     key = StateKey(site_id, schema.id, schema.page_kind)
-    rows = (await conn.execute(select(*_COLUMNS).where(*key.config_scope(), configs.status == "active"))).all()
-    return await _bound_row(conn, select_config(rows, url), vocabulary)
+    return (await conn.execute(select(*_COLUMNS).where(*key.config_scope(), ExtractionConfig.status == "active"))).all()
 
 
 async def pinned_config(
@@ -78,7 +89,7 @@ async def _bound_row(conn: AsyncConnection, row: _Config | None, vocabulary: Voc
         return None
     configs = ExtractionConfig
     found = (await conn.execute(select(configs.version, configs.ir).where(configs.id == row.id))).one()
-    return _bound(row.id, found.version, ExtractionConfigIR.model_validate(found.ir), vocabulary)
+    return bound_config(row.id, found.version, ExtractionConfigIR.model_validate(found.ir), vocabulary)
 
 
 def fetch_plan(config: ActiveConfig | None, render_mode: RenderMode) -> FetchPlan:
@@ -126,7 +137,7 @@ def endpoint(recipe: ApiRecipe) -> CallEndpoint:
 
 
 def recipe_of(config: ActiveConfig) -> ApiRecipe | None:
-    """The API recipe of `config`, which serves its pages, as `_bound` parsed it; None without one."""
+    """The API recipe of `config`, which serves its pages, as `bound_config` parsed it; None without one."""
     return config.api.recipe if isinstance(config.api, RecipeExecutor) else None
 
 
@@ -152,7 +163,9 @@ def _page_fields(ir: ExtractionConfigIR) -> dict[str, FieldSteps]:
     }
 
 
-def _bound(config_id: ExtractionConfigId, version: int, ir: ExtractionConfigIR, vocabulary: Vocabulary) -> ActiveConfig:
+def bound_config(
+    config_id: ExtractionConfigId, version: int, ir: ExtractionConfigIR, vocabulary: Vocabulary
+) -> ActiveConfig:
     """The config bound to its executor, and to its recipe's when it has one: the recipe's locators name the config.
     A custom recipe's executor reads its page fields, on the HTML page it fetched, with the config's executor of just
     those fields."""

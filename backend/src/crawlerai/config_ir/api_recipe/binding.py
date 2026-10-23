@@ -291,6 +291,27 @@ def bind(samples: Sequence[Sample]) -> RequestSpec | Ambiguous:
         return Ambiguous(str(unbound))
 
 
+@dataclass(frozen=True)
+class Proposed:
+    """A binding with literals left where nothing binds: the spec, and where each value that varies between the
+    samples was left as the first sample's literal (`path segment 1`, `query value 'q'`, `body value $['x']`)."""
+
+    spec: RequestSpec
+    literal: tuple[str, ...]
+
+
+def propose(samples: Sequence[Sample]) -> Proposed | Ambiguous:
+    """`bind`, except that a value that varies and that no page value binds stays the first sample's literal and is
+    reported in `Proposed.literal`, for a person to bind; the templates are checked against every sample only when
+    none was left. `Ambiguous` for what no literal mends: fewer than two samples, their methods, or their endpoint URL
+    shapes."""
+    try:
+        binding = _Binding.checked(samples, leave_literals=True)
+        return Proposed(binding.spec(), tuple(binding.literal))
+    except _Unbound as unbound:
+        return Ambiguous(str(unbound))
+
+
 def withhold_tokens(samples: Sequence[Sample]) -> tuple[list[Sample], tuple[str, ...]]:
     """The samples with each token-like query value that is the same on every sample and that no page value binds
     (module docstring) left out of their endpoint URLs, and the names of the query items left out. Items are matched
@@ -326,20 +347,23 @@ class _Unbound(Exception):
 
 
 class _Binding:
-    def __init__(self, samples: Sequence[Sample]) -> None:
-        """The page values of `samples`, which `binds` reads; a request is bound only from a `checked` set."""
+    def __init__(self, samples: Sequence[Sample], *, leave_literals: bool = False) -> None:
+        """The page values of `samples`, which `binds` reads; a request is bound only from a `checked` set. With
+        `leave_literals`, a varying value nothing binds stays a literal, its place kept in `literal` (`propose`)."""
         self.samples = samples
         self.method = samples[0].request.method.upper()
         self.params: dict[str, str] = {}  # binder text -> parameter name
+        self.leave_literals = leave_literals
+        self.literal: list[str] = []
 
     @classmethod
-    def checked(cls, samples: Sequence[Sample]) -> "_Binding":
+    def checked(cls, samples: Sequence[Sample], *, leave_literals: bool = False) -> "_Binding":
         if len(samples) < 2:
             raise _Unbound("binding needs two sample pages to tell parameters from constants")
         methods = {sample.request.method.upper() for sample in samples}
         if len(methods) != 1 or not methods <= {"GET", "POST"}:
             raise _Unbound(f"the sample requests use methods {sorted(methods)}, not one of GET and POST")
-        return cls(samples)
+        return cls(samples, leave_literals=leave_literals)
 
     def spec(self) -> RequestSpec:
         url = self._url_template()
@@ -349,7 +373,8 @@ class _Binding:
             spec = request_spec(self.method, url, params, body)
         except ValidationError as error:
             raise _Unbound(f"the bound templates are not a valid request: {error.errors()[0]['msg']}") from None
-        for number, sample in enumerate(self.samples):
+        # A literal left in place reproduces the first sample's request only.
+        for number, sample in enumerate(self.samples if not self.literal else ()):
             if (problem := mismatch(spec, sample)) is not None:
                 raise _Unbound(f"the bound templates do not reproduce the request of sample page {number}: {problem}")
         return spec
@@ -398,8 +423,10 @@ class _Binding:
             text = next(self._data_binders(values), None)
         if text is not None:
             return self.params.setdefault(text, f"p{len(self.params) + 1}")
-        if varies:
+        if varies and not self.leave_literals:
             raise _Unbound(f"{where} varies between sample pages and no page value binds it")
+        if varies:
+            self.literal.append(where)
         return None
 
     def binds(self, values: list[str]) -> bool:

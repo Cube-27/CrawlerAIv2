@@ -10,6 +10,9 @@ captured ones, each header the caller's request context supplies is tried as a r
 replay sends the context's value, and the recipe keeps the name alone, never the value. When the replay needs anything
 else, or more than one added header, the recipe is not learnable and the field stays on the browser (§2: cookie
 handoff, tokens and signed requests are §22).
+
+A custom recipe's draft (`proposed`) is not replayed: an engineer tests it. It keeps every captured header a recipe may
+hold, minus those the HTTP rung sends itself.
 """
 
 from collections.abc import Mapping, Sequence
@@ -18,10 +21,13 @@ from typing import Final
 
 from pydantic import ValidationError
 
+from crawlerai.acquire.api import FETCH_HEADER_ORDER
+from crawlerai.config_ir.api_recipe.binding import Sample
 from crawlerai.config_ir.api_recipe.model import (
     CLIENT_FIELDS,
     CREDENTIAL_FIELDS,
     PAGE_URL,
+    Answer,
     ContextHeader,
     HeaderValue,
     RecipeHeader,
@@ -93,36 +99,60 @@ def _with_headers(spec: RequestSpec, headers: list[RecipeHeader]) -> RequestSpec
         return None
 
 
+def proposed(samples: Sequence[Sample], answer: Answer) -> tuple[list[RecipeHeader], list[str]]:
+    """The headers a custom recipe's draft sends, from its sample requests and without a replay: `Accept:
+    application/json` for a JSON answer, and each captured header a recipe may hold whose value is the same on every
+    sample, except those the HTTP rung sends itself as a script's `fetch()` does (its user agent, client hints and
+    Fetch metadata: one coherent fingerprint). A captured `Accept` replaces the default; a body's `Content-Type` is the
+    request's own (Fetch §5.2 sends `text/plain` without one). Also the names of the captured headers never sent
+    (`_captured`)."""
+    own = frozenset(FETCH_HEADER_ORDER) - {"accept", "content-type"}
+    captured, withheld = _captured(samples, skip=own)
+    headers: list[RecipeHeader] = [_ACCEPT] if answer == "json" else []
+    # RFC 9110 §5.1: field names are case-insensitive; a captured Accept replaces the recipe's.
+    if any(header.name.lower() == "accept" for header in captured):
+        headers = []
+    return [*headers, *captured], withheld
+
+
 def _candidates(pages: Sequence[ReplayPage]) -> tuple[list[RecipeHeader], list[str]]:
     """The headers to try: the captured ones as recipe values, then the request context's as references; and the
     names of the captured ones never sent."""
-    candidates: list[RecipeHeader] = []
-    withheld: list[str] = []
     context = pages[0].context if pages else None
     supplied = context.header_names() if context is not None else frozenset()
     # A field the request context supplies is a reference, never the captured value (the caller's secret).
-    seen: set[str] = set(supplied)
-    for name, _ in pages[0].sample.request.headers if pages else ():
+    candidates, withheld = _captured([page.sample for page in pages], skip=supplied)
+    names = sorted(supplied - CLIENT_FIELDS)
+    return [*candidates, *(ContextHeader(name=name, from_context=True) for name in names)], withheld
+
+
+def _captured(samples: Sequence[Sample], *, skip: frozenset[str]) -> tuple[list[RecipeHeader], list[str]]:
+    """The headers the first sample's request sent, in order, as recipe values, but for those named in `skip` and those
+    the client sets itself; and the names of those never sent: credentials, values that look like tokens and values
+    that differ between the samples."""
+    candidates: list[RecipeHeader] = []
+    withheld: list[str] = []
+    seen: set[str] = set(skip)
+    for name, _ in samples[0].request.headers if samples else ():
         key = name.lower()
         # RFC 9113 §8.3: a name starting with `:` is an HTTP/2 pseudo-header, not a field.
         if key in seen or key in CLIENT_FIELDS or key.startswith(":"):
             continue
         seen.add(key)
-        value = _constant(key, pages)
+        value = _constant(key, samples)
         if value is None or key in CREDENTIAL_FIELDS or token_like(value):
             withheld.append(name)
         else:
             candidates.append(HeaderValue(name=name, value=value))
-    names = sorted(supplied - CLIENT_FIELDS)
-    return [*candidates, *(ContextHeader(name=name, from_context=True) for name in names)], withheld
+    return candidates, withheld
 
 
-def _constant(key: str, pages: Sequence[ReplayPage]) -> str | None:
-    """The field's value on every page, with the page's own URL written `{page_url}`; `None` when it differs."""
-    values = {_recipe_value(key, page) for page in pages}
+def _constant(key: str, samples: Sequence[Sample]) -> str | None:
+    """The field's value on every sample, with the page's own URL written `{page_url}`; `None` when it differs."""
+    values = {_recipe_value(key, sample) for sample in samples}
     return values.pop() if len(values) == 1 else None
 
 
-def _recipe_value(key: str, page: ReplayPage) -> str | None:
-    value = next((v for name, v in page.sample.request.headers if name.lower() == key), None)
-    return f"{{{PAGE_URL}}}" if value == page.sample.page_url else value
+def _recipe_value(key: str, sample: Sample) -> str | None:
+    value = next((v for name, v in sample.request.headers if name.lower() == key), None)
+    return f"{{{PAGE_URL}}}" if value == sample.page_url else value

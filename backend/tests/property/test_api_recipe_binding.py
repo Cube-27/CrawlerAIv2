@@ -13,8 +13,10 @@ from crawlerai.config_ir.api_recipe.binding import (
     Ambiguous,
     CapturedRequest,
     PageData,
+    Proposed,
     Sample,
     bind,
+    propose,
     render_body,
     render_url,
     resolve,
@@ -106,6 +108,7 @@ def test_generated_requests_bind_back_to_their_binders(layout: _Layout, data: st
     spec = bind(samples)
 
     assert isinstance(spec, RequestSpec), spec
+    assert propose(samples) == Proposed(spec, ())
     assert set(spec.binders.values()) == set(layout.page_binders)
     for sample, row in zip(samples, rows, strict=True):
         params = resolve_params(spec, sample.page_url, {})
@@ -125,6 +128,19 @@ def test_a_page_path_segment_binds_an_endpoint_path_segment_and_constants_stay_l
     assert spec.url == f"{_API}/v1/products/{{p1}}?lang=en"
     assert spec.params_from_url == {"p1": "path:1"}
     assert (spec.method, spec.headers, spec.body, spec.requires_page_fetch) == ("GET", [], None, False)
+
+
+def test_a_proposal_leaves_a_varying_value_nothing_binds_as_the_first_sample_s_literal() -> None:
+    samples = [
+        _sample(f"{_PAGE}/p/blue-mug", f"{_API}/v1/products/blue-mug?at=1"),
+        _sample(f"{_PAGE}/p/red-cup", f"{_API}/v1/products/red-cup?at=2"),
+    ]
+
+    proposed = propose(samples)
+
+    assert isinstance(bind(samples), Ambiguous)
+    assert isinstance(proposed, Proposed), proposed
+    assert (proposed.spec.url, proposed.literal) == (f"{_API}/v1/products/{{p1}}?at=1", ("query value 'at'",))
 
 
 def test_a_post_body_binds_string_and_number_values_in_place() -> None:

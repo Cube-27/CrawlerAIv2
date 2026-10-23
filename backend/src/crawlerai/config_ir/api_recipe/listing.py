@@ -107,11 +107,13 @@ def discover_listing(pages: Sequence[ListingPage], schema: SchemaDef) -> list[Li
 def listing_pagination(pages: Sequence[ListingPage], key: SeriesKey) -> Pagination | None:
     """The pagination every page's series of two or more calls follows; None when none has two calls, one of them
     follows none, or two follow different ones."""
-    found: list[Pagination | None] = []
-    for page in pages:
-        series = page_series(page).get(key, ())
-        if len(series) >= 2:
-            found.append(infer([data.call for data in series], key[3]))
+    return series_pagination([page_series(page).get(key, ()) for page in pages], key[3])
+
+
+def series_pagination(series: Sequence[Sequence[DataCall]], rows: str) -> Pagination | None:
+    """The pagination every series of two or more calls follows, with `rows` as its row query (`listing_pagination`),
+    one series per page."""
+    found = [infer([data.call for data in calls], rows) for calls in series if len(calls) >= 2]
     if not found or found[0] is None or any(other != found[0] for other in found[1:]):
         return None
     return found[0]

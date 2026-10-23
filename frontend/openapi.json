@@ -1220,6 +1220,28 @@
         "title": "CallList",
         "type": "object"
       },
+      "CallRef": {
+        "additionalProperties": false,
+        "description": "One call of a sample: its capture and its index among the capture's network bodies.",
+        "properties": {
+          "capture_id": {
+            "format": "uuid",
+            "title": "Capture Id",
+            "type": "string"
+          },
+          "index": {
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "capture_id",
+          "index"
+        ],
+        "title": "CallRef",
+        "type": "object"
+      },
       "CallSummary": {
         "description": "One call of a sample: its index among the capture's network bodies (`GET /v1/captures/{id}/calls/{n}`), its\nanswer's status, content type and size, the request's Fetch destination, the page step it followed (0: the page's\nload), and whether it went to the page's own site.",
         "properties": {
@@ -2896,7 +2918,7 @@
         "title": "CursorPagination",
         "type": "object"
       },
-      "CustomRecipe": {
+      "CustomRecipe-Input": {
         "additionalProperties": false,
         "description": "A custom recipe: the schema and page kind it serves, the URL patterns of one host it serves them for, the main\ncall and the extra calls by name, the warm-up, the page fields, who sends the calls and the least interval between\nthem (`rate_ms`).",
         "properties": {
@@ -2914,7 +2936,7 @@
             "default": {},
             "patternProperties": {
               "^[a-z][a-z0-9_]{0,63}$": {
-                "$ref": "#/components/schemas/PageField"
+                "$ref": "#/components/schemas/PageField-Input"
               }
             },
             "title": "Fields",
@@ -2981,6 +3003,100 @@
           "page_kind",
           "patterns",
           "main"
+        ],
+        "title": "CustomRecipe",
+        "type": "object"
+      },
+      "CustomRecipe-Output": {
+        "additionalProperties": false,
+        "description": "A custom recipe: the schema and page kind it serves, the URL patterns of one host it serves them for, the main\ncall and the extra calls by name, the warm-up, the page fields, who sends the calls and the least interval between\nthem (`rate_ms`).",
+        "properties": {
+          "calls": {
+            "default": {},
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "$ref": "#/components/schemas/ApiRecipe-Output"
+              }
+            },
+            "title": "Calls",
+            "type": "object"
+          },
+          "fields": {
+            "default": {},
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "$ref": "#/components/schemas/PageField-Output"
+              }
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "main": {
+            "$ref": "#/components/schemas/ApiRecipe-Output"
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "patterns": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Patterns",
+            "type": "array"
+          },
+          "rate_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Ms"
+          },
+          "schema_id": {
+            "format": "uuid",
+            "title": "Schema Id",
+            "type": "string"
+          },
+          "sent_by": {
+            "default": "http",
+            "enum": [
+              "http",
+              "browser"
+            ],
+            "title": "Sent By",
+            "type": "string"
+          },
+          "warm_up": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WarmUp-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "schema_id",
+          "page_kind",
+          "patterns",
+          "main",
+          "calls",
+          "warm_up",
+          "fields",
+          "sent_by",
+          "rate_ms"
         ],
         "title": "CustomRecipe",
         "type": "object"
@@ -3391,6 +3507,67 @@
           "rows"
         ],
         "title": "Endpoint",
+        "type": "object"
+      },
+      "EndpointRef": {
+        "additionalProperties": false,
+        "description": "An endpoint of the call list, by its key: request method, URL shape and request body shape (`Endpoint`).",
+        "properties": {
+          "body_shape": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Shape"
+          },
+          "has_path": {
+            "title": "Has Path",
+            "type": "boolean"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "query": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Query",
+            "type": "array"
+          },
+          "segments": {
+            "minimum": 0.0,
+            "title": "Segments",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "method",
+          "origin",
+          "has_path",
+          "segments",
+          "query",
+          "body_shape"
+        ],
+        "title": "EndpointRef",
         "type": "object"
       },
       "ExportPage": {
@@ -6642,7 +6819,7 @@
         "title": "OutcomeCounts",
         "type": "object"
       },
-      "PageField": {
+      "PageField-Input": {
         "additionalProperties": false,
         "description": "A field read from the page itself: its steps in order (the first valid value wins), on the HTTP page or, when\nonly a render states it, the browser's (`browser`).",
         "properties": {
@@ -6685,6 +6862,54 @@
         },
         "required": [
           "steps"
+        ],
+        "title": "PageField",
+        "type": "object"
+      },
+      "PageField-Output": {
+        "additionalProperties": false,
+        "description": "A field read from the page itself: its steps in order (the first valid value wins), on the HTTP page or, when\nonly a render states it, the browser's (`browser`).",
+        "properties": {
+          "needs": {
+            "default": "http",
+            "enum": [
+              "http",
+              "browser"
+            ],
+            "title": "Needs",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/XPathStep-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/CssStep-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/JsonLdStep-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/JsonPathStep-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexStep-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/AttrStep-Output"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "steps",
+          "needs"
         ],
         "title": "PageField",
         "type": "object"
@@ -7321,6 +7546,82 @@
         "title": "Proof",
         "type": "object"
       },
+      "Proposal": {
+        "description": "A custom recipe's draft, with the schema fields its map leaves unfilled, where a value of the request varies\nbetween the samples and nothing binds it (left as the first sample's literal) or looks like a token (left out),\nand the captured headers left out (a credential, a token, a value that varies).",
+        "properties": {
+          "recipe": {
+            "$ref": "#/components/schemas/CustomRecipe-Output"
+          },
+          "unbound": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unbound",
+            "type": "array"
+          },
+          "unfilled": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unfilled",
+            "type": "array"
+          },
+          "withheld_headers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Withheld Headers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "recipe",
+          "unfilled",
+          "unbound",
+          "withheld_headers"
+        ],
+        "title": "Proposal",
+        "type": "object"
+      },
+      "ProposeRequest": {
+        "additionalProperties": false,
+        "description": "The body of `POST /v1/recipes/propose`: the sample captures, the main call and the schema the recipe serves.",
+        "properties": {
+          "capture_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 2,
+            "title": "Capture Ids",
+            "type": "array"
+          },
+          "main": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CallRef"
+              },
+              {
+                "$ref": "#/components/schemas/EndpointRef"
+              }
+            ],
+            "title": "Main"
+          },
+          "schema_id": {
+            "format": "uuid",
+            "title": "Schema Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "capture_ids",
+          "main",
+          "schema_id"
+        ],
+        "title": "ProposeRequest",
+        "type": "object"
+      },
       "Provenance": {
         "additionalProperties": false,
         "properties": {
@@ -7442,6 +7743,96 @@
           "fields"
         ],
         "title": "RecipeReport",
+        "type": "object"
+      },
+      "RecipeTestRequest": {
+        "additionalProperties": false,
+        "description": "The body of `POST /v1/recipes/test`: the recipe (a draft, or a stored custom recipe's config id), the URLs of\nits patterns to try it on, and how they are fetched.",
+        "properties": {
+          "fetch": {
+            "$ref": "#/components/schemas/FetchOptions-Input",
+            "default": {
+              "actions": [],
+              "cache": "default",
+              "cookies": {},
+              "headers": {},
+              "method_hint": "auto",
+              "respect_robots": false,
+              "screenshot": "viewport"
+            }
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "recipe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomRecipe-Input"
+              },
+              {
+                "format": "uuid",
+                "type": "string"
+              }
+            ],
+            "title": "Recipe"
+          },
+          "timeout_s": {
+            "default": 60,
+            "exclusiveMinimum": 0.0,
+            "maximum": 120.0,
+            "title": "Timeout S",
+            "type": "number"
+          },
+          "urls": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Urls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "recipe",
+          "urls"
+        ],
+        "title": "RecipeTestRequest",
+        "type": "object"
+      },
+      "RecipeTestResult": {
+        "description": "The test's job, each URL's runs in the order asked, and what the job used.",
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "urls": {
+            "items": {
+              "$ref": "#/components/schemas/UrlTest"
+            },
+            "title": "Urls",
+            "type": "array"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        },
+        "required": [
+          "job_id",
+          "urls",
+          "usage"
+        ],
+        "title": "RecipeTestResult",
         "type": "object"
       },
       "RecordField": {
@@ -8035,6 +8426,46 @@
           "fields"
         ],
         "title": "RowMeta",
+        "type": "object"
+      },
+      "Run": {
+        "description": "One fetch and extraction of a URL: the records it made, unstored, and its fetch trail (`fetch`, null when\nnothing was kept: `reason` says why, as a scrape's does).",
+        "properties": {
+          "fetch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FetchSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/ExtractedRecord"
+            },
+            "title": "Records",
+            "type": "array"
+          }
+        },
+        "required": [
+          "records",
+          "fetch",
+          "reason"
+        ],
+        "title": "Run",
         "type": "object"
       },
       "RunStarted": {
@@ -10004,6 +10435,28 @@
         "title": "TypeAction",
         "type": "object"
       },
+      "UrlTest": {
+        "description": "A URL tried: with the recipe, and with the normal extraction.",
+        "properties": {
+          "normal": {
+            "$ref": "#/components/schemas/Run"
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/Run"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "recipe",
+          "normal"
+        ],
+        "title": "UrlTest",
+        "type": "object"
+      },
       "Usage": {
         "description": "What the scrape's job used.",
         "properties": {
@@ -11761,7 +12214,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CustomRecipe"
+                "$ref": "#/components/schemas/CustomRecipe-Input"
               }
             }
           },
@@ -13912,6 +14365,275 @@
           }
         ],
         "summary": "Calls",
+        "tags": [
+          "recipes"
+        ]
+      }
+    },
+    "/v1/recipes/propose": {
+      "post": {
+        "description": "A custom recipe's draft from the samples' calls of the `main` endpoint (named by its key or one of its calls),\nfor the schema: the bound request, its headers, pagination, field map and URL patterns, with the fields left\nunfilled, the request values left unbound and the headers left out. Deterministic, and nothing is sent or stored.\n404: no such capture or schema, or a bundle expired; 422: the samples' calls of the main endpoint make no recipe.",
+        "operationId": "propose_v1_recipes_propose_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Proposal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Propose",
+        "tags": [
+          "recipes"
+        ]
+      }
+    },
+    "/v1/recipes/test": {
+      "post": {
+        "description": "Each URL fetched and extracted with the recipe (a draft, or a stored custom recipe's id), and as if no recipe's\npattern matched it, both with their fetch trails. No capture, record, config or site memory is stored; the\nfetches count as a `scrape` job's usage. 404: no such config or schema; 409: the config is not a custom recipe;\n422: the draft does not fit its schema, or a URL matches no pattern of the recipe.",
+        "operationId": "test_v1_recipes_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecipeTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipeTestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Test",
         "tags": [
           "recipes"
         ]
@@ -16216,7 +16938,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CustomRecipe"
+                "$ref": "#/components/schemas/CustomRecipe-Input"
               }
             }
           },

@@ -42,6 +42,7 @@ from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.records import record_confidence
 from crawlerai.resolve.task import ActiveConfig, page_records
+from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services import scrape
@@ -296,16 +297,23 @@ async def _replay(
     if config is not None:
         config = config.for_capture(bundle.manifest, data.adapters)
     result = await extract_page(bundle, schema, None if config is None else config.executor, None, data=data)
+    # Their entity keys are not returned, so the capture's URL stands in for the task's canonical one.
+    return unstored_records(schema, result, site_id=capture.site_id, page_url=capture.url)
+
+
+def unstored_records(
+    schema: SchemaDef, result: ExtractionResult, *, site_id: SiteId, page_url: str
+) -> list[ExtractedRecord]:
+    """The records a page task would store from `result`, the extraction of the page at `page_url`, without storing
+    them: a listing's rows are deduplicated by their URLs."""
     if result.entity is None:
         return []
-    # The records a page task would store: a listing's rows are deduplicated by their URLs. Their entity keys
-    # are not returned, so the capture's URL stands in for the task's canonical one.
     _, drafts = page_records(
         schema,
         result.entity,
         result.rows,
-        site_id=capture.site_id,
-        page_url=capture.url,
+        site_id=site_id,
+        page_url=page_url,
         caller_supplied=True,
         diagnostics=result.diagnostics,
     )

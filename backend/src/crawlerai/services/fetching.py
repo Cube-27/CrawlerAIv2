@@ -437,6 +437,8 @@ class PagePlan:
     fetch: FetchPlan = NO_PLAN
     # What the config's `recipe` serves beyond its main call when it is a custom recipe (`config_ir.active.custom_of`).
     custom: Custom | None = None
+    # A recipe test's fetch (`services.recipe_trial`): the site keeps nothing of it, no adapter decline, no memory.
+    trial: bool = False
 
 
 def page_fetch(
@@ -505,15 +507,16 @@ async def fetch_planned(
     engine: AsyncEngine, fetching: Fetching, url: str, page: PagePlan, waiting: Waiting, *, tries: int = 1
 ) -> FetchResult | Refused | Later:
     """The page at `url` fetched by `page` through the polite fetch (`polite_fetch`), waiting for turns as `waiting`
-    says, or why nothing was sent; the adapter declines it made are stored on the site. A request the guard refused
-    is an attempt's error (`refusal`)."""
+    says, or why nothing was sent; the adapter declines it made are stored on the site, but for a `trial`'s. A request
+    the guard refused is an attempt's error (`refusal`)."""
     rules = rules_of(engine, fetching.rungs.http, page.attempts, Turns(fetching.limiter, waiting))
     by_adapter = page.rungs.adapters.would_serve(url)
     fetch = page_fetch(fetching, page, rules, waiting, by_adapter=by_adapter)
     result = await polite_fetch(
         url, page.policy, rules, fetching.limiter, waiting, fetch, by_adapter=by_adapter, tries=tries
     )
-    await store_declines(engine, page.site, urlsplit(url).hostname or "", page.rungs)
+    if not page.trial:
+        await store_declines(engine, page.site, urlsplit(url).hostname or "", page.rungs)
     return result
 
 

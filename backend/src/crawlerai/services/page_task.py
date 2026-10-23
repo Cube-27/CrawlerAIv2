@@ -74,7 +74,8 @@ class PageTask:
     fetched when `planned`, and whose config's API recipe serves it when the records are all it reads (`served`); a
     listing recipe with pagination then serves up to `listing_pages` pages, and only the first without. A stored
     capture is read within `max_age` seconds; the fetch is bounded by `deadline`, on `time.monotonic`. `growth` and
-    `paging` are a scrape's (module docstring); `calls`, the calls its capture keeps (`FetchPolicy.calls`)."""
+    `paging` are a scrape's (module docstring); `calls`, the calls its capture keeps (`FetchPolicy.calls`). A `trial`
+    (a recipe test) teaches the site nothing (`PagePlan.trial`)."""
 
     task: ClaimedTask
     options: FetchOptions
@@ -89,6 +90,7 @@ class PageTask:
     growth: Growth | None = None
     paging: Paging | None = None
     calls: CallsMode = "data"
+    trial: bool = False
 
 
 @dataclass(frozen=True)
@@ -137,7 +139,17 @@ async def fetch_task(
     pages = _recipe_pages(page_task, recipe, attempts)
     growth, deadline = page_task.growth, page_task.deadline
     plan = PagePlan(
-        rungs, site, policy, attempts, recipe, pages, growth, deadline=deadline, fetch=by_sources, custom=custom
+        rungs,
+        site,
+        policy,
+        attempts,
+        recipe,
+        pages,
+        growth,
+        deadline=deadline,
+        fetch=by_sources,
+        custom=custom,
+        trial=page_task.trial,
     )
     try:
         fetched, further = await _fetched(engine, fetching, page_task, plan, waiting)
@@ -247,13 +259,15 @@ def _further(plan: PagePlan, kept: FetchResult) -> tuple[FetchResult, ...]:
 async def _kept(
     engine: AsyncEngine, plan: PagePlan, fetched: FetchResult | TaskResult, further: tuple[FetchResult, ...]
 ) -> Page | NotReached:
-    """The page, with what its fetch taught remembered on its site (`acquire.memory.learn_fetch`), or how the task
-    ends: a request the guard refused, a further page's too, fails it, and no page of it is stored."""
+    """The page, with what its fetch taught remembered on its site (`acquire.memory.learn_fetch`) unless it is a
+    trial's, or how the task ends: a request the guard refused, a further page's too, fails it, and no page of it is
+    stored."""
     attempts, pool = tuple(plan.attempts), plan.policy.proxy_pool
     if isinstance(fetched, FetchResult):
         refused = next((reason for page in (fetched, *further) if (reason := refusal(page)) is not None), None)
         if refused is None:
-            await learn_fetch(engine, plan.site.id, fetched)
+            if not plan.trial:
+                await learn_fetch(engine, plan.site.id, fetched)
             return Page(plan.site, fetched, attempts, pool, further)
         fetched = Failed(refused, transient=False)
     return NotReached(fetched, attempts, pool)
