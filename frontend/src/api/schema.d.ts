@@ -370,7 +370,9 @@ export interface paths {
         };
         /**
          * Get Job Request
-         * @description The request the job was submitted with, as the server validated and stored it (defaults filled in).
+         * @description The request the job was submitted with, with its `kind`: the kind's request model as the server validated and
+         *     stored it (defaults filled in, `fetch` header and cookie values redacted). 404 for a `learn` job, which the system
+         *     starts without one.
          */
         get: operations["get_job_request_v1_jobs__job_id__request_get"];
         put?: never;
@@ -988,9 +990,9 @@ export interface components {
          *     `budget.llm_calls` bounds the job's calls, and without a `budget` the project's cap does, as for every job
          *     kind. The webhook options are `WebhookOptions`.
          */
-        BatchScrapeRequest: {
+        "BatchScrapeRequest-Input": {
             budget?: components["schemas"]["Budget"] | null;
-            chunking?: components["schemas"]["ChunkOptions"] | null;
+            chunking?: components["schemas"]["ChunkOptions-Input"] | null;
             /**
              * @default {
              *       "actions": [],
@@ -1002,8 +1004,8 @@ export interface components {
              *       "screenshot": "viewport"
              *     }
              */
-            fetch?: components["schemas"]["FetchOptions"];
-            fit?: components["schemas"]["FitOptions"] | null;
+            fetch?: components["schemas"]["FetchOptions-Input"];
+            fit?: components["schemas"]["FitOptions-Input"] | null;
             /** Formats */
             formats: ("markdown" | "markdown_fit" | "chunks" | "html" | "raw_html" | "links" | "metadata" | "screenshot" | "pdf" | "records")[];
             /** Locale */
@@ -1022,9 +1024,9 @@ export interface components {
              *       "mode": "off"
              *     }
              */
-            render?: components["schemas"]["RenderOptions"];
+            render?: components["schemas"]["RenderOptions-Input"];
             /** Schema */
-            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaFields"] | null;
+            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline-Input"] | components["schemas"]["SchemaFields"] | null;
             /** Urls */
             urls: string[];
             webhook_batch?: components["schemas"]["WebhookBatch"] | null;
@@ -1032,6 +1034,60 @@ export interface components {
             webhook_events?: ("page" | "record" | "record_changed" | "url_gone" | "job_completed" | "job_failed" | "job_cancelled")[];
             /** Webhook Url */
             webhook_url?: string | null;
+        };
+        /**
+         * BatchScrapeRequest
+         * @description The body of `POST /v1/batch/scrape`. The formats, `schema`, `page_kind`, `fetch` and `locale` are a
+         *     scrape's, for every URL. A batch's results are either records or page outputs, so `records` is
+         *     asked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),
+         *     and `schema.fields` is drafted while the caller waits. Role C fills a page's gaps as in a scrape;
+         *     `budget.llm_calls` bounds the job's calls, and without a `budget` the project's cap does, as for every job
+         *     kind. The webhook options are `WebhookOptions`.
+         */
+        "BatchScrapeRequest-Output": {
+            budget: components["schemas"]["Budget"] | null;
+            chunking: components["schemas"]["ChunkOptions-Output"] | null;
+            /**
+             * @default {
+             *       "actions": [],
+             *       "cache": "default",
+             *       "cookies": {},
+             *       "headers": {},
+             *       "method_hint": "auto",
+             *       "respect_robots": false,
+             *       "screenshot": "viewport"
+             *     }
+             */
+            fetch: components["schemas"]["FetchOptions-Output"];
+            fit: components["schemas"]["FitOptions-Output"] | null;
+            /** Formats */
+            formats: ("markdown" | "markdown_fit" | "chunks" | "html" | "raw_html" | "links" | "metadata" | "screenshot" | "pdf" | "records")[];
+            /** Locale */
+            locale: string | null;
+            /**
+             * Min Confidence
+             * @description Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.
+             */
+            min_confidence: number | null;
+            /** Page Kind */
+            page_kind: ("detail" | "listing") | null;
+            /**
+             * @description How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page.
+             * @default {
+             *       "fields": [],
+             *       "mode": "off"
+             *     }
+             */
+            render?: components["schemas"]["RenderOptions-Output"];
+            /** Schema */
+            schema: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline-Output"] | components["schemas"]["SchemaFields"] | null;
+            /** Urls */
+            urls: string[];
+            webhook_batch: components["schemas"]["WebhookBatch"] | null;
+            /** Webhook Events */
+            webhook_events: ("page" | "record" | "record_changed" | "url_gone" | "job_completed" | "job_failed" | "job_cancelled")[];
+            /** Webhook Url */
+            webhook_url: string | null;
         };
         /** BatchSubmitted */
         BatchSubmitted: {
@@ -1047,7 +1103,7 @@ export interface components {
          *     has seen at least that many rows, so it may pass it by one page or batch. Without a `hint` the mechanism is
          *     detected.
          */
-        BrowserActions: {
+        "BrowserActions-Input": {
             /** Hint */
             hint?: ("load_more" | "show_more" | "pagination" | "next" | "scroll") | null;
             /**
@@ -1055,6 +1111,21 @@ export interface components {
              * @default 100
              */
             records?: number;
+        };
+        /**
+         * BrowserActions
+         * @description A single-URL listing scrape's browser actions. `records` is a soft target: the run stops once it
+         *     has seen at least that many rows, so it may pass it by one page or batch. Without a `hint` the mechanism is
+         *     detected.
+         */
+        "BrowserActions-Output": {
+            /** Hint */
+            hint: ("load_more" | "show_more" | "pagination" | "next" | "scroll") | null;
+            /**
+             * Records
+             * @default 100
+             */
+            records: number;
         };
         /**
          * Budget
@@ -1084,7 +1155,7 @@ export interface components {
          * @description `chunks`' options: the `strategy`, the `size` of a chunk and the `overlap` between chunks, in words, and the
          *     markdown the chunks are cut from (`markdown_fit` is pruned, so the chunks hold the page's content only).
          */
-        ChunkOptions: {
+        "ChunkOptions-Input": {
             /**
              * Overlap
              * @default 0
@@ -1109,10 +1180,39 @@ export interface components {
             strategy?: "heading" | "sentence" | "token";
         };
         /**
+         * ChunkOptions
+         * @description `chunks`' options: the `strategy`, the `size` of a chunk and the `overlap` between chunks, in words, and the
+         *     markdown the chunks are cut from (`markdown_fit` is pruned, so the chunks hold the page's content only).
+         */
+        "ChunkOptions-Output": {
+            /**
+             * Overlap
+             * @default 0
+             */
+            overlap: number;
+            /**
+             * Size
+             * @default 400
+             */
+            size: number;
+            /**
+             * Source
+             * @default markdown
+             * @enum {string}
+             */
+            source: "markdown" | "markdown_fit";
+            /**
+             * Strategy
+             * @default heading
+             * @enum {string}
+             */
+            strategy: "heading" | "sentence" | "token";
+        };
+        /**
          * ClickAction
          * @description Click an element, or the first visible element whose text holds `text`.
          */
-        ClickAction: {
+        "ClickAction-Input": {
             /** Selector */
             selector?: string | null;
             /** Text */
@@ -1129,6 +1229,28 @@ export interface components {
             type: "click";
             /** Xpath */
             xpath?: string | null;
+        };
+        /**
+         * ClickAction
+         * @description Click an element, or the first visible element whose text holds `text`.
+         */
+        "ClickAction-Output": {
+            /** Selector */
+            selector: string | null;
+            /** Text */
+            text: string | null;
+            /**
+             * Timeout Ms
+             * @default 5000
+             */
+            timeout_ms: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "click";
+            /** Xpath */
+            xpath: string | null;
         };
         /** ConfigDetail */
         ConfigDetail: {
@@ -1305,7 +1427,7 @@ export interface components {
          *         links that best match `query` and `keywords` first (`crawl.scoring`). `allow_subdomains`
          *         keeps the start host's subdomains without an `include`, and `allow_external` any host.
          */
-        CrawlRequest: {
+        "CrawlRequest-Input": {
             /**
              * Allow External
              * @default false
@@ -1317,7 +1439,7 @@ export interface components {
              */
             allow_subdomains?: boolean;
             budget?: components["schemas"]["Budget"] | null;
-            chunking?: components["schemas"]["ChunkOptions"] | null;
+            chunking?: components["schemas"]["ChunkOptions-Input"] | null;
             /** Exclude */
             exclude?: string[];
             /**
@@ -1331,8 +1453,8 @@ export interface components {
              *       "screenshot": "viewport"
              *     }
              */
-            fetch?: components["schemas"]["FetchOptions"];
-            fit?: components["schemas"]["FitOptions"] | null;
+            fetch?: components["schemas"]["FetchOptions-Input"];
+            fit?: components["schemas"]["FitOptions-Input"] | null;
             /** Formats */
             formats: ("markdown" | "markdown_fit" | "chunks" | "html" | "raw_html" | "links" | "metadata" | "screenshot" | "pdf" | "records")[];
             /** Include */
@@ -1368,9 +1490,9 @@ export interface components {
              *       "mode": "off"
              *     }
              */
-            render?: components["schemas"]["RenderOptions"];
+            render?: components["schemas"]["RenderOptions-Input"];
             /** Schema */
-            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaFields"] | null;
+            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline-Input"] | components["schemas"]["SchemaFields"] | null;
             /**
              * Strategy
              * @default bfs
@@ -1384,6 +1506,100 @@ export interface components {
             webhook_events?: ("page" | "record" | "record_changed" | "url_gone" | "job_completed" | "job_failed" | "job_cancelled")[];
             /** Webhook Url */
             webhook_url?: string | null;
+        };
+        /**
+         * CrawlRequest
+         * @description The body of `POST /v1/crawl`. The formats, `schema`, `fetch` and `locale` are a batch's, for every
+         *         page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is
+         *         drafted
+         *         while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap
+         *         does.
+         *     `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which
+         *         pages are extracted. The webhook options are `WebhookOptions`.
+         *
+         *         `strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the
+         *         links that best match `query` and `keywords` first (`crawl.scoring`). `allow_subdomains`
+         *         keeps the start host's subdomains without an `include`, and `allow_external` any host.
+         */
+        "CrawlRequest-Output": {
+            /**
+             * Allow External
+             * @default false
+             */
+            allow_external: boolean;
+            /**
+             * Allow Subdomains
+             * @default false
+             */
+            allow_subdomains: boolean;
+            budget: components["schemas"]["Budget"] | null;
+            chunking: components["schemas"]["ChunkOptions-Output"] | null;
+            /** Exclude */
+            exclude: string[];
+            /**
+             * @default {
+             *       "actions": [],
+             *       "cache": "default",
+             *       "cookies": {},
+             *       "headers": {},
+             *       "method_hint": "auto",
+             *       "respect_robots": false,
+             *       "screenshot": "viewport"
+             *     }
+             */
+            fetch: components["schemas"]["FetchOptions-Output"];
+            fit: components["schemas"]["FitOptions-Output"] | null;
+            /** Formats */
+            formats: ("markdown" | "markdown_fit" | "chunks" | "html" | "raw_html" | "links" | "metadata" | "screenshot" | "pdf" | "records")[];
+            /** Include */
+            include: string[];
+            /** Keywords */
+            keywords: string[];
+            /**
+             * Limit
+             * @description At most this many pages are fetched.
+             * @default 500
+             */
+            limit: number;
+            /** Locale */
+            locale: string | null;
+            /**
+             * Max Depth
+             * @default 3
+             */
+            max_depth: number;
+            /**
+             * Min Confidence
+             * @description Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.
+             */
+            min_confidence: number | null;
+            /** Page Kind Rules */
+            page_kind_rules: components["schemas"]["PageKindRule"][];
+            /** Query */
+            query: string | null;
+            /**
+             * @description How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page.
+             * @default {
+             *       "fields": [],
+             *       "mode": "off"
+             *     }
+             */
+            render?: components["schemas"]["RenderOptions-Output"];
+            /** Schema */
+            schema: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline-Output"] | components["schemas"]["SchemaFields"] | null;
+            /**
+             * Strategy
+             * @default bfs
+             * @enum {string}
+             */
+            strategy: "bfs" | "dfs" | "best_first";
+            /** Url */
+            url: string;
+            webhook_batch: components["schemas"]["WebhookBatch"] | null;
+            /** Webhook Events */
+            webhook_events: ("page" | "record" | "record_changed" | "url_gone" | "job_completed" | "job_failed" | "job_cancelled")[];
+            /** Webhook Url */
+            webhook_url: string | null;
         };
         /** CrawlSubmitted */
         CrawlSubmitted: {
@@ -1592,7 +1808,7 @@ export interface components {
          *     draft. The `fetch` and `locale` are a scrape's, for every URL. The webhook options are
          *     `WebhookOptions`.
          */
-        ExtractRequest: {
+        "ExtractRequest-Input": {
             budget?: components["schemas"]["Budget"] | null;
             /**
              * @default {
@@ -1605,7 +1821,7 @@ export interface components {
              *       "screenshot": "viewport"
              *     }
              */
-            fetch?: components["schemas"]["FetchOptions"];
+            fetch?: components["schemas"]["FetchOptions-Input"];
             /**
              * Limit
              * @default 1000
@@ -1624,7 +1840,7 @@ export interface components {
              */
             page_kind: "detail" | "listing";
             /** Schema */
-            schema: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaPrompt"] | components["schemas"]["SchemaFields"];
+            schema: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline-Input"] | components["schemas"]["SchemaPrompt"] | components["schemas"]["SchemaFields"];
             /** Urls */
             urls: string[];
             webhook_batch?: components["schemas"]["WebhookBatch"] | null;
@@ -1632,6 +1848,55 @@ export interface components {
             webhook_events?: ("page" | "record" | "record_changed" | "url_gone" | "job_completed" | "job_failed" | "job_cancelled")[];
             /** Webhook Url */
             webhook_url?: string | null;
+        };
+        /**
+         * ExtractRequest
+         * @description The body of `POST /v1/extract`. `urls` are URLs and URL globs; `schema` names a schema by id, gives it
+         *     inline, or asks for a draft from a `prompt` or from field names (`fields`), and its page kind must
+         *     be `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` (else the project's cap) bounds a prompt's
+         *     draft. The `fetch` and `locale` are a scrape's, for every URL. The webhook options are
+         *     `WebhookOptions`.
+         */
+        "ExtractRequest-Output": {
+            budget: components["schemas"]["Budget"] | null;
+            /**
+             * @default {
+             *       "actions": [],
+             *       "cache": "default",
+             *       "cookies": {},
+             *       "headers": {},
+             *       "method_hint": "auto",
+             *       "respect_robots": false,
+             *       "screenshot": "viewport"
+             *     }
+             */
+            fetch: components["schemas"]["FetchOptions-Output"];
+            /**
+             * Limit
+             * @default 1000
+             */
+            limit: number;
+            /** Locale */
+            locale: string | null;
+            /**
+             * Min Confidence
+             * @description Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.
+             */
+            min_confidence: number | null;
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            /** Schema */
+            schema: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline-Output"] | components["schemas"]["SchemaPrompt"] | components["schemas"]["SchemaFields"];
+            /** Urls */
+            urls: string[];
+            webhook_batch: components["schemas"]["WebhookBatch"] | null;
+            /** Webhook Events */
+            webhook_events: ("page" | "record" | "record_changed" | "url_gone" | "job_completed" | "job_failed" | "job_cancelled")[];
+            /** Webhook Url */
+            webhook_url: string | null;
         };
         /**
          * ExtractSubmitted
@@ -1710,12 +1975,12 @@ export interface components {
          *     and `cookies` to that host in either; `wait_for` and `actions` run in the browser, so they make the fetch
          *         a browser one and refuse `method_hint` `http`, and a browser fetch takes no `headers`.
          */
-        FetchOptions: {
+        "FetchOptions-Input": {
             /**
              * Actions
              * @default []
              */
-            actions?: (components["schemas"]["WaitAction"] | components["schemas"]["ClickAction"] | components["schemas"]["ScrollAction"] | components["schemas"]["PressAction"] | components["schemas"]["TypeAction"])[];
+            actions?: (components["schemas"]["WaitAction-Input"] | components["schemas"]["ClickAction-Input"] | components["schemas"]["ScrollAction-Input"] | components["schemas"]["PressAction-Input"] | components["schemas"]["TypeAction-Input"])[];
             /**
              * Cache
              * @default default
@@ -1759,6 +2024,56 @@ export interface components {
             screenshot?: "viewport" | "full_page";
             /** Wait For */
             wait_for?: number | string | null;
+        };
+        /**
+         * FetchOptions
+         * @description How a request's pages are fetched. `headers` go over HTTP to the page's own host only, never in the browser,
+         *     and `cookies` to that host in either; `wait_for` and `actions` run in the browser, so they make the fetch
+         *         a browser one and refuse `method_hint` `http`, and a browser fetch takes no `headers`.
+         */
+        "FetchOptions-Output": {
+            /**
+             * Actions
+             * @default []
+             */
+            actions: (components["schemas"]["WaitAction-Output"] | components["schemas"]["ClickAction-Output"] | components["schemas"]["ScrollAction-Output"] | components["schemas"]["PressAction-Output"] | components["schemas"]["TypeAction-Output"])[];
+            /**
+             * Cache
+             * @default default
+             * @enum {string}
+             */
+            cache: "default" | "bypass" | "only";
+            /** Cookies */
+            cookies: {
+                [key: string]: string;
+            };
+            /** Headers */
+            headers: {
+                [key: string]: string;
+            };
+            /** Max Rows */
+            max_rows: number | null;
+            /**
+             * Method Hint
+             * @default auto
+             * @enum {string}
+             */
+            method_hint: "auto" | "http" | "browser";
+            /** Proxy Pool */
+            proxy_pool: string | null;
+            /**
+             * Respect Robots
+             * @default false
+             */
+            respect_robots: boolean;
+            /**
+             * Screenshot
+             * @default viewport
+             * @enum {string}
+             */
+            screenshot: "viewport" | "full_page";
+            /** Wait For */
+            wait_for: number | string | null;
         };
         /**
          * FetchSummary
@@ -1971,11 +2286,21 @@ export interface components {
          * FitOptions
          * @description `markdown_fit`'s options: the `query` the content is kept relevant to, and at most `max_blocks` blocks of it.
          */
-        FitOptions: {
+        "FitOptions-Input": {
             /** Max Blocks */
             max_blocks?: number | null;
             /** Query */
             query?: string | null;
+        };
+        /**
+         * FitOptions
+         * @description `markdown_fit`'s options: the `query` the content is kept relevant to, and at most `max_blocks` blocks of it.
+         */
+        "FitOptions-Output": {
+            /** Max Blocks */
+            max_blocks: number | null;
+            /** Query */
+            query: string | null;
         };
         /**
          * HeaderValue
@@ -2319,7 +2644,7 @@ export interface components {
          * MapRequest
          * @description The body of `POST /v1/map`.
          */
-        MapRequest: {
+        "MapRequest-Input": {
             /**
              * Exclude
              * @default []
@@ -2357,6 +2682,49 @@ export interface components {
              * @default true
              */
             use_sitemaps?: boolean;
+        };
+        /**
+         * MapRequest
+         * @description The body of `POST /v1/map`.
+         */
+        "MapRequest-Output": {
+            /**
+             * Exclude
+             * @default []
+             */
+            exclude: string[];
+            /**
+             * Include
+             * @default []
+             */
+            include: string[];
+            /**
+             * Limit
+             * @default 5000
+             */
+            limit: number;
+            /**
+             * Llms Txt
+             * @default false
+             */
+            llms_txt: boolean;
+            /**
+             * Respect Robots
+             * @default false
+             */
+            respect_robots: boolean;
+            /** Url */
+            url: string;
+            /**
+             * Use Links
+             * @default true
+             */
+            use_links: boolean;
+            /**
+             * Use Sitemaps
+             * @default true
+             */
+            use_sitemaps: boolean;
         };
         /** MapResult */
         MapResult: {
@@ -2418,7 +2786,7 @@ export interface components {
              * @default false
              */
             paused?: boolean;
-            request: components["schemas"]["BatchScrapeRequest"];
+            request: components["schemas"]["BatchScrapeRequest-Input"];
             /**
              * Timezone
              * @default UTC
@@ -2443,7 +2811,7 @@ export interface components {
              * @default false
              */
             paused?: boolean;
-            request: components["schemas"]["CrawlRequest"];
+            request: components["schemas"]["CrawlRequest-Input"];
             /**
              * Timezone
              * @default UTC
@@ -2468,7 +2836,7 @@ export interface components {
              * @default false
              */
             paused?: boolean;
-            request: components["schemas"]["ExtractRequest"];
+            request: components["schemas"]["ExtractRequest-Input"];
             /**
              * Timezone
              * @default UTC
@@ -2476,7 +2844,7 @@ export interface components {
             timezone?: string;
         };
         /** NewSchema */
-        NewSchema: {
+        "NewSchema-Input": {
             /** Fields */
             fields: {
                 [key: string]: components["schemas"]["FieldSpec-Input"];
@@ -2493,6 +2861,25 @@ export interface components {
              * @default []
              */
             required_groups?: string[][];
+        };
+        /** NewSchema */
+        "NewSchema-Output": {
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["FieldSpec-Output"];
+            };
+            /** Name */
+            name: string;
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            /**
+             * Required Groups
+             * @default []
+             */
+            required_groups: string[][];
         };
         /** NewScrapeSchedule */
         NewScrapeSchedule: {
@@ -2512,7 +2899,7 @@ export interface components {
              * @default false
              */
             paused?: boolean;
-            request: components["schemas"]["ScrapeRequest"];
+            request: components["schemas"]["ScrapeRequest-Input"];
             /**
              * Timezone
              * @default UTC
@@ -2745,7 +3132,7 @@ export interface components {
             xpath_document: "Dom\\HTMLDocument::createFromString($html, LIBXML_NOERROR | Dom\\HTML_NO_DEFAULT_NS)";
         };
         /** PressAction */
-        PressAction: {
+        "PressAction-Input": {
             /** Key */
             key: string;
             /**
@@ -2753,6 +3140,21 @@ export interface components {
              * @default 5000
              */
             timeout_ms?: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "press";
+        };
+        /** PressAction */
+        "PressAction-Output": {
+            /** Key */
+            key: string;
+            /**
+             * Timeout Ms
+             * @default 5000
+             */
+            timeout_ms: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -2976,7 +3378,7 @@ export interface components {
          * @description The `render` member: its mode, and the schema fields `locate` looks for (else the
          *     fields the HTTP extraction left missing). Pinned with the request.
          */
-        RenderOptions: {
+        "RenderOptions-Input": {
             /** Fields */
             fields?: string[];
             /**
@@ -2985,6 +3387,21 @@ export interface components {
              * @enum {string}
              */
             mode?: "off" | "locate" | "always";
+        };
+        /**
+         * RenderOptions
+         * @description The `render` member: its mode, and the schema fields `locate` looks for (else the
+         *     fields the HTTP extraction left missing). Pinned with the request.
+         */
+        "RenderOptions-Output": {
+            /** Fields */
+            fields: string[];
+            /**
+             * Mode
+             * @default off
+             * @enum {string}
+             */
+            mode: "off" | "locate" | "always";
         };
         /** ReplayRequest */
         ReplayRequest: {
@@ -3193,8 +3610,12 @@ export interface components {
             fields: string[];
         };
         /** SchemaInline */
-        SchemaInline: {
-            inline: components["schemas"]["NewSchema"];
+        "SchemaInline-Input": {
+            inline: components["schemas"]["NewSchema-Input"];
+        };
+        /** SchemaInline */
+        "SchemaInline-Output": {
+            inline: components["schemas"]["NewSchema-Output"];
         };
         /**
          * SchemaLabels
@@ -3235,10 +3656,10 @@ export interface components {
          *     within that many seconds. `browser_actions` collects more of a listing's rows in the browser; a listing
          *     scrape for `records` in `auto` without it takes the default actions where its page is rendered.
          */
-        ScrapeRequest: {
-            browser_actions?: components["schemas"]["BrowserActions"] | null;
+        "ScrapeRequest-Input": {
+            browser_actions?: components["schemas"]["BrowserActions-Input"] | null;
             budget?: components["schemas"]["Budget"] | null;
-            chunking?: components["schemas"]["ChunkOptions"] | null;
+            chunking?: components["schemas"]["ChunkOptions-Input"] | null;
             /**
              * @default {
              *       "actions": [],
@@ -3250,8 +3671,8 @@ export interface components {
              *       "screenshot": "viewport"
              *     }
              */
-            fetch?: components["schemas"]["FetchOptions"];
-            fit?: components["schemas"]["FitOptions"] | null;
+            fetch?: components["schemas"]["FetchOptions-Input"];
+            fit?: components["schemas"]["FitOptions-Input"] | null;
             /** Formats */
             formats: ("markdown" | "markdown_fit" | "chunks" | "html" | "raw_html" | "links" | "metadata" | "screenshot" | "pdf" | "records")[];
             /** Locale */
@@ -3275,14 +3696,73 @@ export interface components {
              *       "mode": "off"
              *     }
              */
-            render?: components["schemas"]["RenderOptions"];
+            render?: components["schemas"]["RenderOptions-Input"];
             /** Schema */
-            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaPrompt"] | components["schemas"]["SchemaFields"] | null;
+            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline-Input"] | components["schemas"]["SchemaPrompt"] | components["schemas"]["SchemaFields"] | null;
             /**
              * Timeout S
              * @default 60
              */
             timeout_s?: number;
+            /** Url */
+            url: string;
+        };
+        /**
+         * ScrapeRequest
+         * @description The body of `POST /v1/scrape`. `records` needs a schema and a `page_kind`, and the schema's page kind
+         *     must be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds
+         *     its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched
+         *     within that many seconds. `browser_actions` collects more of a listing's rows in the browser; a listing
+         *     scrape for `records` in `auto` without it takes the default actions where its page is rendered.
+         */
+        "ScrapeRequest-Output": {
+            browser_actions: components["schemas"]["BrowserActions-Output"] | null;
+            budget: components["schemas"]["Budget"] | null;
+            chunking: components["schemas"]["ChunkOptions-Output"] | null;
+            /**
+             * @default {
+             *       "actions": [],
+             *       "cache": "default",
+             *       "cookies": {},
+             *       "headers": {},
+             *       "method_hint": "auto",
+             *       "respect_robots": false,
+             *       "screenshot": "viewport"
+             *     }
+             */
+            fetch: components["schemas"]["FetchOptions-Output"];
+            fit: components["schemas"]["FitOptions-Output"] | null;
+            /** Formats */
+            formats: ("markdown" | "markdown_fit" | "chunks" | "html" | "raw_html" | "links" | "metadata" | "screenshot" | "pdf" | "records")[];
+            /** Locale */
+            locale: string | null;
+            /**
+             * Max Age
+             * @default 0
+             */
+            max_age: number;
+            /**
+             * Min Confidence
+             * @description Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.
+             */
+            min_confidence: number | null;
+            /** Page Kind */
+            page_kind: ("detail" | "listing") | null;
+            /**
+             * @description How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page.
+             * @default {
+             *       "fields": [],
+             *       "mode": "off"
+             *     }
+             */
+            render?: components["schemas"]["RenderOptions-Output"];
+            /** Schema */
+            schema: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline-Output"] | components["schemas"]["SchemaPrompt"] | components["schemas"]["SchemaFields"] | null;
+            /**
+             * Timeout S
+             * @default 60
+             */
+            timeout_s: number;
             /** Url */
             url: string;
         };
@@ -3371,7 +3851,7 @@ export interface components {
          * ScrollAction
          * @description Scroll to the end (`to: bottom`), by `by` CSS pixels, or until the document stops growing (`until: stable`).
          */
-        ScrollAction: {
+        "ScrollAction-Input": {
             /** By */
             by?: number | null;
             /**
@@ -3388,6 +3868,28 @@ export interface components {
             type: "scroll";
             /** Until */
             until?: "stable" | null;
+        };
+        /**
+         * ScrollAction
+         * @description Scroll to the end (`to: bottom`), by `by` CSS pixels, or until the document stops growing (`until: stable`).
+         */
+        "ScrollAction-Output": {
+            /** By */
+            by: number | null;
+            /**
+             * Timeout Ms
+             * @default 5000
+             */
+            timeout_ms: number;
+            /** To */
+            to: "bottom" | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "scroll";
+            /** Until */
+            until: "stable" | null;
         };
         /** SearchHit */
         SearchHit: {
@@ -3453,7 +3955,7 @@ export interface components {
              *       "screenshot": "viewport"
              *     }
              */
-            fetch?: components["schemas"]["FetchOptions"];
+            fetch?: components["schemas"]["FetchOptions-Input"];
             /**
              * Formats
              * @default [
@@ -3466,7 +3968,7 @@ export interface components {
             /** Page Kind */
             page_kind?: ("detail" | "listing") | null;
             /** Schema */
-            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaFields"] | null;
+            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline-Input"] | components["schemas"]["SchemaFields"] | null;
             /** Webhook Url */
             webhook_url?: string | null;
         };
@@ -3482,6 +3984,42 @@ export interface components {
              * @enum {string}
              */
             outcome: "done" | "not_found" | "timeout" | "refused" | "error" | "skipped";
+        };
+        /** StoredBatchScrape */
+        StoredBatchScrape: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "batch_scrape";
+            request: components["schemas"]["BatchScrapeRequest-Output"];
+        };
+        /** StoredCrawl */
+        StoredCrawl: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "crawl";
+            request: components["schemas"]["CrawlRequest-Output"];
+        };
+        /** StoredExtract */
+        StoredExtract: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "extract";
+            request: components["schemas"]["ExtractRequest-Output"];
+        };
+        /** StoredMap */
+        StoredMap: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "map";
+            request: components["schemas"]["MapRequest-Output"];
         };
         /**
          * StoredRecord
@@ -3529,6 +4067,15 @@ export interface components {
             schema_id: string;
             /** Version */
             version: number;
+        };
+        /** StoredScrape */
+        StoredScrape: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "scrape";
+            request: components["schemas"]["ScrapeRequest-Output"];
         };
         /**
          * SubFieldMeta
@@ -3579,7 +4126,7 @@ export interface components {
          * TypeAction
          * @description Type `text` into an element; refused in the browser for a password or credential field.
          */
-        TypeAction: {
+        "TypeAction-Input": {
             /** Selector */
             selector?: string | null;
             /** Text */
@@ -3596,6 +4143,28 @@ export interface components {
             type: "type";
             /** Xpath */
             xpath?: string | null;
+        };
+        /**
+         * TypeAction
+         * @description Type `text` into an element; refused in the browser for a password or credential field.
+         */
+        "TypeAction-Output": {
+            /** Selector */
+            selector: string | null;
+            /** Text */
+            text: string;
+            /**
+             * Timeout Ms
+             * @default 5000
+             */
+            timeout_ms: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "type";
+            /** Xpath */
+            xpath: string | null;
         };
         /**
          * Usage
@@ -3649,7 +4218,7 @@ export interface components {
          * WaitAction
          * @description Wait `ms` milliseconds, for an element to be visible, or for the network to be idle (`network_idle`).
          */
-        WaitAction: {
+        "WaitAction-Input": {
             /** Ms */
             ms?: number | null;
             /**
@@ -3671,6 +4240,33 @@ export interface components {
             type: "wait";
             /** Xpath */
             xpath?: string | null;
+        };
+        /**
+         * WaitAction
+         * @description Wait `ms` milliseconds, for an element to be visible, or for the network to be idle (`network_idle`).
+         */
+        "WaitAction-Output": {
+            /** Ms */
+            ms: number | null;
+            /**
+             * Network Idle
+             * @default false
+             */
+            network_idle: boolean;
+            /** Selector */
+            selector: string | null;
+            /**
+             * Timeout Ms
+             * @default 5000
+             */
+            timeout_ms: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "wait";
+            /** Xpath */
+            xpath: string | null;
         };
         /**
          * WebhookBatch
@@ -3756,7 +4352,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["BatchScrapeRequest"];
+                "application/json": components["schemas"]["BatchScrapeRequest-Input"];
             };
         };
         responses: {
@@ -4348,7 +4944,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CrawlRequest"];
+                "application/json": components["schemas"]["CrawlRequest-Input"];
             };
         };
         responses: {
@@ -4432,7 +5028,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ExtractRequest"];
+                "application/json": components["schemas"]["ExtractRequest-Input"];
             };
         };
         responses: {
@@ -5004,9 +5600,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["StoredScrape"] | components["schemas"]["StoredBatchScrape"] | components["schemas"]["StoredMap"] | components["schemas"]["StoredCrawl"] | components["schemas"]["StoredExtract"];
                 };
             };
             /** @description Unauthorized */
@@ -5213,7 +5807,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MapRequest"];
+                "application/json": components["schemas"]["MapRequest-Input"];
             };
         };
         responses: {
@@ -6072,7 +6666,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["NewSchema"];
+                "application/json": components["schemas"]["NewSchema-Input"];
             };
         };
         responses: {
@@ -6494,7 +7088,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ScrapeRequest"];
+                "application/json": components["schemas"]["ScrapeRequest-Input"];
             };
         };
         responses: {

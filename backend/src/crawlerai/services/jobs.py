@@ -29,7 +29,6 @@ from crawlerai.content.metadata import PageMetadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.errors import Refusal
-from crawlerai.core.redaction import redacted_request
 from crawlerai.db.models import (
     Capture,
     CaptureId,
@@ -291,15 +290,6 @@ async def get_job(conn: AsyncConnection, job_id: JobId) -> JobSummary:
         raise JobNotFound(f"no job {job_id}")
     [summary] = await _summaries(conn, [job])
     return summary
-
-
-async def job_request(conn: AsyncConnection, job_id: JobId) -> dict[str, Any]:
-    """The request the job was submitted with, as stored (`job.request`), its `fetch` secrets redacted: the
-    playground shows it again to edit and re-run."""
-    request = (await conn.execute(select(Job.request).where(Job.id == job_id))).scalar_one_or_none()
-    if request is None:
-        raise JobNotFound(f"no job {job_id}")
-    return redacted_request(request)
 
 
 async def list_jobs(conn: AsyncConnection, query: JobListQuery) -> JobPage:

@@ -123,12 +123,20 @@ class Hint(Enum):
     scroll = "scroll"
 
 
-class BrowserActions(BaseModel):
+class BrowserActionsInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
     hint: Annotated[Hint | None, Field(title="Hint")] = None
     records: Annotated[int | None, Field(gt=0, title="Records")] = 100
+
+
+class BrowserActionsOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    hint: Annotated[Hint | None, Field(title="Hint")] = None
+    records: Annotated[int, Field(gt=0, title="Records")]
 
 
 class Budget(BaseModel):
@@ -156,7 +164,7 @@ class Strategy(Enum):
     token = "token"
 
 
-class ChunkOptions(BaseModel):
+class ChunkOptionsInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -166,11 +174,21 @@ class ChunkOptions(BaseModel):
     strategy: Annotated[Strategy | None, Field(title="Strategy")] = "heading"
 
 
+class ChunkOptionsOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    overlap: Annotated[int, Field(ge=0, title="Overlap")]
+    size: Annotated[int, Field(gt=0, title="Size")]
+    source: Annotated[Source, Field(title="Source")]
+    strategy: Annotated[Strategy, Field(title="Strategy")]
+
+
 class Text(RootModel[str]):
     root: Annotated[str, Field(max_length=1000, min_length=1, title="Text")]
 
 
-class ClickAction(BaseModel):
+class ClickActionInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -178,6 +196,17 @@ class ClickAction(BaseModel):
     text: Annotated[Text | None, Field(title="Text")] = None
     timeout_ms: Annotated[int | None, Field(ge=1, le=15000, title="Timeout Ms")] = 5000
     type: Annotated[Literal["click"], Field(title="Type")] = "click"
+    xpath: Annotated[str | None, Field(title="Xpath")] = None
+
+
+class ClickActionOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    selector: Annotated[str | None, Field(title="Selector")] = None
+    text: Annotated[Text | None, Field(title="Text")] = None
+    timeout_ms: Annotated[int, Field(ge=1, le=15000, title="Timeout Ms")]
+    type: Annotated[Literal["click"], Field(title="Type")]
     xpath: Annotated[str | None, Field(title="Xpath")] = None
 
 
@@ -204,7 +233,7 @@ class Status(Enum):
     pending_approval = "pending_approval"
 
 
-class Format1(Enum):
+class Format2(Enum):
     json = "json"
     platform_draft = "platform_draft"
 
@@ -221,7 +250,7 @@ class ConfirmItem(RootModel[str]):
     root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,63}$")]
 
 
-class Format2(Enum):
+class Format3(Enum):
     markdown = "markdown"
     markdown_fit = "markdown_fit"
     chunks = "chunks"
@@ -238,7 +267,7 @@ class Query(RootModel[str]):
     root: Annotated[str, Field(max_length=500, title="Query")]
 
 
-class Strategy1(Enum):
+class Strategy2(Enum):
     bfs = "bfs"
     dfs = "dfs"
     best_first = "best_first"
@@ -317,7 +346,7 @@ class DroppedRowMeta(BaseModel):
     reason: Annotated[str, Field(title="Reason")]
 
 
-class Format3(Enum):
+class Format5(Enum):
     json_records = "json_records"
     csv_records = "csv_records"
     markdown = "markdown"
@@ -326,11 +355,11 @@ class Format3(Enum):
 
 class ExportPage(BaseModel):
     content: Annotated[str, Field(title="Content")]
-    format: Annotated[Format3, Field(title="Format")]
+    format: Annotated[Format5, Field(title="Format")]
     next_cursor: Annotated[UUID | None, Field(title="Next Cursor")] = None
 
 
-class Format4(Enum):
+class Format6(Enum):
     json = "json"
     platform_draft = "platform_draft"
 
@@ -339,7 +368,7 @@ class ExportRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    format: Annotated[Format4, Field(title="Format")]
+    format: Annotated[Format6, Field(title="Format")]
 
 
 class Confidence(RootModel[float]):
@@ -393,6 +422,14 @@ class WaitFor(RootModel[int]):
 
 
 class WaitFor1(RootModel[str]):
+    root: Annotated[str, Field(min_length=1, title="Wait For")]
+
+
+class WaitFor2(RootModel[int]):
+    root: Annotated[int, Field(ge=1, le=15000, title="Wait For")]
+
+
+class WaitFor3(RootModel[str]):
     root: Annotated[str, Field(min_length=1, title="Wait For")]
 
 
@@ -537,16 +574,24 @@ class MaxBlocks(RootModel[int]):
     root: Annotated[int, Field(gt=0, title="Max Blocks")]
 
 
-class Query1(RootModel[str]):
+class Query2(RootModel[str]):
     root: Annotated[str, Field(min_length=1, title="Query")]
 
 
-class FitOptions(BaseModel):
+class FitOptionsInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
     max_blocks: Annotated[MaxBlocks | None, Field(title="Max Blocks")] = None
-    query: Annotated[Query1 | None, Field(title="Query")] = None
+    query: Annotated[Query2 | None, Field(title="Query")] = None
+
+
+class FitOptionsOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    max_blocks: Annotated[MaxBlocks | None, Field(title="Max Blocks")] = None
+    query: Annotated[Query2 | None, Field(title="Query")] = None
 
 
 class HeaderValue(BaseModel):
@@ -603,7 +648,7 @@ class WhenType(RootModel[str]):
     root: Annotated[str, Field(pattern="^[A-Z][A-Za-z0-9]*$", title="When Type")]
 
 
-class Source1(Enum):
+class Source2(Enum):
     jsonld = "jsonld"
     js_state = "js_state"
     attr = "attr"
@@ -675,7 +720,7 @@ class ListingReport(BaseModel):
     rows_ok: Annotated[int, Field(title="Rows Ok")]
 
 
-class MapRequest(BaseModel):
+class MapRequestInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -687,6 +732,20 @@ class MapRequest(BaseModel):
     url: Annotated[str, Field(title="Url")]
     use_links: Annotated[bool | None, Field(title="Use Links")] = True
     use_sitemaps: Annotated[bool | None, Field(title="Use Sitemaps")] = True
+
+
+class MapRequestOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    exclude: Annotated[list[str], Field(max_length=20, title="Exclude")]
+    include: Annotated[list[str], Field(max_length=20, title="Include")]
+    limit: Annotated[int, Field(ge=1, le=5000, title="Limit")]
+    llms_txt: Annotated[bool, Field(title="Llms Txt")]
+    respect_robots: Annotated[bool, Field(title="Respect Robots")]
+    url: Annotated[str, Field(title="Url")]
+    use_links: Annotated[bool, Field(title="Use Links")]
+    use_sitemaps: Annotated[bool, Field(title="Use Sitemaps")]
 
 
 class MapSources(BaseModel):
@@ -788,7 +847,7 @@ class ParamPagination(BaseModel):
     where: Annotated[Where, Field(title="Where")]
 
 
-class PressAction(BaseModel):
+class PressActionInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -801,6 +860,21 @@ class PressAction(BaseModel):
     ]
     timeout_ms: Annotated[int | None, Field(ge=1, le=15000, title="Timeout Ms")] = 5000
     type: Annotated[Literal["press"], Field(title="Type")] = "press"
+
+
+class PressActionOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    key: Annotated[
+        str,
+        Field(
+            pattern="^(?:(?:Shift|Control|Alt|Meta|ControlOrMeta)\\+)*(?:[A-Za-z][A-Za-z0-9]*|\\S)$",
+            title="Key",
+        ),
+    ]
+    timeout_ms: Annotated[int, Field(ge=1, le=15000, title="Timeout Ms")]
+    type: Annotated[Literal["press"], Field(title="Type")]
 
 
 class Problem(BaseModel):
@@ -972,7 +1046,7 @@ class Mode1(Enum):
     always = "always"
 
 
-class RenderOptions(BaseModel):
+class RenderOptionsInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -980,6 +1054,14 @@ class RenderOptions(BaseModel):
         None
     )
     mode: Annotated[Mode1 | None, Field(title="Mode")] = "off"
+
+
+class RenderOptionsOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    fields: Annotated[list[FieldModel], Field(max_length=50, title="Fields")]
+    mode: Annotated[Mode1, Field(title="Mode")]
 
 
 class ReplayRequest(BaseModel):
@@ -1104,7 +1186,7 @@ class SchemaRef(BaseModel):
     name: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,63}$", title="Name")]
 
 
-class Format5(Enum):
+class Format7(Enum):
     markdown = "markdown"
     markdown_fit = "markdown_fit"
     chunks = "chunks"
@@ -1134,7 +1216,7 @@ class Outcome2(Enum):
     failed = "failed"
 
 
-class Mode2(Enum):
+class Mode3(Enum):
     adhoc = "adhoc"
     config = "config"
 
@@ -1143,7 +1225,7 @@ class By(RootModel[int]):
     root: Annotated[int, Field(ge=-100000, le=100000, title="By")]
 
 
-class ScrollAction(BaseModel):
+class ScrollActionInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -1151,6 +1233,17 @@ class ScrollAction(BaseModel):
     timeout_ms: Annotated[int | None, Field(ge=1, le=15000, title="Timeout Ms")] = 5000
     to: Annotated[str | None, Field(title="To")] = None
     type: Annotated[Literal["scroll"], Field(title="Type")] = "scroll"
+    until: Annotated[str | None, Field(title="Until")] = None
+
+
+class ScrollActionOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    by: Annotated[By | None, Field(title="By")] = None
+    timeout_ms: Annotated[int, Field(ge=1, le=15000, title="Timeout Ms")]
+    to: Annotated[str | None, Field(title="To")] = None
+    type: Annotated[Literal["scroll"], Field(title="Type")]
     until: Annotated[str | None, Field(title="Until")] = None
 
 
@@ -1207,6 +1300,11 @@ class StepOutcome(BaseModel):
     outcome: Annotated[Outcome3, Field(title="Outcome")]
 
 
+class StoredMap(BaseModel):
+    kind: Annotated[Literal["map"], Field(title="Kind")]
+    request: MapRequestOutput
+
+
 class EgressBasis(Enum):
     pool = "pool"
     machine = "machine"
@@ -1243,7 +1341,7 @@ class TaskCounts(BaseModel):
     queued: Annotated[int, Field(title="Queued")]
 
 
-class TypeAction(BaseModel):
+class TypeActionInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -1251,6 +1349,17 @@ class TypeAction(BaseModel):
     text: Annotated[str, Field(max_length=1000, title="Text")]
     timeout_ms: Annotated[int | None, Field(ge=1, le=15000, title="Timeout Ms")] = 5000
     type: Annotated[Literal["type"], Field(title="Type")] = "type"
+    xpath: Annotated[str | None, Field(title="Xpath")] = None
+
+
+class TypeActionOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    selector: Annotated[str | None, Field(title="Selector")] = None
+    text: Annotated[str, Field(max_length=1000, title="Text")]
+    timeout_ms: Annotated[int, Field(ge=1, le=15000, title="Timeout Ms")]
+    type: Annotated[Literal["type"], Field(title="Type")]
     xpath: Annotated[str | None, Field(title="Xpath")] = None
 
 
@@ -1277,7 +1386,7 @@ class Ms(RootModel[int]):
     root: Annotated[int, Field(ge=1, le=15000, title="Ms")]
 
 
-class WaitAction(BaseModel):
+class WaitActionInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -1286,6 +1395,18 @@ class WaitAction(BaseModel):
     selector: Annotated[str | None, Field(title="Selector")] = None
     timeout_ms: Annotated[int | None, Field(ge=1, le=15000, title="Timeout Ms")] = 5000
     type: Annotated[Literal["wait"], Field(title="Type")] = "wait"
+    xpath: Annotated[str | None, Field(title="Xpath")] = None
+
+
+class WaitActionOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    ms: Annotated[Ms | None, Field(title="Ms")] = None
+    network_idle: Annotated[bool, Field(title="Network Idle")]
+    selector: Annotated[str | None, Field(title="Selector")] = None
+    timeout_ms: Annotated[int, Field(ge=1, le=15000, title="Timeout Ms")]
+    type: Annotated[Literal["wait"], Field(title="Type")]
     xpath: Annotated[str | None, Field(title="Xpath")] = None
 
 
@@ -1369,15 +1490,25 @@ class CostReport(BaseModel):
 
 
 class Actions(
-    RootModel[WaitAction | ClickAction | ScrollAction | PressAction | TypeAction]
+    RootModel[
+        WaitActionInput
+        | ClickActionInput
+        | ScrollActionInput
+        | PressActionInput
+        | TypeActionInput
+    ]
 ):
     root: Annotated[
-        WaitAction | ClickAction | ScrollAction | PressAction | TypeAction,
+        WaitActionInput
+        | ClickActionInput
+        | ScrollActionInput
+        | PressActionInput
+        | TypeActionInput,
         Field(discriminator="type"),
     ]
 
 
-class FetchOptions(BaseModel):
+class FetchOptionsInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -1391,6 +1522,41 @@ class FetchOptions(BaseModel):
     respect_robots: Annotated[bool | None, Field(title="Respect Robots")] = False
     screenshot: Annotated[Screenshot | None, Field(title="Screenshot")] = "viewport"
     wait_for: Annotated[WaitFor | WaitFor1 | None, Field(title="Wait For")] = None
+
+
+class Actions1(
+    RootModel[
+        WaitActionOutput
+        | ClickActionOutput
+        | ScrollActionOutput
+        | PressActionOutput
+        | TypeActionOutput
+    ]
+):
+    root: Annotated[
+        WaitActionOutput
+        | ClickActionOutput
+        | ScrollActionOutput
+        | PressActionOutput
+        | TypeActionOutput,
+        Field(discriminator="type"),
+    ]
+
+
+class FetchOptionsOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    actions: Annotated[list[Actions1], Field(max_length=20, title="Actions")]
+    cache: Annotated[Cache, Field(title="Cache")]
+    cookies: Annotated[dict[str, str], Field(title="Cookies")]
+    headers: Annotated[dict[str, str], Field(title="Headers")]
+    max_rows: Annotated[MaxRows | None, Field(title="Max Rows")] = None
+    method_hint: Annotated[MethodHint, Field(title="Method Hint")]
+    proxy_pool: Annotated[str | None, Field(title="Proxy Pool")] = None
+    respect_robots: Annotated[bool, Field(title="Respect Robots")]
+    screenshot: Annotated[Screenshot, Field(title="Screenshot")]
+    wait_for: Annotated[WaitFor2 | WaitFor3 | None, Field(title="Wait For")] = None
 
 
 class FetchSummary(BaseModel):
@@ -1501,7 +1667,7 @@ class MapResult(BaseModel):
     urls: Annotated[list[str], Field(title="Urls")]
 
 
-class NewSchema(BaseModel):
+class NewSchemaInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -1511,6 +1677,18 @@ class NewSchema(BaseModel):
     required_groups: Annotated[
         list[list[RequiredGroup]] | None, Field(title="Required Groups")
     ] = []
+
+
+class NewSchemaOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    fields: Annotated[dict[str, FieldSpecOutput], Field(title="Fields")]
+    name: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,63}$", title="Name")]
+    page_kind: Annotated[PageKind, Field(title="Page Kind")]
+    required_groups: Annotated[
+        list[list[RequiredGroup]], Field(title="Required Groups")
+    ]
 
 
 class PageOutput(BaseModel):
@@ -1582,11 +1760,18 @@ class SchemaDef(BaseModel):
     status: Annotated[Status8, Field(title="Status")]
 
 
-class SchemaInline(BaseModel):
+class SchemaInlineInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    inline: NewSchema
+    inline: NewSchemaInput
+
+
+class SchemaInlineOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    inline: NewSchemaOutput
 
 
 class SchemaList(BaseModel):
@@ -1596,14 +1781,14 @@ class SchemaList(BaseModel):
     items: Annotated[list[SchemaDef], Field(title="Items")]
 
 
-class ScrapeRequest(BaseModel):
+class ScrapeRequestInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    browser_actions: BrowserActions | None = None
+    browser_actions: BrowserActionsInput | None = None
     budget: Budget | None = None
-    chunking: ChunkOptions | None = None
-    fetch: Annotated[FetchOptions | None, Field()] = {
+    chunking: ChunkOptionsInput | None = None
+    fetch: Annotated[FetchOptionsInput | None, Field()] = {
         "actions": [],
         "cache": "default",
         "cookies": {},
@@ -1612,8 +1797,8 @@ class ScrapeRequest(BaseModel):
         "respect_robots": False,
         "screenshot": "viewport",
     }
-    fit: FitOptions | None = None
-    formats: Annotated[list[Format5], Field(min_length=1, title="Formats")]
+    fit: FitOptionsInput | None = None
+    formats: Annotated[list[Format7], Field(min_length=1, title="Formats")]
     locale: Annotated[str | None, Field(title="Locale")] = None
     max_age: Annotated[int | None, Field(ge=0, title="Max Age")] = 0
     min_confidence: Annotated[
@@ -1625,16 +1810,50 @@ class ScrapeRequest(BaseModel):
     ] = None
     page_kind: Annotated[PageKind | None, Field(title="Page Kind")] = None
     render: Annotated[
-        RenderOptions | None,
+        RenderOptionsInput | None,
         Field(
             description="How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
         ),
     ] = {"fields": [], "mode": "off"}
     schema_: Annotated[
-        SchemaById | SchemaInline | SchemaPrompt | SchemaFields | None,
+        SchemaById | SchemaInlineInput | SchemaPrompt | SchemaFields | None,
         Field(alias="schema", title="Schema"),
     ] = None
     timeout_s: Annotated[float | None, Field(gt=0.0, le=120.0, title="Timeout S")] = 60
+    url: Annotated[str, Field(title="Url")]
+
+
+class ScrapeRequestOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    browser_actions: BrowserActionsOutput | None = None
+    budget: Budget | None = None
+    chunking: ChunkOptionsOutput | None = None
+    fetch: FetchOptionsOutput
+    fit: FitOptionsOutput | None = None
+    formats: Annotated[list[Format7], Field(min_length=1, title="Formats")]
+    locale: Annotated[str | None, Field(title="Locale")] = None
+    max_age: Annotated[int, Field(ge=0, title="Max Age")]
+    min_confidence: Annotated[
+        MinConfidence | None,
+        Field(
+            description="Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            title="Min Confidence",
+        ),
+    ] = None
+    page_kind: Annotated[PageKind | None, Field(title="Page Kind")] = None
+    render: Annotated[
+        RenderOptionsOutput | None,
+        Field(
+            description="How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
+        ),
+    ] = {"fields": [], "mode": "off"}
+    schema_: Annotated[
+        SchemaById | SchemaInlineOutput | SchemaPrompt | SchemaFields | None,
+        Field(alias="schema", title="Schema"),
+    ] = None
+    timeout_s: Annotated[float, Field(gt=0.0, le=120.0, title="Timeout S")]
     url: Annotated[str, Field(title="Url")]
 
 
@@ -1643,7 +1862,7 @@ class SearchScrape(BaseModel):
         extra="forbid",
     )
     budget: Budget | None = None
-    fetch: Annotated[FetchOptions | None, Field()] = {
+    fetch: Annotated[FetchOptionsInput | None, Field()] = {
         "actions": [],
         "cache": "default",
         "cookies": {},
@@ -1652,16 +1871,21 @@ class SearchScrape(BaseModel):
         "respect_robots": False,
         "screenshot": "viewport",
     }
-    formats: Annotated[list[Format5] | None, Field(min_length=1, title="Formats")] = [
+    formats: Annotated[list[Format7] | None, Field(min_length=1, title="Formats")] = [
         "markdown"
     ]
     locale: Annotated[str | None, Field(title="Locale")] = None
     page_kind: Annotated[PageKind | None, Field(title="Page Kind")] = None
     schema_: Annotated[
-        SchemaById | SchemaInline | SchemaFields | None,
+        SchemaById | SchemaInlineInput | SchemaFields | None,
         Field(alias="schema", title="Schema"),
     ] = None
     webhook_url: Annotated[str | None, Field(title="Webhook Url")] = None
+
+
+class StoredScrape(BaseModel):
+    kind: Annotated[Literal["scrape"], Field(title="Kind")]
+    request: ScrapeRequestOutput
 
 
 class TrimOp(BaseModel):
@@ -1715,13 +1939,13 @@ class AttrStepOutput(BaseModel):
     ]
 
 
-class BatchScrapeRequest(BaseModel):
+class BatchScrapeRequestInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
     budget: Budget | None = None
-    chunking: ChunkOptions | None = None
-    fetch: Annotated[FetchOptions | None, Field()] = {
+    chunking: ChunkOptionsInput | None = None
+    fetch: Annotated[FetchOptionsInput | None, Field()] = {
         "actions": [],
         "cache": "default",
         "cookies": {},
@@ -1730,7 +1954,7 @@ class BatchScrapeRequest(BaseModel):
         "respect_robots": False,
         "screenshot": "viewport",
     }
-    fit: FitOptions | None = None
+    fit: FitOptionsInput | None = None
     formats: Annotated[list[Format], Field(min_length=1, title="Formats")]
     locale: Annotated[str | None, Field(title="Locale")] = None
     min_confidence: Annotated[
@@ -1742,13 +1966,13 @@ class BatchScrapeRequest(BaseModel):
     ] = None
     page_kind: Annotated[PageKind | None, Field(title="Page Kind")] = None
     render: Annotated[
-        RenderOptions | None,
+        RenderOptionsInput | None,
         Field(
             description="How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
         ),
     ] = {"fields": [], "mode": "off"}
     schema_: Annotated[
-        SchemaById | SchemaInline | SchemaFields | None,
+        SchemaById | SchemaInlineInput | SchemaFields | None,
         Field(alias="schema", title="Schema"),
     ] = None
     urls: Annotated[list[str], Field(max_length=1000, min_length=1, title="Urls")]
@@ -1759,6 +1983,42 @@ class BatchScrapeRequest(BaseModel):
     webhook_url: Annotated[str | None, Field(title="Webhook Url")] = None
 
 
+class BatchScrapeRequestOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    budget: Budget | None = None
+    chunking: ChunkOptionsOutput | None = None
+    fetch: FetchOptionsOutput
+    fit: FitOptionsOutput | None = None
+    formats: Annotated[list[Format], Field(min_length=1, title="Formats")]
+    locale: Annotated[str | None, Field(title="Locale")] = None
+    min_confidence: Annotated[
+        MinConfidence | None,
+        Field(
+            description="Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            title="Min Confidence",
+        ),
+    ] = None
+    page_kind: Annotated[PageKind | None, Field(title="Page Kind")] = None
+    render: Annotated[
+        RenderOptionsOutput | None,
+        Field(
+            description="How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
+        ),
+    ] = {"fields": [], "mode": "off"}
+    schema_: Annotated[
+        SchemaById | SchemaInlineOutput | SchemaFields | None,
+        Field(alias="schema", title="Schema"),
+    ] = None
+    urls: Annotated[list[str], Field(max_length=1000, min_length=1, title="Urls")]
+    webhook_batch: WebhookBatch | None = None
+    webhook_events: Annotated[
+        list[WebhookEvent], Field(min_length=1, title="Webhook Events")
+    ]
+    webhook_url: Annotated[str | None, Field(title="Webhook Url")] = None
+
+
 class ConfigList(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1766,16 +2026,16 @@ class ConfigList(BaseModel):
     items: Annotated[list[ConfigSummary], Field(title="Items")]
 
 
-class CrawlRequest(BaseModel):
+class CrawlRequestInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
     allow_external: Annotated[bool | None, Field(title="Allow External")] = False
     allow_subdomains: Annotated[bool | None, Field(title="Allow Subdomains")] = False
     budget: Budget | None = None
-    chunking: ChunkOptions | None = None
+    chunking: ChunkOptionsInput | None = None
     exclude: Annotated[list[str] | None, Field(max_length=20, title="Exclude")] = None
-    fetch: Annotated[FetchOptions | None, Field()] = {
+    fetch: Annotated[FetchOptionsInput | None, Field()] = {
         "actions": [],
         "cache": "default",
         "cookies": {},
@@ -1784,8 +2044,8 @@ class CrawlRequest(BaseModel):
         "respect_robots": False,
         "screenshot": "viewport",
     }
-    fit: FitOptions | None = None
-    formats: Annotated[list[Format2], Field(min_length=1, title="Formats")]
+    fit: FitOptionsInput | None = None
+    formats: Annotated[list[Format3], Field(min_length=1, title="Formats")]
     include: Annotated[list[str] | None, Field(max_length=20, title="Include")] = None
     keywords: Annotated[list[str] | None, Field(max_length=20, title="Keywords")] = None
     limit: Annotated[
@@ -1811,21 +2071,74 @@ class CrawlRequest(BaseModel):
     ] = None
     query: Annotated[Query | None, Field(title="Query")] = None
     render: Annotated[
-        RenderOptions | None,
+        RenderOptionsInput | None,
         Field(
             description="How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
         ),
     ] = {"fields": [], "mode": "off"}
     schema_: Annotated[
-        SchemaById | SchemaInline | SchemaFields | None,
+        SchemaById | SchemaInlineInput | SchemaFields | None,
         Field(alias="schema", title="Schema"),
     ] = None
-    strategy: Annotated[Strategy1 | None, Field(title="Strategy")] = "bfs"
+    strategy: Annotated[Strategy2 | None, Field(title="Strategy")] = "bfs"
     url: Annotated[str, Field(title="Url")]
     webhook_batch: WebhookBatch | None = None
     webhook_events: Annotated[
         list[WebhookEvent] | None, Field(min_length=1, title="Webhook Events")
     ] = None
+    webhook_url: Annotated[str | None, Field(title="Webhook Url")] = None
+
+
+class CrawlRequestOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    allow_external: Annotated[bool, Field(title="Allow External")]
+    allow_subdomains: Annotated[bool, Field(title="Allow Subdomains")]
+    budget: Budget | None = None
+    chunking: ChunkOptionsOutput | None = None
+    exclude: Annotated[list[str], Field(max_length=20, title="Exclude")]
+    fetch: FetchOptionsOutput
+    fit: FitOptionsOutput | None = None
+    formats: Annotated[list[Format3], Field(min_length=1, title="Formats")]
+    include: Annotated[list[str], Field(max_length=20, title="Include")]
+    keywords: Annotated[list[str], Field(max_length=20, title="Keywords")]
+    limit: Annotated[
+        int,
+        Field(
+            description="At most this many pages are fetched.",
+            ge=1,
+            le=5000,
+            title="Limit",
+        ),
+    ]
+    locale: Annotated[str | None, Field(title="Locale")] = None
+    max_depth: Annotated[int, Field(ge=0, title="Max Depth")]
+    min_confidence: Annotated[
+        MinConfidence | None,
+        Field(
+            description="Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            title="Min Confidence",
+        ),
+    ] = None
+    page_kind_rules: Annotated[list[PageKindRule], Field(title="Page Kind Rules")]
+    query: Annotated[Query | None, Field(title="Query")] = None
+    render: Annotated[
+        RenderOptionsOutput | None,
+        Field(
+            description="How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
+        ),
+    ] = {"fields": [], "mode": "off"}
+    schema_: Annotated[
+        SchemaById | SchemaInlineOutput | SchemaFields | None,
+        Field(alias="schema", title="Schema"),
+    ] = None
+    strategy: Annotated[Strategy2, Field(title="Strategy")]
+    url: Annotated[str, Field(title="Url")]
+    webhook_batch: WebhookBatch | None = None
+    webhook_events: Annotated[
+        list[WebhookEvent], Field(min_length=1, title="Webhook Events")
+    ]
     webhook_url: Annotated[str | None, Field(title="Webhook Url")] = None
 
 
@@ -1861,12 +2174,12 @@ class Delta(BaseModel):
     kind: DeltaKind
 
 
-class ExtractRequest(BaseModel):
+class ExtractRequestInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
     budget: Budget | None = None
-    fetch: Annotated[FetchOptions | None, Field()] = {
+    fetch: Annotated[FetchOptionsInput | None, Field()] = {
         "actions": [],
         "cache": "default",
         "cookies": {},
@@ -1886,7 +2199,7 @@ class ExtractRequest(BaseModel):
     ] = None
     page_kind: Annotated[PageKind, Field(title="Page Kind")]
     schema_: Annotated[
-        SchemaById | SchemaInline | SchemaPrompt | SchemaFields,
+        SchemaById | SchemaInlineInput | SchemaPrompt | SchemaFields,
         Field(alias="schema", title="Schema"),
     ]
     urls: Annotated[list[str], Field(max_length=1000, min_length=1, title="Urls")]
@@ -1894,6 +2207,34 @@ class ExtractRequest(BaseModel):
     webhook_events: Annotated[
         list[WebhookEvent] | None, Field(min_length=1, title="Webhook Events")
     ] = None
+    webhook_url: Annotated[str | None, Field(title="Webhook Url")] = None
+
+
+class ExtractRequestOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    budget: Budget | None = None
+    fetch: FetchOptionsOutput
+    limit: Annotated[int, Field(ge=1, le=1000, title="Limit")]
+    locale: Annotated[str | None, Field(title="Locale")] = None
+    min_confidence: Annotated[
+        MinConfidence | None,
+        Field(
+            description="Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            title="Min Confidence",
+        ),
+    ] = None
+    page_kind: Annotated[PageKind, Field(title="Page Kind")]
+    schema_: Annotated[
+        SchemaById | SchemaInlineOutput | SchemaPrompt | SchemaFields,
+        Field(alias="schema", title="Schema"),
+    ]
+    urls: Annotated[list[str], Field(max_length=1000, min_length=1, title="Urls")]
+    webhook_batch: WebhookBatch | None = None
+    webhook_events: Annotated[
+        list[WebhookEvent], Field(min_length=1, title="Webhook Events")
+    ]
     webhook_url: Annotated[str | None, Field(title="Webhook Url")] = None
 
 
@@ -1941,7 +2282,7 @@ class JsonPathStepInput(BaseModel):
         list[NormalizeOpInput | TrimOp | AbsolutizeUrlOp | RegexReplaceOp] | None,
         Field(title="Post"),
     ] = []
-    source: Annotated[Source1, Field(title="Source")]
+    source: Annotated[Source2, Field(title="Source")]
 
 
 class JsonPathStepOutput(BaseModel):
@@ -1953,7 +2294,7 @@ class JsonPathStepOutput(BaseModel):
         list[NormalizeOpOutput | TrimOp | AbsolutizeUrlOp | RegexReplaceOp],
         Field(title="Post"),
     ]
-    source: Annotated[Source1, Field(title="Source")]
+    source: Annotated[Source2, Field(title="Source")]
 
 
 class NewBatchSchedule(BaseModel):
@@ -1965,7 +2306,7 @@ class NewBatchSchedule(BaseModel):
     kind: Annotated[Literal["batch_scrape"], Field(title="Kind")]
     name: Annotated[str, Field(max_length=200, min_length=1, title="Name")]
     paused: Annotated[bool | None, Field(title="Paused")] = False
-    request: BatchScrapeRequest
+    request: BatchScrapeRequestInput
     timezone: Annotated[str | None, Field(title="Timezone")] = "UTC"
 
 
@@ -1978,7 +2319,7 @@ class NewCrawlSchedule(BaseModel):
     kind: Annotated[Literal["crawl"], Field(title="Kind")]
     name: Annotated[str, Field(max_length=200, min_length=1, title="Name")]
     paused: Annotated[bool | None, Field(title="Paused")] = False
-    request: CrawlRequest
+    request: CrawlRequestInput
     timezone: Annotated[str | None, Field(title="Timezone")] = "UTC"
 
 
@@ -1991,7 +2332,7 @@ class NewExtractSchedule(BaseModel):
     kind: Annotated[Literal["extract"], Field(title="Kind")]
     name: Annotated[str, Field(max_length=200, min_length=1, title="Name")]
     paused: Annotated[bool | None, Field(title="Paused")] = False
-    request: ExtractRequest
+    request: ExtractRequestInput
     timezone: Annotated[str | None, Field(title="Timezone")] = "UTC"
 
 
@@ -2004,7 +2345,7 @@ class NewScrapeSchedule(BaseModel):
     kind: Annotated[Literal["scrape"], Field(title="Kind")]
     name: Annotated[str, Field(max_length=200, min_length=1, title="Name")]
     paused: Annotated[bool | None, Field(title="Paused")] = False
-    request: ScrapeRequest
+    request: ScrapeRequestInput
     timezone: Annotated[str | None, Field(title="Timezone")] = "UTC"
 
 
@@ -2053,7 +2394,7 @@ class ScrapedRecord(BaseModel):
     confidence: Annotated[Confidence | None, Field(title="Confidence")] = None
     fields: Annotated[dict[str, RecordField], Field(title="Fields")]
     id: Annotated[UUID, Field(title="Id")]
-    mode: Annotated[Mode2, Field(title="Mode")]
+    mode: Annotated[Mode3, Field(title="Mode")]
 
 
 class SearchRequest(BaseModel):
@@ -2063,6 +2404,21 @@ class SearchRequest(BaseModel):
     limit: Annotated[int | None, Field(ge=1, le=50, title="Limit")] = 10
     query: Annotated[str, Field(max_length=500, min_length=1, title="Query")]
     scrape: SearchScrape | None = None
+
+
+class StoredBatchScrape(BaseModel):
+    kind: Annotated[Literal["batch_scrape"], Field(title="Kind")]
+    request: BatchScrapeRequestOutput
+
+
+class StoredCrawl(BaseModel):
+    kind: Annotated[Literal["crawl"], Field(title="Kind")]
+    request: CrawlRequestOutput
+
+
+class StoredExtract(BaseModel):
+    kind: Annotated[Literal["extract"], Field(title="Kind")]
+    request: ExtractRequestOutput
 
 
 class StoredRecord(BaseModel):
@@ -2075,7 +2431,7 @@ class StoredRecord(BaseModel):
     egress_country: Annotated[str | None, Field(title="Egress Country")] = None
     fields: Annotated[dict[str, RecordField], Field(title="Fields")]
     id: Annotated[UUID, Field(title="Id")]
-    mode: Annotated[Mode2, Field(title="Mode")]
+    mode: Annotated[Mode3, Field(title="Mode")]
     schema_id: Annotated[UUID, Field(title="Schema Id")]
     version: Annotated[int, Field(title="Version")]
 
@@ -2288,7 +2644,7 @@ class ConfigExport(BaseModel):
         extra="forbid",
     )
     export: Annotated[ExtractionConfigIR | PlatformDraft, Field(title="Export")]
-    format: Annotated[Format1, Field(title="Format")]
+    format: Annotated[Format2, Field(title="Format")]
     release: ReleaseReport
 
 

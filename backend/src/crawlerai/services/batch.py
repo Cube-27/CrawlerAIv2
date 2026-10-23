@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import Any, Final, Self
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 from sqlalchemy import insert, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
@@ -51,6 +51,7 @@ from crawlerai.services.page_store import DEFAULT_PROJECT
 from crawlerai.services.scrape import Budget, RecordsUnavailable
 from crawlerai.services.scrape_request import (
     MIN_CONFIDENCE_DESCRIPTION,
+    RENDER_AS_GIVEN,
     RENDER_DESCRIPTION,
     PageFormat,
     RenderOptions,
@@ -61,6 +62,7 @@ from crawlerai.services.scrape_request import (
     check_records,
     check_render,
     named_schema,
+    render_as_given,
     stored_request,
 )
 from crawlerai.services.webhook_options import WebhookOptions
@@ -87,6 +89,9 @@ class BatchScrapeRequest(WebhookOptions):
     chunking: ChunkOptions | None = None  # `chunks`' strategy, size and overlap
     min_confidence: Probability | None = Field(default=None, description=MIN_CONFIDENCE_DESCRIPTION)
     render: RenderOptions = Field(default=RenderOptions(), description=RENDER_DESCRIPTION)
+
+    model_config = RENDER_AS_GIVEN
+    _render_as_given = model_serializer(mode="wrap")(render_as_given)
 
     @field_validator("urls")
     @classmethod

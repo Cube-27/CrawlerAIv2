@@ -1,17 +1,7 @@
 import { AdvancedRows } from "../AdvancedRows";
 import type { PageKind, ScrapeFormat } from "../../../api/scrape";
 import { OptionsPanel } from "../OptionsPanel";
-import {
-  FetchMethodRow,
-  MaxRowsRow,
-  FieldsRow,
-  FormatRows,
-  LlmCallsRow,
-  MinConfidenceRow,
-  MetadataRow,
-  PageKindRow,
-  WebhookRows,
-} from "../rows";
+import { LlmCallsRow, PageFetchRows, PageOutputRows, WebhookRows } from "../rows";
 import { DEFAULT_BATCH_OPTIONS, type BatchOptions as Options } from "./form";
 
 /** Batch's options: page kind, fetch method, the LLM call limit, Metadata in JSON, fields and
@@ -35,25 +25,11 @@ export function BatchOptions({
         onChange(DEFAULT_BATCH_OPTIONS);
       }}
     >
-      <PageKindRow
-        value={options.pageKind}
+      <PageFetchRows
+        options={options}
         hasSchema={hasSchema}
         schemaPageKind={schemaPageKind}
-        onChange={(pageKind) => {
-          onChange({ ...options, pageKind });
-        }}
-      />
-      <FetchMethodRow
-        value={options.methodHint}
-        onChange={(methodHint) => {
-          onChange({ ...options, methodHint });
-        }}
-      />
-      <MaxRowsRow
-        value={options.maxRows}
-        onChange={(maxRows) => {
-          onChange({ ...options, maxRows });
-        }}
+        onChange={onChange}
       />
       <LlmCallsRow
         value={options.llmCalls}
@@ -62,15 +38,7 @@ export function BatchOptions({
           onChange({ ...options, llmCalls });
         }}
       />
-      <MinConfidenceRow options={options} onChange={onChange} />
-      <MetadataRow
-        isSelected={options.metadataInJson}
-        onChange={(metadataInJson) => {
-          onChange({ ...options, metadataInJson });
-        }}
-      />
-      <FieldsRow options={options} onChange={onChange} />
-      <FormatRows options={options} formats={formats} onChange={onChange} />
+      <PageOutputRows options={options} formats={formats} onChange={onChange} />
       <WebhookRows
         value={options.webhook}
         onChange={(webhook) => {

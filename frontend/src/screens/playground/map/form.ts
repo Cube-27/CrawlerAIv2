@@ -1,6 +1,5 @@
-import type { MapRequest } from "../../../api/jobs";
+import type { MapRequest, StoredJobRequest } from "../../../api/jobs";
 import { optionalNumber } from "../pageRequest";
-import { count, flag, text, texts, type StoredRequest } from "../run/storedRequest";
 
 /** Map's options panel: each is a `MapRequest` member. An empty limit (NaN) is left out. */
 export interface MapOptions {
@@ -39,16 +38,18 @@ export function buildMap(form: MapFormState): MapRequest {
   };
 }
 
-/** The form that shows the stored `request` of a map job. */
-export function mapForm(request: StoredRequest): MapFormState {
+/** The form that shows the stored request of a map job, null for a job of another kind. */
+export function mapForm(stored: StoredJobRequest): MapFormState | null {
+  if (stored.kind !== "map") return null;
+  const { request } = stored;
   return {
-    url: text(request, "url"),
+    url: request.url,
     options: {
-      include: texts(request, "include"),
-      exclude: texts(request, "exclude"),
-      useSitemaps: flag(request, "use_sitemaps", DEFAULT_MAP_OPTIONS.useSitemaps),
-      useLinks: flag(request, "use_links", DEFAULT_MAP_OPTIONS.useLinks),
-      limit: count(request, "limit"),
+      include: request.include,
+      exclude: request.exclude,
+      useSitemaps: request.use_sitemaps,
+      useLinks: request.use_links,
+      limit: request.limit,
     },
   };
 }

@@ -300,7 +300,7 @@ export default defineConfig({
   fmt: {
     printWidth: 100,
     sortPackageJson: false,
-    ignorePatterns: ["pnpm-lock.yaml", "openapi.json", "src/api/schema.d.ts"],
+    ignorePatterns: ["pnpm-lock.yaml", "openapi.json", "src/api/schema.d.ts", "src/api/limits.ts"],
   },
   plugins: [react(), tailwindcss()],
   // `pnpm dev` (frontend development) serves the screens and forwards API calls to the API on :8000, so the app

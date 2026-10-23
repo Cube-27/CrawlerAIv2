@@ -33,7 +33,7 @@ class ChunkOptions(BaseModel):
     """`chunks`' options: the `strategy`, the `size` of a chunk and the `overlap` between chunks, in words, and the
     markdown the chunks are cut from (`markdown_fit` is pruned, so the chunks hold the page's content only)."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", json_schema_serialization_defaults_required=True)
 
     strategy: Strategy = "heading"
     size: PositiveInt = 400

@@ -1,5 +1,4 @@
-import type { CrawlRequest, CrawlStrategy } from "../../../api/jobs";
-import { isJsonObject } from "../../../api/json";
+import type { CrawlRequest, CrawlStrategy, StoredJobRequest } from "../../../api/jobs";
 import type { FetchMember, MethodHint, PageKind, ScrapeFormat } from "../../../api/scrape";
 import {
   DEFAULT_ADVANCED,
@@ -34,19 +33,12 @@ import {
   minConfidence,
 } from "../pageRequest";
 import {
-  count,
-  flag,
-  maxRows,
-  methodHint,
+  minConfidencePercent,
+  orEmpty,
   pageFormats,
-  pageKind,
   schemaFields,
   schemaId,
-  text,
-  texts,
   webhookSettings,
-  type StoredRequest,
-  minConfidencePercent,
 } from "../run/storedRequest";
 
 /** One page-kind rule as edited: `key` keeps a row's inputs when another row is removed. */
@@ -226,52 +218,39 @@ function crawlStrategy(options: CrawlOptions): {
   };
 }
 
-/** The stored rules, as rows; a rule without a pattern or a page kind is not one the server took. */
-function storedRules(request: StoredRequest): RuleRow[] {
-  const rules = request["page_kind_rules"];
-  if (!Array.isArray(rules)) return [];
-  return rules.flatMap((rule: unknown, index) => {
-    if (!isJsonObject(rule)) return [];
-    const kind = pageKind(rule);
-    const pattern = text(rule, "pattern");
-    return kind === null || pattern === ""
-      ? []
-      : [{ key: `stored-${String(index)}`, pattern, pageKind: kind }];
-  });
-}
-
-function strategyOf(request: StoredRequest): CrawlStrategy {
-  const strategy = text(request, "strategy");
-  return strategy === "dfs" || strategy === "best_first" ? strategy : "bfs";
-}
-
-/** The form that shows the stored `request` of a crawl job. A stored schema's page kind is its rules'. */
-export function crawlForm(request: StoredRequest): CrawlFormState {
+/** The form that shows the stored request of a crawl job, null for a job of another kind. A stored schema's page kind is its rules'. */
+export function crawlForm(stored: StoredJobRequest): CrawlFormState | null {
+  if (stored.kind !== "crawl") return null;
+  const { request } = stored;
   const { formats, metadataInJson } = pageFormats(request);
   const id = schemaId(request);
-  const rules = storedRules(request);
+  const rules = request.page_kind_rules.map((rule, index): RuleRow => ({
+    key: `stored-${String(index)}`,
+    pattern: rule.pattern,
+    pageKind: rule.page_kind,
+  }));
   return {
-    url: text(request, "url"),
+    url: request.url,
     formats,
     schemaId: id,
     schemaPageKind: id === "" ? null : (rules[0]?.pageKind ?? null),
     options: {
-      include: texts(request, "include"),
-      exclude: texts(request, "exclude"),
+      include: request.include,
+      exclude: request.exclude,
       rules,
       metadataInJson,
       fields: schemaFields(request),
-      maxDepth: count(request, "max_depth"),
-      limit: count(request, "limit"),
-      strategy: strategyOf(request),
-      query: text(request, "query"),
-      keywords: texts(request, "keywords"),
-      allowSubdomains: flag(request, "allow_subdomains", false),
-      allowExternal: flag(request, "allow_external", false),
-      methodHint: methodHint(request),
-      maxRows: maxRows(request),
+      maxDepth: request.max_depth,
+      limit: request.limit,
+      strategy: request.strategy,
+      query: request.query ?? "",
+      keywords: request.keywords,
+      allowSubdomains: request.allow_subdomains,
+      allowExternal: request.allow_external,
+      methodHint: request.fetch.method_hint,
+      maxRows: orEmpty(request.fetch.max_rows),
       minConfidence: minConfidencePercent(request),
-      advanced: storedAdvanced(request),
+      advanced: storedAdvanced(request.fetch),
       webhook: webhookSettings(request),
       ...storedFormatSettings(request),
     },

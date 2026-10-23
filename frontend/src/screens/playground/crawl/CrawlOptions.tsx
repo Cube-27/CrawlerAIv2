@@ -9,16 +9,7 @@ import {
   TagListRow,
   TextRow,
 } from "../OptionsPanel";
-import {
-  FetchMethodRow,
-  MaxRowsRow,
-  MinConfidenceRow,
-  FieldsRow,
-  FormatRows,
-  MetadataRow,
-  ScopeRows,
-  WebhookRows,
-} from "../rows";
+import { FetchMethodRow, MaxRowsRow, PageOutputRows, ScopeRows, WebhookRows } from "../rows";
 import { DEFAULT_CRAWL_OPTIONS, type CrawlOptions as Options } from "./form";
 import { RuleRows } from "./RuleRows";
 
@@ -135,15 +126,7 @@ export function CrawlOptions({
           onChange({ ...options, maxRows });
         }}
       />
-      <MinConfidenceRow options={options} onChange={onChange} />
-      <MetadataRow
-        isSelected={options.metadataInJson}
-        onChange={(metadataInJson) => {
-          onChange({ ...options, metadataInJson });
-        }}
-      />
-      <FieldsRow options={options} onChange={onChange} />
-      <FormatRows options={options} formats={formats} onChange={onChange} />
+      <PageOutputRows options={options} formats={formats} onChange={onChange} />
       <WebhookRows
         value={options.webhook}
         onChange={(webhook) => {

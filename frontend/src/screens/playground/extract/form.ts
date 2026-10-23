@@ -1,4 +1,4 @@
-import type { ExtractRequest } from "../../../api/jobs";
+import type { ExtractRequest, StoredJobRequest, StoredRequestOf } from "../../../api/jobs";
 import type { FetchMember, MethodHint, PageKind, SchemaRef } from "../../../api/scrape";
 import {
   DEFAULT_ADVANCED,
@@ -21,19 +21,12 @@ import {
   minConfidence,
 } from "../pageRequest";
 import {
-  count,
   llmCalls,
-  maxRows,
-  member,
-  methodHint,
-  pageKind,
+  minConfidencePercent,
+  orEmpty,
   schemaFields,
   schemaId,
-  text,
-  texts,
   webhookSettings,
-  type StoredRequest,
-  minConfidencePercent,
 } from "../run/storedRequest";
 
 /** Where an extract's schema comes from, chosen in the toolbar's Schema: a stored one, inline JSON, or
@@ -177,16 +170,23 @@ export function buildExtract(form: ExtractFormState): ExtractRequest | null {
   };
 }
 
-/** The form that shows the stored `request` of an extract job. */
-export function extractForm(request: StoredRequest): ExtractFormState {
-  const [url = "", ...urls] = texts(request, "urls");
-  const schema = member(request, "schema");
+type StoredSchema = StoredRequestOf<"extract">["schema"];
+
+function schemaSourceOf(schema: StoredSchema): SchemaSource {
+  if ("id" in schema) return "id";
+  if ("inline" in schema) return "inline";
+  return "prompt" in schema ? "prompt" : "fields";
+}
+
+/** The form that shows the stored request of an extract job, null for a job of another kind. */
+export function extractForm(stored: StoredJobRequest): ExtractFormState | null {
+  if (stored.kind !== "extract") return null;
+  const { request } = stored;
+  const [url = "", ...urls] = request.urls;
+  const { schema } = request;
   const id = schemaId(request);
-  let schemaSource: SchemaSource = "id";
-  if ("inline" in schema) schemaSource = "inline";
-  else if ("prompt" in schema) schemaSource = "prompt";
-  else if ("fields" in schema) schemaSource = "fields";
-  const kind = pageKind(request);
+  const schemaSource = schemaSourceOf(schema);
+  const kind = request.page_kind;
   return {
     url,
     schemaSource,
@@ -194,16 +194,15 @@ export function extractForm(request: StoredRequest): ExtractFormState {
     schemaPageKind: id === "" ? null : kind,
     options: {
       urls,
-      inlineSchema:
-        schemaSource === "inline" ? JSON.stringify(member(schema, "inline"), null, 2) : "",
-      prompt: text(schema, "prompt"),
+      inlineSchema: "inline" in schema ? JSON.stringify(schema.inline, null, 2) : "",
+      prompt: "prompt" in schema ? schema.prompt : "",
       fields: schemaFields(request),
       pageKind: schemaSource === "id" ? null : kind,
-      limit: count(request, "limit"),
-      methodHint: methodHint(request),
-      maxRows: maxRows(request),
+      limit: request.limit,
+      methodHint: request.fetch.method_hint,
+      maxRows: orEmpty(request.fetch.max_rows),
       minConfidence: minConfidencePercent(request),
-      advanced: storedAdvanced(request),
+      advanced: storedAdvanced(request.fetch),
       llmCalls: llmCalls(request),
       webhook: webhookSettings(request),
     },

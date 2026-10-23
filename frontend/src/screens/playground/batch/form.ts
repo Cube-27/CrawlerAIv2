@@ -1,4 +1,4 @@
-import type { BatchRequest } from "../../../api/jobs";
+import type { BatchRequest, StoredJobRequest } from "../../../api/jobs";
 import type { FetchMember, MethodHint, PageKind, ScrapeFormat } from "../../../api/scrape";
 import {
   DEFAULT_ADVANCED,
@@ -33,16 +33,12 @@ import {
 } from "../pageRequest";
 import {
   llmCalls,
-  maxRows,
-  methodHint,
+  minConfidencePercent,
+  orEmpty,
   pageFormats,
-  pageKind,
   schemaFields,
   schemaId,
-  texts,
   webhookSettings,
-  type StoredRequest,
-  minConfidencePercent,
 } from "../run/storedRequest";
 
 /** Batch's options panel: each is a `BatchScrapeRequest` member, except `metadataInJson`, a view
@@ -142,13 +138,15 @@ export function buildBatch(form: BatchFormState): BatchRequest | null {
   };
 }
 
-/** The form that shows the stored `request` of a batch job. A stored schema's page kind is the request's. */
-export function batchForm(request: StoredRequest): BatchFormState {
+/** The form that shows the stored request of a batch job, null for a job of another kind. A stored schema's page kind is the request's. */
+export function batchForm(stored: StoredJobRequest): BatchFormState | null {
+  if (stored.kind !== "batch_scrape") return null;
+  const { request } = stored;
   const { formats, metadataInJson } = pageFormats(request);
   const id = schemaId(request);
-  const kind = pageKind(request);
+  const kind = request.page_kind;
   return {
-    urls: texts(request, "urls").join("\n"),
+    urls: request.urls.join("\n"),
     formats,
     schemaId: id,
     schemaPageKind: id === "" ? null : kind,
@@ -157,10 +155,10 @@ export function batchForm(request: StoredRequest): BatchFormState {
       metadataInJson,
       fields: schemaFields(request),
       webhook: webhookSettings(request),
-      methodHint: methodHint(request),
-      maxRows: maxRows(request),
+      methodHint: request.fetch.method_hint,
+      maxRows: orEmpty(request.fetch.max_rows),
       minConfidence: minConfidencePercent(request),
-      advanced: storedAdvanced(request),
+      advanced: storedAdvanced(request.fetch),
       llmCalls: llmCalls(request),
       ...storedFormatSettings(request),
     },

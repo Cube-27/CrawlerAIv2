@@ -14,6 +14,7 @@ from crawlerai.config_ir.exporters.files import FileFormat, FormatUnavailable
 from crawlerai.db.models import JobId
 from crawlerai.services import exports, jobs
 from crawlerai.services.job_outcomes import JobOutcomes, job_outcomes
+from crawlerai.services.job_request import StoredJobRequest, job_request
 from crawlerai.services.jobs import (
     FILE_FORMATS,
     ExportPage,
@@ -70,12 +71,14 @@ async def get_job_outcomes(job_id: JobId, request: Request) -> JobOutcomes:
 
 
 @router.get("/{job_id}/request")
-async def get_job_request(job_id: JobId, request: Request) -> dict[str, Any]:
-    """The request the job was submitted with, as the server validated and stored it (defaults filled in)."""
+async def get_job_request(job_id: JobId, request: Request) -> StoredJobRequest:
+    """The request the job was submitted with, with its `kind`: the kind's request model as the server validated and
+    stored it (defaults filled in, `fetch` header and cookie values redacted). 404 for a `learn` job, which the system
+    starts without one."""
     engine = database(request)
     async with engine.connect() as conn:
         try:
-            return await jobs.job_request(conn, job_id)
+            return await job_request(conn, job_id)
         except JobNotFound as e:
             raise not_found(str(e)) from e
 

@@ -11,12 +11,14 @@ import {
   pick,
   posted,
 } from "../../../test/playground";
+import type { StoredJobRequest } from "../../../api/jobs";
+import { storedExtract } from "../../../test/jobs";
 
 // `fetch` answers the extract, job, results and events endpoints with the shapes the API defines.
 
 const JOB_ID = "0192a000-0000-7000-8000-0000000000e1";
 
-function extractApi(request: Record<string, unknown> = {}): Call[] {
+function extractApi(request: StoredJobRequest = storedExtract()): Call[] {
   return runApi({ submit: "POST /v1/extract", jobId: JOB_ID, kind: "extract", request });
 }
 

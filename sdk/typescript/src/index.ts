@@ -10,11 +10,11 @@ export type { components } from "./schema.js";
 type S = components["schemas"];
 
 /** The requests, as the API's schemas define them; members with a server default are optional. */
-export type ScrapeRequest = S["ScrapeRequest"];
-export type MapRequest = S["MapRequest"];
-export type CrawlRequest = S["CrawlRequest"];
-export type BatchScrapeRequest = S["BatchScrapeRequest"];
-export type ExtractRequest = S["ExtractRequest"];
+export type ScrapeRequest = S["ScrapeRequest-Input"];
+export type MapRequest = S["MapRequest-Input"];
+export type CrawlRequest = S["CrawlRequest-Input"];
+export type BatchScrapeRequest = S["BatchScrapeRequest-Input"];
+export type ExtractRequest = S["ExtractRequest-Input"];
 export type SearchRequest = S["SearchRequest"];
 
 export type ScrapeResult = S["ScrapeResult"];

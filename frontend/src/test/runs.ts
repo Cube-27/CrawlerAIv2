@@ -1,4 +1,10 @@
-import type { JobKind, JobSummary, JsonValuesItem, JsonValuesPage } from "../api/jobs";
+import type {
+  JobKind,
+  JobSummary,
+  JsonValuesItem,
+  JsonValuesPage,
+  StoredJobRequest,
+} from "../api/jobs";
 import { stubApi, type Call } from "./api";
 import { jobSummary } from "./jobs";
 
@@ -47,7 +53,7 @@ export interface RunStub {
   /** The job's summary; by default `jobSummary` of `kind`. */
   job?: JobSummary;
   /** The job's stored request (`GET /v1/jobs/{id}/request`). */
-  request?: object;
+  request: StoredJobRequest;
   /** The job's results, one page. */
   items?: JsonValuesItem[];
 }
@@ -60,7 +66,7 @@ export function runApi(run: RunStub, replies: Parameters<typeof stubApi>[0] = {}
     "GET /v1/schemas": schemaList,
     [run.submit]: () => Response.json({ job_id: run.jobId }, { status: 202 }),
     [`GET ${job}`]: () => Response.json(summary),
-    [`GET ${job}/request`]: () => Response.json(run.request ?? {}),
+    [`GET ${job}/request`]: () => Response.json(run.request),
     [`GET ${job}/events`]: quietEvents,
     [`GET ${job}/results`]: () => valuesPage(run.items ?? []),
     ...replies,

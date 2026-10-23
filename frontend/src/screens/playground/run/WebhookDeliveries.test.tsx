@@ -2,7 +2,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
 import type { WebhookDelivery } from "../../../api/jobs";
-import { jobSummary } from "../../../test/jobs";
+import { jobSummary, storedBatch } from "../../../test/jobs";
 import { openPlayground } from "../../../test/playground";
 import { runApi } from "../../../test/runs";
 
@@ -33,6 +33,7 @@ function batchRun(replies: Parameters<typeof runApi>[1], webhookUrl: string | nu
       jobId: JOB_ID,
       kind: "batch_scrape",
       job: jobSummary({ id: JOB_ID, kind: "batch_scrape", webhook_url: webhookUrl }),
+      request: storedBatch({ urls: ["https://shop.test/a"], webhook_url: webhookUrl }),
     },
     replies,
   );
