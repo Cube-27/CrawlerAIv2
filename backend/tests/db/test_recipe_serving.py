@@ -338,7 +338,7 @@ async def test_an_html_answer_is_read_by_xpath_with_a_parameter_the_warm_up_answ
     url = f"{own_origin}/item/desk-lamp"
     web.endpoints[f"{own_origin}/session"] = {"token": "tok-1234"}
     fragment = f"{own_origin}/fragments/desk-lamp?t=tok-1234"
-    web.html[fragment] = b"<div><h2> Desk  Lamp </h2><span id='price'>EUR 19.50</span></div>"
+    web.html[fragment] = b"<div data-item='desk-lamp'><h2> Desk  Lamp </h2><span id='price'>EUR 19.50</span></div>"
 
     result = await scrape(engine, fetching, _scrape(url, kettle_schema), data=engine_data)
 

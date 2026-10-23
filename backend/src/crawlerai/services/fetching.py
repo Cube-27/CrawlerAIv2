@@ -8,7 +8,7 @@ are, and the plain HTTP fetches of a site's sitemaps. A custom recipe's requests
 
 import asyncio
 import time
-from collections.abc import Callable, Collection
+from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from functools import partial
@@ -76,6 +76,10 @@ class RecipePaces:
         self._next[recipe] = at + rate_ms / 1000  # taken before the wait: a concurrent request waits for the next
         await asyncio.sleep(at - now)
         return True
+
+
+# A custom recipe's turn at its own interval (`RecipePaces.wait`, bound to the recipe): False when it is too far off.
+Pace = Callable[[], Awaitable[bool]]
 
 
 @dataclass(frozen=True)
@@ -214,12 +218,12 @@ def recipe_rung(
     async def fetch_page(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
         return await http(request.url, policy)
 
-    # The page goes on the caller's turn unless a warm-up request to its host took it; then at the host's rate.
-    via_page = _polite_send(fetching, fetch_page, rules, turn, waiting)
-    send = _polite_send(fetching, json, rules, turn, waiting)
+    pace = None
     if custom is not None and custom.rate_ms is not None:
-        via_page = _paced(fetching.paces, custom.recipe_id, custom.rate_ms, waiting, via_page)
-        send = _paced(fetching.paces, custom.recipe_id, custom.rate_ms, waiting, send)
+        pace = partial(fetching.paces.wait, custom.recipe_id, custom.rate_ms, waiting.bound)
+    # The page goes on the caller's turn unless a warm-up request to its host took it; then at the host's rate.
+    via_page = _polite_send(fetching, fetch_page, rules, turn, waiting, pace)
+    send = _polite_send(fetching, json, rules, turn, waiting, pace)
 
     async def page(url: str, policy: FetchPolicy) -> FetchResult:
         return await via_page(JsonRequest(url, url), policy)
@@ -238,18 +242,6 @@ def _unshared(rules: ReadRules) -> ReadRules:
     return read
 
 
-def _paced(paces: RecipePaces, recipe: str, rate_ms: int, waiting: Waiting, send: JsonFetcher) -> JsonFetcher:
-    """`send` after the recipe's turn at its own interval; a request whose turn is further off than the caller waits
-    in place answers `blocked`, `SLOW_DOWN`, and sends nothing, as one the host's rate holds back does."""
-
-    async def paced(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
-        if not await paces.wait(recipe, rate_ms, waiting.bound):
-            return unserved(request.page_url, policy, ENGINE_VERSION, "blocked", SLOW_DOWN)
-        return await send(request, policy)
-
-    return paced
-
-
 def adapter_send(
     fetching: Fetching, page_host: str, rules: ReadRules, waiting: Waiting = IN_PLACE
 ) -> JsonFetcher | None:
@@ -265,14 +257,22 @@ def adapter_send(
 
 
 def _polite_send(
-    fetching: Fetching, json: JsonFetcher, rules: ReadRules, turn: _Turn, waiting: Waiting = IN_PLACE
+    fetching: Fetching,
+    json: JsonFetcher,
+    rules: ReadRules,
+    turn: _Turn,
+    waiting: Waiting = IN_PLACE,
+    pace: Pace | None = None,
 ) -> JsonFetcher:
     """Each request sent through the polite fetch to its endpoint's host (`polite_fetch`), the first request to the
-    page's host on the caller's turn (`turn`); one robots.txt keeps from being sent, or whose turn is further off than
-    the caller waits, answers `blocked` with the reason and sends nothing."""
+    page's host on the caller's turn (`turn`), and then on a custom recipe's turn at its own interval (`pace`), taken
+    once the host admitted it, so requests go in the order their turns were taken; one robots.txt keeps from being
+    sent, or whose turn is further off than the caller waits, answers `blocked` with the reason and sends nothing."""
 
     async def send(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
         async def fetch(_url: str, _admit: Admit, _known: HostRules) -> FetchResult:
+            if pace is not None and not await pace():
+                return unserved(request.page_url, policy, ENGINE_VERSION, "blocked", SLOW_DOWN)
             return await json(request, policy)
 
         host = urlsplit(request.url).hostname or ""

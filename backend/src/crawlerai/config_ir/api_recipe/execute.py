@@ -150,10 +150,11 @@ class RecipeExecutor:
         for body, entry in zip(page.network, page.network_entries, strict=False):
             name = recipe_call_name(entry.data_call)
             if name is not None and (collector := self.calls.get(name)) is not None:
-                answer = ParsedPage(_text(body, entry), json_body=collector.answer == "json", url=entry.url)
+                json_body = collector.answer == "json"
+                answer = ParsedPage(_text(body, entry, html=not json_body), json_body=json_body, url=entry.url)
                 parts.append(collector.collect(answer, schema, ctx))
             elif entry.data_call == RECIPE_PAGE and self.page is not None:
-                parts.append(self.page.execute(ParsedPage(_text(body, entry), url=entry.url), schema, ctx))
+                parts.append(self.page.execute(ParsedPage(_text(body, entry, html=True), url=entry.url), schema, ctx))
         if len(parts) == 1:
             return parts[0]
         return Executed(
@@ -188,7 +189,7 @@ class RecipeRung:
             else await _in(jar, self.fetch_json(bound.request, policy))
         )
         if self.recipe.pagination is None:
-            result = identified(result, url, bound.keys)
+            result = identified(result, url, bound.keys, html=self.recipe.answer == "html")
         result = await self._with_calls(url, policy, jar, bound, result)
         # A fetch whose policy names the browser falls back to the browser, not to the HTML page fetched to bind; a
         # custom recipe's to the adapter and the page rungs after it (`acquire`), not to its own page fetch.
@@ -332,7 +333,7 @@ class RecipeRung:
                 continue
             sent = await _in(jar, self.fetch_json(request, policy))
             if self.recipe.pagination is None:
-                sent = identified(sent, url, keys)
+                sent = identified(sent, url, keys, html=call.answer == "html")
             attempts, duration_ms = result.attempts + sent.attempts, result.duration_ms + sent.duration_ms
             if sent.block_class == "ok":
                 mark = recipe_call(name)
@@ -435,9 +436,10 @@ def _bind(
     return request_from(spec, url, params, policy.context), tuple(params.values())
 
 
-def _text(body: bytes, entry: NetworkBody) -> str:
-    """A marked body's text, decoded by its own headers."""
-    return decode_html(body, entry.response_headers or (), "api")
+def _text(body: bytes, entry: NetworkBody, *, html: bool) -> str:
+    """A marked body's text, decoded by its own headers; an HTML one (the page, an HTML answer) as a page is, so a
+    `meta` charset counts when its Content-Type names none (HTML Standard §13.2.3.2)."""
+    return decode_html(body, entry.response_headers or (), "http" if html else "api")
 
 
 def _rows(result: FetchResult, query: str) -> tuple[JsonValue, int]:

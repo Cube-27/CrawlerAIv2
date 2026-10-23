@@ -101,6 +101,20 @@ def test_a_documented_answer_joins_only_for_its_product_and_reads_in_major_units
         assert recipe.attempts[-1].error == NOT_THE_PRODUCT
 
 
+@given(KEYS, KEYS, st.booleans())
+def test_an_html_answer_is_kept_only_when_it_states_the_requested_item(key: str, other: str, in_text: bool) -> None:
+    # An HTML answer states its item in a text node or an attribute value (HTML Standard §13.2).
+    page = f"{HOST}/item/{key}"
+    stating = f"<p>{key}</p>" if in_text else f"<div data-item='{key}'></div>"
+    body = f"<html><body><h1>Item</h1>{stating}</body></html>".encode()
+
+    kept = identified(fetched(f"{HOST}/fragment", 200, body, method="api"), page, (key,), html=True)
+    assert (kept.block_class, kept.attempts[-1].error) == ("ok", None)
+    if other != key:
+        another = identified(fetched(f"{HOST}/fragment", 200, body, method="api"), page, (other,), html=True)
+        assert another.attempts[-1].error == NOT_THE_PRODUCT
+
+
 def test_a_documented_answer_is_the_page_products_own_entity() -> None:
     # The answer's Product names its sku and barcode on its variants only, and no IRI: it passed the identity check,
     # so it is the page's one JSON-LD Product, and the page has one target holding both sources' values.
