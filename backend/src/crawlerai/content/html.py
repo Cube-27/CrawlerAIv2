@@ -1,15 +1,15 @@
-"""The `html` content format (rest-api spec): the page without what runs script, else intact.
+"""The `html` content format: the page without what runs script, else intact.
 
 No readability cleaning (that is `markdown`) and no per-site rules (C2). The format works on a copy of the page's
-selectolax tree, so the shared `ParsedPage` stays as parsed (INV-26).
+selectolax tree, so the shared `ParsedPage` stays as parsed.
 """
 
 from selectolax import lexbor
 
 from crawlerai.content.page import ParsedPage
 
-# HTML Living Standard: `script` runs code (§4.12.1), `style` holds CSS (§4.2.6), `noscript` content is parsed as
-# markup only when scripting is off (§4.12.2), and `template` content is inert markup meant for script (§4.12.3).
+# HTML Living Standard: `script` runs code, `style` holds CSS, `noscript` content is parsed as
+# markup only when scripting is off, and `template` content is inert markup meant for script.
 _REMOVED = "script, style, noscript, template"
 
 # WHATWG URL Standard, basic URL parser: leading C0 controls and spaces are stripped and every ASCII tab and newline
@@ -36,7 +36,7 @@ def remove_scripting_attributes(tree: lexbor.LexborHTMLParser) -> None:
 def cleaned_html(page: ParsedPage) -> str:
     """The page with `script`, `style`, `noscript` and `template` elements, event handler attributes and
     `javascript:` URLs removed; everything else is kept. A JSON body (`ParsedPage.json_body`) is no HTML document, so
-    it has none: `""` (D-1474); `raw_html` still holds it as received."""
+    it has none: `""`; `raw_html` still holds it as received."""
     if page.json_body:
         return ""
     tree = page.tree.clone()

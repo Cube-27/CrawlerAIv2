@@ -1,4 +1,4 @@
-"""Stored records and capture replay (rest-api spec, INV-22, INV-27): the records and captures
+"""Stored records and capture replay: the records and captures
 services, then `GET /v1/records` and `POST /v1/captures/{id}/replay` over HTTP."""
 
 import json
@@ -172,7 +172,7 @@ async def test_a_stored_record_carries_every_field_with_its_meta_and_where_it_ca
         "title": ("published", "Blue kettle"),
         "price": ("published", {"amount": 19.9, "currency": "EUR"}),
     }
-    # Without a calibration no field is calibrated, so the record has no confidence (§10).
+    # Without a calibration no field is calibrated, so the record has no confidence.
     assert record.confidence is None
 
 

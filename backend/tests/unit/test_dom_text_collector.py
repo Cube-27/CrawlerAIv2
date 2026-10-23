@@ -1,4 +1,4 @@
-"""The DOM description collector (extraction spec, requirement "DOM description block"): the prose block of a detail
+"""The DOM description collector (requirement "DOM description block"): the prose block of a detail
 page that states a long_text field in full, found as the block that extends what another collector stated or as the
 section a heading or an ARIA label names with the field's words, and, where only a summary is stated, the main text.
 Pages are synthetic (`example.test`, C3, C9)."""

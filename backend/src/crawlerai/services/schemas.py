@@ -1,9 +1,9 @@
-"""The schemas service (rest-api spec): what `/v1/schemas` and the MCP schema tools do, over a connection.
+"""The schemas service: what `/v1/schemas` and the MCP schema tools do, over a connection.
 
 Callers write `user` schemas, whose schema.org paths and enumerations the pinned vocabulary must define. A schema is
 one row per name, edited in place; an edit sends its learned configs back to learning
 (`progressive.relearn_schema`), and a delete retires it. Presets change only through their files and
-`crawlerai schemas sync` (§5.3, D-0242), so callers can neither take a preset's name nor edit or
+`crawlerai schemas sync`, so callers can neither take a preset's name nor edit or
 retire a preset.
 """
 
@@ -42,7 +42,7 @@ class SchemaConflict(Refusal):
 
 
 class InvalidSchema(Refusal):
-    """The document breaks a schema rule (schemas spec); `errors` are (field path, reason) pairs, `""` for the whole
+    """The document breaks a schema rule; `errors` are (field path, reason) pairs, `""` for the whole
     document."""
 
     def __init__(self, errors: Sequence[tuple[str, str]]) -> None:
@@ -55,8 +55,8 @@ class InvalidSchema(Refusal):
 
 
 def _check_references(fields: Mapping[str, FieldSpec]) -> None:
-    """Refuse `fields` naming a schema.org type, property or enumeration the pinned vocabulary lacks (schemas spec,
-    "schema.org paths"; `pinned_reference_errors`)."""
+    """Refuse `fields` naming a schema.org type, property or enumeration the pinned vocabulary lacks
+    (`pinned_reference_errors`)."""
     if errors := pinned_reference_errors(fields):
         raise InvalidSchema(errors)
 
@@ -82,7 +82,7 @@ def _document(schema: NewSchema) -> SchemaDocument:
 
 async def inline(conn: AsyncConnection, schema: NewSchema) -> SchemaDef:
     """The stored schema an inline schema (a `scrape` request's) stands for: the schema of that name when it has the
-    same document and is active, else a new `user` schema. An inline schema never edits a stored one (§5.2): a name
+    same document and is active, else a new `user` schema. An inline schema never edits a stored one: a name
     whose schema differs or is retired is a `SchemaConflict`."""
     stored = await _stored_or_created(conn, schema)
     if (stored.page_kind, stored.required_groups, stored.fields) != (
@@ -153,7 +153,7 @@ async def set_labels(conn: AsyncConnection, schema_id: SchemaId, labels: FieldLa
 
 
 async def sync_presets(conn: AsyncConnection, presets: Sequence[SchemaDocument] | None = None) -> list[SchemaDef]:
-    """Upsert the preset files, or `presets` (`crawlerai schemas sync`, §5.3), and send each changed preset's sites
+    """Upsert the preset files, or `presets` (`crawlerai schemas sync`), and send each changed preset's sites
     back to learning; the presets inserted or changed. Raises `registry.PresetConflict`."""
     written = await registry.sync_presets(conn, presets)
     for schema in written:

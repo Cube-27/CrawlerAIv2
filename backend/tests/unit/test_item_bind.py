@@ -1,4 +1,4 @@
-"""The item layer's bind step through the pipeline (listings spec, "Stated rows and blocks", "Row item URL"): stated
+"""The item layer's bind step through the pipeline: stated
 rows and blocks become one row per item; state rows bind by URL and lend a key the blocks prove. Pages are synthetic
 (RFC 2606 names)."""
 
@@ -58,7 +58,7 @@ def test_a_stated_url_with_another_path_or_more_of_one_parameter_names_another_i
 
 
 def test_a_products_offer_url_is_its_rows_item_url() -> None:
-    # schema.org Offer.url: the row's item URL when the Product states none (listings spec, "Row item URL").
+    # Schema.org Offer.url: the row's item URL when the Product states none.
     items = [
         {
             "@type": "Product",

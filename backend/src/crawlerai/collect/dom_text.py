@@ -1,4 +1,4 @@
-"""The DOM description collector (extraction spec, requirement "DOM description block"): the prose block of a detail
+"""The DOM description collector (requirement "DOM description block"): the prose block of a detail
 page that states a long_text field in full, for pages whose structured data and Open Graph metadata hold only a
 summary or a cut of it.
 

@@ -1,4 +1,4 @@
-"""A scrape's browser actions (owner #52): the listing rung's kept document states each become a capture with its own
+"""A scrape's browser actions: the listing rung's kept document states each become a capture with its own
 extraction, the answer lists their records once each with the actions' report, and robots.txt is asked first."""
 
 from collections.abc import Callable

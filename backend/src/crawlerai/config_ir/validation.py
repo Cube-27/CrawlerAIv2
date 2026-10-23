@@ -1,13 +1,13 @@
-"""Held-out validation and corroboration (learning-configs spec steps 3, 4): which fields of a learned config
-may activate, each field's status, and the `validation_report` that drift (§4.9) measures against.
+"""Held-out validation and corroboration (4): which fields of a learned config
+may activate, each field's status, and the `validation_report` that drift measures against.
 
 Both executors run the config on every held-out page. A field is kept only if, on every page where the engine
-published it, the config matches it and the engine executor and the independent release executor (§12.3) both give
+published it, the config matches it and the engine executor and the independent release executor both give
 the published value (`equal`), and every value it matches on any page is valid by its normalizer. A single-valued
-field that matches more than once is invalid (§4.3), so "exactly one match" is part of validity. A field the engine
+field that matches more than once is invalid, so "exactly one match" is part of validity. A field the engine
 published on no held-out page cannot be checked and is dropped. A listing keeps its rows only if `row` selects at
 least 3 on every page; its row fields are checked row by row against the engine's rows, in document order, the
-engine's rows aligned with the config's as an order-preserving subsequence (`row_alignment`, D-1500): role C may leave
+engine's rows aligned with the config's as an order-preserving subsequence (`row_alignment`): role C may leave
 items out of a listing, and the config is then checked on the rows the engine did publish.
 
 A kept field is `corroborated` when the config's values equal the structured-data or adapter values on the comparable
@@ -106,7 +106,7 @@ class ListingReport(_Report):
 
 
 class RecipeFieldReport(_Report):
-    """One field of an API recipe's map (adapters spec). `published`: held-out pages where the engine published the
+    """One field of an API recipe's map. `published`: held-out pages where the engine published the
     field; `reproduced`: those where the replayed response gave that value."""
 
     published: int
@@ -114,7 +114,7 @@ class RecipeFieldReport(_Report):
 
 
 class RecipeReport(_Report):
-    """The API recipe's held-out validation (adapters spec). `refused` says why the recipe did not enter the config."""
+    """The API recipe's held-out validation. `refused` says why the recipe did not enter the config."""
 
     held_out: list[CaptureId]
     fields: dict[str, RecipeFieldReport]
@@ -122,8 +122,8 @@ class RecipeReport(_Report):
 
 
 class ValidationReport(_Report):
-    """The `extraction_config.validation_report` (learning-configs spec). `refused` says why nothing can activate;
-    `api_recipe` is the recipe's validation when the site has one (adapters spec)."""
+    """The `extraction_config.validation_report`. `refused` says why nothing can activate;
+    `api_recipe` is the recipe's validation when the site has one."""
 
     held_out: list[CaptureId]
     fields: dict[str, FieldReport]
@@ -149,7 +149,7 @@ def validate(
     *,
     min_held_out: int = MIN_HELD_OUT,
 ) -> Validated:
-    """Validate `ir` on `held_out` (§4.7). It activates only with at least `min_held_out` pages and one kept field: a
+    """Validate `ir` on `held_out`. It activates only with at least `min_held_out` pages and one kept field: a
     learning run's `MIN_HELD_OUT`, a locate run's fewer (`locate.MIN_LOCATE_HELD_OUT`)."""
     captures = [page.capture_id for page in held_out]
     if len(held_out) < min_held_out:
@@ -176,8 +176,8 @@ async def replayed(
     page: HeldOutPage, bundle: CaptureBundle, recipe: ApiRecipe, replay: Replay, context: RequestContext | None
 ) -> HeldOutPage | None:
     """The HTTP held-out `page` (whose capture is `bundle`) with the answer of `recipe`'s call, replayed over HTTP
-    without the browser, joined as serving joins it (acquisition spec, "Data calls"), which a `call` field's steps are
-    validated on (learning-configs spec, "Locate run" step 4); None when the recipe binds nothing on the page or its
+    without the browser, joined as serving joins it, which a `call` field's steps are
+    validated on; None when the recipe binds nothing on the page or its
     answer is not `ok` or does not state the page's product (`identified`)."""
     url, data = bundle.manifest.url, page_data(page.page)
     request = request_for(recipe, url, data, context)
@@ -239,7 +239,7 @@ def small_n_rule(pages: int, agreeing: int, *, minimum: int, share: Fraction) ->
 
 
 def release_on(ir: ExtractionConfigIR, schema: SchemaDef, page: HeldOutPage) -> Released:
-    """The release executor's run of `ir` on a held-out page, with the schema's rules (D-0527)."""
+    """The release executor's run of `ir` on a held-out page, with the schema's rules."""
     return release_run(ir, ReleasePage(page.page, page.ctx.base_url), release_rules(schema, page.ctx))
 
 
@@ -249,7 +249,7 @@ def release_on(ir: ExtractionConfigIR, schema: SchemaDef, page: HeldOutPage) -> 
 @dataclass(frozen=True, slots=True)
 class _PageRun:
     """Both executors' output on one held-out page: the engine's config candidates by owner and field, and for each of
-    the engine's listing rows the config row it aligns with (`row_alignment`, D-1500)."""
+    the engine's listing rows the config row it aligns with (`row_alignment`)."""
 
     page: HeldOutPage
     candidates: Mapping[tuple[str, str], Candidate]
@@ -282,7 +282,7 @@ def _valid_values(candidates: Mapping[tuple[str, str], Candidate], owner: str) -
 
 def agreeing(schema: SchemaDef) -> Callable[[str, JsonValue, JsonValue], bool]:
     """Whether a config's value for a field of `schema` agrees with the value the engine published (`equal`), as rows
-    are aligned (D-1500)."""
+    are aligned."""
 
     def agrees(name: str, value: JsonValue, published: JsonValue) -> bool:
         spec = schema.fields.get(name)
@@ -332,7 +332,7 @@ def _page_slots(run: _PageRun, name: str, spec: FieldSpec) -> tuple[list[_Slot],
 
 def _row_slots(run: _PageRun, name: str, spec: FieldSpec) -> tuple[list[_Slot], bool]:
     """A row field has one slot per engine row, against the config row it aligns with (none when it aligns with none),
-    and one per config row no engine row aligns with, which the engine did not publish (D-1500). The rows align when
+    and one per config row no engine row aligns with, which the engine did not publish. The rows align when
     both executors select as many rows and the engine published no more."""
     facts, released = run.page.rows, run.released.rows
 

@@ -1,8 +1,8 @@
-"""The search service (D-1442): the web results of a query from the operator's provider (`crawlerai.search`), found
-while the caller waits, and, with `scrape`, scraped through a batch job (jobs spec) the answer names.
+"""The search service: the web results of a query from the operator's provider (`crawlerai.search`), found
+while the caller waits, and, with `scrape`, scraped through a batch job the answer names.
 
 Without a configured provider the service raises `SearchUnavailable`. Result URLs are the provider's, not the caller's:
-one the SSRF guard refuses (INV-16) stays in `results` but is not scraped, and the answer counts such URLs in `skipped`.
+one the SSRF guard refuses stays in `results` but is not scraped, and the answer counts such URLs in `skipped`.
 `scrape` takes a batch's members; its job is the batch job of the scrapable results, in the answer's order, `job_id`
 none when no result could be scraped.
 """

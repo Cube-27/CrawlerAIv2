@@ -1,4 +1,4 @@
-"""Webhook deliveries (jobs spec): the events a job owes are grouped into deliveries (`form_deliveries`) as its
+"""Webhook deliveries: the events a job owes are grouped into deliveries (`form_deliveries`) as its
 `webhook_batch` says, and `deliver_webhooks` POSTs each, signed with the submitting key's secret, in at most 5
 attempts with backoff, through the SSRF guard. Hosts are RFC 2606 names; the poster is a stand-in except where the
 guard itself is under test.

@@ -1,17 +1,17 @@
-"""Recipe execution (adapters spec rung, §8.6): serve a site's pages with its
+"""Recipe execution (the adapter rung): serve a site's pages with its
 active config's API recipe over `fetch_json`, with no browser.
 
 `RecipeRung` is the recipe bound to its fetchers, the rung `acquire` takes (`acquire.rungs`): it binds the
 parameters from the page URL (fetching the HTML page first only when a binder reads the page's JSON documents,
-`requires_page_fetch`), sends the recipe's request through the SSRF guard (INV-16) and answers a
+`requires_page_fetch`), sends the recipe's request through the SSRF guard and answers a
 `FetchResult(method='api')` whose body is the JSON. A detail page's answer serves it only when it states the requested
-product (`acquire.identity.identifies`, acquisition spec "Data calls"): an endpoint that answers one product for every
+product (`acquire.identity.identifies`): an endpoint that answers one product for every
 page is an `error`, `not_the_product`. A page the recipe cannot serve is an `error` result, and `acquire`
-fetches it the configured way (§4.10); when the rung fetched the HTML page to bind and reached it, that page is the
+fetches it the configured way; when the rung fetched the HTML page to bind and reached it, that page is the
 result instead, so it is not fetched twice. A listing's pages come from `pages`, which follows the recipe's pagination
 (`pagination.py`: a page number or offset, a cursor, a next URL or an RFC 8288 `next` link, in the query or the JSON
 body) until a response's `rows` select nothing or the caller's records target is reached: this is how infinite scroll
-is served (§8.6). `recipe_collector` reads what the rung fetched.
+is served. `recipe_collector` reads what the rung fetched.
 """
 
 import asyncio
@@ -42,7 +42,7 @@ from crawlerai.db.models import FieldStatus
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
 
-# A listing served by its recipe sends at most this many page requests (adapters spec): the records target ends it
+# A listing served by its recipe sends at most this many page requests: the records target ends it
 # sooner, and a pagination that never ends (a cursor that comes back) is cut here.
 MAX_PAGES: Final = 50
 
@@ -56,7 +56,7 @@ def recipe_collector(recipe: ApiRecipe, recipe_id: str) -> ApiCollector:
 @dataclass(frozen=True, slots=True)
 class RecipeExecutor:
     """The `ConfigExecutor` of the captures a config's recipe fetched: the recipe's collector, with the status of the
-    config's fields the recipe maps, which role C is then not asked for (learning-configs spec)."""
+    config's fields the recipe maps, which role C is then not asked for."""
 
     recipe: ApiRecipe
     collector: ApiCollector
@@ -64,7 +64,7 @@ class RecipeExecutor:
 
     @classmethod
     def of(cls, recipe: ApiRecipe, recipe_id: str, config_status: Mapping[str, FieldStatus]) -> "RecipeExecutor":
-        # An absent field (D-1341) is no recipe's either, and role C is not asked for it on a recipe's pages.
+        # An absent field is no recipe's either, and role C is not asked for it on a recipe's pages.
         status = {name: s for name, s in config_status.items() if name in recipe.map or s == "absent"}
         return cls(recipe, recipe_collector(recipe, recipe_id), status)
 
@@ -205,7 +205,7 @@ def unserved(url: str, policy: FetchPolicy, engine_version: str, block_class: Bl
 def _after(page: FetchResult | None, result: FetchResult, *, fallback: bool = False) -> FetchResult:
     """`result` with the HTML page fetch before it among its attempts. With `fallback`, a `result` that did not serve
     the page, and asked for no fewer requests, gives way to the HTML page when that fetch reached it: it is the page
-    `acquire` would fetch again over HTTP (§4.10), one more request."""
+    `acquire` would fetch again over HTTP, one more request."""
     if page is None:
         return result
     unserved = result.block_class != "ok" and not slow_down(result)

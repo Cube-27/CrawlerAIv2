@@ -1,11 +1,11 @@
-"""The admission rule for JSON without standard keys (extraction spec): embedded JSON state
+"""The admission rule for JSON without standard keys: embedded JSON state
 (`js_state`) and captured network bodies (`xhr`).
 
 Their keys follow no standard, so no key is mapped to a field. Every string and number in a document is tried against
 each field's normalizer, the only filter, and becomes a candidate only when:
-- the field has candidates from another source kind and the value is `equal` to one of them (schemas spec). It is
+- the field has candidates from another source kind and the value is `equal` to one of them. It is
   then owned by that candidate's entity and is not independent: it agrees with a value it was admitted for, so it
-  never counts toward `agreed` (§10);
+  never counts toward `agreed`;
 - the field has no candidate from another source kind, its type has a syntax the normalizer checks
   (`normalize.dispatch.checkable`: money, enum, date, range, a check-digit identifier, an absolute URL), and the value
   is visible in the page text. It is then owned by the page, like other page-level values, and is independent. An
@@ -18,11 +18,11 @@ A visible value inside an array row is owned by that row, not by the page (owner
 #55): an object item of a JSON array holding two or more objects is one of a set of items (related products,
 recommendations, the variants of one), and which of them, if any, is the page's subject is resolution's question
 (`resolve.ownership`). The row's entity carries the URLs written in its scope, the row up to its nested rows, as
-variants spec scopes a row, so resolution can tell a row naming the page from another page's item. One object in an
-array is its holder's only item, as an object member is, and stays in its holder, unless it names a document of its own
-(D-1345): a related item alone in its array is still another page's item.
+a variants row scopes a row, so resolution can tell a row naming the page from another page's item. One object in an
+array is its holder's only item, as an object member is, and stays in its holder, unless it names a document of its own:
+a related item alone in its array is still another page's item.
 
-A value repeated under many paths of the documents is one candidate per field, normalized value and owner (D-1343).
+A value repeated under many paths of the documents is one candidate per field, normalized value and owner.
 
 A field with candidates from other kinds admits values only by equality ("leaves are considered only for fields still
 lacking a candidate or for agreement checks"), so a value both equal and visible is not independent.
@@ -64,7 +64,7 @@ class Admitted(BaseModel):
 
 class AdmittingCollector(Protocol):
     """A collector whose values are admitted against `others`: the candidates every other collector proposed for the
-    page (§8.1). It reads the `ParsedPage` only (INV-26) and never raises on page content."""
+    page. It reads the `ParsedPage` only and never raises on page content."""
 
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context, others: Sequence[Candidate]) -> Admitted: ...
 
@@ -179,9 +179,9 @@ def admit(
 
 
 class _Distinct:
-    """The candidates of one collector, one per field, normalized value and owner (D-1343). A large state blob repeats
+    """The candidates of one collector, one per field, normalized value and owner. A large state blob repeats
     one value under many paths (a price in every cached copy of the product); each repeat is the same evidence, not
-    more of it, as one owner's equal values are one value to resolution (§10), so only one is kept: the one with the
+    more of it, as one owner's equal values are one value to resolution, so only one is kept: the one with the
     shortest locator, the value nearest the document root or the first document (on a tie, the first in document
     order). It keeps the place of the first repeat, so the order stays document order."""
 
@@ -243,7 +243,7 @@ _MIN_ROWS = 2
 
 def _names_a_document(item: Mapping[str, JsonValue], ctx: Context) -> bool:
     """Whether an object writes, in its own scope (its members and the objects among them, not its arrays), a URL that
-    names a document (D-1345). The array holding it is then a set of items, each another page or the page itself, as
+    names a document. The array holding it is then a set of items, each another page or the page itself, as
     the rows of an array of two or more are, and ownership tells them apart by their URLs (`resolve.ownership`): a lone
     related item names another page, while the page's own item names the page or nothing. A URL whose path names a
     media file (`_media`) addresses an image or a video of the item, not a document, so the page's own item holding its
@@ -313,8 +313,8 @@ class _Rows:
         return f"{self._kind}:{index}:{row}"
 
 
-# The start of an http(s) URL (RFC 3986 §3.1, scheme case-insensitive) or of a path-absolute or network-path reference
-# (§4.2); which of them name a document is `canonical_urls`'s, asked only for the rows that own a value.
+# The start of an http(s) URL (RFC 3986 §3.1, scheme case-insensitive) or of a path-absolute or network-path reference;
+# which of them name a document is `canonical_urls`'s, asked only for the rows that own a value.
 _WRITTEN_URL = re.compile(r"(?:https?:)?/", re.IGNORECASE)
 
 

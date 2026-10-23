@@ -1,4 +1,4 @@
-"""The RSC Flight reader (extraction spec, "Source documents"): the rows of a React Server Components payload, read by
+"""The RSC Flight reader: the rows of a React Server Components payload, read by
 the wire format React's client reads (`packages/react-client/src/ReactFlightClient.js`), without evaluating anything.
 
 The payload is a byte stream of rows `<hex id>:<tag?><payload>`. After the `:`, a byte of `_LENGTH_TAGS` is the row's
@@ -108,7 +108,7 @@ class _Reader:
 
 
 def model_rows(rows: list[Row]) -> dict[str, JsonValue] | None:
-    """The JSON model rows' values by row id, a Flight stream's one document (extraction spec, "Source documents");
+    """The JSON model rows' values by row id, a Flight stream's one document;
     None when it has none."""
     found: dict[str, JsonValue] = {row.id: row.value for row in rows if not row.tag}
     return found or None

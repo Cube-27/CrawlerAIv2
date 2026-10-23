@@ -13,8 +13,8 @@ import {
 import { runApi, schemaList } from "../../../test/runs";
 import { curlBody } from "../../../test/shell";
 
-// Every mode's Get code (frontend spec) against what its primary action posts. `fetch` answers each submit with the
-// shapes rest-api spec and jobs spec–4.6 define; the scrape is refused, as only its body matters here.
+// Every mode's Get code against what its primary action posts. `fetch` answers each submit with the
+// shapes the API defines; the scrape is refused, as only its body matters here.
 
 const JOB_ID = "0192a000-0000-7000-8000-0000000000g1";
 

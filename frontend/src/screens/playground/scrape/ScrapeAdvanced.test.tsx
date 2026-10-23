@@ -5,7 +5,7 @@ import type { ScrapeResponse } from "../../../api/scrape";
 import { stubApi } from "../../../test/api";
 import { closeOptions, openOptions, openPlayground, pick, posted } from "../../../test/playground";
 
-// Scrape's Advanced options (D-1430, D-1436): the request context, cache and page actions, sent as `fetch` members.
+// Scrape's Advanced options: the request context, cache and page actions, sent as `fetch` members.
 
 const response: ScrapeResponse = {
   job_id: "0192a000-0000-7000-8000-0000000000j1",

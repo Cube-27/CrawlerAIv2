@@ -1,4 +1,4 @@
-/** `/v1/schedules` (§22 "Recurring schedule storage", D-1410): recurring runs of a request, in the generated shapes. */
+/** `/v1/schedules` (§22 "Recurring schedule storage"): recurring runs of a request, in the generated shapes. */
 import type { ApiClient } from "./client";
 import { apiDone, apiResult, type ApiResult } from "./result";
 import type { components } from "./schema";

@@ -1,4 +1,4 @@
-"""Listing induction (learning-configs spec, "Induction, then role A synthesis"; listings spec, "Rows from blocks"): a
+"""Listing induction: a
 listing's row selector and row-field steps generalized from the item layer's aligned blocks across the learning
 sample, without an LLM.
 
@@ -17,7 +17,7 @@ group whose item URLs the published rows name most is the page's. Then:
   validation aligns them (`row_alignment`).
 
 What the engine published is the oracle: its own values and role C's grounded ones, which the published rows hold
-alike. Site strings exist only in the steps produced, which are IR data (C3, INV-03).
+alike. Site strings exist only in the steps produced, which are IR data (C3).
 """
 
 from collections.abc import Iterator, Mapping, Sequence
@@ -56,7 +56,7 @@ from crawlerai.normalize.strings import collapse
 from crawlerai.normalize.url import canonical_url
 from crawlerai.schemas.types import FieldSpec, SchemaDef, document_digest
 
-_STATUS: Final[FieldStatus] = "uncorroborated"  # until validation (§4.7) records corroboration
+_STATUS: Final[FieldStatus] = "uncorroborated"  # until validation records corroboration
 # HTML Standard §4.12.1, §4.2.6: a script's and a style's contents are not rendered text, so no value is read there.
 # An ordinary `template` left after the pre-passes (`content.page.prepassed`) holds inert content, never rendered.
 _UNREAD: Final = frozenset({"script", "style", "template", "noscript"})

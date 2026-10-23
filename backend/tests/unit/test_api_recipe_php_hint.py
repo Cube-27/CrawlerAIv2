@@ -1,4 +1,4 @@
-"""The PHP hint of an API recipe (adapters spec, OPEN_QUESTIONS #12): a curl request rendered from
+"""The PHP hint of an API recipe: a curl request rendered from
 the recipe's data, with its parameters substituted, its headers, and its JSONPath map as comments. Every recipe string
 is written as a PHP single-quoted literal or a JSON-quoted comment, so no recipe value ends a literal, a comment or
 PHP mode."""

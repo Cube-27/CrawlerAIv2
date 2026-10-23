@@ -1,6 +1,6 @@
-"""The enum normalizer and the vocabulary framework (normalization spec): schema.org members by IRI or
+"""The enum normalizer and the vocabulary framework: schema.org members by IRI or
 name, language-tagged type vocabularies by token sequence (never substring order), and declines on no match, two
-members, and empty input (INV-06)."""
+members, and empty input."""
 
 import re
 from datetime import UTC, datetime

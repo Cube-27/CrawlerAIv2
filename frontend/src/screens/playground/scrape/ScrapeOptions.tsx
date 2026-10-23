@@ -13,8 +13,8 @@ import {
 } from "../rows";
 import { browserActionsApply, DEFAULT_OPTIONS, type ScrapeOptions as Options } from "./form";
 
-/** Scrape's options (frontend spec): page kind, fetch method, max age, timeout, the LLM call limit, Metadata in JSON,
- * fields (§4.10) and a listing's browser actions (owner #52). */
+/** Scrape's options: page kind, fetch method, max age, timeout, the LLM call limit, Metadata in JSON,
+ * fields and a listing's browser actions. */
 export function ScrapeOptions({
   options,
   formats,
@@ -64,7 +64,7 @@ export function ScrapeOptions({
           onChange({ ...options, maxAge });
         }}
       />
-      {/* rest-api spec: the request is bounded by `timeout_s`, at most 120. */}
+      {/* The request is bounded by `timeout_s`, at most 120. */}
       <NumberRow
         label="Timeout (s)"
         help="How long the scrape may take, in seconds, at most 120. Empty: the server default."
@@ -118,7 +118,7 @@ const HINTS: readonly (readonly [HintChoice, string])[] = [
   ["scroll", "Scroll"],
 ];
 
-/** `browser_actions` (owner #52): where they do not apply (`browserActionsApply`) the rows stay in place, disabled,
+/** `browser_actions`: where they do not apply (`browserActionsApply`) the rows stay in place, disabled,
  * and nothing is sent (the layout never moves when another option changes). */
 function BrowserActionsRows({
   options,

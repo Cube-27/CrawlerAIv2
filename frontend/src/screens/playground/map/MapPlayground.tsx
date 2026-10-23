@@ -29,7 +29,7 @@ const NOT_KEPT: OutputState = {
   ),
 };
 
-/** The Map playground at `/map` (frontend spec): a URL and its scope (`POST /v1/map`, answered at once), then the URLs
+/** The Map playground at `/map`: a URL and its scope (`POST /v1/map`, answered at once), then the URLs
  * found as a table of links, kept in the run's history entry (`useMapRun`); before any run, the recent maps. Map takes
  * no format or schema, so the toolbar has Options only. */
 export function MapPlayground() {

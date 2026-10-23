@@ -1,4 +1,4 @@
-"""Grounding by alignment (llm spec, INV-12): on generated texts and spans, `align` returns the exact span when it is
+"""Grounding by alignment: on generated texts and spans, `align` returns the exact span when it is
 whole words; a value absent from the text is dropped; a repeated value takes the occurrence nearest the model's
 `start`; an occurrence inside a longer word is never grounded; an accepted claim's locator names its offsets. An
 empty value is dropped, and a claimed element is grounded in the element its id marks."""

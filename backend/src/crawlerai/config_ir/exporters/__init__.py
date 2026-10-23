@@ -1,1 +1,1 @@
-"""Exporters (learning-configs spec)."""
+"""Exporters."""

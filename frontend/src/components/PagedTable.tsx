@@ -8,7 +8,7 @@ import { TablePagination, type PageSizing } from "./TablePagination";
 /** Rows per page of a table that is not a results table (`useCursorPages` sizes the others): the box (`h-table-page` in theme.css) holds this many rows and the header. */
 export const PAGE_SIZE = 20;
 
-/** The rows a page shows of the total, "rows 51–100 of 1,000" (rest-api spec: every results page carries `total`). */
+/** The rows a page shows of the total, "rows 51–100 of 1,000" (every results page carries `total`). */
 export interface PageRows extends PageSizing {
   /** The rows in all, or null until the first page is here. */
   total: number | null;

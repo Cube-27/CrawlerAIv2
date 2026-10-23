@@ -1,4 +1,4 @@
-"""`POST /v1/map` over HTTP (jobs spec): what a client sends and gets back. What a map does is the service's
+"""`POST /v1/map` over HTTP: what a client sends and gets back. What a map does is the service's
 (`test_map_service.py`)."""
 
 from collections.abc import AsyncIterator, Callable

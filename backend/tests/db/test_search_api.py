@@ -1,4 +1,4 @@
-"""`POST /v1/search` (D-1442): what a client sends and gets back, with a stub provider; nothing leaves the process.
+"""`POST /v1/search`: what a client sends and gets back, with a stub provider; nothing leaves the process.
 How a provider is asked and its answer read is `tests/unit/test_search_providers.py`. Hosts are RFC 2606 names."""
 
 from dataclasses import dataclass, field

@@ -1,5 +1,5 @@
-"""The summary of a page's fetch (rest-api spec, D-1393): the kept attempt's method, status and class, every attempt,
-and, for an `api` capture, the platform adapter that reads it (INV-39). The adapter is a stub on a synthetic host."""
+"""The summary of a page's fetch: the kept attempt's method, status and class, every attempt,
+and, for an `api` capture, the platform adapter that reads it. The adapter is a stub on a synthetic host."""
 
 from dataclasses import dataclass
 from urllib.parse import urlsplit

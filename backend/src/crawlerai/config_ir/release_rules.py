@@ -1,7 +1,7 @@
-"""What the release executor is told of a schema (learning-configs spec, D-0527): one `FieldRule` per field, built from
-the schema, schemas spec's normalizers and the structured collectors' read of a value (`fragment_read`), so a valid
+"""What the release executor is told of a schema: one `FieldRule` per field, built from
+the schema, its normalizers and the structured collectors' read of a value (`fragment_read`), so a valid
 value and what a field reads of structured data are defined in one place (C8) while the release executor itself imports
-nothing of the engine (INV-20)."""
+nothing of the engine."""
 
 from pydantic import ValidationError
 

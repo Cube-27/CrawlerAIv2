@@ -1,6 +1,6 @@
-"""The browser rung runs Patchright's documented setup (INV-42, INV-43, INV-44; owner #50 as amended 2026-10-23):
+"""The browser rung runs Patchright's documented setup:
 Google Chrome stable in headless mode, in a persistent profile, with its own user agent with only its headless token
-renamed (owner #71 as amended) and the window and screen of its site as its launch arguments, the WebRTC policy the
+renamed and the window and screen of its site as its launch arguments, the WebRTC policy the
 guard needs in the profile's preferences, and no client hints or headers but its own. The context's zone is the exit's
 declared zone, else its country's, else the request locale's region's; its locale the request's, else the exit's. A
 fake Playwright records what `open_browser` and `fetch_browser` ask for; no browser runs (what the real probe reads,
@@ -175,7 +175,7 @@ def test_inv42_inv43_chrome_headless_in_a_profile_with_the_guards_webrtc_policy(
 
     # `chrome` is Google Chrome stable (`patchright install chrome`), Patchright's recommended build; its launch
     # arguments are its user agent and the window and screen of the site's profile; WebRTC's proxy policy, which the
-    # SSRF guard needs (INV-16), is a profile preference.
+    # SSRF guard needs, is a profile preference.
     assert {k: v for k, v in recorder.launch.items() if k != "proxy"} == {
         "channel": "chrome",
         "headless": True,
@@ -204,8 +204,8 @@ def test_inv42_inv43_chrome_headless_in_a_profile_with_the_guards_webrtc_policy(
 
 # Calls that change the browser's identity or run code in the page's main world (Patchright README: no custom
 # user agent or headers; evaluate runs in an isolated world). Matched in source, so a new call site fails here; the ones
-# allowed set the browser's own user agent with its headless token renamed (owner #71 as amended) and, through Chrome's
-# override, its own client hints (owner 2026-10-23).
+# allowed set the browser's own user agent with its headless token renamed and, through Chrome's
+# override, its own client hints.
 _IDENTITY_CALLS = re.compile(
     r"user_agent|user-agent=|extra_http_headers|setUserAgentOverride|add_init_script"
     r"|new_(browser_)?cdp_session|isolated_context=False|--enable-automation|--disable-blink-features"

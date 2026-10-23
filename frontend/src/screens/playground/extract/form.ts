@@ -36,11 +36,11 @@ import {
   minConfidencePercent,
 } from "../run/storedRequest";
 
-/** Where an extract's schema comes from (jobs spec), chosen in the toolbar's Schema: a stored one, inline JSON, or
- * a draft from a prompt or from field names (frontend spec). */
+/** Where an extract's schema comes from, chosen in the toolbar's Schema: a stored one, inline JSON, or
+ * a draft from a prompt or from field names. */
 export type SchemaSource = "id" | "inline" | "prompt" | "fields";
 
-/** Extract's options panel (frontend spec): each is an `ExtractRequest` member. An empty limit (NaN) or text is left
+/** Extract's options panel: each is an `ExtractRequest` member. An empty limit (NaN) or text is left
  * out, so the server's default applies. */
 export interface ExtractOptions {
   /** The URLs and globs after the bar's. */
@@ -58,7 +58,7 @@ export interface ExtractOptions {
   maxRows: number;
   /** `min_confidence` as a percent; NaN (empty) leaves it out: every value publishes with its confidence. */
   minConfidence: number;
-  /** The Advanced settings: request context, page actions and cache (D-1430, D-1436). */
+  /** The Advanced settings: request context, page actions and cache. */
   advanced: AdvancedFetch;
   llmCalls: number;
   /** An empty URL: no webhook. */
@@ -72,7 +72,7 @@ export const DEFAULT_EXTRACT_OPTIONS: ExtractOptions = {
   fields: [],
   pageKind: null,
   limit: Number.NaN,
-  // FetchPolicy's own default (acquisition spec).
+  // FetchPolicy's own default.
   methodHint: "auto",
   maxRows: Number.NaN,
   minConfidence: Number.NaN,
@@ -138,8 +138,7 @@ const SOURCE_ERRORS: Readonly<Record<SchemaSource, Readonly<Record<string, strin
   fields: NO_FIELDS,
 };
 
-/** Why `form` can't be sent, by field: an extract needs a schema, and records of one page kind (jobs spec,
- * rest-api spec). */
+/** Why `form` can't be sent, by field: an extract needs a schema, and records of one page kind. */
 export function extractErrors(form: ExtractFormState): Readonly<Record<string, string>> {
   return withFetchErrors(
     withWebhookErrors(requestErrors(form), form.options.webhook),

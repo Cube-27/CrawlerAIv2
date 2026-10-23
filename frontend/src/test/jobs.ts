@@ -1,6 +1,6 @@
 import type { JobSummary } from "../api/jobs";
 
-/** A running batch job's summary (jobs spec): three tasks, two done and extracted, one queued. */
+/** A running batch job's summary: three tasks, two done and extracted, one queued. */
 export function jobSummary(overrides: Partial<JobSummary> & Pick<JobSummary, "id">): JobSummary {
   return {
     kind: "batch_scrape",

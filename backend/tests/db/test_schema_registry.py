@@ -1,4 +1,4 @@
-"""The schema registry against Postgres (schemas spec): presets synced, and one row per name edited in place,
+"""The schema registry against Postgres: presets synced, and one row per name edited in place,
 the edit sending the schema's configs back to learning (`services.schemas`, `progressive.relearn_schema`)."""
 
 from typing import Any

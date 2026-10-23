@@ -1,6 +1,6 @@
 """Detect-and-report signals (architecture v3 §(b), "report"): the delivery technologies a page shows that the engine
-does not read, each named in the page's diagnostics as `signal:<name>` and counted in the job summary (jobs spec,
-"Job outcome summary"). Structural only: an element, an attribute, a script's path, a link, a resource the browser
+does not read, each named in the page's diagnostics as `signal:<name>` and counted in the job summary. Structural only:
+an element, an attribute, a script's path, a link, a resource the browser
 loaded (`CaptureManifest.resources`), never a URL or page text in what is reported. A signal changes no fetch and no
 extraction.
 
@@ -43,8 +43,7 @@ SIGNALS: Final[tuple[Signal, ...]] = get_args(Signal)
 # A signal's diagnostic is this prefix and its name.
 PREFIX: Final = "signal:"
 # The signals of content the page delivers in a form the engine does not read (a closed shadow root's tree, text drawn
-# by a font's Private Use Area glyphs): a caller-supplied page raising one is `partial`, never `no_match` (resolution
-# spec, "Incomplete pages").
+# by a font's Private Use Area glyphs): a caller-supplied page raising one is `partial`, never `no_match`.
 UNREADABLE: Final[frozenset[Signal]] = frozenset({"closed_shadow_root", "obfuscated_text"})
 
 # Unicode Private Use Areas: the BMP area (U+E000-U+F8FF) and planes 15 and 16 (from U+F0000).

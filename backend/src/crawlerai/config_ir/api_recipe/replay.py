@@ -1,7 +1,7 @@
-"""Recipe replay (adapters spec): send a recipe's request for a captured page over `fetch_json` (so through the
-SSRF guard, INV-16) and check that the response reproduces the page's published values through the recipe's map.
+"""Recipe replay: send a recipe's request for a captured page over `fetch_json` (so through the
+SSRF guard) and check that the response reproduces the page's published values through the recipe's map.
 
-A detail recipe's answer must also state the page's product (the identity check, acquisition spec "Data calls"), as
+A detail recipe's answer must also state the page's product (the identity check), as
 serving requires (`execute`). Header minimization replays the sample pages; held-out validation replays the held-out
 ones the same way. A listing
 recipe (one with `pagination`) is replayed for its first two pages, the second built by its pagination as serving
@@ -34,11 +34,11 @@ from crawlerai.storage.capture_bundle import CaptureBundle, HeaderList
 # Sends one request: `fetch_json` with the job's policy and engine version.
 Replay = Callable[[JsonRequest], Awaitable[FetchResult]]
 Scalar = str | int | float
-# Renders a page in the browser with network capture (acquisition spec), a listing with its browser actions (owner #52):
+# Renders a page in the browser with network capture, a listing with its browser actions:
 # the document states kept, none when the page was not reached or may not be fetched. Learning renders the pages whose
 # captures hold no calls to learn from.
 Render = Callable[[str, PageKind], Awaitable[Sequence[CaptureBundle]]]
-# A learning run's `Replay`, for its job, whose usage the requests count as (D-1381).
+# A learning run's `Replay`, for its job, whose usage the requests count as.
 Replays = Callable[[JobId], Replay]
 # Appendix A #59: a listing recipe is validated on its first two pages, the one the page loaded and the next.
 REPLAYED_PAGES: Final = 2
@@ -63,7 +63,7 @@ def request_for(
 ) -> JsonRequest | None:
     """The request `spec` makes for the page, a header it takes from the caller's request context with the value
     `context` holds; `None` when a parameter, or such a header, has no value there. The context goes only to the page's
-    own host (D-1430), so a recipe that references it on another host makes no request."""
+    own host, so a recipe that references it on another host makes no request."""
     params = resolve_params(spec, page_url, page_data)
     if params is None:
         return None
@@ -76,7 +76,7 @@ def request_for(
             if (secret := supplied.get(header.name.lower())) is None:
                 return None
             headers.append((header.name, secret.get_secret_value()))
-        else:  # `{page_url}` is the one placeholder a header value takes (§4.6)
+        else:  # `{page_url}` is the one placeholder a header value takes
             headers.append((header.name, header.value.replace(f"{{{PAGE_URL}}}", page_url)))
     body = None if spec.body is None else render_body(spec.body.template, params)
     return JsonRequest(url, page_url, spec.method, tuple(headers), body)

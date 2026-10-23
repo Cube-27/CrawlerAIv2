@@ -141,7 +141,7 @@ THING_NAME = ".".join(["Thing", "name"])
 
 
 def schema_document(fields: dict[str, object], **extra: object) -> str:
-    """A JSON schema document (schemas spec) with the given fields, on one line."""
+    """A JSON schema document with the given fields, on one line."""
     return json.dumps({"name": "p", "page_kind": "listing", "fields": fields, **extra}) + "\n"
 
 

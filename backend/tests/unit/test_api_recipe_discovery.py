@@ -1,4 +1,4 @@
-"""API discovery (adapters spec): from browser captures with network bodies, find the endpoint whose JSON carries the
+"""API discovery: from browser captures with network bodies, find the endpoint whose JSON carries the
 page's published values on every sample page, with one JSONPath per field.
 
 Captures are built in memory with synthetic `.test` hosts; the browser-marked end-to-end test is in

@@ -1,4 +1,4 @@
-"""Domain memory (acquisition spec, "Acquisition contract and block history"): two tiers, kept apart, because a
+"""Domain memory: two tiers, kept apart, because a
 durable strategy and a short-lived safety bias age differently.
 
 - The acquisition contract (`site_contract`), durable, per site and page kind (`remembered_as`): the rung the pages

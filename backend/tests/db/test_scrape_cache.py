@@ -1,5 +1,5 @@
-"""`fetch.cache`, the request context and the proxy pool check in the scrape service and job submission (D-1432,
-D-1434, D-1435): a stored capture is reused only when made the way the request fetches, `only` never fetches,
+"""`fetch.cache`, the request context and the proxy pool check in the scrape service and job submission: a stored
+capture is reused only when made the way the request fetches, `only` never fetches,
 `bypass` always does, and a caller's secrets are never stored with a scrape or answered with a job's request.
 """
 

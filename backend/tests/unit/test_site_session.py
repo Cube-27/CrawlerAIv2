@@ -1,4 +1,4 @@
-"""Site sessions (INV-29's one exception, owner #58): the cookies of a browser solve go with later HTTP and JSON fetches
+"""Site sessions: the cookies of a browser solve go with later HTTP and JSON fetches
 of the same site, registrable domain and proxy pool, in memory, for a bounded time and number of fetches, and never
 into a capture; a `blocked` answer ends the session.
 

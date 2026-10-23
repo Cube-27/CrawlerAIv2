@@ -1,5 +1,5 @@
-"""`ParsedPage` (extraction spec): one decode and at most one parse per parser per
-capture (INV-26); the script blocks; the lazy lxml tree."""
+"""`ParsedPage`: one decode and at most one parse per parser per
+capture; the script blocks; the lazy lxml tree."""
 
 from datetime import UTC, datetime
 
@@ -67,7 +67,7 @@ def test_the_body_decodes_in_the_content_type_charset_else_utf8(
 )
 def test_a_json_body_decodes_as_utf8_whatever_charset_it_is_labelled_with(method: str, content_type: str) -> None:
     # RFC 8259 §8.1, §11: JSON text is exchanged as UTF-8 and its media type has no charset parameter; an API
-    # capture's body is a JSON document (`body.json`; acquisition spec, "Structural outcome classification (INV-24)")
+    # capture's body is a JSON document (`body.json`)
     # unless it is labelled HTML.
     headers = (("content-type", content_type),) if content_type else ()
     plain = _bundle('{"name": "café \u2013 b"}'.encode(), headers)

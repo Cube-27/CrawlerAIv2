@@ -1,11 +1,11 @@
-"""Held-out validation of an API recipe (adapters spec): replay the recipe for each held-out
+"""Held-out validation of an API recipe: replay the recipe for each held-out
 page and compare every mapped field with the value the engine published from the page's browser capture, the bar
-learning-configs spec sets for a config.
+config learning sets for a config.
 
 A recipe is accepted only whole: every field of its map must reproduce on every held-out page where the engine
 published it, and be published on at least one. An accepted recipe carries its proof and enters the validated config
 with its report; the config's `fetch.method` is left as it is, since the recipe is the acquisition's API rung, not a
-fetch method (§4.7, §4.8).
+fetch method.
 """
 
 from collections.abc import Mapping, Sequence
@@ -44,7 +44,7 @@ async def validate_recipe(
     replay: Replay,
 ) -> RecipeValidated:
     """Replays `proven.spec` for each held-out page, in order, and accepts it with the `fields` map when every field
-    reproduces on every page that published it (§4.7)."""
+    reproduces on every page that published it."""
     captures = [item.capture_id for item in held_out]
     enough = len(held_out) >= MIN_HELD_OUT
     pages = [await compare(proven.spec, fields, item.page, schema, replay) for item in held_out] if enough else []

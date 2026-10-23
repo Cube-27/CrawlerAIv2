@@ -1,4 +1,4 @@
-"""Greenhouse hosted job boards through the Greenhouse Job Board API (acquisition spec).
+"""Greenhouse hosted job boards through the Greenhouse Job Board API.
 
 Endpoints, verified against the vendor's Job Board API documentation (docs.greenhouse.io/job-board.html,
 2026-10-13): `GET /v1/boards/{board_token}/jobs?content=true` lists a board's jobs with their descriptions;
@@ -11,7 +11,7 @@ left to the generic rungs rather than sent to an API that may not hold it.
 A job's `absolute_url` is where the board's owner publishes the job: the hosted board's job page with the board's
 `gh_jid` routing query, or the owner's own career page that embeds the board. A page on a hosted board names its jobs
 by the board's own route, `/{board_token}/jobs/{job_id}` on the board's host, so a job read for a hosted board page has
-that URL; one read for an embedded board keeps `absolute_url`, the page the embedding site states (D-1483).
+that URL; one read for an embedded board keeps `absolute_url`, the page the embedding site states.
 
 Where a candidate applies (support.greenhouse.io, "Job board integration options" and "Tracking a candidate's source",
 2026-10-22): on a Greenhouse-hosted board (options 1 and 3) candidates apply on the hosted job page, which holds the

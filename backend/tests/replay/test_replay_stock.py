@@ -1,4 +1,4 @@
-"""Availability and stock quantity replayed through `extract_page` on synthetic captures (D-0782, schemas spec): an
+"""Availability and stock quantity replayed through `extract_page` on synthetic captures: an
 Offer that writes its availability in words publishes the schema.org member its first clause names, or declines;
 `inventoryLevel` publishes as the count `stock_quantity` of preset `commerce_detail` version 4. Pages are synthetic
 (`example.test`, C3, C9)."""

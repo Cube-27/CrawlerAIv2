@@ -12,7 +12,7 @@ export interface Call {
   body: unknown;
 }
 
-/** Every playground mode lists its recent runs (frontend spec). */
+/** Every playground mode lists its recent runs. */
 const JOBS = "GET /v1/jobs";
 
 /** Stubs `fetch` with one reply per `METHOD /path`, which may arrive later; records every request. A playground mode

@@ -1,5 +1,5 @@
-"""API keys (rest-api spec, D-0027): `ck_` + 32 random bytes in base62, shown once at creation and stored only as their
-SHA-256. Keys are created and revoked only by the CLI (INV-32); the API only looks them up."""
+"""API keys: `ck_` + 32 random bytes in base62, shown once at creation and stored only as their
+SHA-256. Keys are created and revoked only by the CLI; the API only looks them up."""
 
 import hashlib
 import secrets
@@ -18,7 +18,7 @@ KEY_PREFIX = "ck_"
 _KEY_BYTES = 32
 _BASE62 = string.digits + string.ascii_uppercase + string.ascii_lowercase
 _BASE62_WIDTH = 43  # 62**43 > 2**256: every 32-byte value fits
-# `last_used_at` is written at most this often, so a busy key costs no write per request (rest-api spec).
+# `last_used_at` is written at most this often, so a busy key costs no write per request.
 LAST_USED_RESOLUTION = timedelta(minutes=1)
 
 RevokeOutcome = Literal["revoked", "already_revoked", "not_found"]
@@ -29,7 +29,7 @@ class CreatedKey:
     id: ApiKeyId
     label: str
     key: str  # the only time the key exists outside its holder
-    webhook_secret: str  # signs the webhooks of the key's jobs (jobs spec)
+    webhook_secret: str  # signs the webhooks of the key's jobs
 
 
 def base62(raw: bytes) -> str:
@@ -47,13 +47,13 @@ def generate_key() -> str:
 
 
 def hash_key(key: str) -> str:
-    # A key carries 256 random bits, so a plain SHA-256 is enough; a slow password hash would buy nothing (D-0027).
+    # A key carries 256 random bits, so a plain SHA-256 is enough; a slow password hash would buy nothing.
     return hashlib.sha256(key.encode()).hexdigest()
 
 
 async def create_key(conn: AsyncConnection, label: str) -> CreatedKey:
     key = generate_key()
-    # The per-key webhook signing secret (jobs spec) is drawn now, as the column requires one.
+    # The per-key webhook signing secret is drawn now, as the column requires one.
     webhook_secret = secrets.token_hex(_KEY_BYTES)
     values = {"hashed_key": hash_key(key), "label": label, "webhook_secret": webhook_secret}
     key_id = (await conn.execute(insert(ApiKey).values(**values).returning(ApiKey.id))).scalar_one()

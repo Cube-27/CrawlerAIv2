@@ -1,8 +1,8 @@
 """Build hook: writes `VERSION` and puts it, with the data files the manifest lists, inside the wheel's package.
 
 An installed wheel has no backend source tree, so `crawlerai.core.engine_version.engine_dir` reads `VERSION` and
-`data/` from `crawlerai/_engine/` instead (persistence-storage spec). Only the files `data/manifest.json` lists, its
-dev-fitted files and the manifest itself go in (C4, INV-05); a fetched file that `crawlerai data fetch` has not
+`data/` from `crawlerai/_engine/` instead. Only the files `data/manifest.json` lists, its
+dev-fitted files and the manifest itself go in (C4); a fetched file that `crawlerai data fetch` has not
 downloaded is left out, and the engine then reports it missing. An editable install runs from the source tree and gets
 nothing.
 
@@ -24,8 +24,8 @@ PACKAGED = "crawlerai/_engine"
 SHA_VARIABLE = "CRAWLERAI_GIT_SHA"
 # A git object name, as `crawlerai.core.engine_version` reads it: 7 to 40 hex digits (SHA-1) or 64 (SHA-256).
 _GIT_SHA = re.compile(r"[0-9a-f]{7,40}|[0-9a-f]{64}")
-# The dev-fitted files under data/ that carry a `source_split: dev` stamp instead of a manifest entry (D-0444): the
-# precedence and calibration (extraction spec) and the drift margins (learning-configs spec).
+# The dev-fitted files under data/ that carry a `source_split: dev` stamp instead of a manifest entry: the
+# precedence and calibration and the drift margins.
 _DEV_FITTED = ("source_precedence.yaml", "calibration.json", "drift_margins.json")
 
 

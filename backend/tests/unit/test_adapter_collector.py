@@ -1,4 +1,4 @@
-"""The adapter collector (extraction spec, adapters spec): a platform API's JSON read as the schema.org nodes the
+"""The adapter collector: a platform API's JSON read as the schema.org nodes the
 adapter's shapes describe, each node an entity, each value a field's path reaches an `adapter` candidate located by its
 normalized path.
 

@@ -3,7 +3,7 @@ import { stubApi, type Call } from "./api";
 import { jobSummary } from "./jobs";
 
 /** The API stubs the job-running playground modes share (Batch, Crawl, Extract): the toolbar's schema list, the
- * submit, and the run's job, request, events and `json_values` results (jobs spec–4.6, frontend spec). */
+ * submit, and the run's job, request, events and `json_values` results. */
 
 /** The stored schema the toolbar offers: a detail-page schema with one text field. */
 export const SCHEMA_ID = "0192a000-0000-7000-8000-0000000000s1";

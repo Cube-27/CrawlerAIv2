@@ -1,6 +1,6 @@
-"""What resolution returns (resolution spec): one outcome per schema field, and the result of one page.
+"""What resolution returns: one outcome per schema field, and the result of one page.
 
-The models hold INV-22: every published field carries `evidence`, `confidence`, `calibrated`, `source_kind` and
+The models hold: every published field carries `evidence`, `confidence`, `calibrated`, `source_kind` and
 `locator`. Its confidence is its bucket's dev precision, so it is `None` only while the bucket has no dev measurement,
 and then the field is `calibrated=false` (§10: uncalibrated buckets publish with the flag set). An unpublished field
 holds no value and says why (§10 "Incomplete pages").
@@ -29,11 +29,11 @@ Evidence = Literal[
     "derived",
 ]
 # `interaction_required`: missing from a page that was not rendered, whose source in the site's config is the browser
-# (`render_bound`, resolution spec).
+# (`render_bound`).
 FieldStatus = Literal["published", "missing", "conflict", "abstained", "interaction_required"]
-# resolution spec: the derivations core has, each a named function in `resolve/derive.py`.
+# The derivations core has, each a named function in `resolve/derive.py`.
 Derivation = Literal[PageUrlDerivation, "absolutize"]
-# `url_task.outcome` (§6), except that `error` is stored as `failed`.
+# `url_task.outcome`, except that `error` is stored as `failed`.
 Outcome = Literal[
     "extracted",
     "partial",
@@ -48,7 +48,7 @@ Outcome = Literal[
     "unsupported_media",
     "error",
 ]
-# Outcomes of a page that was not served (INV-11): no candidates and nothing published.
+# Outcomes of a page that was not served: no candidates and nothing published.
 _NOT_SERVED: frozenset[Outcome] = frozenset(
     {
         "blocked",
@@ -61,11 +61,11 @@ _NOT_SERVED: frozenset[Outcome] = frozenset(
         "unsupported_media",
     }
 )
-# Those, and a page whose resolution failed (§4.14): nothing is published.
+# Those, and a page whose resolution failed: nothing is published.
 _UNPUBLISHED: frozenset[Outcome] = _NOT_SERVED | {"error"}
-# A probability: a bucket's measured precision (§4.9).
+# A probability: a bucket's measured precision.
 Probability = Annotated[float, Field(ge=0.0, le=1.0)]
-# The attributes INV-22 requires of a published field; `confidence` is checked with `calibrated`.
+# The attributes a published field requires; `confidence` is checked with `calibrated`.
 _PUBLISHED_REQUIRES = ("value", "evidence", "source_kind", "locator")
 
 
@@ -74,13 +74,13 @@ class _Model(BaseModel):
 
 
 class FieldOutcome(_Model):
-    """One field's outcome. A row-mapped field (variants spec) also holds `items`, one per published row in the order of
+    """One field's outcome. A row-mapped field also holds `items`, one per published row in the order of
     `value`, and `dropped`, the rows that did not publish; every other field holds neither."""
 
     status: FieldStatus
     # Why the field is not published (`invalid`, `not_owned`, `below_min_confidence`, `disagree`, ...), or, on a
     # published field, why its kept candidates did not all agree (`disagree`, `offers_disagree`, `offer_split`: the
-    # disagreement flag, resolution spec "Candidate score"); None on a published field they all agree on.
+    # disagreement flag); None on a published field they all agree on.
     reason: str | None
     value: JsonValue
     # The published value as the page states it, when that differs from `value` (`normalize.base.Ok.stated`: a URL as
@@ -96,7 +96,7 @@ class FieldOutcome(_Model):
     # A published money value's weaker currency evidence (`Ok.basis`: `page`, `locale`, `url`, `symbol`, `unknown`),
     # noted; else None.
     basis: Basis | None = None
-    kept: tuple[Candidate, ...] = ()  # the candidates that passed screening (validity, ownership, INV-13)
+    kept: tuple[Candidate, ...] = ()  # the candidates that passed screening (validity, ownership)
     rejected: tuple[tuple[Candidate, str], ...]  # each with its reject reason
     items: "tuple[RowOutcome, ...] | None" = None
     dropped: "tuple[DroppedRow, ...] | None" = None
@@ -116,7 +116,7 @@ class FieldOutcome(_Model):
     def _check_published(self) -> None:
         for name in _PUBLISHED_REQUIRES:
             if getattr(self, name) is None:
-                raise ValueError(f"a published field carries {name} (INV-22)")
+                raise ValueError(f"a published field carries {name}")
 
     @property
     def published(self) -> JsonValue:
@@ -134,13 +134,13 @@ class FieldOutcome(_Model):
 
 
 class RowOutcome(_Model):
-    """A published row of a row-mapped field (variants spec, INV-34): every sub-field's outcome, published or not."""
+    """A published row of a row-mapped field: every sub-field's outcome, published or not."""
 
     fields: dict[str, FieldOutcome]
 
 
 class DroppedRow(_Model):
-    """A row of a row-mapped field that did not publish: its row entities' locators, and why (variants spec)."""
+    """A row of a row-mapped field that did not publish: its row entities' locators, and why."""
 
     locators: tuple[LocatorText, ...]
     reason: str
@@ -154,7 +154,7 @@ FieldSet = dict[str, FieldOutcome]
 
 
 class LLMCallRecord(_Model):
-    """One LLM call of the page, as `extraction.llm_calls` records it (llm spec)."""
+    """One LLM call of the page, as `extraction.llm_calls` records it."""
 
     prompt_kind: str
     provider: str
@@ -174,9 +174,9 @@ class ExtractionResult(_Model):
     llm_calls: tuple[LLMCallRecord, ...]
     mode: ExtractionMode
     record_confidence: Probability | None
-    # What the collectors skipped and why (§4.14), for the page's log.
+    # What the collectors skipped and why, for the page's log.
     diagnostics: tuple[str, ...] = ()
-    # A listing's next-page candidates (§4.12), for the crawl frontier (jobs spec).
+    # A listing's next-page candidates, for the crawl frontier.
     next_pages: tuple[str, ...] = ()
     # Why a listing gave no rows (`no_rows` in `resolve.pipeline`); None for a listing with rows and for a detail page.
     reason: str | None = None
@@ -187,7 +187,7 @@ class ExtractionResult(_Model):
     def _outcome_fits(self) -> Self:
         if self.outcome in _UNPUBLISHED and (self.entity is not None or self.rows):
             raise ValueError(f"a {self.outcome} page has no fields")
-        # INV-11: a page that was not served yields no candidates; an `error` keeps its candidates for diagnostics.
+        # A page that was not served yields no candidates; an `error` keeps its candidates for diagnostics.
         if self.outcome in _NOT_SERVED and self.candidates:
             raise ValueError(f"a {self.outcome} page has no candidates")
         return self

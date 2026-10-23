@@ -1,9 +1,9 @@
-"""A listing's blocks as role C reads them (llm spec, "Role C on listings"): each block's span of the cleaned text,
+"""A listing's blocks as role C reads them: each block's span of the cleaned text,
 verbatim, under its locator (its position in the bound group and its item URL), with the row its values fill and the
 row fields that row does not publish.
 
 The span is the one the block's node path carries (`content.segment.text_path`, `ParsedPage.text_spans`), so a value
-role C grounds in it is a span of the cleaned text (INV-12). A block whose path no run carries renders no text and is
+role C grounds in it is a span of the cleaned text. A block whose path no run carries renders no text and is
 not read.
 
 **Enclosing items.** A listing may nest its items: each item of an outer repeated group (a building, a store, a date)

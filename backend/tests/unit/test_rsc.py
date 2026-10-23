@@ -1,4 +1,4 @@
-"""The RSC Flight reader (extraction spec, "Source documents"): a Flight stream pushed in `self.__next_f.push` chunks,
+"""The RSC Flight reader: a Flight stream pushed in `self.__next_f.push` chunks,
 or captured as a `text/x-component` body, read by React's row grammar into JSON model rows by row id."""
 
 import base64

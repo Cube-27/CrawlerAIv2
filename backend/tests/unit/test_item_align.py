@@ -1,4 +1,4 @@
-"""The item layer's align step (listings spec, "Rows from blocks"): which document a block leads to, what names it, and
+"""The item layer's align step: which document a block leads to, what names it, and
 which values it gives, from structure, types and standards only. Pages are synthetic (RFC 2606 names)."""
 
 from datetime import UTC, datetime

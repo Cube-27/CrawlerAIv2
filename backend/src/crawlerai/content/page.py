@@ -1,4 +1,4 @@
-"""One parsed page per capture (INV-26; extraction spec).
+"""One parsed page per capture.
 
 The body is decoded once and parsed once, by selectolax (lexbor, the HTML Standard's parsing algorithm) on first use;
 the lxml tree an XPath step or the Markdown writer reads is a copy of that parse (`acquire.items.lxml_of`), so an
@@ -93,7 +93,7 @@ class ParsedPage:
         self.source_html = html
         # The rendered area of the page's item blocks, when a browser capture measured them (`CaptureManifest`).
         self.item_areas = item_areas
-        # Whether the body is a JSON document, not HTML: an `api` capture's is (`body.json`, persistence-storage spec).
+        # Whether the body is a JSON document, not HTML: an `api` capture's is (`body.json`).
         # Its text is still parsed as HTML for the readers of text, but it holds no HTML elements of its own
         # (`content.links`).
         self.json_body = json_body
@@ -102,7 +102,7 @@ class ParsedPage:
         self.network = network
         self.network_entries = network_entries
         # What a later layer derives from this parse, by the deriving class, so a page read twice for the same work is
-        # read once (INV-26): the extraction pipeline's collection, its scripts' state documents (`collect.js_state`).
+        # read once: the extraction pipeline's collection, its scripts' state documents (`collect.js_state`).
         # Each is kept with the inputs it was derived from, compared by identity.
         self.derived: dict[type, tuple[tuple[object, ...], object]] = {}
 
@@ -265,7 +265,7 @@ def node_xpath(node: lexbor.LexborNode) -> str:
 def prepassed(
     html: str, url: str | None = None, answers: Answers | None = None, partials: Sequence[tuple[str, str]] = ()
 ) -> str:
-    """The document after the four structural pre-passes, in this order (extraction spec, "Source documents"): each
+    """The document after the four structural pre-passes, in this order: each
     declarative shadow root's content in place of its `template` under its host; each Suspense boundary a `$RC` call
     completed holding its streamed segment; each eager Turbo frame of the page at `url` holding the matching element
     of its answer in `answers`; and the fetched `partials` (URL, markup) whose text it does not show appended to its

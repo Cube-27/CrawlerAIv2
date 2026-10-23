@@ -1,4 +1,4 @@
-"""Listing induction (learning-configs spec, "Induction, then role A synthesis"): a listing's row selector and row-field
+"""Listing induction: a listing's row selector and row-field
 steps induced from the item layer's blocks across the sample, verified by the engine executor. Pages are synthetic
 (`example.test`)."""
 

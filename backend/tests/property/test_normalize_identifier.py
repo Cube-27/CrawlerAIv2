@@ -1,6 +1,5 @@
-"""The identifier normalizer (normalization spec): GS1 check digits for GTIN-8/12/13/14, ISO 2108
-checksums for ISBN-10/13, opaque `mpn`/`sku`/`custom` values, and declines on failed checksums and empty input
-(INV-06)."""
+"""The identifier normalizer: GS1 check digits for GTIN-8/12/13/14, ISO 2108
+checksums for ISBN-10/13, opaque `mpn`/`sku`/`custom` values, and declines on failed checksums and empty input."""
 
 from datetime import UTC, datetime
 

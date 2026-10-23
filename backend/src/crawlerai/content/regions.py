@@ -1,4 +1,4 @@
-"""The regions of a page (extraction spec, "Page content formats"): its furniture and its main region, one definition
+"""The regions of a page: its furniture and its main region, one definition
 for the content formats (`content.markdown`, `content.fit`) and the DOM collectors (`collect.dom`, `collect.dom_text`,
 `collect.dom_images`).
 
@@ -9,9 +9,9 @@ Furniture is what a page shows around its content on every page of its site, or 
   like siblings one of which is shown: a carousel's slides, a tab list's panels (WAI-ARIA Authoring Practices), each
   the page's content in its turn.
 - **Landmarks.** `nav` and `aside` (HTML Standard §4.3.4, §4.3.5: navigation, content tangential to its
-  surroundings), a page-level `header` or `footer` (§4.3.8, §4.3.9: one whose scope is the body is the page's, one in
-  an `article` or `section` that section's; HTML-AAM §4.1: one in `main` the main content's, unless it is a child of
-  `main` that holds the site's navigation, as on a page that wraps its whole layout in `main`), an open `dialog`
+  surroundings), a page-level `header` or `footer` (§4.3.9: one whose scope is the body is the page's, one in an
+  `article` or `section` that section's, HTML-AAM §4.1: one in `main` the main content's, unless it is a child of `main`
+  that holds the site's navigation, as on a page that wraps its whole layout in `main`), an open `dialog`
   (§4.11.4: a window apart from the page), and the WAI-ARIA 1.2 roles of the same meaning (§5.3.4 landmarks
   `navigation`, `banner`, `contentinfo`, `complementary`, `search`; §5.4 windows `dialog`, `alertdialog`).
 - **Named furniture.** An element whose `class` or `id` names one of the furniture words below, as Firecrawl's
@@ -24,7 +24,7 @@ Furniture is what a page shows around its content on every page of its site, or 
   its scope.
 
 No furniture rule drops the page's content: an element that holds the page's first `h1` (HTML Standard §4.3.6: its
-title), a `main` element or `role="main"` landmark (§4.4.14) or an `article` (§4.3.2) is kept, and so is an `aside`
+title), a `main` element or `role="main"` landmark or an `article` is kept, and so is an `aside`
 that holds the page's longest leaf text block: content tangential to the page holds none of its main text (a faceted
 listing's category text in its sidebar column). A name, the page's own hiding, or a `header` that is the page's only
 by its scope and holds no navigation (HTML Standard §4.3.8: introductory content, which may wrap what it introduces)
@@ -75,7 +75,7 @@ LANDMARK_ROLES = ("navigation", "banner", "contentinfo", "complementary", "searc
 # `footer`): one inside `main` is no `banner` or `contentinfo` landmark either, but the main content's own.
 _PAGE_LEVEL = frozenset({"header", "footer"})
 # HTML Standard §4.3.8: a `header` is introductory content or navigational aids; one the page's by its scope alone that
-# holds no navigation may wrap the content it introduces, an article whose title sits outside it. A `footer` (§4.3.9)
+# holds no navigation may wrap the content it introduces, an article whose title sits outside it. A `footer`
 # holds what is about its section, never the section.
 _HEADER = "header"
 _SCOPES = frozenset(
@@ -107,7 +107,7 @@ _PARTS = re.compile(r"[-_]+|(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 # Above this share of the page's text outside hyperlinks an element is the page's content, whatever it is named; above
 # it, the weak signs together name the page's layout.
 _MAX_SHARE = 0.4
-# The leaf text blocks (module docstring): HTML Standard §4.4 grouping content and table cells, and headings (§4.3.6).
+# The leaf text blocks (module docstring): HTML Standard §4.4 grouping content and table cells, and headings.
 _HEADINGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 LEAF_TAGS = ("p", "li", "dd", "dt", "blockquote", "figcaption", "summary", "div", "pre", "td", "th", *_HEADINGS)
 _MAIN = ("main", "article")

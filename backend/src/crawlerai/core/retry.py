@@ -3,8 +3,8 @@
 from datetime import timedelta
 from typing import Final
 
-# acquisition spec: the first backoff of a host that asked for fewer requests, and the queue's before it retries a task
-# that failed transiently (persistence-storage spec D-0006); each retry doubles it.
+# The first backoff of a host that asked for fewer requests, and the queue's before it retries a task
+# that failed transiently; each retry doubles it.
 FIRST_BACKOFF: Final = timedelta(seconds=30)
 
 

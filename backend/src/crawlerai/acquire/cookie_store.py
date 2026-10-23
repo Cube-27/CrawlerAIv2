@@ -1,11 +1,11 @@
-"""Stored cookie state (acquisition spec, "Stored cookie state"): the cookies a temporary browser profile's context
+"""Stored cookie state: the cookies a temporary browser profile's context
 held after an `ok` page of a site, kept across jobs and processes in `site_cookie_state`, one row per registrable
 domain and engine, and loaded when the site's next temporary profile opens (`acquire.session`). A kept profile holds
 its own cookies and uses none. Nothing an HTTP response sets is ever kept.
 
-Cookies only, no other storage; challenge and clearance cookies are kept with the rest (owner #76). A state is cleaned
+Cookies only, no other storage; challenge and clearance cookies are kept with the rest. A state is cleaned
 before it is kept and again when it is loaded (`kept`): a cookie with an empty value or past its expiry (RFC 6265 §5.3
-step 3, §5.5) is dropped, and of cookies with the same name, domain and path (§5.3 step 11) the last is kept; session
+step 3) is dropped, and of cookies with the same name, domain and path (§5.3 step 11) the last is kept; session
 cookies stay. A state with nothing left is not written. The row is encrypted with Fernet
 (AES-128-CBC with HMAC-SHA256) under `CRAWLERAI_COOKIE_KEY`, and rewritten only when the HMAC of its plain state, its
 fingerprint, changes.

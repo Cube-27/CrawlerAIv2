@@ -1,4 +1,4 @@
-"""Documented JSON attributes and Magento init scripts as source documents (extraction spec, "Source documents"),
+"""Documented JSON attributes and Magento init scripts as source documents,
 from the forms each framework documents, and their `attr:` locators read back to their values."""
 
 import json

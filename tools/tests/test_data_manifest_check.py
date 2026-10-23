@@ -1,4 +1,4 @@
-"""Behaviour of `tools/data_manifest_check.py` (INV-05), run as CI runs it."""
+"""Behaviour of `tools/data_manifest_check.py`, run as CI runs it."""
 
 import hashlib
 import json
@@ -46,7 +46,7 @@ CALIBRATION = json.dumps({"calibration_version": 1, "source_split": "dev", "buck
 
 
 def test_listed_files_and_absent_fetched_entries_pass_and_dev_stamped_files_need_no_entry(tmp_path: Path) -> None:
-    # schemas spec: a fetched file is downloaded by `crawlerai data fetch` and never committed.
+    # A fetched file is downloaded by `crawlerai data fetch` and never committed.
     entries = [entry("vocab/list.txt"), entry("geo/cities.txt") | {"fetched": True}]
     files = {"vocab/list.txt": CONTENT, "calibration.json": CALIBRATION}
 

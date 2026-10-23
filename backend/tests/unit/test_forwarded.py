@@ -1,4 +1,4 @@
-"""The client address behind trusted proxies (rest-api spec, INV-32): `Forwarded` (RFC 7239) and `X-Forwarded-For` are
+"""The client address behind trusted proxies: `Forwarded` (RFC 7239) and `X-Forwarded-For` are
 client-controlled (RFC 7239 §8.1), so they are read only when the peer is a configured trusted proxy, and then only up
 to the nearest hop that is not one."""
 

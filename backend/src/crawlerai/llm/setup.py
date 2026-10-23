@@ -1,4 +1,4 @@
-"""The LLM setup check (llm spec): whether the configured providers can serve calls. A listed provider without its
+"""The LLM setup check: whether the configured providers can serve calls. A listed provider without its
 API key (`ProviderUnavailable`: `llm_unavailable`), or a configured model id its provider does not know (the provider
 refuses it: `llm_refused`), would otherwise show only on every record while the requests succeed. Each problem is
 logged at ERROR once, when a process starts, and the status is what `GET /healthz` reports (the problems stay in the

@@ -1,4 +1,4 @@
-"""Intent (resolution spec rule 3, §10): the one entity a detail page is about, or `intent_ambiguous`.
+"""Intent: the one entity a detail page is about, or `intent_ambiguous`.
 
 The candidates are the entities of the schema's primary types, without those inside a list, inside another
 primary entity's relation properties, a primary entity's variants, the group it is a variant of, or the item a primary
@@ -42,7 +42,7 @@ class AmbiguousTarget:
 def primary_types(schema: SchemaDef, vocabulary: Vocabulary) -> frozenset[str]:
     """The types the schema's required row fields' `schema_org` paths start at (each alternative's), without Offer
     when another type remains: an Offer belongs to the item it offers (`OFFER`). A listing's page fields describe the
-    page, not its rows (§5.2), so they name no primary type."""
+    page, not its rows, so they name no primary type."""
     roots = required_types(schema)
     items = frozenset(root for root in roots if not vocabulary.is_a(root, OFFER))
     return items or frozenset(roots)

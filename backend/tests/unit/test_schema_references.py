@@ -1,5 +1,5 @@
 """A schema document's `schema_org` paths and `schema:` enum references are checked against the pinned schema.org
-vocabulary (schemas spec): a stand-in vocabulary pins what is checked; the presets are checked against the real file
+vocabulary: a stand-in vocabulary pins what is checked; the presets are checked against the real file
 when it is fetched."""
 
 from pathlib import Path

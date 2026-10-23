@@ -1,4 +1,4 @@
-"""A listing's browser actions (owner #52): collect more of a listing's rows on one tab by turning its pages, scrolling,
+"""A listing's browser actions: collect more of a listing's rows on one tab by turning its pages, scrolling,
 or clicking the control that loads more, until the caller's row target, the list's end or a cap.
 
 Every rule reads the document's structure (C2), never its words (C4):
@@ -15,7 +15,7 @@ Every rule reads the document's structure (C2), never its words (C4):
 - **Next pages by link.** `resolve.pagination`: `rel=next` (HTML Standard §4.6.7), then the link whose URL is the
   page's with one integer one higher; the tab navigates there, robots.txt and the site's rate permitting (the gate).
 - **A numbered pager.** The first element after the last item (document order) whose children hold at least three
-  controls (`a` with `href`, `button`, the `button` role: HTML Standard §4.6.1, §4.10.6, WAI-ARIA 1.2), at least two
+  controls (`a` with `href`, `button`, the `button` role: HTML Standard §4.6.1, WAI-ARIA 1.2), at least two
   of them labelled only by a page's ordinal in ASCII digits, outside the page's header and footer (`header`, `footer`,
   roles `banner`, `contentinfo`); a pager may sit in `nav`. The current page is the control marked `aria-current`
   (WAI-ARIA 1.2 §6.7), else the cluster's one integer that is no control, else the pages turned so far plus one.
@@ -61,14 +61,14 @@ from crawlerai.resolve.pagination import NextLink, next_page_links
 
 __all__ = ["Caps", "Gate", "collect"]
 
-# Admits a browser action, waiting for the site's rate (acquisition spec): for a navigation, its URL, which robots.txt
+# Admits a browser action, waiting for the site's rate: for a navigation, its URL, which robots.txt
 # must allow; for a click or a scroll, None: it acts on the document the tab shows. False when the action may not be
 # taken.
 Gate = Callable[[str | None], Awaitable[bool]]
 
 # A page's ordinal as a pager labels it: ASCII digits only (not other scripts' digits, which `\d` would take).
 _ORDINAL: Final = re.compile(r"[0-9]+")
-# A page's header and footer (HTML Standard §4.3.8, §4.3.9; WAI-ARIA 1.2 landmark roles `banner`, `contentinfo`): a
+# A page's header and footer (HTML Standard §4.3.8, WAI-ARIA 1.2 landmark roles `banner`, `contentinfo`): a
 # pager there pages the site, not the list.
 _PAGE_ENDS_TAGS: Final = frozenset({"header", "footer"})
 _PAGE_ENDS_ROLES: Final = frozenset({"banner", "contentinfo"})
@@ -76,7 +76,7 @@ _PAGE_ENDS_ROLES: Final = frozenset({"banner", "contentinfo"})
 # `button`).
 _BUTTON_ROLE: Final = "button"
 # WAI-ARIA 1.2 §6.7 `aria-current`: any value but `false` marks the current item of a set; `aria-disabled="true"` and
-# the HTML `disabled` attribute (§4.10.18.5) mark a control that does nothing.
+# the HTML `disabled` attribute mark a control that does nothing.
 _NOT_CURRENT: Final = "false"
 # A pager has at least this many controls, at least this many of them ordinals: fewer is a pair of links, not a pager.
 _PAGER_CONTROLS: Final = 3
@@ -91,7 +91,7 @@ _DETECT: Final[tuple[PagingHint, ...]] = ("next", "scroll", "load_more")
 
 @dataclass(frozen=True)
 class Caps:
-    """The bounds of one run (owner #52; the probe's measurements, D-1221): actions, the wait for one action's
+    """The bounds of one run (the probe's measurements): actions, the wait for one action's
     effect, the poll interval of that wait, the scroll rounds and control clicks without growth before giving up."""
 
     actions: int = 40

@@ -1,4 +1,4 @@
-"""Object storage for captures (persistence-storage spec). `open_store` turns a `CRAWLERAI_*OBJECT_STORE` URL into a
+"""Object storage for captures. `open_store` turns a `CRAWLERAI_*OBJECT_STORE` URL into a
 backend."""
 
 import re

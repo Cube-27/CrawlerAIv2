@@ -1,8 +1,8 @@
 import type { ConfigStatus, FieldConfigStatus } from "../api/configs";
 import { StatusLabel, type StatusTone } from "./StatusLabel";
 
-// One tone per `extraction_config.status` (learning-configs spec): only the active version serves; a draft did not pass
-// validation; a suspended version was replaced by a newer active one; a pending one waits for approval (D-1342).
+// One tone per `extraction_config.status`: only the active version serves; a draft did not pass
+// validation; a suspended version was replaced by a newer active one; a pending one waits for approval.
 const CONFIG_STATUS_TONES: Record<ConfigStatus, StatusTone> = {
   active: "success",
   draft: "warning",
@@ -10,8 +10,8 @@ const CONFIG_STATUS_TONES: Record<ConfigStatus, StatusTone> = {
   pending_approval: "accent",
 };
 
-// One tone per field status (learning-configs spec): corroborated by structured values, validated without that, set by an
-// operator, suspended when its yield or validity drifted, or absent: no page of the site states it (D-1341).
+// One tone per field status: corroborated by structured values, validated without that, set by an
+// operator, suspended when its yield or validity drifted, or absent: no page of the site states it.
 const FIELD_STATUS_TONES: Record<FieldConfigStatus, StatusTone> = {
   corroborated: "success",
   uncorroborated: "warning",

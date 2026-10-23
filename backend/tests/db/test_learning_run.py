@@ -1,4 +1,4 @@
-"""The learning run end to end (learning-configs spec): a site that reaches 8 extracted pages is learned by its
+"""The learning run end to end: a site that reaches 8 extracted pages is learned by its
 `learn` job without human input and enters `active` with a validated config; its next pages are extracted in `config`
 mode, and role C is no longer asked for the fields the config covers. Every other end of a run leaves the state as a
 failed run does."""
@@ -298,7 +298,7 @@ async def test_a_site_with_8_extracted_pages_is_learned_and_then_served_from_its
     status, payload = await site.finished(job_id)
     assert (status, payload["config_id"], payload["reason"]) == ("completed", str(learned.config_id), None)
 
-    # A repeat page: config mode, and no role C call for the covered fields (§7).
+    # A repeat page: config mode, and no role C call for the covered fields.
     role_c = TextRoleC()
     stored = await site.extract(9, role_c)
     assert (stored.outcome, stored.result.mode, role_c.calls, stored.result.llm_calls) == (
@@ -323,7 +323,7 @@ async def test_a_site_with_8_extracted_pages_is_learned_and_then_served_from_its
 
 @pytest.fixture
 async def approval(site: LearnSite) -> AsyncIterator[None]:
-    """The project requires approval of learned configs (D-1342) for the test."""
+    """The project requires approval of learned configs for the test."""
     async with site.engine.begin() as conn:
         await conn.execute(update(Project).values(require_config_approval=True))
     yield
@@ -398,7 +398,7 @@ async def test_an_operator_config_activated_during_the_run_is_not_replaced(site:
     operator: list[ExtractionConfigId] = []
 
     async def correct() -> None:
-        # An operator's correction activates while role A is being asked (§4.10, D-0598).
+        # An operator's correction activates while role A is being asked.
         async with site.engine.begin() as conn:
             operator.append(await _operator_config(conn, site))
 

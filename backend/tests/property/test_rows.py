@@ -1,4 +1,4 @@
-"""Row-mapped fields on a detail page (variants spec, INV-33 to INV-35): rows are matched by key and never by
+"""Row-mapped fields on a detail page: rows are matched by key and never by
 position, so the order of rows and of sources does not change the published rows; rows with different keys never merge;
 a sub-field that disagrees inside one variant leaves the price a conflict; JSON-LD and microdata give equal `variants`
 values; and each structured-data shape of a variant set publishes one row per variant with per-sub-field outcomes.
@@ -169,7 +169,7 @@ def test_a_key_never_joins_rows_an_earlier_key_tells_apart() -> None:
 
     groups = [[row.id for row in group] for group in linked(subs, rows, keys)]
 
-    # The row without a gtin joins both by its sku, which is then a conflict cluster (INV-33), never a guess.
+    # The row without a gtin joins both by its sku, which is then a conflict cluster, never a guess.
     assert groups == [["row:0", "row:1", "row:2"]]
     assert [[row.id for row in group] for group in linked(subs, rows[:2], keys)] == [["row:0"], ["row:1"]]
 
@@ -224,7 +224,7 @@ def test_a_group_s_variants_with_offers_are_one_row_each() -> None:
             "size": "M",
         },
     ]
-    # INV-34: every sub-field outcome of a published row carries status and reason; published ones carry provenance.
+    # Every sub-field outcome of a published row carries status and reason; published ones carry provenance.
     assert outcome.items is not None
     assert len(outcome.items) == 2
     gtin = outcome.items[0].fields["gtin"]
@@ -235,7 +235,7 @@ def test_a_group_s_variants_with_offers_are_one_row_each() -> None:
 
 
 def test_entries_of_one_list_with_other_skus_are_two_variants_whatever_barcode_they_repeat() -> None:
-    # INV-33: one list names each of its items once, so two entries saying W-11 and W-12 are two variants (a sold-out
+    # One list names each of its items once, so two entries saying W-11 and W-12 are two variants (a sold-out
     # one as well), though both repeat the product's GTIN.
     first = _variant("W-11", "10.00", gtin="4006381333931")
     second = _variant("W-12", "10.00", gtin="4006381333931", offers=_offer("10.00", availability="OutOfStock"))
@@ -273,7 +273,7 @@ def test_each_variant_row_publishes_its_stated_price_and_only_a_one_offer_page_p
 
 
 def test_role_c_is_never_asked_for_a_row_mapped_field() -> None:
-    # variants spec: a claim is one verbatim span, which cannot hold a row of typed sub-fields.
+    # A claim is one verbatim span, which cannot hold a row of typed sub-fields.
     fields = {name: _missing() for name in SCHEMA.fields}
 
     assert "variants" not in pipeline._gaps(SCHEMA, fields, frozenset())

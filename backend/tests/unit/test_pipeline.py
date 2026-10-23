@@ -1,4 +1,4 @@
-"""The extraction pipeline (extraction spec): a capture and a schema in, every field's outcome out.
+"""The extraction pipeline: a capture and a schema in, every field's outcome out.
 
 Pages are synthetic (`example.test`); the schema.org vocabulary is the synthetic fixture (C3, C9).
 """
@@ -52,7 +52,7 @@ VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic
 PAGE_URL = "https://shop.example.test/p/1"
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
 DATA = EngineData(vocabulary=VOCABULARY, orders=dict.fromkeys(PRECEDENCE_TYPES, ORDER), calibration=None)
-# The order committed under `backend/data/` (extraction spec), as the engine loads it when no fit has replaced it.
+# The order committed under `backend/data/`, as the engine loads it when no fit has replaced it.
 COMMITTED_ORDERS = load_precedence(Path(__file__).parents[2] / "data" / PRECEDENCE_FILE)
 COMMITTED = EngineData(vocabulary=VOCABULARY, orders=COMMITTED_ORDERS, calibration=None)
 
@@ -146,7 +146,7 @@ def test_a_product_page_publishes_its_structured_values() -> None:
         "price": (PRICE, "structured", "jsonld"),
         "sku": ("W-1", "structured", "jsonld"),
     }
-    # No calibration was fitted, so every field is uncalibrated and the record has no confidence (§4.9).
+    # No calibration was fitted, so every field is uncalibrated and the record has no confidence.
     assert not any(o.calibrated for o in result.entity.values())
     assert result.record_confidence is None
 
@@ -160,7 +160,7 @@ def test_a_page_missing_a_required_field_is_partial() -> None:
 def test_a_page_whose_content_the_engine_cannot_read_is_partial_never_no_match() -> None:
     """A custom element with no light DOM (a closed shadow root's host) beside a document title: no needed field has a
     candidate, and the caller-supplied page keeps its record, `partial`, its fields `missing` with `no_candidates` (the
-    render hint's evidence, jobs spec); a crawl-discovered one still keeps none."""
+    render hint's evidence); a crawl-discovered one still keeps none."""
     body = '<html lang="en"><head><title>Widget One</title></head><body><product-view></product-view></body></html>'
     result = _extract(_bundle(body))
     assert result.entity is not None
@@ -203,20 +203,20 @@ def test_a_product_group_whose_variant_offers_agree_publishes_their_price() -> N
     result = _extract(_bundle(_html(_group("19.90", "19.90", "19.90"))))
     assert result.entity is not None
     assert (result.entity["title"].value, result.entity["price"].value) == ("Widget One", PRICE)
-    # Each variant's sku is the variant's, not the group's (§4.6): the group states none.
+    # Each variant's sku is the variant's, not the group's: the group states none.
     assert _statuses(result)["sku"] == ("missing", "not_owned")
 
 
-# --- pages that were not served (INV-11) ---
+# --- pages that were not served ---
 
 
-# --- one parse per parser (INV-26) ---
+# --- one parse per parser ---
 
 
-# --- failures (§4.14) ---
+# --- failures ---
 
 
-# --- the LLM hook (§4.13) ---
+# --- the LLM hook ---
 
 CALL = LLMCallRecord(
     prompt_kind="c_extract_detail",
@@ -305,7 +305,7 @@ def test_role_c_is_not_called_for_conflicts() -> None:
     assert (result.outcome, role_c.requests, result.llm_calls) == ("partial", [], ())
 
 
-# --- api captures (D-0445) ---
+# --- api captures ---
 
 
 class FakeAdapter:
@@ -346,7 +346,7 @@ def test_an_api_capture_is_read_by_the_adapter_that_detects_its_page_url_and_ser
     )
 
 
-# --- cold listings (§4.7 "Listings", §8.6) ---
+# --- cold listings (§4.7 "Listings") ---
 
 LISTING_URL = "https://shop.example.test/c/widgets?page=2"
 LISTING = _schema(
@@ -354,7 +354,7 @@ LISTING = _schema(
     title=PRODUCT.fields["title"],
     url=FieldSpec(type=FieldType.URL, description="d", required=True, schema_org="Product.url"),
     price=FieldSpec(type=FieldType.MONEY, description="d", schema_org="Offer.price+priceCurrency"),
-    # og:title fills text fields whose path ends in `.name` (the OGP table, §4.5); on the page, only the page owns it.
+    # Og:title fills text fields whose path ends in `.name` (the OGP table); on the page, only the page owns it.
     page_title=FieldSpec(type=FieldType.TEXT, description="d", scope="page", schema_org="Product.name"),
     next_page_url=FieldSpec(type=FieldType.URL, description="d", scope="page"),
 )
@@ -580,7 +580,7 @@ def test_complete_rows_of_a_call_do_not_call_role_c() -> None:
     assert (role_c.listing_requests, result.outcome, len(result.rows)) == ([], "extracted", 3)
 
 
-# --- the shown variant's availability (variants spec) ---
+# --- the shown variant's availability ---
 
 VARIANT_FIELDS: dict[str, Any] = {
     "type": "object",
@@ -654,7 +654,7 @@ def test_a_price_that_differs_between_variants_is_the_shown_variant_s_and_no_def
 
 
 def test_only_a_sku_the_target_publishes_selects_the_shown_variant() -> None:
-    # A sku that publishes below the request's min_confidence, or only the request URL carries (INV-13), is no sku
+    # A sku that publishes below the request's min_confidence, or only the request URL carries, is no sku
     # the target shows.
     below = Calibration(git_sha="0" * 40, buckets={"identifier|structured": Bucket(n=40, precision=0.5)})
     doubted = replace(DATA, calibration=below, min_confidence=0.9)

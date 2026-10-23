@@ -1,4 +1,4 @@
-"""The caller's page steps and cookies on the browser rung (D-1433, D-1436 to D-1438) in a real browser: synthetic local
+"""The caller's page steps and cookies on the browser rung in a real browser: synthetic local
 pages whose content appears only after a click, a wait, typing or scrolling, a cookie-gated page, and a password field.
 
 A local server on 127.0.0.1 serves the pages under a `.test` host; nothing leaves the machine. The pages' words are

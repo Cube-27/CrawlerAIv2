@@ -49,7 +49,7 @@ function JobRecords({ records }: Readonly<{ records: readonly StoredRecord[] }>)
 }
 
 /** A job without a schema: each of its pages with its status, its outcome, and why it failed or ended as it did when
- * the outcome alone does not say (`last_error`, jobs spec). */
+ * the outcome alone does not say (`last_error`). */
 function PageOutputs({ pages }: Readonly<{ pages: readonly PageOutput[] }>) {
   return (
     <Table>

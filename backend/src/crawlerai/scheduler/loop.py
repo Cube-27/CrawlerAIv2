@@ -1,4 +1,4 @@
-"""The scheduler process (persistence-storage spec): periodic upkeep and the recurring schedules' runs, from a table of
+"""The scheduler process: periodic upkeep and the recurring schedules' runs, from a table of
 entries that later specs extend.
 
 Each entry runs once at start, then again `interval` after its previous run ended, in a transaction of its own. An
@@ -47,11 +47,11 @@ class Periodic:
 
 
 def periodic(store: ObjectStore, fetch: Rung, post: Poster, submitting: Submitting) -> tuple[Periodic, ...]:
-    """The scheduler's entries (persistence-storage spec). `store` is the main object store, where production captures
-    live; `fetch` is the HTTP rung, for the fetch-method re-check (acquisition spec); `post` sends webhooks (jobs spec);
+    """The scheduler's entries. `store` is the main object store, where production captures
+    live; `fetch` is the HTTP rung, for the fetch-method re-check; `post` sends webhooks;
     `submitting` is what the recurring schedules submit their jobs with (§22 "Recurring schedule storage")."""
     return (
-        # A job its last expired lease ends is diffed as the worker would have (jobs spec).
+        # A job its last expired lease ends is diffed as the worker would have.
         Periodic(
             "release_expired_leases",
             timedelta(minutes=1),

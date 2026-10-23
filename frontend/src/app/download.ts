@@ -1,5 +1,5 @@
 /** Saves `text` as a file named `filename` through the browser's download. The data was fetched with the API key, so
- * it is handed over as a Blob rather than as a link the browser would fetch without the key (frontend spec). */
+ * it is handed over as a Blob rather than as a link the browser would fetch without the key. */
 export function saveText(filename: string, text: string, type: string): void {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const link = document.createElement("a");

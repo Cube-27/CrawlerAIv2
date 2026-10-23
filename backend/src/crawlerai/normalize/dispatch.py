@@ -1,7 +1,7 @@
-"""The normalize dispatcher (normalization spec): the entry points that send each field type to its one module (C8).
+"""The normalize dispatcher: the entry points that send each field type to its one module (C8).
 
 Callers (the resolver, the API) normalize and compare through `normalize`, `equal` and `equality_key` and never
-pick a type module themselves. `list` and `object` have no values of their own (§4.1), so all three recurse here into
+pick a type module themselves. `list` and `object` have no values of their own, so all three recurse here into
 their items and sub-fields.
 """
 
@@ -33,7 +33,7 @@ _MONEY = FieldSpec(type=FieldType.MONEY)
 
 
 def _money(raw: Raw, ctx: Context) -> NormalizeResult:
-    # A range resolves its currency by the money rules (normalization spec) through this registry, so range does not
+    # A range resolves its currency by the money rules through this registry, so range does not
     # import money (C8).
     return normalize(raw, _MONEY, ctx)
 
@@ -56,7 +56,7 @@ _TYPES: dict[FieldType, tuple[Normalizer, EqualityKey]] = {
     FieldType.NUMBER: (number.normalize, number.key),
 }
 _COMPARED: dict[FieldType, tuple[Normalizer, Equality]] = {FieldType.LOCATION: (location.normalize, location.equal)}
-# The types whose published values a record serves in another form (normalization spec, "Served form").
+# The types whose published values a record serves in another form.
 _SERVED: dict[FieldType, Callable[[JsonValue], JsonValue]] = {
     FieldType.MONEY: money.served,
     FieldType.RANGE: range_.served,
@@ -71,7 +71,7 @@ def warm() -> None:
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
-    """Normalize `raw` as `spec`'s type. A type with no normalizer declines (§4.7), so a schema that names one
+    """Normalize `raw` as `spec`'s type. A type with no normalizer declines, so a schema that names one
     cannot crash a job."""
     if spec.type is FieldType.LIST:
         return _list(raw, _item(spec), ctx)
@@ -99,10 +99,11 @@ def compared_form(value: JsonValue, spec: FieldSpec, ctx: Context) -> JsonValue:
 
 
 def served(data: Mapping[str, JsonValue], fields: Mapping[str, FieldSpec]) -> dict[str, JsonValue]:
-    """A record's published values `data`, of the schema `fields`, as the API, exports and webhooks serve them
-    (normalization spec, "Served form"): money amounts, range bounds and numbers as JSON numbers, a number rounded to
-    two decimal places, in lists and objects too; every other value, and a key `fields` lacks, as it is. Only output
-    reads this form: storage, equality and learning keep the normalized values, whose precision it may round away."""
+    """A record's published values `data`, of the schema `fields`, as the API, exports and webhooks serve them:
+    money amounts, range bounds and numbers as JSON numbers, a number rounded to
+        two decimal places, in lists and objects too; every other value, and a key `fields` lacks, as it is. Only output
+        reads this form: storage, equality and learning keep the normalized values, whose precision it may round
+        away."""
     return {name: _served(value, fields[name]) if name in fields else value for name, value in data.items()}
 
 
@@ -116,7 +117,7 @@ def _served(value: JsonValue, spec: FieldSpec) -> JsonValue:
 
 
 def equal(a: JsonValue, b: JsonValue, spec: FieldSpec) -> bool:
-    """Whether two normalized values of `spec`'s type are the same value (normalization spec). Reflexive and symmetric
+    """Whether two normalized values of `spec`'s type are the same value. Reflexive and symmetric
     for every JSON value; values of another shape are equal only when identical."""
     if a == b:
         return True
@@ -188,7 +189,7 @@ def resource_key(value: JsonValue, spec: FieldSpec) -> Hashable | None:
     """The file an image_url value names, its scheme and query aside (`images.resource_key`: a query that varies how an
     image is served), and a list of images' files as the set of the files it names: a list is a set of values, in no
     significant order (JSON-LD 1.1 §4.3.1), and two renditions of one file in it name that file once. `None` for other
-    types. A page URL's query often names a variant (variants spec), so url has none."""
+    types. A page URL's query often names a variant, so url has none."""
     if spec.type is FieldType.LIST and isinstance(value, list):
         keys = [resource_key(item, _item(spec)) for item in value]
         return None if not keys or None in keys else ("resources", frozenset(keys))
@@ -208,7 +209,7 @@ _CHECKABLE = frozenset({FieldType.MONEY, FieldType.ENUM, FieldType.DATE, FieldTy
 
 def checkable(raw: Raw, spec: FieldSpec) -> bool:
     """Whether `raw` normalizing as `spec`'s type would be evidence that it is a value of the type, because the type
-    has a syntax its normalizer checks (extraction spec). An identifier qualifies only under a scheme
+    has a syntax its normalizer checks. An identifier qualifies only under a scheme
     with a check digit, a url only when `raw` is absolute (a relative reference resolves from any word), and a list
     as its item does."""
     if spec.type is FieldType.LIST:
@@ -221,7 +222,7 @@ def checkable(raw: Raw, spec: FieldSpec) -> bool:
 
 
 def _list(raw: Raw, item: FieldSpec, ctx: Context) -> NormalizeResult:
-    """normalization spec: `Ok` with the items that normalize, the others dropped and reported; with none, the list
+    """`Ok` with the items that normalize, the others dropped and reported; with none, the list
     declines. A single value stands for a list of one (JSON-LD 1.1 §4.3.1: a value and an array of it are the same).
     A list of images keeps each file once (`images.distinct_files`)."""
     items = raw if isinstance(raw, list) else [raw]
@@ -269,7 +270,7 @@ def _weakest(bases: Iterable[Basis | None]) -> Basis | None:
 
 
 def _object(raw: Raw, fields: dict[str, FieldSpec], ctx: Context) -> NormalizeResult:
-    """normalization spec: `Ok` when every required sub-field normalizes; an optional one that declines is dropped and
+    """`Ok` when every required sub-field normalizes; an optional one that declines is dropped and
     reported. Keys the schema does not name are ignored (a structured source carries `@type` and more), and a JSON
     `null` is no value (JSON-LD 1.1 §4.1.4)."""
     if not isinstance(raw, dict):

@@ -14,7 +14,7 @@ import {
 } from "../rows";
 import { DEFAULT_BATCH_OPTIONS, type BatchOptions as Options } from "./form";
 
-/** Batch's options (frontend spec): page kind, fetch method, the LLM call limit, Metadata in JSON, fields (§4.10) and
+/** Batch's options: page kind, fetch method, the LLM call limit, Metadata in JSON, fields and
  * the webhook. */
 export function BatchOptions({
   options,

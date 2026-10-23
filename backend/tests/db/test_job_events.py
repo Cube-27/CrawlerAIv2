@@ -1,4 +1,4 @@
-"""Run events (jobs spec): the events a finished task leaves, the webhook a job's end owes, and the event stream
+"""Run events: the events a finished task leaves, the webhook a job's end owes, and the event stream
 through the events service and over SSE (`GET /v1/jobs/{id}/events`), with `Last-Event-ID` resume."""
 
 import asyncio
@@ -57,7 +57,7 @@ async def _events(conn: AsyncConnection, job_id: JobId) -> list[tuple[str, dict[
 async def _page(conn: AsyncConnection, job_id: JobId, *, stored: bool = True) -> Any:
     """A claimed task of `job_id` whose page was fetched by the browser and extracted with 2 LLM calls; the task stands
     for one record that published `title` and abstained on `price` and `brand`. With `stored`, its extraction stored
-    the record; without, the record is unchanged: an earlier task's extraction stored it (jobs spec). Returns the
+    the record; without, the record is unchanged: an earlier task's extraction stored it. Returns the
     task and the capture."""
     if not stored:
         await _task(conn, job_id, "https://shop.example.test/earlier")

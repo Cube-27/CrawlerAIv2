@@ -86,7 +86,7 @@ function CodeBlock({
   );
 }
 
-/** The prompts for coding agents (frontend spec), collapsed under the code: most readers want the code itself. */
+/** The prompts for coding agents, collapsed under the code: most readers want the code itself. */
 function Prompts({ mode }: Readonly<{ mode: ModeId }>) {
   return (
     <Collapsible title="Prompts for coding agents">
@@ -115,7 +115,7 @@ function Prompts({ mode }: Readonly<{ mode: ModeId }>) {
   );
 }
 
-/** Where the snippets' key comes from: the UI holds none (frontend spec), so this says how to make one. */
+/** Where the snippets' key comes from: the UI holds none, so this says how to make one. */
 function ApiKey() {
   return (
     <section aria-label="API key">
@@ -188,7 +188,7 @@ function CodeTabs({ endpoint, request }: Readonly<{ endpoint: Endpoint; request:
   );
 }
 
-/** The toolbar's Get code button and its drawer from the right (frontend spec, D-0974): the endpoint, then `request`
+/** The toolbar's Get code button and its drawer from the right: the endpoint, then `request`
  * (the body the primary action sends; null while the form can't be sent) as cURL, Python and an MCP tool call, where
  * the API key comes from, and the prompts for coding agents, collapsed. */
 export function GetCode({ mode, request }: Readonly<{ mode: ModeId; request: object | null }>) {

@@ -1,4 +1,4 @@
-"""The worker's shared browser (acquisition spec, INV-31): launched once and shared, restarted at most once per task
+"""The worker's shared browser: launched once and shared, restarted at most once per task
 when a render raises with its session disconnected. The browser is a stub whose fetches can kill the session they run
 in; no Chromium."""
 

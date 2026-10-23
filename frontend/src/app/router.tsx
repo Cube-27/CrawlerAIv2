@@ -31,11 +31,11 @@ export const routes: RouteObject[] = [
       </AccessProvider>
     ),
     children: [
-      // The server that serves the UI attaches the API key; a 401 shows the setup notice (frontend spec).
+      // The server that serves the UI attaches the API key; a 401 shows the setup notice.
       {
         element: <RequireAccess />,
         children: [
-          // The playground: `/` is its Scrape mode (frontend spec).
+          // The playground: `/` is its Scrape mode.
           { index: true, element: <ScrapePlayground /> },
           { path: "batch", element: <BatchPlayground /> },
           { path: "map", element: <MapPlayground /> },
@@ -51,7 +51,7 @@ export const routes: RouteObject[] = [
           { path: "sites/:host", element: <SiteScreen /> },
           { path: "configs/:id", element: <ConfigScreen /> },
           { path: "jobs", element: <JobsScreen /> },
-          // A job a mode runs redirects to its run there; a `learn` job keeps its page (frontend spec).
+          // A job a mode runs redirects to its run there; a `learn` job keeps its page.
           { path: "jobs/:id", element: <JobScreen /> },
           { path: "schedules", element: <SchedulesScreen /> },
           { path: "schedules/:id", element: <ScheduleScreen /> },

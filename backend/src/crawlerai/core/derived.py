@@ -1,4 +1,4 @@
-"""A value derived from a frozen model's fields, derived once per model (INV-26: a page read twice for the same work
+"""A value derived from a frozen model's fields, derived once per model (a page read twice for the same work
 is read once)."""
 
 from collections.abc import Callable

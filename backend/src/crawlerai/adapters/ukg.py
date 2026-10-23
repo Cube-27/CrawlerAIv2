@@ -9,7 +9,7 @@ object argument of `new US.Opportunity.CandidateOpportunityDetail({...})` (read 
 RFC 8259; the recorded capture is that object). A board is `/{company}/JobBoard/{board}` (a UUID) on
 `recruiting.ultipro.com` or `recruiting2.ultipro.com`; its match tenant is `{host}/{company}/{board}`, so the API and
 page URLs follow from it. The host's robots.txt disallows `*/JobBoardView`, so by default the list request is refused
-and the page rungs serve (INV-40); a job page is allowed.
+and the page rungs serve; a job page is allowed.
 """
 
 import json

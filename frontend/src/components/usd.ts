@@ -5,7 +5,7 @@ const USD = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 4,
 });
 
-/** An estimated LLM cost in USD (llm spec): to four decimals, since one call costs fractions of a cent. */
+/** An estimated LLM cost in USD: to four decimals, since one call costs fractions of a cent. */
 export function formatUsd(value: number): string {
   return USD.format(value);
 }

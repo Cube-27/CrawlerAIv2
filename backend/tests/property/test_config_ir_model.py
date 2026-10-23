@@ -1,5 +1,5 @@
-"""The config IR model (learning-configs spec): every valid IR survives a JSON round trip, and every step
-one through role A's wire form (§4.6), CSS steps carry an XPath 1.0 translation that selects the same elements, and
+"""The config IR model: every valid IR survives a JSON round trip, and every step
+one through role A's wire form, CSS steps carry an XPath 1.0 translation that selects the same elements, and
 malformed steps and post ops are refused."""
 
 from typing import Any
@@ -118,7 +118,7 @@ class _OneStep(BaseModel):
     step: Step
 
 
-# `api` is the source of API recipe steps (adapters spec), which role A does not write.
+# `api` is the source of API recipe steps, which role A does not write.
 @given(_step.filter(lambda raw: raw.get("source") != "api"))
 def test_a_step_survives_role_a_wire_form(raw: dict[str, Any]) -> None:
     step = _OneStep.model_validate({"step": raw}).step
@@ -135,8 +135,8 @@ def test_a_step_survives_role_a_wire_form(raw: dict[str, Any]) -> None:
         {
             **_RECIPE,
             "headers": [{"name": "Cookie", "value": "a=b"}],
-        },  # a recipe never carries credentials (adapters spec)
-        {key: value for key, value in _RECIPE.items() if key != "proof"},  # an IR recipe is a validated one (§4.7)
+        },  # a recipe never carries credentials
+        {key: value for key, value in _RECIPE.items() if key != "proof"},  # an IR recipe is a validated one
     ],
 )
 def test_ir_refuses_a_recipe_the_recipe_model_refuses(recipe: dict[str, Any]) -> None:

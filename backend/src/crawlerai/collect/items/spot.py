@@ -1,4 +1,4 @@
-"""Typed value spotting (listings spec, "Rows from blocks"): a string the field type's normalizer parses by a syntax it
+"""Typed value spotting: a string the field type's normalizer parses by a syntax it
 checks is a value of the type. Shared by the item layer's align step (a block's elements) and the structural DOM
 collector (the main landmark's)."""
 
@@ -40,7 +40,7 @@ def spots(raw: str, spec: FieldSpec, ctx: Context, xpath: str, place: str) -> tu
 
 
 def reads(spec: FieldSpec, text: str, ctx: Context, *, struck: bool) -> bool:
-    """Whether the field reads a text, struck through or not (extraction spec, "Structural DOM values"): a struck text
+    """Whether the field reads a text, struck through or not: a struck text
     is a former price, read only by a list price; a money field reads by its price role (`schemas.paths.price_role`): a
     unit price only an amount written per unit (`normalize.units`: `€25/kg`), a member price none (its labels read it),
     any other no amount written per unit or per period (`$25/mo`)."""

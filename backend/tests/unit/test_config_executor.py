@@ -1,4 +1,4 @@
-"""The engine executor (learning-configs spec): an IR's steps run in order over the `ParsedPage`, the first valid value
+"""The engine executor: an IR's steps run in order over the `ParsedPage`, the first valid value
 is the field's `config` candidate, multi-matches are invalid, and listings give one entity per row."""
 
 import json
@@ -179,7 +179,7 @@ def test_a_listing_gives_one_row_entity_per_row_with_fields_relative_to_it() -> 
 
 def test_config_candidates_enter_resolution_with_their_field_status_bucket() -> None:
     """§8.4: config candidates resolve like any other; a corroborated field's value is `config_corroborated`, an
-    uncorroborated one's `config_uncorroborated` (§10)."""
+    uncorroborated one's `config_uncorroborated`."""
     html = (
         _ld({"@context": "https://schema.org", "@type": "Product", "name": "Mug"}) + "<h1>Blue mug</h1><p>12.50 EUR</p>"
     )

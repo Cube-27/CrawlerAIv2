@@ -1,4 +1,4 @@
-"""Lever hosted job sites through the Lever Postings API (acquisition spec).
+"""Lever hosted job sites through the Lever Postings API.
 
 Endpoints, verified against the vendor's Postings API documentation (github.com/lever/postings-api, README,
 2026-10-13): `GET /v0/postings/{site}?mode=json` lists a site's published postings as a JSON array;
@@ -33,7 +33,7 @@ _LIST_FILTERS: Final = frozenset({"location", "commitment", "team", "department"
 # members (README, "Response"): `description`, the opening and body as HTML; then each of `lists`, an extra list
 # (requirements, benefits) whose `text` names it and whose `content` is its list items as HTML; then `additional`, the
 # optional closing content as HTML. On a posting's page, `applyUrl`, its application form, is the `target` of its
-# schema.org ApplyAction (D-1493). `createdAt` is the posting's creation time, a timestamp in milliseconds since the
+# schema.org ApplyAction. `createdAt` is the posting's creation time, a timestamp in milliseconds since the
 # Unix epoch (Lever Data API documentation, hire.lever.co/developer/documentation, "Postings"): its `datePosted`. The
 # documentation names no company name, so that property has no value here.
 _POSTING: Final = Shape(

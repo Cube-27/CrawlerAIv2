@@ -1,13 +1,12 @@
-"""The `fetch` member every page request shares (scrape, batch, crawl, extract; rest-api spec): how its pages are
+"""The `fetch` member every page request shares (scrape, batch, crawl, extract): how its pages are
 fetched, and the fetch policy it makes for a page (`fetch_policy`).
 
-Besides the method hint, robots.txt override, proxy pool and row target, it carries the caller's request context
-(D-1430): `headers` and `cookies`, whose values are secrets, `wait_for` and `actions`, the page steps the browser runs
-before it reads the page (`page_actions` in `config_ir`, D-1436), and `cache`, whether a stored capture is reused
-(D-1435).
+Besides the method hint, robots.txt override, proxy pool and row target, it carries the caller's request context:
+`headers` and `cookies`, whose values are secrets, `wait_for` and `actions`, the page steps the browser runs
+before it reads the page (`page_actions` in `config_ir`), and `cache`, whether a stored capture is reused.
 
 A secret value is shown as `**********` by every serialization (an answer, a stored scrape request, a log line), except
-the one that stores an asynchronous job's request for its workers (`KEEP_SECRETS`, D-1432).
+the one that stores an asynchronous job's request for its workers (`KEEP_SECRETS`).
 """
 
 import re
@@ -47,11 +46,11 @@ __all__ = [
 
 # The serialization context that keeps secret values: only an asynchronous job's stored request, which its workers read.
 KEEP_SECRETS: Final = "keep_secrets"
-# D-1435: reuse a stored capture as `max_age` allows (`default`), always fetch (`bypass`), or only serve a stored one.
+# Reuse a stored capture as `max_age` allows (`default`), always fetch (`bypass`), or only serve a stored one.
 CacheMode = Literal["default", "bypass", "only"]
 # The formats made in the browser from the rendered page: a PNG of it and a PDF print (`FetchPolicy.screenshot`, `pdf`).
 CAPTURE_FORMATS: Final = frozenset({"screenshot", "pdf"})
-# The formats written from the page's rendered text (rest-api spec): a fetch for these and no `records` reads nothing
+# The formats written from the page's rendered text: a fetch for these and no `records` reads nothing
 # else of the page (`FetchPolicy.content_only`).
 _CONTENT_FORMATS: Final = frozenset({"markdown", "markdown_fit", "chunks"})
 _RECORDS: Final = "records"
@@ -66,7 +65,7 @@ _COOKIE_VALUE: Final = re.compile(
 )
 # Fetch Standard §2.2.2: the forbidden request-header names, which a page's own script cannot set either (the
 # connection's framing, cookies, the request's origin), and those starting with `proxy-` or `sec-` (Fetch Metadata,
-# client hints). `User-Agent` too: the HTTP rung's identity is its impersonation's, and the browser's its own (INV-44).
+# client hints). `User-Agent` too: the HTTP rung's identity is its impersonation's, and the browser's its own.
 _FORBIDDEN: Final = frozenset(
     {
         "accept-charset",
@@ -104,9 +103,9 @@ Secrets = Annotated[dict[str, SecretStr], Field(max_length=_MAX_PAIRS)]
 
 
 class FetchOptions(BaseModel):
-    """How a request's pages are fetched. `headers` go over HTTP to the page's own host only, never in the browser
-    (INV-44), and `cookies` to that host in either; `wait_for` and `actions` run in the browser, so they make the fetch
-    a browser one and refuse `method_hint` `http`, and a browser fetch takes no `headers`."""
+    """How a request's pages are fetched. `headers` go over HTTP to the page's own host only, never in the browser,
+    and `cookies` to that host in either; `wait_for` and `actions` run in the browser, so they make the fetch
+        a browser one and refuse `method_hint` `http`, and a browser fetch takes no `headers`."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -157,7 +156,7 @@ class FetchOptions(BaseModel):
         if in_browser and self.method_hint == "http":
             raise ValueError("wait_for and actions run in the browser, so method_hint cannot be http")
         if self.headers and (in_browser or self.method_hint == "browser"):
-            raise ValueError("headers are sent over HTTP only; the browser sets none of its own (INV-44)")
+            raise ValueError("headers are sent over HTTP only; the browser sets none of its own")
         return self
 
     @field_serializer("headers", "cookies")
@@ -177,7 +176,7 @@ class FetchOptions(BaseModel):
 
 
 def check_proxy_pool(options: FetchOptions, pools: Collection[str]) -> None:
-    """Raises `UnknownProxyPool` when `options` names a pool not among `pools`, the configured ones (D-1434)."""
+    """Raises `UnknownProxyPool` when `options` names a pool not among `pools`, the configured ones."""
     if options.proxy_pool is not None and options.proxy_pool not in pools:
         raise UnknownProxyPool(f"no proxy pool named {options.proxy_pool!r} is configured")
 

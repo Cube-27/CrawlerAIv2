@@ -75,7 +75,7 @@ function FieldCorrection({
   );
 }
 
-/** The version a correction stored, with the server's validation of it (learning-configs spec). */
+/** The version a correction stored, with the server's validation of it. */
 function CorrectionResult({ saved }: Readonly<{ saved: ConfigDetail }>) {
   return (
     <section className="flex flex-col gap-4" aria-label="Correction result">

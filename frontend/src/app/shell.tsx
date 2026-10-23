@@ -27,7 +27,7 @@ interface NavGroup {
   entries: NavEntry[];
 }
 
-// frontend spec: one entry per playground mode, from the one list of modes, then the data screens; Settings come last,
+// One entry per playground mode, from the one list of modes, then the data screens; Settings come last,
 // at the foot of the sidebar.
 const PLAYGROUND: NavGroup = {
   title: "Playground",
@@ -74,7 +74,7 @@ function NavItem({ entry, pathname }: Readonly<{ entry: NavEntry; pathname: stri
 function MainNav() {
   const { pathname } = useLocation();
   return (
-    // At phone width the entries wrap in rows above the content (DESIGN.md, Layout); from `sm` they are a column
+    // At phone width the entries wrap in rows above the content; from `sm` they are a column
     // with Settings at the foot.
     <nav
       aria-label="Main"
@@ -149,7 +149,7 @@ export function Shell() {
             <Outlet />
           </div>
         </main>
-        {/* The one toast region: screens notify with `toast` from @heroui/react (DESIGN.md, Patterns). */}
+        {/* The one toast region: screens notify with `toast` from @heroui/react. */}
         <Toast.Provider />
       </div>
     </RouterProvider>

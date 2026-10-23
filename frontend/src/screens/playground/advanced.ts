@@ -8,7 +8,7 @@ import type {
 import { optionalNumber } from "./pageRequest";
 import { member, text, type StoredRequest } from "./run/storedRequest";
 
-/** The Advanced options every page request shares (D-1430, D-1436): the caller's headers and cookies, a proxy pool,
+/** The Advanced options every page request shares: the caller's headers and cookies, a proxy pool,
  * what the browser waits for, the cache mode and the page actions, as the `fetch` members they become. */
 
 /** What a page step does, and how each kind names what it acts on. */
@@ -193,7 +193,7 @@ function headersError(fetch: FetchMember): Readonly<Record<string, string>> | nu
 
 /** `errors` with the `fetch` member's own after them; `errors` itself when it has none. The server always refuses
  * these combinations (`FetchOptions._coherent`, `check_formats`): a screenshot, a PDF, `wait_for` or actions need the
- * browser, so not the `http` method; headers go over HTTP only (INV-44), so not with the browser. */
+ * browser, so not the `http` method; headers go over HTTP only, so not with the browser. */
 export function withFetchErrors(
   errors: Readonly<Record<string, string>>,
   fetch: FetchMember,
@@ -206,7 +206,7 @@ export function withFetchErrors(
 
 const CACHE_MODES: readonly CacheMode[] = ["default", "bypass", "only"];
 
-/** The Advanced settings of a stored request. Header and cookie values come back redacted (D-1432), so they are not
+/** The Advanced settings of a stored request. Header and cookie values come back redacted, so they are not
  * shown again: a re-run sends none until they are entered anew. */
 export function storedAdvanced(request: StoredRequest): AdvancedFetch {
   const fetch = member(request, "fetch");

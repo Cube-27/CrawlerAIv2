@@ -1,4 +1,4 @@
-"""The XPath 1.0 check (learning-configs spec, D-0034): expressions libxml2 compiles that use only the W3C XPath 1.0
+"""The XPath 1.0 check: expressions libxml2 compiles that use only the W3C XPath 1.0
 core function library pass; XPath 2+ syntax and functions, variables and namespace prefixes are refused."""
 
 import re

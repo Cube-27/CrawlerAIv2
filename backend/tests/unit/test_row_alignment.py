@@ -1,4 +1,4 @@
-"""The engine's listing rows aligned with a config's rows (learning-configs spec, D-1500): an order-preserving
+"""The engine's listing rows aligned with a config's rows: an order-preserving
 subsequence, the one with the most agreeing values."""
 
 from hypothesis import given

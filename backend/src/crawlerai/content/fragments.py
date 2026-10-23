@@ -1,4 +1,4 @@
-"""Eager HTML fragments a page declares (extraction spec, "Source documents"): Hotwire Turbo frames.
+"""Eager HTML fragments a page declares: Hotwire Turbo frames.
 
 A `<turbo-frame id src>` loads `src` as soon as the tag appears, unless its `loading` is `lazy`, which loads it only
 when the frame becomes visible (Turbo handbook, Frames). The HTTP rung fetches an eager frame's `src` as a companion
@@ -6,7 +6,7 @@ call (`acquire.rungs`); the answer's element with the frame's `id` then replaces
 (`include`), as Turbo renders it. A lazy frame is not fetched.
 
 The other HTML answers a capture holds are the partials the page fetched from its own site (htmx-style swaps, a
-frame's answer the browser fetched; acquisition spec, "Network body capture"). A partial (an answer that is no whole
+frame's answer the browser fetched). A partial (an answer that is no whole
 document) whose text the page does not show, as after a swap the render no longer holds, is appended to the page's
 body (`append`), so the page's readers read it as they read the page; a whole document (a Turbo Drive visit) is not.
 """

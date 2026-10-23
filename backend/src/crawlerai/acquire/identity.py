@@ -1,9 +1,9 @@
-"""Identity-checked data calls (acquisition spec, "Data calls"): a JSON answer fetched for one product, kept only when
+"""Identity-checked data calls: a JSON answer fetched for one product, kept only when
 it states that product.
 
 A data call is a request for a product's JSON that the fetch makes beside the product's page: the product JSON a
-platform documents for a detail page (`adapters.platforms.product_json`), or an API recipe's request (adapters spec,
-`config_ir.api_recipe.execute`). Before its answer is used it must state the requested product (the identity check):
+platform documents for a detail page (`adapters.platforms.product_json`), or an API recipe's request
+(`config_ir.api_recipe.execute`). Before its answer is used it must state the requested product (the identity check):
 a string or number equal to a key the request was made with (a handle, a slug, a product id), or a URL whose path is the
 page's path. An answer that does not is dropped and recorded on its attempt as `NOT_THE_PRODUCT`: an endpoint that
 ignores its key answers one product for every page.
@@ -132,7 +132,7 @@ def joined_call(
         data_call=platform,
     )
     return CaptureBundle(
-        # Another capture than the HTTP page's: a new id, so no parse of the page alone stands for it (INV-26).
+        # Another capture than the HTTP page's: a new id, so no parse of the page alone stands for it.
         manifest=manifest.model_copy(
             update={"capture_id": uuid7(), "network_bodies": (*manifest.network_bodies, entry)}
         ),
@@ -145,7 +145,7 @@ def joined_call(
 def identified(result: FetchResult, url: str, keys: tuple[str, ...]) -> FetchResult:
     """A data call's `ok` answer when it states the product of the page at `url` it was requested with `keys` for
     (`identifies`: a parameter value, or a URL with the page's path); else an `error`, `NOT_THE_PRODUCT`, which is not
-    used: a recipe's page is then served by its configured fetch (§4.10), a companion call joins nothing. An answer
+    used: a recipe's page is then served by its configured fetch, a companion call joins nothing. An answer
     that is not JSON is the collector's to report."""
     if result.block_class != "ok":
         return result

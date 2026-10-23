@@ -1,4 +1,4 @@
-"""Drift (learning-configs spec): a config field's windowed yield and validity, measured on the pages an active config
+"""Drift: a config field's windowed yield and validity, measured on the pages an active config
 runs on, against its validated yield and validity less the dev-fitted margins; a field that falls below is suspended and
 no longer runs."""
 

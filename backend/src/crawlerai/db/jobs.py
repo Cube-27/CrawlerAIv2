@@ -1,4 +1,4 @@
-"""The job and url_task state machines (persistence-storage spec), and job run events.
+"""The job and url_task state machines, and job run events.
 
 The transition tables are the authority: `transition_job` and `transition_task` only move a row along an edge of
 its table, with a compare-and-set update, so two workers racing on one row cannot both win.
@@ -26,7 +26,7 @@ JOB_TRANSITIONS: Final[Mapping[JobStatus, frozenset[JobStatus]]] = {
 
 TASK_TRANSITIONS: Final[Mapping[TaskStatus, frozenset[TaskStatus]]] = {
     "queued": frozenset({"claimed", "cancelled"}),
-    # `queued` again: a retry after a transient failure, or a lease that expired (§4.3).
+    # `queued` again: a retry after a transient failure, or a lease that expired.
     "claimed": frozenset({"queued", "done", "failed", "cancelled"}),
     "done": frozenset(),
     "failed": frozenset(),
@@ -41,14 +41,14 @@ class InvalidTransition(Exception):
 
 def blocking_statuses(*, cancel_requested: bool) -> tuple[TaskStatus, ...]:
     """The task statuses that keep a running job from ending: a cancelled job waits only for its claimed tasks, and
-    its queued tasks are not run (jobs spec); any other job also waits for its queued tasks (§4.3)."""
+    its queued tasks are not run; any other job also waits for its queued tasks."""
     return ("claimed",) if cancel_requested else ("claimed", "queued")
 
 
 def settled_status(counts: Mapping[TaskStatus, int], *, cancel_requested: bool) -> JobStatus | None:
     """The status a running job ends in, given how many of its tasks are in each status; `None` while it continues.
 
-    A job fails only when every task failed (§4.3, D-0006).
+    A job fails only when every task failed.
     """
     if any(counts.get(status, 0) for status in blocking_statuses(cancel_requested=cancel_requested)):
         return None
@@ -96,8 +96,8 @@ async def _move[S: str](
 
 async def transition_job(conn: AsyncConnection, job_id: JobId, target: JobStatus) -> None:
     """Move a job to `target`. Starting stamps `started_at`; ending stamps `finished_at` and records an event of the
-    same kind, which SSE reports and which owes the job's end webhook event, if it asked for one (jobs spec). An
-    ended job's request keeps no secret value (D-1510)."""
+    same kind, which SSE reports and which owes the job's end webhook event, if it asked for one. An
+    ended job's request keeps no secret value."""
     values: dict[str, Any] = {}
     if target == "running":
         values["started_at"] = func.now()
@@ -114,7 +114,7 @@ async def transition_job(conn: AsyncConnection, job_id: JobId, target: JobStatus
 
 
 async def _scrub_secrets(conn: AsyncConnection, job_id: JobId) -> None:
-    """Replace the caller's header and cookie values in the ended job's request by `REDACTED` (D-1510): its workers read
+    """Replace the caller's header and cookie values in the ended job's request by `REDACTED`: its workers read
     them while it ran, and nothing reads them after it ends."""
     request: dict[str, Any] = (await conn.execute(select(Job.request).where(Job.id == job_id))).scalar_one()
     if has_secrets(request):

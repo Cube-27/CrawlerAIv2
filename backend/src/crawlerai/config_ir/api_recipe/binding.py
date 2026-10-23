@@ -1,15 +1,15 @@
-"""Parameter binding (adapters spec): read a recipe's parameters from a page, fill its templates with them, and find
+"""Parameter binding: read a recipe's parameters from a page, fill its templates with them, and find
 the templates of an endpoint request from sample pages deterministically.
 
 Values are compared and passed around percent-decoded (RFC 3986 §2.1) and encoded again where a placeholder stands,
 so a value read from the page URL and one read from a JSON document mean the same thing. A binding is accepted only
 when its templates reproduce the captured request of every sample page exactly; anything less is `Ambiguous`, the
-case role D (§4.5) takes.
+case role D takes.
 
 A query value that looks like a token (`model.token_like`: an API key) and is the same on every sample is never stored
 as a literal: it is bound from the page when a page value holds it on every sample, and left out of the endpoint URL
 otherwise (`withhold_tokens`, before binding and role D), so the replay shows whether the endpoint needs it; one it
-needs leaves the site without a recipe, as a token header does (§4.6).
+needs leaves the site without a recipe, as a token header does.
 """
 
 import json
@@ -54,7 +54,7 @@ class CapturedRequest:
     method: str
     url: str
     body: str | None = None
-    headers: HeaderList = ()  # as the browser sent them, in order; header minimization (§4.6) replays them
+    headers: HeaderList = ()  # as the browser sent them, in order; header minimization replays them
 
 
 @dataclass(frozen=True)
@@ -206,8 +206,8 @@ class _Url(NamedTuple):
 
 
 def bind(samples: Sequence[Sample]) -> RequestSpec | Ambiguous:
-    """The request spec whose binders reproduce the endpoint request of every sample page (§4.4), with no headers
-    yet (§4.6 adds the proven ones); `Ambiguous` when there is none.
+    """The request spec whose binders reproduce the endpoint request of every sample page, with no headers
+    yet; `Ambiguous` when there is none.
 
     A value of the endpoint request that equals a path segment or query value of the page URL on every sample becomes
     a `path:`/`query:` parameter. A value that varies and appears nowhere in the page URL becomes a `jsonld:`/
@@ -385,7 +385,7 @@ def _body_mismatch(spec: RequestSpec, params: Mapping[str, str], captured: str |
 
 
 def _canonical(document: JsonValue) -> str:
-    # Python compares `true == 1` and `1 == 1.0`; their JSON texts differ (RFC 8259 §3, §6).
+    # Python compares `true == 1` and `1 == 1.0`; their JSON texts differ (RFC 8259 §3).
     return json.dumps(document, sort_keys=True)
 
 

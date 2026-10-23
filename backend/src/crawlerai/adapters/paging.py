@@ -1,6 +1,6 @@
-"""A list an API serves in pages, fetched whole (adapters spec): the adapter says how to ask the next page and how the
+"""A list an API serves in pages, fetched whole: the adapter says how to ask the next page and how the
 pages merge, and this module walks them through the caller's `send`, which is polite per request (robots.txt, the
-host's rate; adapters spec).
+host's rate).
 
 The walk ends when the adapter has no next request, when the rows reach the request's target (`FetchPolicy.max_rows`,
 soft: whole pages are kept) or the hard cap, or when the time budget is spent. A later page that fails ends the walk
@@ -57,7 +57,7 @@ async def fetch_pages(
         # A page sent just before the deadline may take only what is left of the budget, not a whole request timeout.
         page = await send(request, policy.model_copy(update={"timeout_s": min(policy.timeout_s, left)}))
         # Every request is an attempt of the result, a refused or failed one too: the caller reads them for the guard's
-        # refusals (INV-16) and the slow-downs.
+        # refusals and the slow-downs.
         kept = kept.model_copy(
             update={"attempts": (*kept.attempts, *page.attempts), "duration_ms": kept.duration_ms + page.duration_ms}
         )

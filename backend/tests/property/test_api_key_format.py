@@ -1,4 +1,4 @@
-"""API keys are `ck_` followed by 32 random bytes in base62 (rest-api spec), and only their SHA-256 is stored."""
+"""API keys are `ck_` followed by 32 random bytes in base62, and only their SHA-256 is stored."""
 
 import string
 

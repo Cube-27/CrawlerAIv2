@@ -7,7 +7,7 @@ export function isOptionOf<K extends string>(options: Readonly<Record<K, string>
 }
 
 /** The classes of a toolbar select's error line: it hangs under the select without taking room (so showing one moves
- * nothing, D-1214), on one line from `sm` and in a column of `w-64` at phone width, where a long message would pass the
+ * nothing), on one line from `sm` and in a column of `w-64` at phone width, where a long message would pass the
  * screen's edge. The select is `relative`. */
 export const HANGING_ERROR = "absolute top-full w-64 sm:w-max sm:whitespace-nowrap";
 

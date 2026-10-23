@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-/** The page sizes a results table offers (rest-api spec caps a page at 100 rows, so a page is never large). */
+/** The page sizes a results table offers (the API caps a page at 100 rows, so a page is never large). */
 export const PAGE_SIZES = [10, 25, 50, 100] as const;
 
 /** Rows per page of a results table until the reader chooses another. */
@@ -11,7 +11,7 @@ interface Position {
   pageSize: number;
 }
 
-/** Paging back and forth over an API that pages forward by cursor (rest-api spec): the cursors of the pages before
+/** Paging back and forth over an API that pages forward by cursor: the cursors of the pages before
  * are kept here, and the first page has none. Another page size starts again from the first page, as a cursor
  * stands for the rows after it, not for a page number. */
 export function useCursorPages() {

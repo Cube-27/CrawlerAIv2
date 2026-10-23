@@ -1,9 +1,9 @@
-"""CONNECT tunnels through a proxy pool (RFC 9110 §9.3.6, acquisition spec) for the browser's guard
+"""CONNECT tunnels through a proxy pool (RFC 9110 §9.3.6) for the browser's guard
 (`socks_guard`); the HTTP and JSON rungs have curl open theirs (`curl_client`), so every rung reaches a site through a
 pool by a tunnel the proxy relays unread.
 
 The tunnel names the host: the proxy resolves it, so the address can't be pinned. The SSRF guard has checked the host
-before (INV-16).
+before.
 """
 
 import asyncio

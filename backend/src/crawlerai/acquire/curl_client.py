@@ -1,11 +1,11 @@
-"""The one curl_cffi client of the HTTP and JSON rungs (acquisition spec; D-1320): a session impersonating Chrome,
+"""The one curl_cffi client of the HTTP and JSON rungs: a session impersonating Chrome,
 every request pinned to the address the SSRF guard checked or sent through a proxy pool's CONNECT tunnel, bodies capped
-while they stream, redirects followed by hand through the guard with the fetch's own cookies (INV-29), and every
+while they stream, redirects followed by hand through the guard with the fetch's own cookies, and every
 failure a short reason that never contains the URL.
 
 A request's headers are merged into the impersonation's defaults, the browser rung's own headers in place of the
 profile's (`acquire.impersonate`): a header the profile sends keeps the profile's position with the request's value, a
-`None` value removes it, and any other header follows the profile's (D-1321).
+`None` value removes it, and any other header follows the profile's.
 """
 
 import asyncio
@@ -62,7 +62,7 @@ _CURLPROXY_HTTP = 0  # curl's `curl_proxytype` for an HTTP proxy (CURLOPT_PROXYT
 # The debug callback's kinds that carry HTTP message bytes (curl_debug_callback, CURLOPT_DEBUGFUNCTION): the headers and
 # the body as transferred, proxy CONNECT exchanges included, without the TLS records or HTTP/2 framing around them.
 _MESSAGE_BYTES = frozenset({CURLINFO_HEADER_IN, CURLINFO_HEADER_OUT, CURLINFO_DATA_IN, CURLINFO_DATA_OUT})
-# INV-30: the reason of a body past `max_body_bytes` or `max_decompressed_bytes`.
+# The reason of a body past `max_body_bytes` or `max_decompressed_bytes`.
 BODY_CAP: Final = "body_cap"
 _CURL_ERRORS: dict[int, str] = {
     CurlECode.OPERATION_TIMEDOUT: "timeout",
@@ -101,7 +101,7 @@ class Wire:
 
 @dataclass(frozen=True)
 class Limits:
-    """INV-30's caps and the fetch's deadline, on `time.monotonic()`."""
+    """The caps and the fetch's deadline, on `time.monotonic()`."""
 
     max_body_bytes: int
     max_decompressed_bytes: int
@@ -150,11 +150,11 @@ async def send(
     page_url: str | None = None,
 ) -> Sent:
     """Fetch `url` with `first` through the pool `policy.proxy_pool` names (an endpoint picked for the URL's host),
-    within the policy's caps and time budget; `transport` replaces the network (tests). A site `session` (INV-29's
-    exception) is carried only through its own endpoint while the pool has it available: its cookies seed the fetch's
+    within the policy's caps and time budget; `transport` replaces the network (tests). A site `session` is carried only
+    through its own endpoint while the pool has it available: its cookies seed the fetch's
     jar, and the hops keep the impersonation's own headers. The caller's context (`policy.context`) belongs to the
     page: it goes with the hops to the host of `page_url` (the page a JSON request is made for; `url` itself by
-    default), and to no other host (`follow`, D-1431)."""
+    default), and to no other host (`follow`)."""
     started = time.monotonic()
     try:
         pool = proxy_pool(policy.proxy_pool, pools)
@@ -209,11 +209,11 @@ async def follow(
     context: RequestContext | None = None,
     page_url: str | None = None,
 ) -> Wire:
-    """The final response for `url`, every hop checked by the guard first (INV-16), at most `MAX_REDIRECTS` followed.
-    Cookies set by one hop go with the next whose host and path they match, and none outlive the fetch (INV-29); a
+    """The final response for `url`, every hop checked by the guard first, at most `MAX_REDIRECTS` followed.
+    Cookies set by one hop go with the next whose host and path they match, and none outlive the fetch; a
     site `session`'s cookies are held from the start. The caller's `context` cookies are held from the start as
     host-only cookies of the page's host (`page_url`'s, else `url`'s), and its headers go with every hop to that host
-    only (D-1431, D-1433). Raises `Failed`."""
+    only. Raises `Failed`."""
     target = await _checked(connector.check(url), deadline, None)
     cookies = await FetchCookies.new()
     if session is not None:
@@ -281,9 +281,9 @@ async def _checked(check: Awaitable[Target], deadline: float, last: Wire | None)
 
 
 async def _send(transport: Transport, target: Target, hop: Hop, cookies: FetchCookies, caller: _Caller) -> Wire:
-    # The fetch sends only its own cookies (INV-29), and the guard's host is the request's (RFC 9110 §7.2).
+    # The fetch sends only its own cookies, and the guard's host is the request's (RFC 9110 §7.2).
     headers = {name: value for name, value in hop.headers.items() if name.lower() not in ("cookie", "host")}
-    # The caller's headers replace the profile's of the same name, keeping its position (D-1321, D-1431).
+    # The caller's headers replace the profile's of the same name, keeping its position.
     headers.update(caller.headers_for(target.url))
     if (cookie := cookies.header(target.url)) is not None:
         headers["Cookie"] = cookie
@@ -398,7 +398,7 @@ def _merged(defaults: HeaderList, headers: Mapping[str, str | None]) -> dict[str
 
 
 def reason(error: RequestException) -> str:
-    """A curl failure's reason: its kind, never its message, which can hold the URL (acquisition spec)."""
+    """A curl failure's reason: its kind, never its message, which can hold the URL."""
     return _CURL_ERRORS.get(error.code, f"network_error: curl {int(error.code)}")
 
 
@@ -446,6 +446,6 @@ def _wire(target: Target, response: Response, sent: list[bytes], body: bytes) ->
 
 def _parse_request_headers(block: bytes) -> HeaderList:
     # curl reports the header block it sent in HTTP/1.1 form for every protocol version: a request line, then
-    # `name: value` lines (RFC 9112 §3, §5).
+    # `name: value` lines (RFC 9112 §3).
     lines = block.decode("latin-1").split("\r\n")[1:]
     return tuple((name, value.strip()) for name, _, value in (line.partition(":") for line in lines if ":" in line))

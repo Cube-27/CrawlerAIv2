@@ -1,10 +1,10 @@
-"""Grounding by alignment (llm spec, INV-12): a role C value is kept only as a verbatim span of
+"""Grounding by alignment: a role C value is kept only as a verbatim span of
 the cleaned text, with offsets that hold it.
 
-The model's offsets are a hint, not a fact (D-0024). A claim whose offsets hold its value is accepted as stated;
+The model's offsets are a hint, not a fact. A claim whose offsets hold its value is accepted as stated;
 otherwise the value is searched for exactly, and the occurrence nearest the claimed `start` wins. A value the text
 does not contain is dropped. There is no fuzzy, case- or whitespace-insensitive matching: the cleaned text's own
-normalization (extraction spec) is the only one. Offsets count code points of the cleaned text, as Python `str` indices
+normalization is the only one. Offsets count code points of the cleaned text, as Python `str` indices
 do.
 
 A money claim may differ from the text only in the spacing between its currency sign and its digits: CLDR's
@@ -106,7 +106,7 @@ def align(
         spans = [span for span in _sign_spaced(value, cleaned_text) if holds(*span)]
     if not spans:
         return None
-    # Nearest to the claimed start; of two equally near, the earlier, so the choice is deterministic (INV-10).
+    # Nearest to the claimed start; of two equally near, the earlier, so the choice is deterministic.
     start, end = min(spans, key=lambda span: (abs(span[0] - claim.start), span[0]))
     return GroundedSpan(cleaned_text[start:end], start, end)
 
@@ -154,10 +154,10 @@ def _word_char(char: str) -> bool:
 # An address is never longer than this many characters (RFC 9110 §4.1 recommends supporting URIs of 8000 octets), so
 # the token around a span is looked for no further.
 _LONGEST = 8000
-# RFC 3986 §3: a URI's scheme and authority (`https://`), or a network-path or absolute-path reference (§4.2).
+# RFC 3986 §3: a URI's scheme and authority (`https://`), or a network-path or absolute-path reference.
 _URI = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://|\A//|\A/[^/\s]")
 # The media types Python ships (`mimetypes` defaults, from the IANA registry), never the host's own files, so the
-# reading is the same on every machine (INV-10).
+# reading is the same on every machine.
 _MEDIA_TYPES = mimetypes.MimeTypes(filenames=())
 _MEDIA = ("image/", "audio/", "video/")
 

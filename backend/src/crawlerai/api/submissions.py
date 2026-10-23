@@ -1,5 +1,5 @@
 """The problems a job submission answers with (`POST /v1/batch/scrape`, `/v1/crawl`): the errors the services raise
-before they store anything, as problem details (rest-api spec)."""
+before they store anything, as problem details."""
 
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -23,7 +23,7 @@ def submission_problems() -> Iterator[None]:
     except UnknownProxyPool as e:
         raise invalid(str(e), [("fetch.proxy_pool", str(e))]) from e
     except TargetsRejected as e:
-        # 422: the request names a target the API may not fetch (INV-16).
+        # 422: the request names a target the API may not fetch.
         raise ProblemError(422, "ssrf_rejected", "Target refused", str(e), [(e.member, e.reason)]) from e
     except SchemaUnusable as e:
         raise invalid(str(e), [("schema", str(e))]) from e

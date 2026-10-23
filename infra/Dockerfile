@@ -1,4 +1,4 @@
-# The single backend image (SPEC-00 §2). Build from the repo root, naming the commit for the engine version:
+# The single backend image. Build from the repo root, naming the commit for the engine version:
 #   docker build -f infra/Dockerfile --build-arg CRAWLERAI_GIT_SHA=$(git rev-parse HEAD) backend
 # The build stage installs the project into a virtual environment; the image keeps that environment and the
 # migrations only, so the engine's data is held once, inside the installed package.
@@ -38,7 +38,7 @@ COPY --from=build /app/.venv ./.venv
 COPY alembic.ini ./
 COPY migrations ./migrations
 
-# The browser rung's Google Chrome stable (acquisition spec, "Patchright's documented browser setup"), installed as the
+# The browser rung's Google Chrome stable, installed as the
 # Patchright README sets it up (its apt package, under /opt/google/chrome for every user), with the system libraries
 # and fonts the package depends on; then the service user.
 RUN patchright install --with-deps chrome && rm -rf /var/lib/apt/lists/* \

@@ -1,4 +1,4 @@
-"""The state a page carries in its inline scripts (extraction spec, "Source documents"), read by structure only.
+"""The state a page carries in its inline scripts, read by structure only.
 
 A document is the text of a `<script type="application/json">` (or Adobe Commerce's `text/x-magento-init`), or, in
 any other script except JSON-LD's, in script order:

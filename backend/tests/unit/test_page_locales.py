@@ -1,4 +1,4 @@
-"""The one page-locale derivation (normalization spec, "Page languages"): the page's own declarations count together;
+"""The one page-locale derivation: the page's own declarations count together;
 the request's locale only when the page declares none, and only for a reader that takes it."""
 
 from datetime import UTC, datetime

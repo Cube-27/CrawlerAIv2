@@ -1,4 +1,4 @@
-"""`POST /v1/crawl` over HTTP (jobs spec): what a client sends and gets back. What a crawl does is the service's and
+"""`POST /v1/crawl` over HTTP: what a client sends and gets back. What a crawl does is the service's and
 the worker's (`test_crawl.py`)."""
 
 from typing import Any

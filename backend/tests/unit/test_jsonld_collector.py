@@ -1,4 +1,4 @@
-"""The JSON-LD collector (extraction spec): every `application/ld+json` block, `@graph` expanded, `@id` references
+"""The JSON-LD collector: every `application/ld+json` block, `@graph` expanded, `@id` references
 resolved within the page, schema.org nodes as entities, and a candidate for each `schema_org` path."""
 
 import json
@@ -406,7 +406,7 @@ def test_an_entity_carries_what_identifies_it() -> None:
 
 
 def test_a_block_with_raw_control_characters_inside_strings_is_collected() -> None:
-    # RFC 8259 §7 requires them escaped; the collector accepts them raw inside strings (§9), so the block is not lost.
+    # RFC 8259 §7 requires them escaped; the collector accepts them raw inside strings, so the block is not lost.
     block = '{"@context": "https://schema.org", "@type": "Product", "name": "Widget\tNine", "brand": {"name": "A\nB"}}'
     result = _collect(block)
     assert [(c.field, c.raw) for c in result.candidates] == [("title", "Widget\tNine"), ("brand", "A\nB")]
@@ -432,7 +432,7 @@ DESCRIBED = _schema(
         pytest.param("<b>Fish</b> &amp;amp; chips", "Fish & chips", "Fish & chips", id="fragment-reference"),
         pytest.param("Fish &amp;amp; chips", "Fish & chips", "Fish & chips", id="text-reference"),
         pytest.param("Sizes 1 < 2 & more", "Sizes 1 < 2 & more", "Sizes 1 < 2 & more", id="no-element"),
-        # D-1486: markup written escaped is the fragment; an escaped `<` that makes no element stays text.
+        # Markup written escaped is the fragment; an escaped `<` that makes no element stays text.
         pytest.param(
             "&lt;p&gt;Soft &lt;b&gt;cotton&lt;/b&gt;.&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Machine wash&lt;/li&gt;&lt;/ul&gt;",
             "Soft cotton. Machine wash",

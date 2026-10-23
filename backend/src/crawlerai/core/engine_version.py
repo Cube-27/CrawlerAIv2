@@ -1,7 +1,7 @@
-"""The engine version stamped on jobs, extractions, and capture manifests (persistence-storage spec):
+"""The engine version stamped on jobs, extractions, and capture manifests:
 `<git sha>+cal.<calibration hash>`, so a replay can tell which code and which calibration produced a result.
 
-The build writes the git SHA to `backend/VERSION`; the calibration is `backend/data/calibration.json` (extraction spec).
+The build writes the git SHA to `backend/VERSION`; the calibration is `backend/data/calibration.json`.
 Both are read from the engine directory: the backend source tree the package runs from, or in an installed wheel the
 copy of `VERSION` and `data/` that the build puts inside the package (`backend/hatch_build.py`). A missing file reports
 `unknown` or `none` rather than a guess.

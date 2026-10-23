@@ -1,26 +1,25 @@
-"""The scrape service (rest-api spec): one URL fetched while the caller waits, and returned in the content formats
-it asks for. `POST /v1/scrape` calls it; the MCP `scrape` tool will (jobs spec).
+"""The scrape service: one URL fetched while the caller waits, and returned in the content formats
+it asks for. `POST /v1/scrape` calls it; the MCP `scrape` tool will.
 
 A scrape is a `job` of kind `scrape` with one `url_task`, run here rather than through the queue, so its usage and
-events are kept like any job's. The task is fetched as a worker fetches one: robots.txt, the site's rate, the rungs
-(acquisition spec), and its page runs as a worker's does (`page_run`), but not retried: the caller waits. A
-fetch that does not reach the page is an outcome, not an error (§4.8). The whole scrape is bounded
-by `timeout_s`; past it the job fails and nothing is returned. A target the SSRF guard refuses is never fetched
-(INV-16).
+events are kept like any job's. The task is fetched as a worker fetches one: robots.txt, the site's rate, the rungs,
+and its page runs as a worker's does (`page_run`), but not retried: the caller waits. A
+fetch that does not reach the page is an outcome, not an error. The whole scrape is bounded
+by `timeout_s`; past it the job fails and nothing is returned. A target the SSRF guard refuses is never fetched.
 
-A `schema.prompt` is drafted into a schema by role S (llm spec) from the cleaned text of the fetched page, and the
+A `schema.prompt` is drafted into a schema by role S from the cleaned text of the fetched page, and the
 draft is returned; the same prompt returns the stored draft without a call. A page that was not reached is not drafted
 from. A draft the LLM could not give (no provider, no budget, an invalid reply) fails the job, like a timeout.
-`schema.fields` is drafted from the names before the job starts (frontend spec), so a draft that fails stores nothing.
+`schema.fields` is drafted from the names before the job starts, so a draft that fails stores nothing.
 
-`records` extracts the page with `extract_page` (extraction spec) against the schema named by id, given inline, or
+`records` extracts the page with `extract_page` against the schema named by id, given inline, or
 drafted, and stores the extraction and the records (`resolve.task`: a listing has one per row). A scrape URL is
 caller-supplied, so a page whose required fields don't all publish keeps its record, `complete=false`, with outcome
 `partial`; a page that states no entity of the schema (a maintenance or error page served 200) is `no_match` with no
-record, as in a batch. A site with an active config for the schema extracts in `config` mode (learning-configs spec),
-and the page joins the config's drift window (§4.9). A scrape that asks for the record only is served by the config's
-API recipe when it has one (adapters spec): a JSON body has no markdown, links or metadata of the page, so other formats
-fetch the page. The formats, the draft and the records all read one parse of the page (INV-26). With `max_age`, a
+record, as in a batch. A site with an active config for the schema extracts in `config` mode,
+and the page joins the config's drift window. A scrape that asks for the record only is served by the config's
+API recipe when it has one: a JSON body has no markdown, links or metadata of the page, so other formats
+fetch the page. The formats, the draft and the records all read one parse of the page. With `max_age`, a
 capture of the same canonical URL that reached its page within that many seconds is read again instead of fetching.
 """
 
@@ -119,7 +118,7 @@ from crawlerai.services.stored_captures import NOT_CACHED, NotCached
 from crawlerai.storage.artifacts import Artifact
 from crawlerai.storage.capture_bundle import CaptureManifest
 
-MAX_TIMEOUT_S: Final = 120  # D-0028
+MAX_TIMEOUT_S: Final = 120
 # A scrape task's `last_error` when it failed for no reason the service declares.
 INTERNAL_ERROR: Final = "internal_error"
 # The process that runs a scrape's task, named as a worker names itself (`crawlerai.worker.loop`).
@@ -134,12 +133,11 @@ class Budget(Input):
 
 
 class ScrapeRequest(Input):
-    """The body of `POST /v1/scrape` (§4.4). `records` needs a schema and a `page_kind`, and the schema's page kind
+    """The body of `POST /v1/scrape`. `records` needs a schema and a `page_kind`, and the schema's page kind
     must be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds
     its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched
-    within that many seconds. `browser_actions` collects more of a listing's rows in the browser (owner #52); a listing
-    scrape for `records` in `auto` without it takes the default actions where its page is rendered (master plan
-    2026-10-18 decision 11)."""
+    within that many seconds. `browser_actions` collects more of a listing's rows in the browser; a listing
+    scrape for `records` in `auto` without it takes the default actions where its page is rendered."""
 
     url: str
     formats: list[PageFormat] = Field(min_length=1)
@@ -188,12 +186,12 @@ class Usage(BaseModel):
 
 
 class ScrapeResult(BaseModel):
-    """The answer to a scrape (§4.4). A page that robots.txt kept from being fetched has no capture, so
+    """The answer to a scrape. A page that robots.txt kept from being fetched has no capture, so
     `capture_id`, `final_url`, `fetched_at` and `fetch` are None, and `reason` says why, as the task's `last_error`
-    does (acquisition spec): `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC
+    does: `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC
     9309 §2.3.1.4), `slow_down` for a host whose turn at its rate was more than a minute off; for a fetched page a
     vendor's challenge kept out, `challenge: <vendor>`; for a fetched listing whose extraction gave no rows,
-    `no_rows: <cause>` (`no_rows` in `resolve.pipeline`; rest-api spec, "Scrape outcomes, not errors, for page
+    `no_rows: <cause>` (`no_rows` in `resolve.pipeline`, "Scrape outcomes, not errors, for page
     failures"); None for any other page that was fetched. `schema` is the draft of a `schema.prompt`."""
 
     model_config = ConfigDict(validate_by_name=True, serialize_by_alias=True)
@@ -217,8 +215,7 @@ class ScrapeResult(BaseModel):
     pdf: Artifact | None = format_member()
     schema_: SchemaDef | None = format_member(alias="schema")
     records: list[ScrapedRecord] | None = format_member()
-    # A listing that kept no record: its page-scope fields (`next_page_url`), in the record field shape (rest-api
-    # spec, "Scrape outcomes, not errors, for page failures").
+    # A listing that kept no record: its page-scope fields (`next_page_url`), in the record field shape.
     page: dict[str, RecordField] | None = format_member()
     browser_actions: ActionsReport | None = format_member()
     usage: Usage
@@ -230,7 +227,7 @@ class ScrapeTimedOut(Refusal):
 
 
 class RecordsUnavailable(Refusal):
-    """`records` was asked of a process without the engine's data files (`EngineData`, D-0492)."""
+    """`records` was asked of a process without the engine's data files (`EngineData`)."""
 
 
 @dataclass(frozen=True)
@@ -243,7 +240,7 @@ class _Work:
     margins: DriftMargins | None
     schema: SchemaDef | None
     deadline: float | None = None  # on `time.monotonic`: when `request.timeout_s` runs out
-    render: RenderOptions | None = None  # the request's; None: its surface's (rest-api spec, "Render mode")
+    render: RenderOptions | None = None  # the request's; None: its surface's
 
 
 @dataclass(frozen=True)
@@ -461,7 +458,7 @@ def _answer(
     adapters: Adapters,
 ) -> ScrapeResult:
     """The answer to the scrape: how its page's run ended (`blocked` with the reason when nothing was sent), the
-    formats, draft and records it made, and the job's usage. A failed page answers nothing derived from it (§4.8)."""
+    formats, draft and records it made, and the job's usage. A failed page answers nothing derived from it."""
     page, end = run
     if isinstance(page, str) or end is None:
         reason = page if isinstance(page, str) else None
@@ -511,7 +508,7 @@ async def _derive_reached(
 
 def _growth(request: ScrapeRequest, fetching: Fetching) -> Growth | None:
     """The default browser actions of a listing scrape for `records` in `auto` that asks for none, used where its page
-    is rendered (master plan 2026-10-18 decision 11, amending owner #52): `records`' default, within the actions' share
+    is rendered: `records`' default, within the actions' share
     of its `timeout_s`; none for a page captured as a file (its first render) or without the listing rung. Batch and
     crawl tasks never grow (`worker.handlers`)."""
     reads_rows = request.page_kind == "listing" and "records" in request.formats
@@ -532,7 +529,7 @@ async def _derive(
     engine: AsyncEngine, work: _Work, request: ScrapeRequest, task: ClaimedTask, page: Page, config: ActiveConfig | None
 ) -> _Derived:
     """The requested formats, the draft of a prompt, and the extraction for `records` (`extract_run`), from the page's
-    one parse (INV-26), with the site's active `config` when there is one; the formats name the files stored for the
+    one parse, with the site's active `config` when there is one; the formats name the files stored for the
     capture."""
     prompt = request.schema_.prompt if isinstance(request.schema_, SchemaPrompt) else None
     manifest = page.result.bundle.manifest
@@ -540,7 +537,7 @@ async def _derive(
     formats, sample = await asyncio.to_thread(content)
     drafted = None
     if prompt is not None and sample is not None:
-        # Role S's one sample page is the page's cleaned text (llm spec).
+        # Role S's one sample page is the page's cleaned text.
         drafted = await draft_schema(engine, work.llm, prompt=prompt, samples=[sample], job_id=task.job_id)
     schema = work.schema if drafted is None else drafted
     if "records" not in request.formats or schema is None or work.data is None:
@@ -551,7 +548,7 @@ async def _derive(
         # (`s_labels`).
         schema = drafted = with_labels(engine, work.llm, drafted)
     # §4.4 step 3: role C fills required fields left missing, charged to the job. No write to the job's row is open
-    # here: the job was committed before the fetch, and the task is written after (D-0346).
+    # here: the job was committed before the fetch, and the task is written after.
     records = Records(schema, work.data, config, work.margins, work.render)
     extracted = await extract_run(page, records, role_c(work.llm, job_id=task.job_id))
     return _Derived(formats, drafted, extracted)

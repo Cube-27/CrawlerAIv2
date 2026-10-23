@@ -1,4 +1,4 @@
-"""The map service without HTTP (jobs spec): URLs found through sitemaps and the start page's links, in scope and
+"""The map service without HTTP: URLs found through sitemaps and the start page's links, in scope and
 canonical, with the `job(kind='map')` row that records the usage."""
 
 from collections.abc import Callable

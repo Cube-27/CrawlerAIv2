@@ -1,4 +1,4 @@
-"""Contract suite for the `ObjectStore` backends (persistence-storage spec). Every backend runs the same tests; `s3`
+"""Contract suite for the `ObjectStore` backends. Every backend runs the same tests; `s3`
 runs against moto's in-process stub, never real credentials."""
 
 from collections.abc import Iterator

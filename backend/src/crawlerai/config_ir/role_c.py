@@ -1,11 +1,10 @@
-"""The pipeline's LLM hook bound to a client (extraction spec, llm spec, D-0483): role C for `extract_page`, on a
-detail page's gaps, and on a listing's blocks whose rows lack row fields and its missing page fields (llm spec, "Role C
-input, claims and candidates").
+"""The pipeline's LLM hook bound to a client: role C for `extract_page`, on a
+detail page's gaps, and on a listing's blocks whose rows lack row fields and its missing page fields.
 
 `resolve` and `llm` don't import each other (C8 layering), so the hook is bound here, in the first layer above both;
 the worker binds it so.
 
-The client commits each call's usage on a connection of its own (D-0346). A caller of `extract_page` with this hook
+The client commits each call's usage on a connection of its own. A caller of `extract_page` with this hook
 must not hold an uncommitted write to the job's row meanwhile: the client's usage update would wait on it.
 """
 

@@ -1,4 +1,4 @@
-"""The browser rung's item geometry (listings spec, "Item groups"): the rendered area of each block of a listing's
+"""The browser rung's item geometry: the rendered area of each block of a listing's
 repeated item groups, by the element path that names it again in the kept document. The page is a fake (no browser)."""
 
 import asyncio

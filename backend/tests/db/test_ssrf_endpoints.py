@@ -1,4 +1,4 @@
-"""INV-16 at the endpoints (jobs spec L3 done-when): every REST endpoint that takes a URL refuses a target that
+"""At the endpoints: every REST endpoint that takes a URL refuses a target that
 is not a public address, wherever the target comes from: a URL the request names (`url`, `urls`, a glob of `urls`,
 `webhook_url`), a redirect hop, or a location a sitemap or page lists."""
 
@@ -49,14 +49,14 @@ NS = "http://www.sitemaps.org/schemas/sitemap/0.9"
 PRIVATE_LABEL = "intranet"
 DNS: dict[str, tuple[str, ...]] = {
     "ula.example.test": ("fd00::7",),
-    # One private address among public ones refuses the name (acquisition spec: "if any address is private").
+    # One private address among public ones refuses the name ("if any address is private").
     "mixed.example.test": ("93.184.215.14", "192.168.1.9"),
 }
 UNRESOLVED = "nowhere.example.test"
 
 
 def html(content: str) -> str:
-    """A page with enough visible text to classify as a page, not a shell (acquisition spec), and a link home, so that
+    """A page with enough visible text to classify as a page, not a shell, and a link home, so that
     it is not an error page either (a page that links nowhere is `blocked`)."""
     text = "<p>A shop that sells kettles, teapots and cups, delivered within three working days.</p>" * 4
     head = "<!doctype html><html lang='en'><head><title>Shop</title><link rel='stylesheet' href='/s.css'></head>"
@@ -185,7 +185,7 @@ async def _status(engine: AsyncEngine, job_id: JobId) -> str:
 # --- targets the request names --------------------------------------------------------------------------------------
 
 # Each form of a target that is not a public address, as the authority and path of an http URL, with the guard's
-# reason (acquisition spec, RFC 6890 registries).
+# reason (RFC 6890 registries).
 TARGETS: Sequence[tuple[str, str]] = [
     ("10.0.0.1/", "private_address"),  # RFC 1918
     ("172.16.0.1/", "private_address"),  # RFC 1918
@@ -216,8 +216,8 @@ TARGETS: Sequence[tuple[str, str]] = [
 class Member:
     """Where a request names a target: `body` builds the request around it, `field` is the member a refusal names
     (`None` where the endpoint has one target, which its problem does not name). `tool` is the MCP tool that takes
-    the same `request` (jobs spec), if one does. A `queued` member is a URL a task of its own fetches: submitting
-    checks it by its form alone, and a refusal only resolving its host tells fails that task (rest-api spec)."""
+    the same `request`, if one does. A `queued` member is a URL a task of its own fetches: submitting
+    checks it by its form alone, and a refusal only resolving its host tells fails that task."""
 
     path: str
     field: str | None
@@ -321,7 +321,7 @@ async def test_a_named_target_is_refused_before_anything_is_stored(
         assert (problem["type"], problem["detail"], problem["errors"]) == ("ssrf_rejected", refusal, [])
     else:
         assert (problem["type"], problem["errors"]) == ("ssrf_rejected", [{"field": member.field, "reason": refusal}])
-    # The problem never echoes the target (acquisition spec).
+    # The problem never echoes the target.
     assert str(urlsplit(target).hostname) not in response.text
     assert await job_count(engine) == jobs
 
@@ -354,7 +354,7 @@ async def test_a_target_named_to_an_mcp_tool_is_refused_before_anything_is_store
 
 # --- targets reached while fetching -------------------------------------------------------------------------------
 
-# Redirect locations the guard refuses on the hop (acquisition spec: every hop is checked from scratch).
+# Redirect locations the guard refuses on the hop (every hop is checked from scratch).
 REDIRECTS: Sequence[tuple[str, str]] = [
     ("http://intranet.example.test/admin", "private_address"),
     ("http://169.254.169.254/latest/meta-data/", "private_address"),
@@ -423,7 +423,7 @@ async def test_a_job_task_redirected_to_a_refused_target_fails_with_the_guards_r
     tasks = await run_job(engine, fetching, engine_data, response.json()["job_id"])
 
     moved = tasks[f"{site}/moved"]
-    # Refused at once, never retried (acquisition spec).
+    # Refused at once, never retried.
     assert (moved.outcome, moved.attempts, moved.last_error) == ("failed", 1, "ssrf_rejected: private_address")
 
 
@@ -455,7 +455,7 @@ async def test_a_queued_url_only_resolving_refuses_fails_its_own_task(
     assert response.status_code == 202, response.text
     tasks = await run_job(engine, fetching, engine_data, response.json()["job_id"])
 
-    # Refused at once, never retried (acquisition spec); the other task runs.
+    # Refused at once, never retried; the other task runs.
     refused = tasks[target]
     assert (refused.outcome, refused.attempts, refused.last_error) == ("failed", 1, f"ssrf_rejected: {reason}")
     assert tasks[f"{site}/p/1"].status == "done"
@@ -469,7 +469,7 @@ async def test_a_crawl_takes_private_locations_only_on_its_site_and_the_guard_re
     server: Server,
     site: str,
 ) -> None:
-    # A crawl takes only its site's URLs, subdomains included (D-0037); `include` admits the subdomains. So a private
+    # A crawl takes only its site's URLs, subdomains included; `include` admits the subdomains. So a private
     # location off the site never becomes a task, and one on a subdomain of the site is a task the guard refuses.
     host = urlsplit(site).hostname
     on_site = [f"http://intranet.{host}/admin", f"http://intranet.{host}:8080/meta"]

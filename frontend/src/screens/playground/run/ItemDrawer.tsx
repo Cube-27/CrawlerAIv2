@@ -4,8 +4,8 @@ import { FetchTrail } from "../../../components/FetchAttempts";
 import { JsonView } from "../../../components/JsonView";
 import { ArtifactViews } from "../output/FormatViews";
 
-/** One page's JSON in a drawer from the right, over the results table: its clean records (frontend spec), or its
- * page output for a job without a schema (jobs spec), then how it was fetched (`fetch`, once read; D-1392).
+/** One page's JSON in a drawer from the right, over the results table: its clean records, or its
+ * page output for a job without a schema, then how it was fetched (`fetch`, once read).
  * `position` is the page's place in the job (from 1), which names its file; `onClose` closes the drawer. */
 export function ItemDrawer({
   url,

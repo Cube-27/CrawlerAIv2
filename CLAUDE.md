@@ -15,8 +15,9 @@ CrawlerAI v2 is a schema-driven web extraction engine; see `README.md`.
 
 - `backend/` (Python, `src/crawlerai/`, `tests/`, `migrations/`), `frontend/` (Vite+, React), `sdk/`, `infra/`,
   `tools/` (repo checks and `tools/orchestrator/` worktree/CI scripts).
-- `docs/architecture.md`: what the code does and where. `docs/rules.md`: the rules CI and agents enforce. `docs/archive/`:
-  historical record (old specs, design, decisions, handover), not maintained; the code wins over it.
+- `docs/architecture.md`: what the code does and where. `docs/rules.md`: the rules CI and agents enforce.
+  `docs/decisions.md`: the important decisions in force. Code is the source of truth. Delete a plan or spec once it's
+  implemented; record only important decisions in docs/decisions.md.
 - Read only what your change needs. Where the docs and the contract disagree, stop and ask the owner.
 - Work on a branch `change/<id>` in a worktree made by `tools/orchestrator/new_worktree.sh <id> change/<id>`, never
   in the main checkout. `main` takes PRs only. Never merge your own PR.
@@ -75,8 +76,8 @@ unpublished. No site-specific steps, no speculative layers, no second path for e
 - **C5.** A failing site is fixed by config, a learning re-run or an operator correction; change generic code only for
   a class of failures, shown with e2e results.
 - **C7.** No defaults; an unclear currency never drops a price, but a price whose amount is contested by an
-  unexplained rival is a conflict (INV-14); currency from page evidence, else the URL locale/subdomain/ccTLD
-  (flagged), else null; no host tables, and no other value from URL codes (owner #68, D-1782).
+  unexplained rival is a conflict; currency from page evidence, else the URL locale/subdomain/ccTLD
+  (flagged), else null; no host tables, and no other value from URL codes.
 - **C9.** No test is named after a site or asserts one site's output; write property and replay tests.
 - **C10.** A change that alters extraction is accepted when it improves the e2e run and drops no field type's
   precision without a stated reason (a scoring fix, an adjudicated correction of the set). The PR reports the e2e
@@ -95,7 +96,7 @@ unpublished. No site-specific steps, no speculative layers, no second path for e
 - No AGPL, GPL, SSPL or non-commercial dependencies (CI enforces).
 - Greenfield: no versioning, migration chains or compatibility shims; a model change edits the one baseline
   migration. Record versions, draft and active configs and `engine_version` stay.
-- An architecture change deletes what it supersedes in the same PR. Code comments cite the standard, not `D-NNNN`, `ARCHITECTURE §N` or `SPEC-NN`.
+- An architecture change deletes what it supersedes in the same PR. Code comments cite the standard, not a decision, spec or architecture section number.
 - Verification is runtime grounding on real pages plus the `.claude/skills/verify-*` checks (formal or property) for
   the paths a change touches, not new example tests. A test is added only for a behaviour nothing else covers; tests a
   change makes redundant are deleted. No eval loops: one timeboxed regression run per PR, on the final code, gives the

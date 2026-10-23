@@ -1,4 +1,4 @@
-"""`records` and `max_age` in the scrape service (rest-api spec steps 2 and 3, INV-22, INV-26): the page's record in
+"""`records` and `max_age` in the scrape service: the page's record in
 the §13.1 field shape, the rows it leaves, and a recent capture reused instead of a fetch.
 
 The web is a stub that answers synthetic pages on RFC 2606 hosts, and the resolver a stub: no network.
@@ -55,7 +55,7 @@ PAGE = b"""<!doctype html><html lang="en"><head><title>Blue kettle</title></head
 <p>A kettle that boils water quickly and quietly, with a handle that stays cool to the touch while it pours.</p>
 <p>It holds one and a half litres and switches itself off once the water boils, so it never boils dry.</p>
 </main></body></html>"""
-# A role S reply: a draft schema document without a name (llm spec).
+# A role S reply: a draft schema document without a name.
 DRAFT_REPLY = ProviderReply(
     model="fake-strong",
     text=json.dumps(
@@ -317,7 +317,7 @@ async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
     engine_data: EngineData,
     fetch_result: Callable[..., FetchResult],
 ) -> None:
-    # rest-api spec step 3: `records` extracts with role C when required fields are missing (llm spec).
+    # `records` extracts with role C when required fields are missing.
     url = f"{own_origin}/kettles/blue"
     body = _product_page(url, offers=False).replace(b"</main>", b"<aside>19.90 EUR</aside></main>")
     web.serve(url, body)
@@ -344,7 +344,7 @@ async def test_a_refused_role_c_call_keeps_the_structured_values_and_answers(
     kettle_schema: SchemaDef,
     engine_data: EngineData,
 ) -> None:
-    # llm spec: the provider refusing the request (a 400) leaves the asked fields missing with its reason.
+    # The provider refusing the request (a 400) leaves the asked fields missing with its reason.
     url = f"{own_origin}/kettles/blue"
     web.serve(url, _product_page(url, offers=False))
     provider = FakeProvider([ProviderRefused("fake", "fake-fast", 400, "schema refused")])
@@ -372,7 +372,7 @@ async def test_a_role_c_call_that_fails_after_answering_counts_its_calls_as_usag
     kettle_schema: SchemaDef,
     engine_data: EngineData,
 ) -> None:
-    # F30: two answered, invalid replies (the one retry, llm spec) are charged; the extraction says so too.
+    # F30: two answered, invalid replies (the one retry) are charged; the extraction says so too.
     url = f"{own_origin}/kettles/blue"
     web.serve(url, _product_page(url, offers=False))
     invalid = ProviderReply(model="fake-fast", text="not json", tokens_in=7, tokens_out=3)
@@ -435,7 +435,7 @@ async def test_formats_and_records_read_one_parse_of_the_page(
     result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}, *formats), data=engine_data)
 
     assert result.outcome == "extracted"
-    # INV-26: every format and the records read one selectolax parse of the page; the lxml tree is its copy, not a
+    # Every format and the records read one selectolax parse of the page; the lxml tree is its copy, not a
     # parse of its own. A parse of the page is one whose input still holds the head's JSON-LD block.
     body_parses = {name: sum(map(_holds_head_script, counter.inputs)) for name, counter in parses.items()}
     assert body_parses == {"selectolax": 1, "lxml": 0}
@@ -569,8 +569,8 @@ async def test_one_page_is_one_entity_whatever_the_order_of_its_query_pairs(
     kettle_schema: SchemaDef,
     engine_data: EngineData,
 ) -> None:
-    # jobs spec: a scrape keys its task by the canonical form a crawl and an extract use (query pairs sorted), so the
-    # entity key (extraction spec) of a page does not depend on the job kind that fetched it.
+    # A scrape keys its task by the canonical form a crawl and an extract use (query pairs sorted), so the
+    # entity key of a page does not depend on the job kind that fetched it.
     urls = [f"{own_origin}/p?id=5&color=red", f"{own_origin}/p?color=red&id=5"]
     for url in urls:
         web.serve(url, _product_page(url))
@@ -672,7 +672,7 @@ async def test_a_site_with_an_active_config_is_scraped_in_config_mode_and_the_pa
     kettle_schema: SchemaDef,
     engine_data: EngineData,
 ) -> None:
-    # learning-configs spec: the site's active config runs on the page, and the page is added to the config's window.
+    # The site's active config runs on the page, and the page is added to the config's window.
     url = f"{own_origin}/kettles/blue"
     web.serve(url, _product_page(url))
     host = own_origin.removeprefix("https://")

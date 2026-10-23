@@ -1,9 +1,9 @@
-"""Challenge labels on attempts (D-1326): which anti-bot challenge, if any, a `blocked` or `shell` response presents
+"""Challenge labels on attempts: which anti-bot challenge, if any, a `blocked` or `shell` response presents
 (`CHALLENGED`: a site's missing page or failure is no challenge, whatever cookies its edge sets). The label is the
 vendor whose signature the response shows (`adapters.challenges`, site data), else `STRUCTURAL` when the generic
 signal holds, else none.
 
-INV-24 (amended, D-1470): the block class comes from status and structure (`classify`) and, for a 2xx HTML document,
+The block class comes from status and structure (`classify`) and, for a 2xx HTML document,
 from a vendor's stand-in marker (`block_class_of`), the only site data that selects it; a label changes neither it nor
 the remembered fetch method. Labels are recorded on the attempt (its manifest and `capture` row keep them), counted in
 the log per label and rung, and slow a host's adaptive rate as a 429 does (`politeness`).
@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 # The label of a challenge no vendor signature names.
 STRUCTURAL: Final = "structural"
 # The label of a 451, a refusal for legal reasons (RFC 7725 §3): the page is withheld where the request came from, no
-# vendor's challenge; its page ends `geo_blocked` (jobs spec).
+# vendor's challenge; its page ends `geo_blocked`.
 LEGAL: Final = "legal"
 _UNAVAILABLE_FOR_LEGAL_REASONS = 451
 _SET_COOKIE = "set-cookie"  # RFC 6265 §4.1
@@ -92,7 +92,7 @@ def vendor_block(result: FetchResult) -> str | None:
     """The vendor whose challenge kept a `blocked` fetch from its page: the label of the latest attempt of the kept
     outcome's method that names one (not `STRUCTURAL` nor `LEGAL`; a rejected attempt of another rung is not what the
     kept capture shows); None for any other fetch. Such a page is a `blocked` outcome naming the vendor, never an engine
-    failure to retry as one (master plan 2026-10-18 §3.1; owner #50: nothing is evaded)."""
+    failure to retry as one; nothing is evaded."""
     if result.block_class != "blocked":
         return None
     kept = (a for a in reversed(result.attempts) if a.method == result.method)

@@ -1,4 +1,4 @@
-"""The OpenGraph collector (extraction spec): `og:*` and `product:*` meta properties.
+"""The OpenGraph collector: `og:*` and `product:*` meta properties.
 
 OpenGraph names no entity types, so every value describes the page's one object: the entity is `page`, and its URL is
 `og:url`. A property maps to a field through the fixed table below, keyed by the OGP property and the field's role:
@@ -54,8 +54,8 @@ _DESCRIPTION = "og:description"
 # `og:description` is "a one to two sentence description" of the object, prose for a long_text description. The
 # `product` namespace: `product:availability` (and the historic OGP product type's `og:availability`) is the item's
 # availability, `product:condition` its condition, `product:retailer_item_id` the retailer's id of it (its sku) and
-# `product:brand` its brand. The prices are the money rows (`_MONEY`). Only properties these define are read (owner,
-# Appendix A #48); others are left to learned configs.
+# `product:brand` its brand. The prices are the money rows (`_MONEY`). Only properties these define are read (owner);
+# others are left to learned configs.
 _TABLE = (
     _Row((_TITLE,), FieldType.TEXT, "name"),
     _Row(_IMAGES, FieldType.IMAGE_URL, "image"),
@@ -134,7 +134,7 @@ def price_currencies(page: ParsedPage) -> list[str]:
 
 def _metas(page: ParsedPage) -> list[_Meta]:
     """The OGP properties this collector reads, in document order. OGP writes properties in RDFa's `property`
-    attribute; the HTML Standard's `name` attribute is read the same way (the `meta:` locator, extraction spec)."""
+    attribute; the HTML Standard's `name` attribute is read the same way (the `meta:` locator)."""
     metas: list[_Meta] = []
     for node in page.tree.css("meta"):
         attributes = node.attributes
@@ -274,7 +274,7 @@ def _role(spec: FieldSpec) -> str | None:
     """The one property of its root type a `schema_org` path reads (`Offer.price+priceCurrency` gives `price`, and
     `Product.brand.name` `brand`: a final `.name` is the text standing in for the thing, `NAME`), the same in
     every alternative, or `None` when an alternative goes through another object (`Product.brand.image`) or the
-    alternatives name different properties (variants spec). A row-mapped field's path names rows, so it has no role."""
+    alternatives name different properties. A row-mapped field's path names rows, so it has no role."""
     if spec.schema_org is None or spec.row_mapped:
         return None
     roles = {_root_property(path) for path in parse_paths(spec.schema_org)}
@@ -331,7 +331,7 @@ def _sale_ended(metas: Sequence[_Meta], ctx: Context) -> bool:
 
 def _amount(metas: Sequence[_Meta], pair: tuple[str, str]) -> _Value | None:
     """The first amount of the pair with its first currency, in the money normalizer's structured form. A missing
-    currency is left out, never filled in here: the money rules take the page's (normalization spec)."""
+    currency is left out, never filled in here: the money rules take the page's."""
     amount, currency = pair
     amounts = [m.content for m in metas if m.property == amount]
     if not amounts:

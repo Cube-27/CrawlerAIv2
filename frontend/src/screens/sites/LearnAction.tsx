@@ -11,13 +11,13 @@ import { ProblemAlert } from "../../components/ProblemAlert";
 import { SchemaSelect } from "../../components/SchemaSelect";
 import { jobPath } from "../jobs/paths";
 
-/** "Learn now" for a site and schema (`POST /v1/sites/{host}/learn`, D-0592). The server refuses while a
+/** "Learn now" for a site and schema (`POST /v1/sites/{host}/learn`). The server refuses while a
  * config is active or a run is in flight (409); after a refusal, "Learn anyway" asks again with `force`. The screen
  * shows `learn.error`. */
 export function useLearn({ site, schemaId }: Readonly<{ site: string; schemaId: string }>) {
   const learn = useLearnSite(site);
   const navigate = useNavigate();
-  // The learning job this screen started, shown by `LearnRun` until the screen is left (D-0983).
+  // The learning job this screen started, shown by `LearnRun` until the screen is left.
   const [jobId, setJobId] = useState<string | null>(null);
   const start = (force: boolean) => {
     learn.mutate(
@@ -38,7 +38,7 @@ export function useLearn({ site, schemaId }: Readonly<{ site: string; schemaId: 
   return { learn, start, jobId };
 }
 
-/** The learning job started here: its status as it runs (its events read the job again, D-0702) and a link to its
+/** The learning job started here: its status as it runs (its events read the job again) and a link to its
  * page, so a run that fails says so where it was started. */
 export function LearnRun({ jobId }: Readonly<{ jobId: string }>) {
   const job = useJob(jobId);

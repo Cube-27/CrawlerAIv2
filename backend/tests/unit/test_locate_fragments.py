@@ -1,4 +1,4 @@
-"""Eager fragments in the locate run (learning-configs spec, "Locate run"; extraction spec, "Source documents"): a
+"""Eager fragments in the locate run: a
 value or a listing's rows that only an eager Turbo frame's answer holds are located as `http`, since the HTTP capture
 includes the frame's answer as the page shows it.
 

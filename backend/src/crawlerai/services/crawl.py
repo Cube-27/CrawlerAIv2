@@ -1,15 +1,15 @@
-"""The crawl service (jobs spec): a site's pages, found from a start URL and its
+"""The crawl service: a site's pages, found from a start URL and its
 sitemaps and followed through their links, as one job of kind `crawl`. Workers run its tasks
 (`crawlerai.worker.handlers.crawl`), which grow the frontier (`crawlerai.crawl.frontier`), and
 `GET /v1/jobs/{id}/results` returns what they made.
 
-Submitting checks the start URL and `webhook_url` with the SSRF guard (INV-16) and resolves the schema, then stores
+Submitting checks the start URL and `webhook_url` with the SSRF guard and resolves the schema, then stores
 the job and its first task, the start URL at depth 0, in one transaction. A records crawl pins what its pages run
-with as a batch does (INV-28, `JobPins`), the active config of the start URL's site included.
+with as a batch does (`JobPins`), the active config of the start URL's site included.
 
 A task whose URL matches a page-kind rule is extracted with that page kind; one no rule matches is crawled for its
-links only (`links_only`, §13.2), unless the crawl has no rules, when every page has the formats asked. Crawl URLs
-are crawl-discovered: a page whose required fields don't all publish ends `no_match`, without a record (§10, §23).
+links only (`links_only`), unless the crawl has no rules, when every page has the formats asked. Crawl URLs
+are crawl-discovered: a page whose required fields don't all publish ends `no_match`, without a record.
 """
 
 from typing import Any, Self
@@ -53,15 +53,17 @@ from crawlerai.services.webhook_options import WebhookOptions
 
 
 class CrawlRequest(WebhookOptions):
-    """The body of `POST /v1/crawl` (§4.5). The formats, `schema`, `fetch` and `locale` are a batch's (§4.3), for every
-    page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted
-    while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does
-    (D-1286). `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which
-    pages are extracted. The webhook options are `WebhookOptions` (§4.2).
+    """The body of `POST /v1/crawl`. The formats, `schema`, `fetch` and `locale` are a batch's, for every
+        page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is
+        drafted
+        while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap
+        does.
+    `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which
+        pages are extracted. The webhook options are `WebhookOptions`.
 
-    `strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the
-    links that best match `query` and `keywords` first (`crawl.scoring`). `allow_subdomains`
-    keeps the start host's subdomains without an `include`, and `allow_external` any host (D-1440, D-1441)."""
+        `strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the
+        links that best match `query` and `keywords` first (`crawl.scoring`). `allow_subdomains`
+        keeps the start host's subdomains without an `include`, and `allow_external` any host."""
 
     url: str
     include: Patterns = Field(default_factory=list)
@@ -87,7 +89,7 @@ class CrawlRequest(WebhookOptions):
     @model_validator(mode="before")
     @classmethod
     def _max_pages_is_limit(cls, data: Any) -> Any:
-        """`max_pages` is accepted as `limit` (jobs spec, "Crawl strategy and best-first scoring"); a before-validator,
+        """`max_pages` is accepted as `limit`; a before-validator,
         so the OpenAPI schema and the clients generated from it name `limit` only, and the schema does not advertise the
         alias."""
         if isinstance(data, dict) and "max_pages" in data:
@@ -131,7 +133,7 @@ class CrawlRequest(WebhookOptions):
 
     def frontier(self, located: str | None = None) -> Frontier:
         """The crawl's frontier, on the host of `located`, where the start page is after the site's own redirects to a
-        host of the same site (RFC 9110 §15.4; D-0991), else on the start URL's."""
+        host of the same site (RFC 9110 §15.4), else on the start URL's."""
         host = urlsplit(located or self.start).hostname or ""
         scope = Scope(host, tuple(self.include), tuple(self.exclude), self.allow_subdomains, self.allow_external)
         wanted = query_terms(self.query, self.keywords)
@@ -160,10 +162,10 @@ async def submit_crawl(
     placement: Placement = OWN_TRANSACTION,
 ) -> CrawlSubmitted:
     """Store `request` as a queued job with the start URL's task, where `placement` says; `api_key_id`, the key that
-    submitted it, signs its webhook (§4.2); `egresses`, the configured pools, one of which `fetch.proxy_pool` must name
-    (D-1434), and the countries they go out from. The job's egress is its pool's (`job_egress`). Raises, storing
-    nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a refused target, `RecordsUnavailable` for
-    `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use."""
+        submitted it, signs its webhook; `egresses`, the configured pools, one of which `fetch.proxy_pool` must name,
+    and the countries they go out from. The job's egress is its pool's (`job_egress`). Raises, storing
+        nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a refused target, `RecordsUnavailable` for
+        `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use."""
     if egresses is not None:
         check_proxy_pool(request.fetch, egresses.pools)
     await check_targets(connector, [("url", request.url)], webhook_url=request.webhook_url)

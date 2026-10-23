@@ -5,7 +5,7 @@ import type { ScrapeResponse } from "../../../api/scrape";
 import { stubApi } from "../../../test/api";
 import { closeOptions, openOptions, openPlayground, pick, posted } from "../../../test/playground";
 
-// Scrape's browser actions options (owner #52): a listing's only, mapped to `browser_actions`.
+// Scrape's browser actions options: a listing's only, mapped to `browser_actions`.
 
 const response: ScrapeResponse = {
   job_id: "0192a000-0000-7000-8000-0000000000j1",

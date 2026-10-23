@@ -1,5 +1,4 @@
-"""Politeness (acquisition spec): the request interval, Retry-After, per-host admission and its adaptive spacing
-(D-1327)."""
+"""Politeness: the request interval, Retry-After, per-host admission and its adaptive spacing."""
 
 import asyncio
 from collections.abc import Coroutine
@@ -104,7 +103,7 @@ def test_a_wait_after_a_pause_the_site_asked_for_goes_no_sooner_and_holds_the_ho
     assert _run(limiter.admit("a.example.test", timedelta(seconds=1))) == timedelta(seconds=1)
 
 
-# --- adaptive spacing (D-1327) -----------------------------------------------------------------------------------
+# --- adaptive spacing -----------------------------------------------------------------------------------
 
 _HOST = "a.example.test"
 _SECOND = timedelta(seconds=1)

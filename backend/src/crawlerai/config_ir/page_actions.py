@@ -1,8 +1,8 @@
-"""Page actions as a caller writes them (D-1436): the one vocabulary of browser steps a request names, translated into
+"""Page actions as a caller writes them: the one vocabulary of browser steps a request names, translated into
 the steps the browser rung runs (`acquire.types.PageStep`).
 
 A step is an object with a `type` (`wait`, `click`, `scroll`, `press`, `type`) and its parameters. An element is named
-as an IR step names one (learning-configs spec): a CSS `selector`, carried as its XPath 1.0 translation exactly as a
+as an IR step names one: a CSS `selector`, carried as its XPath 1.0 translation exactly as a
 `css` step is (`model.CssStep`), or an `xpath` checked as XPath 1.0; a click may name the element by its visible `text`
 instead. A request holds at most `MAX_ACTIONS` steps, each ending within its `timeout_ms`. `wait_for` is a wait step
 written short: milliseconds, `network_idle`, or a CSS selector.
@@ -28,7 +28,7 @@ __all__ = [
 ]
 
 MAX_ACTIONS: Final = 20
-# D-1437: a step's own timeout, and the longest one; a wait of milliseconds lasts at most as long.
+# A step's own timeout, and the longest one; a wait of milliseconds lasts at most as long.
 _DEFAULT_TIMEOUT_MS: Final = 5_000
 _MAX_TIMEOUT_MS: Final = 15_000
 NETWORK_IDLE: Final = "network_idle"
@@ -116,7 +116,7 @@ class PressAction(_Action):
 
 
 class TypeAction(_Targeted):
-    """Type `text` into an element; refused in the browser for a password or credential field (D-1438)."""
+    """Type `text` into an element; refused in the browser for a password or credential field."""
 
     type: Literal["type"] = "type"
     text: Annotated[str, StringConstraints(max_length=1_000)]

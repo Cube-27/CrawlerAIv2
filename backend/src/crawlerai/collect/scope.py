@@ -1,4 +1,4 @@
-"""Another item's scope (resolution spec, "Candidate score": scope match): the structured-data entities that belong to
+"""Another item's scope ("Candidate score": scope match): the structured-data entities that belong to
 another thing than the product a page is about, whatever page it is.
 
 A thing that is the value of a relation property of another (schema.org `isRelatedTo`, `isSimilarTo`) is another thing

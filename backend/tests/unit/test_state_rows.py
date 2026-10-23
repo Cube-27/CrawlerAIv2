@@ -1,4 +1,4 @@
-"""Rows from the page's state JSON (listings spec, "Rows from page state"): an array of objects whose values the page
+"""Rows from the page's state JSON: an array of objects whose values the page
 renders gives a listing's rows when no other source does, each value grounded in the page's text or links. Pages are
 synthetic (RFC 2606 names)."""
 

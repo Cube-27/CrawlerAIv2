@@ -1,4 +1,4 @@
-"""A process's browser session (acquisition spec, INV-31): one per process, launched when a render first needs it and
+"""A process's browser session: one per process, launched when a render first needs it and
 shared by the renders after it, the page rung's and the listing rung's alike, at most `BROWSER_CONTEXTS` of them at
 once (each renders in a site profile of its own, `acquire.browser_session`).
 

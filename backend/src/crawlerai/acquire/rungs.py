@@ -1,20 +1,20 @@
-"""Rung selection (acquisition spec): HTTP by default, the browser on a block, and what the site's memory says
+"""Rung selection: HTTP by default, the browser on a block, and what the site's memory says
 (`acquire.memory`): the rung its pages of the kind start with. The fetch plan of the page's field sources
-(`FetchPlan`, acquisition spec "Fetch plan") starts it in the browser when a located field source is the browser's
+(`FetchPlan`) starts it in the browser when a located field source is the browser's
 render (or the surface renders every page), and adds the companion calls of its `call` sources to an HTTP page. An
 HTTP detail page of a platform that documents its product JSON is joined with that JSON, always (`_joined`).
 
 A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) first, and to the page rungs when the
-adapter does not serve it (adapters spec). A fetched page a page-scoped adapter detects (a storefront collection), at
+adapter does not serve it. A fetched page a page-scoped adapter detects (a storefront collection), at
 its final URL when a redirect kept it on its site, is joined with that adapter's answer for the rows the page lists, a
-data call marked `ADAPTER_CALL` (adapters spec). A fetched page whose own canonical link is its URL without the query,
+data call marked `ADAPTER_CALL`. A fetched page whose own canonical link is its URL without the query,
 which an adapter detects, or which an adapter says stands for one of its platform's pages, is then served by that
-adapter (adapters spec); an HTTP shell that would be rendered for lacking content asks it before the render. A
-site whose active config has an API recipe is served by the recipe's rung (adapters spec), which the caller binds to
+adapter; an HTTP shell that would be rendered for lacking content asks it before the render. A
+site whose active config has an API recipe is served by the recipe's rung, which the caller binds to
 the recipe: the config IR sits above `acquire` (`.importlinter`). The browser rung is
 `crawlerai.acquire.browser.fetch_browser`. Every rung is a function of (url, policy), so `acquire` decides and records
 only. The one exception is the browser rung's exporting form, which also hands the context's cookies to a site session
-(`acquire.session`, INV-29's exception).
+(`acquire.session`).
 """
 
 import asyncio
@@ -56,7 +56,7 @@ FramePlan = Callable[[str, str], Sequence[tuple[str, str]]]
 
 # A fetch so far: the outcome kept, every attempt and their duration.
 Fetched = tuple[FetchResult, tuple[AttemptRecord, ...], int]
-# A companion call of a located `call` field source (acquisition spec, "Data calls"): the request its recipe makes for
+# A companion call of a located `call` field source: the request its recipe makes for
 # the kept HTTP page, bound from the page's URL and documents and the policy's request context; None when it binds
 # nothing there (the field falls back to the generic path on that page). The config IR builds it: it sits above
 # `acquire` (`.importlinter`).
@@ -67,7 +67,7 @@ LOCATED_CALL: Final = "located"
 
 @dataclass(frozen=True)
 class FetchPlan:
-    """What the page's field sources need fetched (acquisition spec, "Fetch plan"), from the site's active config
+    """What the page's field sources need fetched, from the site's active config
     alone: the browser for a located `browser` field source (or a surface whose `render_mode` is `always`), the
     companion calls of its `call` sources, and their endpoints, which the browser's ready wait names."""
 
@@ -92,11 +92,11 @@ BROWSER_MIN_S: Final = 20.0
 _UNAVAILABLE = 503  # RFC 9110 §15.6.4
 _TOO_MANY = 429  # RFC 6585 §4
 # The HTTP outcomes the browser may pass where HTTP did not: a block, and a shell (a challenge's, or a script-only
-# document's, rendered once per page; acquisition spec, "Browser on block or by field source", owner #72).
+# document's, rendered once per page).
 _BROWSER_EVIDENCE: frozenset[BlockClass] = frozenset({"shell", "blocked"})
-# acquisition spec: the reason of a request a transport failure left unanswered (`curl_client.reason`), such as a reset
+# The reason of a request a transport failure left unanswered (`curl_client.reason`), such as a reset
 # HTTP/2 stream (curl 92) or connection. A filter may reset a client whose TLS or HTTP/2 fingerprint it does not trust;
-# the browser's own network stack may pass (D-1472). A timeout (`policy.timeout_s`) counts too: a filter may hold a
+# the browser's own network stack may pass. A timeout (`policy.timeout_s`) counts too: a filter may hold a
 # client it does not trust unanswered, and the same transport again would wait as long.
 _UNANSWERED: Final = ("network_error", "timeout")
 # Turbo handbook (Frames): a frame's request asks for HTML and names the frame, so the server may answer it alone.
@@ -109,13 +109,13 @@ class Rungs:
     http: Rung
     browser: Rung
     adapters: Registry = field(default_factory=lambda: Registry(()))
-    # JSON over HTTP (`acquire.api.fetch_json`), which an active config's API recipe sends its request with
-    # (adapters spec); without it no recipe serves a page.
+    # JSON over HTTP (`acquire.api.fetch_json`), which an active config's API recipe sends its request with;
+    # without it no recipe serves a page.
     json: JsonFetcher | None = None
-    # A listing with browser actions (`acquire.browser_tab.fetch_listing`, owner #52); the API process sets it.
+    # A listing with browser actions (`acquire.browser_tab.fetch_listing`); the API process sets it.
     listing: ListingRung | None = None
     # The site sessions of this process, which the HTTP and JSON rungs were bound to, and the browser rung's exporting
-    # form that opens them; without both a browser retry opens none (INV-29 without its exception).
+    # form that opens them; without both a browser retry opens none.
     sessions: SiteSessions | None = None
     exporting: ExportingRung | None = None
     # The eager fragments of an HTTP page, each fetched as a companion call (`_with_frames`); without it none is.
@@ -123,7 +123,7 @@ class Rungs:
 
 
 def adapter_registry(disabled: Collection[str]) -> Registry:
-    """The registry of every platform adapter, all running but the `disabled` ones (adapters spec), for the processes
+    """The registry of every platform adapter, all running but the `disabled` ones, for the processes
     that fetch; it raises `ValueError` for a name no adapter has. One per process: it remembers the hosts its adapters
     declined."""
     adapters = platform_adapters()
@@ -146,28 +146,35 @@ async def acquire(
     plan: FetchPlan = NO_PLAN,
 ) -> FetchResult:
     """Fetch `url` through the active adapter that detects it, if any, requesting its API with `send` (no adapter runs
-    without it); a page an adapter does not serve skips the recipe (adapters spec). Otherwise through `recipe`, the
-    active config's API recipe bound to its fetch (adapters spec), when the site has one. The adapter's result is kept
-    when it is `ok`, the recipe's when it is `ok` or asks for fewer requests; otherwise the page is fetched as if there
-    were neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else in the browser when the
-    `plan` says so, or else the method the site's memory says (`remembered`). In `auto`, an HTTP block, shell or network
-    error is fetched again in the browser, and the browser's outcome is kept only if it is `ok` (or a shell no challenge
-    names: the last rung's page, `_as_last_page`); an HTTP `ok` page never is (acquisition spec, "Browser on block or
-    by field source"). Each request after the first (the page after an
-    adapter or a recipe, the browser retry, the companion call) waits for `admit_next` to admit it at the site's rate
-    (acquisition spec), and is not sent when `admit_next` refuses it: the fetch keeps the outcome it has. The result
-    lists every attempt, in its bundle's manifest too. A page no adapter detected whose canonical link is its URL
-    without the query, which an adapter detects, is fetched again by that adapter on its own turn (adapters spec). An
-    HTTP `ok` detail page kept is joined with its platform's documented product JSON (`_joined`, sent with `send`), and
-    any kept HTTP `ok` page with the answers of its eager fragments on its own site (`_with_frames`), and with the
-    answers of the `plan`'s companion calls (`_with_calls`, sent with `send`). A policy that captures the page
-    (`screenshot`, `pdf`) uses neither an adapter, a recipe nor a companion call. No browser retry starts with less than
-    `BROWSER_MIN_S` left before `deadline` (on `time.monotonic`), the task's budget: the HTTP outcome is kept."""
+        without it); a page an adapter does not serve skips the recipe. Otherwise through `recipe`, the
+        active config's API recipe bound to its fetch, when the site has one. The adapter's result is kept
+        when it is `ok`, the recipe's when it is `ok` or asks for fewer requests; otherwise the page is fetched as if
+        there
+        were neither. Without either, fetch it with `policy.method_hint`, or else in the browser when the
+        `plan` says so, or else the method the site's memory says (`remembered`). In `auto`, an HTTP block, shell or
+        network
+        error is fetched again in the browser, and the browser's outcome is kept only if it is `ok` (or a shell no
+        challenge
+        names: the last rung's page, `_as_last_page`); an HTTP `ok` page never is. Each request after the first (the
+        page
+        after an
+        adapter or a recipe, the browser retry, the companion call) waits for `admit_next` to admit it at the site's
+        rate,
+    and is not sent when `admit_next` refuses it: the fetch keeps the outcome it has. The result
+        lists every attempt, in its bundle's manifest too. A page no adapter detected whose canonical link is its URL
+        without the query, which an adapter detects, is fetched again by that adapter on its own turn. An
+        HTTP `ok` detail page kept is joined with its platform's documented product JSON (`_joined`, sent with `send`),
+        and
+        any kept HTTP `ok` page with the answers of its eager fragments on its own site (`_with_frames`), and with the
+        answers of the `plan`'s companion calls (`_with_calls`, sent with `send`). A policy that captures the page
+        (`screenshot`, `pdf`) uses neither an adapter, a recipe nor a companion call. No browser retry starts with less
+        than
+        `BROWSER_MIN_S` left before `deadline` (on `time.monotonic`), the task's budget: the HTTP outcome is kept."""
     if policy.captures_page:
         send = recipe = None  # a screenshot or PDF is of the page itself, which an adapter's or a recipe's JSON is not
     served = None if send is None else await rungs.adapters.serve(url, policy, send)
     # An adapter's endpoint is not the page: its slow-down holds back the page only by the pause it put on the host's
-    # rate, which `admit_next` waits out (adapters spec). A recipe's may be the page's own (its HTML page request).
+    # rate, which `admit_next` waits out. A recipe's may be the page's own (its HTML page request).
     by_recipe = served is None and recipe is not None
     if served is None and recipe is not None:
         served = await recipe(url, policy)
@@ -176,8 +183,8 @@ async def acquire(
     ):
         return served
     ready, planned = _planned(policy, remembered, plan)
-    # A page no adapter detected (none answered, or only the recipe did) may name a URL one does (adapters spec,
-    # "Referral from a tenant's own host"): asked before a render for lacking content (`_page`), and of the kept page.
+    # A page no adapter detected (none answered, or only the recipe did) may name a URL one does: asked before a render
+    # for lacking content (`_page`), and of the kept page.
     refer = (
         None if send is None or not (served is None or by_recipe) else _Referral(url, policy, rungs, send, admit_next)
     )
@@ -194,7 +201,7 @@ async def acquire(
 
 @dataclass
 class _Referral:
-    """The adapter answers a fetched page asks for (adapters spec), each URL once per fetch (`asked`): the page asks
+    """The adapter answers a fetched page asks for, each URL once per fetch (`asked`): the page asks
     before its render for lacking content (`_page`) and again once kept, and the second ask of one URL would take a
     turn at the site's rate for an answer already had."""
 
@@ -231,7 +238,7 @@ class _Referral:
 
 def _referable(page: FetchResult) -> bool:
     """Whether the page states what it stands for: an `ok` page, or a `shell` no challenge names (a script-only
-    document, acquisition spec): its redirect, canonical link and `og:url` are the server's own, though it lacks the
+    document): its redirect, canonical link and `og:url` are the server's own, though it lacks the
     content. A challenge's document and a refusal state nothing of the page."""
     return page.block_class == "ok" or (page.block_class == "shell" and page.attempts[-1].challenge is None)
 
@@ -264,7 +271,7 @@ def _query_dropped(url: str, page: FetchResult, adapters: Registry) -> str | Non
 
 def _referred(page: FetchResult, policy: FetchPolicy, adapters: Registry) -> str | None:
     """The platform page an active adapter says the fetched page stands for, from what the page states (its redirect,
-    canonical link, `og:url`, links; adapters spec): a site on a tenant's own host that the platform serves."""
+    canonical link, `og:url`, links): a site on a tenant's own host that the platform serves."""
     if not _referable(page):
         return None
     return adapters.referred(lambda: page_refs(page), policy.page_kind, policy.target_types)
@@ -272,7 +279,7 @@ def _referred(page: FetchResult, policy: FetchPolicy, adapters: Registry) -> str
 
 def _same_resource(a: str, b: str) -> bool:
     """Equal scheme, host (both case-insensitive, RFC 3986 §6.2.2.1), port, path and query; the fragment names a part
-    of the resource, not another one (§3.5)."""
+    of the resource, not another one."""
     x, y = urlsplit(a), urlsplit(b)
     return (x.scheme.lower(), x.hostname, x.port, x.path, x.query) == (
         y.scheme.lower(),
@@ -301,7 +308,7 @@ async def _page(url: str, policy: FetchPolicy, remembered: Remembered, rungs: Ru
     page kept for want of a browser outcome, and the browser's page, are the fetch's last page (`_as_last_page`); an
     HTTP page kept after the browser's attempt failed is not the last rung's. An HTTP shell the browser
     would retry for lacking content (`_referable`) asks its referral first (`retry.refer`), and an `ok` answer is kept
-    without the render (adapters spec, "Referral from a tenant's own host")."""
+    without the render."""
     method = remembered.method if policy.method_hint == "auto" else policy.method_hint
     if method == "http":
         result = await rungs.http(url, policy)
@@ -340,7 +347,7 @@ async def _kept(result: FetchResult, rendered: FetchResult, policy: FetchPolicy)
 
 async def _joined(policy: FetchPolicy, page: Fetched, admit_next: Admit | None, send: JsonFetcher | None) -> Fetched:
     """The kept HTTP `ok` page fetched as a detail page, joined with the product JSON its platform documents
-    (`adapters.platforms`), always (acquisition spec, "Data calls", owner #73), when the answer states the page's
+    (`adapters.platforms`), always, when the answer states the page's
     product (`acquire.identity`). The call waits for the site's rate (`admit_next`) and its attempt is added; without a
     call, or one not admitted, the page as it is."""
     result, attempts, duration_ms = page
@@ -360,7 +367,7 @@ async def _joined(policy: FetchPolicy, page: Fetched, admit_next: Admit | None, 
 
 def _planned(policy: FetchPolicy, remembered: Remembered, plan: FetchPlan) -> tuple[FetchPolicy, Remembered]:
     """The policy and memory the page is fetched with under `plan`: the browser first when a field source needs it, and
-    a ready wait that names the endpoints of the plan's calls (acquisition spec, "Ready condition")."""
+    a ready wait that names the endpoints of the plan's calls."""
     ready = policy.model_copy(update={"ready_calls": plan.endpoints}) if plan.endpoints else policy
     return ready, Remembered("browser") if plan.browser else remembered
 
@@ -424,10 +431,10 @@ def _documented(result: FetchResult) -> ProductJson | None:
 
 async def _browser_retry(url: str, policy: FetchPolicy, rungs: Rungs, result: FetchResult) -> FetchResult:
     """The browser attempt after the HTTP `result`. When HTTP was refused (`shell` or `blocked`) and the process keeps
-    site sessions, the browser's `ok` opens the site's session with the context's cookies (INV-29's exception), and
+    site sessions, the browser's `ok` opens the site's session with the context's cookies, and
     its attempt says so (`site_session`)."""
     sessions, exporting = rungs.sessions, rungs.exporting
-    # A fetch with the caller's own context opens no session (D-1432): its cookies are the caller's, not the site's.
+    # A fetch with the caller's own context opens no session: its cookies are the caller's, not the site's.
     handoff = policy.context is None and result.block_class in _BROWSER_EVIDENCE
     if sessions is None or exporting is None or not handoff:
         return await rungs.browser(url, policy)
@@ -441,7 +448,7 @@ async def _browser_retry(url: str, policy: FetchPolicy, rungs: Rungs, result: Fe
 
 async def _browser_may_help(result: FetchResult) -> bool:
     """Whether the HTTP outcome is one the browser retries: a block, a shell, an unanswered request, a 429, or a 503
-    interstitial (acquisition spec, "Browser on block or by field source")."""
+    interstitial."""
     return _browser_may_pass(result) or _too_many_requests(result) or await _interstitial_unavailable(result)
 
 
@@ -454,7 +461,7 @@ def _too_many_requests(result: FetchResult) -> bool:
 
 
 async def _interstitial_unavailable(result: FetchResult) -> bool:
-    """D-1263: a 503 (RFC 9110 §15.6.4) whose document stands in for the page until its script or refresh navigates
+    """A 503 (RFC 9110 §15.6.4) whose document stands in for the page until its script or refresh navigates
     on (`classify.interstitial`): the browser may pass it, once the site's pause is over (`_paused_by`)."""
     manifest = result.bundle.manifest
     if manifest.status_code != _UNAVAILABLE or manifest.method != "http":
@@ -475,10 +482,10 @@ def _paused_by(result: FetchResult) -> timedelta:
 
 
 async def _as_last_page(result: FetchResult, policy: FetchPolicy, *, last: bool) -> FetchResult:
-    """D-1261: a page kept for want of an `ok` outcome is extracted whatever its links, as the browser's is
+    """A page kept for want of an `ok` outcome is extracted whatever its links, as the browser's is
     (`browser.classified`). When it is the `last` rung's page (the browser's, or HTTP's when no browser attempt is
     made), a `shell` no challenge names (`_referable`: a 2xx document with no vendor's signature on its attempt) is
-    `ok`: owner decision 2026-10-23, the server gave the page and it shows what it shows (a page announcing a launch, a
+    `ok`: the server gave the page and it shows what it shows (a page announcing a launch, a
     parked domain), so its text is published as it is. Any other HTTP shell kept is `ok` when it is a shell by the
     listing rule alone (a page with site structure but no repeated items, `classify`), by the content rule alone (a page
     whose text a script carries, read for content formats) or by the detail rule alone (a page whose structured data

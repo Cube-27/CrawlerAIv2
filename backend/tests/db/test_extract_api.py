@@ -1,4 +1,4 @@
-"""`POST /v1/extract` over HTTP (jobs spec): what a client sends and gets back. What an extract job does is the
+"""`POST /v1/extract` over HTTP: what a client sends and gets back. What an extract job does is the
 service's and the worker's (`test_extract.py`)."""
 
 import json
@@ -100,7 +100,7 @@ async def test_a_url_whose_host_does_not_resolve_is_queued_and_no_sample_of_the_
     client: httpx.AsyncClient, engine: AsyncEngine, web: Web, own_origin: str, prompt: str
 ) -> None:
     urls = [f"https://{UNRESOLVED_HOST}/p/2", f"{own_origin}/p/1"]
-    # The rungs stand in for the guard: the fetch of the sample at the host records its refusal (acquisition spec).
+    # The rungs stand in for the guard: the fetch of the sample at the host records its refusal.
     web.pages[urls[0]] = Page(0, b"", "error", "ssrf_rejected: dns")
 
     response = await _post(client, urls, {"prompt": prompt})

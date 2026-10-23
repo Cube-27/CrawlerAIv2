@@ -3,7 +3,7 @@ import { Magnifier } from "@gravity-ui/icons";
 import { useState } from "react";
 
 /** One field and its button on a single row, to open something by its key (a job id, a site host). The submitted
- * value is trimmed; the button is off until there is one (D-0977), so the field needs no required mark. */
+ * value is trimmed; the button is off until there is one, so the field needs no required mark. */
 export function LookupForm({
   label,
   placeholder,

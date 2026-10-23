@@ -2,12 +2,12 @@ import { Card } from "@heroui/react";
 import { use, type ReactNode } from "react";
 import { ReadOnlyContext } from "./readOnly";
 
-/** The command bar (frontend spec): one bordered surface with the mode's input on top and the toolbar under it: the
+/** The command bar: one bordered surface with the mode's input on top and the toolbar under it: the
  * Options button and the tools on the left, the primary action on the right. The input sits in a box of at least
  * `min-h-playground-input`, which holds a URL and its error, so switching between the single-URL modes or showing an
- * error moves neither the toolbar nor the action; Batch's ten-line list is taller (D-1213). At phone width the action
+ * error moves neither the toolbar nor the action; Batch's ten-line list is taller. At phone width the action
  * row comes first under the input, so tools that wrap to more lines in one mode than another (Map has Options alone)
- * never move it (D-1216). A read-only bar disables its input and tools (a disabled fieldset, HTML §4.10.15); Options
+ * never move it. A read-only bar disables its input and tools (a disabled fieldset, HTML §4.10.15); Options
  * and the action stay usable. */
 export function CommandBar({
   input,

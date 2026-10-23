@@ -1,4 +1,4 @@
-"""Evidence buckets, calibration and the minimum confidence (resolution spec, INV-22): a chosen value's bucket, its
+"""Evidence buckets, calibration and the minimum confidence: a chosen value's bucket, its
 dev-measured confidence, the `calibrated` flag, and abstention below a request's minimum confidence; on generated
 candidates, `agreed` requires two independent candidates of different source kinds, and a calibrated bucket below
 a request's minimum confidence never publishes."""
@@ -154,7 +154,7 @@ candidates = st.lists(st.tuples(st.sampled_from(KINDS), st.booleans(), st.boolea
 @given(candidates)
 def test_agreed_means_two_independent_kinds(supporting: list[Candidate]) -> None:
     chosen, *agreeing = supporting
-    # A fallback is no agreement (resolution spec, "Candidate score").
+    # A fallback is no agreement.
     independent_kinds = {c.source_kind for c in supporting if c.independent and not c.fallback}
 
     agreed = evidence_of(chosen, tuple(agreeing), corroborated=False) == "agreed"

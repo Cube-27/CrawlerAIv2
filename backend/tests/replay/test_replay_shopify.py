@@ -1,4 +1,4 @@
-"""Storefront API answers replayed through `extract_page` (adapters spec): a collection page's answer publishes one
+"""Storefront API answers replayed through `extract_page`: a collection page's answer publishes one
 row per product, with a price only where its range is one price.
 
 The answers are synthetic, written to the documented shapes (`example.test` hosts, invented products, C3, C9).
@@ -215,7 +215,7 @@ def _jsonld(node: Mapping[str, object]) -> str:
 
 
 def test_the_shown_variants_identifiers_yield_to_those_the_page_states_for_the_product() -> None:
-    # Variant fill (variants spec): the answer states its sku and barcode on the variants only; the product's own
+    # Variant fill: the answer states its sku and barcode on the variants only; the product's own
     # sku and gtin, as the page states them, publish, and the shown variant's are no rivals of them. They still name
     # the variant the page shows, whose price is the item's.
     variants = [_variant(0, 1000, available=True), {**_variant(1, 1200, available=True), "barcode": "4006381333931"}]
@@ -229,7 +229,7 @@ def test_the_shown_variants_identifiers_yield_to_those_the_page_states_for_the_p
 
 
 def test_a_product_answer_is_the_page_groups_item_not_the_shown_variant() -> None:
-    # Identity (resolution spec): the answer states the product with every variant; sharing the shown variant's sku
+    # Identity: the answer states the product with every variant; sharing the shown variant's sku
     # with one `hasVariant` member does not make it that member, so the page's variants stay two rows.
     variants = [_variant(0, 1000, available=True), _variant(1, 1000, available=True)]
     offers = [{"@type": "Offer", "url": f"{SHOP}/products/widget?variant={100 + n}"} for n in range(2)]

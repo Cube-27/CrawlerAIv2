@@ -1,16 +1,16 @@
-"""Record exporters (learning-configs spec): a page of records as `json_records`, `csv_records`, `markdown`
-or `jsonl` (JSON Lines: one row as a JSON object per line), for `GET /v1/jobs/{id}/results?format=` (jobs spec wires the
+"""Record exporters: a page of records as `json_records`, `csv_records`, `markdown`
+or `jsonl` (JSON Lines: one row as a JSON object per line), for `GET /v1/jobs/{id}/results?format=` (the API wires the
 endpoint). The binary formats, `xlsx` and `parquet`, read the same table (`files`).
 
 The formats share one table (`table`): a column per schema field, holding the published value or nothing, then a
 `_status_<field>` column per field. Columns are in field-name order, so they depend on the schema alone and not on
 the order its fields were declared or stored in (JSONB does not keep key order). Schema names start with a
 lowercase letter (`NAME_PATTERN`), so a status column never collides with a field. A job's export adds its records'
-delta (jobs spec, "Page delta"): `_delta` (`new`, `changed`, `same`) and `_previous`, the previous published value of
+delta: `_delta` (`new`, `changed`, `same`) and `_previous`, the previous published value of
 each changed field by name. Values are serialized as
-published and never fixed (INV-27); a `csv_safe` CSV (D-0879) only marks formula-like cells for spreadsheets.
+published and never fixed; a `csv_safe` CSV only marks formula-like cells for spreadsheets.
 
-A clean record (`json_values`, frontend spec) is a record's published values alone, with no status: the schema's
+A clean record (`json_values`) is a record's published values alone, with no status: the schema's
 published fields in name order, an unpublished one left out. A money value is written flat: the field holds its amount
 and a sibling `currency` (for a field named `price`) or `<field>_currency` its ISO 4217 code, the first key that names
 no schema field (when both do, the money value is written whole); objects nested in the
@@ -53,7 +53,7 @@ def export_records(
     deltas: Sequence[Delta | None] | None = None,
 ) -> str:
     """`records`, all of `schema`, in `fmt`, with each record's delta when `deltas` is given (`table`). A record whose
-    fields are not the schema's is refused (`ValueError`). `csv_safe` (`csv_records` only, D-0879): a cell a
+    fields are not the schema's is refused (`ValueError`). `csv_safe` (`csv_records` only): a cell a
     spreadsheet would read as a formula starts with `'`."""
     columns, rows = table(schema, records, deltas)
     if fmt == "json_records":

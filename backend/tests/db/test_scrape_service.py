@@ -1,4 +1,4 @@
-"""The scrape service without HTTP (rest-api spec): one URL fetched at once, its content formats, and the job,
+"""The scrape service without HTTP: one URL fetched at once, its content formats, and the job,
 task, capture and usage rows it leaves."""
 
 from collections.abc import Callable

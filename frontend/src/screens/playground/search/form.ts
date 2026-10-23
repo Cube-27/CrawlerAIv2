@@ -3,7 +3,7 @@ import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import { NO_ERRORS, optionalNumber, requestFormats, schemaPageKindErrors } from "../pageRequest";
 
-/** Search's options panel (D-1442): `limit`, and whether the results are scraped by a batch job (`scrape`), with the
+/** Search's options panel: `limit`, and whether the results are scraped by a batch job (`scrape`), with the
  * Metadata in JSON view option. An empty limit (NaN) is left out, so the server's default applies. */
 export interface SearchOptions {
   limit: number;

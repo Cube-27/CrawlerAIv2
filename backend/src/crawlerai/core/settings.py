@@ -17,7 +17,7 @@ from crawlerai.core.proxy import ExitPlace, ProxyPool
 OBJECT_STORE_URL_PATTERN = r"^(fs:///.+|s3://[^/]+(/.*)?)$"
 ObjectStoreUrl = Annotated[str, Field(pattern=OBJECT_STORE_URL_PATTERN)]
 
-# The newest Chrome profile curl_cffi supports at lock time (acquisition spec).
+# The newest Chrome profile curl_cffi supports at lock time.
 IMPERSONATE_DEFAULT: BrowserTypeLiteral = "chrome150"
 
 
@@ -56,7 +56,7 @@ class AcquireSettings(_Base):
     egress_country: Annotated[str, Field(pattern=r"^[A-Z]{2}$")] | None = None
     egress_timezone: str | None = None
     egress_locale: str | None = None
-    # `CRAWLERAI_DISABLED_ADAPTERS`, comma-separated: the platform adapters that do not run (adapters spec). Every
+    # `CRAWLERAI_DISABLED_ADAPTERS`, comma-separated: the platform adapters that do not run. Every
     # registered adapter runs unless named here (owner, 2026-10-16).
     disabled_adapters: Annotated[tuple[str, ...], NoDecode, BeforeValidator(_comma_separated)] = ()
     # `CRAWLERAI_BROWSER_PROFILES`: the directory the browser rung keeps its site profiles in, across jobs and processes
@@ -71,29 +71,29 @@ class AcquireSettings(_Base):
 
 
 class ApiSettings(_Base):
-    """What the app factory reads: how to admit requests (rest-api spec)."""
+    """What the app factory reads: how to admit requests."""
 
-    # JSON list of the proxies whose `Forwarded`/`X-Forwarded-For` name the client (RFC 7239 §8.1, INV-32).
+    # JSON list of the proxies whose `Forwarded`/`X-Forwarded-For` name the client (RFC 7239 §8.1).
     trusted_proxies: tuple[IPvAnyNetwork, ...] = ()
-    # The per-key token bucket in front of authentication (D-0027).
+    # The per-key token bucket in front of authentication.
     api_rate_per_s: PositiveFloat = 20
     api_rate_burst: PositiveInt = 40
 
 
 class SearchSettings(_Base):
-    """The web search provider (`POST /v1/search`, D-1442): a SearXNG instance's base URL, or a URL template with
+    """The web search provider (`POST /v1/search`): a SearXNG instance's base URL, or a URL template with
     `{query}` and `{limit}` for any endpoint that answers JSON or HTML. With neither, search answers 503."""
 
     search_searxng_url: str | None = None
     search_url_template: str | None = None
     # `CRAWLERAI_SEARCH_FIELDS`, JSON `{"url": member, "title": member, "snippet": member}`: which members of the
-    # template provider's JSON results hold each part, when reading them by their shape gets one wrong (D-1443).
+    # template provider's JSON results hold each part, when reading them by their shape gets one wrong.
     search_fields: dict[str, str] = Field(default_factory=dict)
     search_timeout_s: PositiveFloat = 15
 
 
 class McpSettings(_Base):
-    """What the MCP server's stdio process reads besides `Settings` (jobs spec): the API key it acts with."""
+    """What the MCP server's stdio process reads besides `Settings`: the API key it acts with."""
 
     api_key: SecretStr
 
@@ -102,7 +102,7 @@ LLMProviderName = Literal["anthropic", "gemini"]
 
 
 class LLMSettings(_Base):
-    """The LLM providers (llm spec, OPEN_QUESTIONS #5): which, in failover order, and a model per model class.
+    """The LLM providers: which, in failover order, and a model per model class.
 
     The model ids are the current Haiku- and Flash-Lite-class models for `fast` (role C) and Sonnet- and Flash-class
     models for `strong` (A, D, S); change them here, not in code.
@@ -116,7 +116,7 @@ class LLMSettings(_Base):
     llm_strong_model_anthropic: str = "claude-sonnet-5-5"
     llm_fast_model_gemini: str = "gemini-3.5-flash-lite"
     llm_strong_model_gemini: str = "gemini-3.8-flash"
-    # learning-configs spec, "Induction, then role A synthesis": role A reads each sample page, its JSON key paths and
+    # Role A reads each sample page, its JSON key paths and
     # its reduced HTML cut to this many characters in all; a larger limit is refused, so a page's cost is bounded.
     llm_a_max_chars: int = Field(default=60_000, gt=0, le=60_000)
     # From the secret store; required for each listed provider when a client is built.

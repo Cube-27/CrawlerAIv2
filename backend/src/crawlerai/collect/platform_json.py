@@ -1,4 +1,4 @@
-"""The documented platform JSON collector (extraction spec, acquisition spec "Data calls"): the product JSON a platform
+"""The documented platform JSON collector (a data call): the product JSON a platform
 documents, fetched beside a detail page's HTTP fetch and kept only when it stated the requested product
 (`acquire.identity`), read as the schema.org nodes the platform's documentation says it holds
 (`adapters.platforms.answer_shape`).

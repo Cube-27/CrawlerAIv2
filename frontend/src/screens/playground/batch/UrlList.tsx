@@ -7,7 +7,7 @@ import { appendUrls, csvUrls } from "./urls";
 /** RFC 4180 §3 registers `text/csv`; files saved without that type still end in `.csv`. */
 const CSV_FILES = ".csv,text/csv";
 
-/** The Batch command bar's URL list (frontend spec): one URL per line, with a live count, and an icon in the box that
+/** The Batch command bar's URL list: one URL per line, with a live count, and an icon in the box that
  * appends the URLs of a CSV file. Its name is the request member a server error names. */
 export function UrlList({
   value,

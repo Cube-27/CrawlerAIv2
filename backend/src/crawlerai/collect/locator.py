@@ -1,6 +1,6 @@
-"""The locator format (extraction spec): where on the capture a candidate's raw value came from, as
-`<scheme>:<address>`. Collectors write it, the pipeline re-checks `text:` locators (INV-12) and induction
-(learning-configs spec) reads it, so every locator a candidate carries parses here (INV-22).
+"""The locator format: where on the capture a candidate's raw value came from, as
+`<scheme>:<address>`. Collectors write it, the pipeline re-checks `text:` locators and induction
+ reads it, so every locator a candidate carries parses here.
 
 The address parts are separated by `:`; the last part takes the rest of the string, since XPath, JSONPath, CSS
 selectors and meta property names (`og:title`) may hold `:` themselves. `js_state` has two open-ended parts and is
@@ -16,8 +16,8 @@ from pydantic import AfterValidator
 from crawlerai.content.attr_json import NAME_PATTERN as ATTRIBUTE_NAMES
 from crawlerai.schemas.types import NAME_PATTERN
 
-# The page-URL derivations (extraction spec, D-0355): the capture's `<link rel=canonical>` (RFC 6596) or its final URL
-# (RFC 9110 §15.4), and the final URL as the apply link of a page holding its application form (resolution spec). No
+# The page-URL derivations: the capture's `<link rel=canonical>` (RFC 6596) or its final URL
+# (RFC 9110 §15.4), and the final URL as the apply link of a page holding its application form. No
 # candidate states them, so their locator names the derivation.
 PageUrlDerivation = Literal["canonical_link", "final_url", "application_form"]
 Scheme = Literal[
@@ -49,7 +49,7 @@ _INDEXED_JSONPATH = re.compile(rf"{_INDEX}:{_JSONPATH}", re.DOTALL)
 _NAMED_JSONPATH = re.compile(rf"{_ASSIGNED_NAME}:{_JSONPATH}", re.DOTALL)
 
 _ADDRESS: dict[str, re.Pattern[str]] = {
-    # The nth `application/ld+json` block, then a path in the block as written (extraction spec).
+    # The nth `application/ld+json` block, then a path in the block as written.
     "jsonld": _INDEXED_JSONPATH,
     # The element carrying the `itemprop`.
     "microdata": re.compile(_XPATH, re.DOTALL),
@@ -114,5 +114,5 @@ def _check_locator(text: str) -> str:
     return text
 
 
-# A string in the locator format, checked when a model is built (INV-22).
+# A string in the locator format, checked when a model is built.
 LocatorText = Annotated[str, AfterValidator(_check_locator)]

@@ -26,7 +26,7 @@ export function fieldDrafts(config: ConfigDetail, schemaFields: readonly string[
   });
 }
 
-/** The `PUT /v1/configs/{id}` body (learning-configs spec): the steps of each changed field, null for a field whose steps
+/** The `PUT /v1/configs/{id}` body: the steps of each changed field, null for a field whose steps
  * were all removed, and the confirmed fields. Unchanged fields are left out, so the server keeps them as they are. */
 export function correctionOf(drafts: readonly FieldDraft[]): Correction {
   const fields: Correction["fields"] = {};

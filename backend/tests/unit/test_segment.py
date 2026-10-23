@@ -1,5 +1,5 @@
-"""A page's repeated item groups and their one ranking (listings spec, "Item groups"; `acquire.items`,
-`content.segment`): sibling blocks one template renders, each holding a hyperlink, read from the document's structure
+"""A page's repeated item groups and their one ranking (`acquire.items`, `content.segment`): sibling blocks one template
+renders, each holding a hyperlink, read from the document's structure
 only, ranked by rendered area when measured, else by what the blocks show. Pages are synthetic (RFC 2606 names)."""
 
 from lxml import html

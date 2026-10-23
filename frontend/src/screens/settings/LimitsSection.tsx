@@ -16,8 +16,8 @@ import { FormActions } from "../../components/FormActions";
 import { ProblemAlert } from "../../components/ProblemAlert";
 import { Section } from "../../components/Section";
 
-/** What the form edits: the LLM call cap of a run whose request sets none, the draft call cap of an API key (D-1282),
- * and whether a learned config waits for approval before it serves (D-1342). */
+/** What the form edits: the LLM call cap of a run whose request sets none, the draft call cap of an API key,
+ * and whether a learned config waits for approval before it serves. */
 type Edited = { llmCallCap: number | null; draftCallCap: number | null; requireApproval: boolean };
 
 /** The project's limits (`/v1/project/settings`): the LLM call cap of a run whose request sets none, the uncharged

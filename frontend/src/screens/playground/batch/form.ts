@@ -45,9 +45,9 @@ import {
   minConfidencePercent,
 } from "../run/storedRequest";
 
-/** Batch's options panel (frontend spec): each is a `BatchScrapeRequest` member, except `metadataInJson`, a view
+/** Batch's options panel: each is a `BatchScrapeRequest` member, except `metadataInJson`, a view
  * option that asks for the `metadata` format and the results' `include=metadata`. `fields` are the names
- * `schema.fields` drafts a schema from (§4.10). */
+ * `schema.fields` drafts a schema from. */
 export interface BatchOptions extends FormatSettings {
   pageKind: PageKind | null;
   metadataInJson: boolean;
@@ -59,9 +59,9 @@ export interface BatchOptions extends FormatSettings {
   maxRows: number;
   /** `min_confidence` as a percent; NaN (empty) leaves it out: every value publishes with its confidence. */
   minConfidence: number;
-  /** The Advanced settings: request context, page actions and cache (D-1430, D-1436). */
+  /** The Advanced settings: request context, page actions and cache. */
   advanced: AdvancedFetch;
-  /** `budget.llm_calls`; NaN (empty) leaves `budget` out: the project's limit, or none (D-1121). */
+  /** `budget.llm_calls`; NaN (empty) leaves `budget` out: the project's limit, or none. */
   llmCalls: number;
 }
 
@@ -70,7 +70,7 @@ export const DEFAULT_BATCH_OPTIONS: BatchOptions = {
   metadataInJson: false,
   fields: [],
   webhook: NO_WEBHOOK,
-  // FetchPolicy's own default (acquisition spec).
+  // FetchPolicy's own default.
   methodHint: "auto",
   maxRows: Number.NaN,
   minConfidence: Number.NaN,
@@ -102,7 +102,7 @@ export function initialBatch(urls: string): BatchFormState {
 }
 
 /** Why `form` can't be sent, by field: a line of the list that is not a web URL (checked here, so the line is named
- * before the server refuses the batch, D-0982), then what `pageKindErrors` finds. */
+ * before the server refuses the batch), then what `pageKindErrors` finds. */
 export function batchErrors(form: BatchFormState): Readonly<Record<string, string>> {
   const bad = badUrlLine(form.urls);
   if (bad !== null) return { urls: `Line ${String(bad.line)} is not a web address: ${bad.text}` };
@@ -125,7 +125,7 @@ function batchFetch(form: BatchFormState, formats: readonly ScrapeFormat[]): Fet
 }
 
 /** The batch request for `form`, or null when it can't be sent (`batchErrors`). A batch's results are records or page
- * outputs (jobs spec), so with a schema or field names it asks for `records` alone, as a crawl does (D-0980). */
+ * outputs, so with a schema or field names it asks for `records` alone, as a crawl does. */
 export function buildBatch(form: BatchFormState): BatchRequest | null {
   if (batchErrors(form) !== NO_ERRORS) return null;
   const formats = jobFormats(form);

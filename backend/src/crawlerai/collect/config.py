@@ -1,8 +1,8 @@
-"""The config collector's interface (extraction spec, learning-configs spec): an active config proposes
-`source_kind='config'` candidates like any other collector, and they enter resolution with the rest (§8.4).
+"""The config collector's interface: an active config proposes
+`source_kind='config'` candidates like any other collector, and they enter resolution with the rest.
 
 The engine executor lives in `crawlerai.config_ir`, which sits above `collect` and `resolve` (`.importlinter`), so the
-pipeline takes the executor already bound to its config and never names the IR type: learning-configs spec injects it.
+pipeline takes the executor already bound to its config and never names the IR type: config learning injects it.
 """
 
 from collections.abc import Mapping
@@ -46,19 +46,19 @@ class Executed(BaseModel):
 
 
 class ConfigExecutor(Protocol):
-    """An active config bound to its IR. It reads the `ParsedPage` only (INV-26) and never raises on page content."""
+    """An active config bound to its IR. It reads the `ParsedPage` only and never raises on page content."""
 
     @property
     def field_status(self) -> Mapping[str, FieldStatus]:
-        """The status of each field it runs (`suspended` fields do not run, §8.3), and of each field it lists as
-        `absent` (D-1341): resolution reads it for the `config_corroborated` / `config_uncorroborated` bucket (§10), and
-        the pipeline for the fields role C may still fill (§8.4)."""
+        """The status of each field it runs (`suspended` fields do not run), and of each field it lists as
+        `absent`: resolution reads it for the `config_corroborated` / `config_uncorroborated` bucket, and
+        the pipeline for the fields role C may still fill."""
         ...
 
     @property
     def browser_fields(self) -> frozenset[str]:
         """The fields whose located source is the browser (`needs: browser`): a page not rendered cannot carry them, so
-        each one missing from it is `interaction_required` (resolution spec, "Render-bound fields")."""
+        each one missing from it is `interaction_required`."""
         ...
 
     @property

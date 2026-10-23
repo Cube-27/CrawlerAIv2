@@ -121,7 +121,7 @@ interface JsonText {
   error: string | null;
 }
 
-/** A schema document edited as a form or as JSON (frontend spec). The two tabs edit one document: leaving the JSON tab
+/** A schema document edited as a form or as JSON. The two tabs edit one document: leaving the JSON tab
  * reads it back into the form, and stays when it can't. A problem from the API shows above the inputs, and each of
  * its errors next to the input it names. `onSubmit` gets the document; the server validates it. The submit button
  * reads `submitLabel`. */

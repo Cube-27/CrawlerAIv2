@@ -47,8 +47,8 @@ import {
   minConfidencePercent,
 } from "../run/storedRequest";
 
-/** The settings in the options panel (frontend spec): each is a `ScrapeRequest` member, except `metadataInJson`, a view
- * option that asks for the `metadata` format. `fields` are the names `schema.fields` drafts a schema from (§4.10). */
+/** The settings in the options panel: each is a `ScrapeRequest` member, except `metadataInJson`, a view
+ * option that asks for the `metadata` format. `fields` are the names `schema.fields` drafts a schema from. */
 export interface ScrapeOptions extends FormatSettings {
   pageKind: PageKind | null;
   metadataInJson: boolean;
@@ -62,9 +62,9 @@ export interface ScrapeOptions extends FormatSettings {
   maxRows: number;
   /** `min_confidence` as a percent; NaN (empty) leaves it out: every value publishes with its confidence. */
   minConfidence: number;
-  /** The Advanced settings: request context, page actions and cache (D-1430, D-1436). */
+  /** The Advanced settings: request context, page actions and cache. */
   advanced: AdvancedFetch;
-  /** Browser actions (owner #52): sent only for listing pages. `records` is NaN while empty (the server's 100), and a
+  /** Browser actions: sent only for listing pages. `records` is NaN while empty (the server's 100), and a
    * null `pagingHint` lets the server detect the mechanism. */
   browserActions: boolean;
   records: number;
@@ -75,7 +75,7 @@ export const DEFAULT_OPTIONS: ScrapeOptions = {
   pageKind: null,
   metadataInJson: false,
   fields: [],
-  // FetchPolicy's own default (acquisition spec).
+  // FetchPolicy's own default.
   methodHint: "auto",
   maxAge: Number.NaN,
   timeoutS: Number.NaN,
@@ -143,7 +143,7 @@ export function buildRequest(form: ScrapeFormState): ScrapeRequest | null {
   };
 }
 
-/** Whether browser actions apply (owner #52): a listing fetched now in a browser, so not with the HTTP method or a
+/** Whether browser actions apply: a listing fetched now in a browser, so not with the HTTP method or a
  * positive max age, which the server refuses with them. */
 export function browserActionsApply(options: ScrapeOptions, kind: PageKind | null): boolean {
   return kind === "listing" && options.methodHint !== "http" && !(options.maxAge > 0);

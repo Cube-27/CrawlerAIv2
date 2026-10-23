@@ -1,4 +1,4 @@
-"""Capture bundle format (persistence-storage spec): encode/decode round-trips exactly (INV-10 relies on it)
+"""Capture bundle format: encode/decode round-trips exactly
 and the archive layout is the documented one."""
 
 import hashlib

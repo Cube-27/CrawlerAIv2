@@ -1,4 +1,4 @@
-"""An adapter's requests go as politely as a page's (adapters spec): only where the endpoint host's robots.txt
+"""An adapter's requests go as politely as a page's: only where the endpoint host's robots.txt
 allows them, at that host's rate, the first one on the turn the caller was admitted for; and the processes that
 fetch run every adapter `CRAWLERAI_DISABLED_ADAPTERS` does not name.
 

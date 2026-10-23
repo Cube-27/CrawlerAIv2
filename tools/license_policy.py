@@ -2,7 +2,7 @@
 
 Reads the reports that `tools/license_scan.sh` collects: `pip-licenses --from=all --format=json` for the Python
 environment and `pnpm licenses list --json` for the frontend. A declaration is matched as an SPDX license
-expression, by whole identifier and never by substring, so LGPL does not match GPL (D-0001). `OR` passes when any
+expression, by whole identifier and never by substring, so LGPL does not match GPL. `OR` passes when any
 branch is clean, `AND` needs every operand clean, and `WITH` judges the license it modifies. A declaration that is
 not a valid expression (a trove classifier, free text) is matched by its whole name.
 

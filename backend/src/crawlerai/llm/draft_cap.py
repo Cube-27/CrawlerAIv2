@@ -1,4 +1,4 @@
-"""A per-key cap on uncharged role S calls (D-1282, D-0926): the field-name drafts of `schema.fields` and
+"""A per-key cap on uncharged role S calls: the field-name drafts of `schema.fields` and
 `POST /v1/schemas/draft`, and a schema's label synonyms (`roles.s_labels`), which no job exists yet to pay for
 (`LLMRequest.job_id` None), so no job budget bounds them.
 

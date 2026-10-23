@@ -1,4 +1,4 @@
-"""Pagination (resolution spec): the URLs that may be the next page of a listing, in order.
+"""Pagination: the URLs that may be the next page of a listing, in order.
 
 First the page's `rel=next` links (HTML Living Standard §4.6.7: `next` names the next document of a series). Then the
 structural numbered links: a link to the same origin that differs from the page URL only in one path segment or one
@@ -6,7 +6,7 @@ query parameter value, whatever its name (C4), where the two differ only in one 
 segment or value is opaque text, so an integer inside it, `page-2.html`, numbers it as one standing alone does), and
 the link's integer is the page's plus one. When the page URL carries no such integer, which number its link would
 carry is not stated, so no structural link is taken (C7). A
-learned config's next-page step is learning-configs spec's; infinite scroll is §7.2's.
+learned config's next-page step belongs to config learning; infinite scroll is not taken here.
 """
 
 import re
@@ -39,7 +39,7 @@ class NextLink:
 
 
 def next_page_candidates(page: ParsedPage, final_url: str) -> tuple[str, ...]:
-    """The candidates (module docstring), canonical (schemas spec), each once; `final_url` is the capture's."""
+    """The candidates (module docstring), canonical, each once; `final_url` is the capture's."""
     return tuple(link.url for link in next_page_links(page, final_url))
 
 
@@ -67,10 +67,10 @@ def next_page_links(page: ParsedPage, final_url: str) -> tuple[NextLink, ...]:
 def next_page_candidate(
     links: tuple[NextLink, ...], schema: SchemaDef, ctx: Context, diagnostics: list[str]
 ) -> Candidate | None:
-    """The first `rel=next` link as the page's `dom` candidate of a listing schema's page-level `next_page_url`
-    (D-1226): the page states its next document in HTML's own terms (§4.6.7), so the value is read, not inferred; a
-    numbered link is only inferred to be the next page, so it fills no field (C7). Its `href` as written, at its
-    element's locator, normalized as a URL against the page; None without such a field or link."""
+    """The first `rel=next` link as the page's `dom` candidate of a listing schema's page-level `next_page_url`:
+    the page states its next document in HTML's own terms, so the value is read, not inferred; a
+        numbered link is only inferred to be the next page, so it fills no field (C7). Its `href` as written, at its
+        element's locator, normalized as a URL against the page; None without such a field or link."""
     spec = schema.fields.get(NEXT_PAGE_FIELD)
     first = next((link for link in links if link.rel_next), None)
     if first is None or spec is None or spec.scope != "page" or spec.type is not FieldType.URL:

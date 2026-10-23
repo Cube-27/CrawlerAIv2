@@ -1,4 +1,4 @@
-"""Intent (extraction spec rule 3, §10): which entity the page is about, or `intent_ambiguous`."""
+"""Intent: which entity the page is about, or `intent_ambiguous`."""
 
 import json
 from datetime import UTC, datetime
@@ -117,7 +117,7 @@ def test_a_product_page_with_recommendations_targets_its_product() -> None:
 
 def test_the_group_a_product_is_a_variant_of_is_the_target_and_the_product_its_variant() -> None:
     # schema.org `isVariantOf` (inverse of `hasVariant`): its value is the group the holder belongs to, so the group is
-    # the page's product and the holder one of its variants (D-1344).
+    # the page's product and the holder one of its variants.
     product = _entity("jsonld:0:$", "Product", PAGE_URL + "?colour=red")
     group = _entity("jsonld:0:$['isVariantOf']", "ProductGroup", PAGE_URL, parent=product.id, via="isVariantOf")
     target = _select(product, group, request_url=OTHER_URL)

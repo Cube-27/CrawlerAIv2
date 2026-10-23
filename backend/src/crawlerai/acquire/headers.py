@@ -1,9 +1,9 @@
-"""Which headers a capture records (acquisition spec): every one except credentials."""
+"""Which headers a capture records: every one except credentials."""
 
 from crawlerai.storage.capture_bundle import HeaderList
 
 # Credentials are never stored in a capture: cookies (RFC 6265 §4), the user agent's credentials (RFC 9110 §11.6.2)
-# and the proxy credentials (§11.7.2).
+# and the proxy credentials.
 _UNRECORDED = frozenset({"cookie", "set-cookie", "authorization", "proxy-authorization"})
 
 

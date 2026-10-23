@@ -1,4 +1,4 @@
-"""Drift recorded against a real Postgres (learning-configs spec): each run of an active config extends its window, a
+"""Drift recorded against a real Postgres: each run of an active config extends its window, a
 field that falls below its validated yield is suspended in the IR and `field_status`, the suspension is a
 `drift_suspended` job event, and the site re-learns while its config keeps serving."""
 

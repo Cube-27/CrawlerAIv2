@@ -53,8 +53,8 @@ const VALUE_PLACEHOLDERS: Readonly<Record<ActionMode, string | null>> = {
   key: "Enter",
 };
 
-/** The Advanced options (D-1430, D-1436): a section across the panel after the common settings, shown at once like
- * every setting (DESIGN.md: no nested Advanced to open), with the caller's request context, the cache mode and the
+/** The Advanced options: a section across the panel after the common settings, shown at once like
+ * every setting, with the caller's request context, the cache mode and the
  * actions editor, each sent as its `fetch` member while set. */
 export function AdvancedRows({
   value,

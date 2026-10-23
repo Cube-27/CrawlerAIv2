@@ -1,4 +1,4 @@
-"""The browser context's locality (acquisition spec, "Patchright's documented browser setup"): the request's locale
+"""The browser context's locality: the request's locale
 (`FetchPolicy.locale_hint`), else the one its exit declares (`ExitPlace`), sets the context's `locale` (and so the
 `Accept-Language` the browser sends, which the HTTP and JSON rungs send too), and the place the render goes out from
 sets the `timezone_id`, so the zone a page reads agrees with the address it sees: the exit's declared zone, else the
@@ -93,7 +93,7 @@ def _well_formed(tag: str) -> bool:
 
 
 def _parsed(hint: str | None) -> tuple[str, str | None, str | None] | None:
-    """The language, script and region subtags of a BCP 47 tag (RFC 5646 §2.1), in their canonical case (§2.1.1)."""
+    """The language, script and region subtags of a BCP 47 tag (RFC 5646 §2.1), in their canonical case."""
     if hint is None:
         return None
     subtags = hint.strip().replace("_", "-").split("-")

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { fetchMember, newAction, pairs, storedAdvanced, toAction, waitFor } from "./advanced";
 
-// The Advanced settings as `fetch` members (D-1430, D-1436), and back from a stored request.
+// The Advanced settings as `fetch` members, and back from a stored request.
 
 describe("advanced fetch settings", () => {
   it("reads header lines and cookie pairs, leaving out a line without its separator", () => {

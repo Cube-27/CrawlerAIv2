@@ -1,8 +1,8 @@
-"""Preference and derivation (resolution spec, "Candidate score"): which of a field's valid, owned candidates
+"""Preference and derivation: which of a field's valid, owned candidates
 publishes, and why every other one does not; for any candidate set, an exact-match value publishes when its score is
-the best alone and a shared best is a conflict, a query-parameter value publishes only when shown (INV-13), a page's
-offer fields but money come from one Offer and a price publishes only when no other amount contests it (INV-15,
-INV-14), and only a missing field is derived (INV-07)."""
+the best alone and a shared best is a conflict, a query-parameter value publishes only when shown, a page's
+offer fields but money come from one Offer and a price publishes only when no other amount contests it, and only a
+missing field is derived."""
 
 from datetime import UTC, datetime
 from pathlib import Path
@@ -262,7 +262,7 @@ def test_images_that_tie_as_items_of_one_list_publish_the_first_its_collector_re
     assert (chosen.candidate, chosen.rejected) == (first, ((second, "outscored"),))
 
 
-# Atomic offers (INV-15)
+# Atomic offers
 
 
 def test_a_price_no_offer_states_publishes_from_the_targets_own_values_and_another_offer_s_is_flagged() -> None:

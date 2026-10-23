@@ -1,5 +1,5 @@
-"""Which discovered URLs a crawl's frontier takes (jobs spec): the request's scope, never past the start URL's
-host and its subdomains (D-0037), and where a page's links and next pages come from."""
+"""Which discovered URLs a crawl's frontier takes: the request's scope, never past the start URL's
+host and its subdomains, and where a page's links and next pages come from."""
 
 from hypothesis import given
 from hypothesis import strategies as st

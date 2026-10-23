@@ -1,4 +1,4 @@
-"""The scheduler loop against a real Postgres, with committed data (persistence-storage spec)."""
+"""The scheduler loop against a real Postgres, with committed data."""
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence

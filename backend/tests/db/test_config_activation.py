@@ -1,4 +1,4 @@
-"""Activation (learning-configs spec): a validated config is stored active as the next version, the previous active
+"""Activation: a validated config is stored active as the next version, the previous active
 config is suspended, and the learning run ends with the state `active` on it; nothing activates without validation."""
 
 import uuid

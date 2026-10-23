@@ -1,12 +1,11 @@
-"""The learning run (learning-configs spec): what a `learn` job does, from a state's stored pages to an active config
+"""The learning run: what a `learn` job does, from a state's stored pages to an active config
 or a failed run.
 
 The sample is the stored pages with the most published required values, the rest are held out (`split`). Induction
 proposes selectors without an LLM, role A synthesizes the fields it left, and the config is validated on the held-out
 pages and activated (or left `pending_approval`), with an API recipe when one is learned and validated. A run whose
 surface locates also renders the newest stored pages and writes the fields it locates (`_located`). A run takes two
-transactions, one to start the job and one to end it; none is open while an LLM is called or a recipe replayed
-(D-0346).
+transactions, one to start the job and one to end it; none is open while an LLM is called or a recipe replayed.
 """
 
 import asyncio
@@ -82,7 +81,7 @@ log = logging.getLogger(__name__)
 SAMPLE_PAGES: Final = 5
 LEARNING_STARTED: Final = "learning_started"
 LEARNING_FINISHED: Final = "learning_finished"
-# The reason a run ends with when its schema was edited while it ran (schemas spec).
+# The reason a run ends with when its schema was edited while it ran.
 SCHEMA_EDITED: Final = "schema_edited"
 # A run makes a few role A calls, each at most `llm.client.TIMEOUT_S["strong"]` per provider, plus a retry; a run still
 # `running` an hour after it started has lost its process.
@@ -90,7 +89,7 @@ LEARN_RUN_TIMEOUT: Final = timedelta(hours=1)
 # How many expired runs one scheduler turn ends; a full batch runs again at once (`scheduler.loop`).
 EXPIRE_BATCH: Final = 100
 EXPIRED: Final = "expired"
-# The reason a completed run reports when its config waits for approval (D-1342).
+# The reason a completed run reports when its config waits for approval.
 PENDING: Final = "pending_approval"
 # The reason of a run cancelled because its worker stops (`run_learner`).
 SHUTDOWN: Final = "shutdown"
@@ -145,13 +144,13 @@ async def run_learn_job(
 ) -> Learned | None:
     """Run the `learn` job `job_id` to its end and return how it ended; None when it is not queued (another process
     took it). `max_chars` is role A's HTML limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`); without `replay`, the run
-    learns no API recipe, with it, its recipe replays count as its usage (D-1381); `render` renders the
+    learns no API recipe, with it, its recipe replays count as its usage; `render` renders the
     pages whose captures hold no calls to learn a recipe from, and a locate run's samples, which `extract` extracts
     (without both, nothing is located)."""
     try:
         async with engine.begin() as conn:
             run = await _start(conn, job_id)
-    except Exception:  # D-0624: a job that cannot start ends failed, or every poll would pick it again
+    except Exception:  # a job that cannot start ends failed, or every poll would pick it again
         log.exception("learn job %s could not start", job_id)
         async with engine.begin() as conn:
             return await _abandon(conn, job_id, "error")
@@ -231,7 +230,7 @@ async def _config_ir(conn: AsyncConnection, config_id: ExtractionConfigId | None
 
 async def _request_context(conn: AsyncConnection, located: LocateRequest) -> RequestContext | None:
     """The headers of the request context of the job that started the locate run, as its stored request keeps them
-    (an asynchronous job's keeps the values while it runs, jobs spec "Stored request"; a redacted one is none)."""
+    (an asynchronous job's keeps the values while it runs; a redacted one is none)."""
     if located.job_id is None:
         return None
     request: dict[str, Any] | None = (
@@ -247,7 +246,7 @@ async def _request_context(conn: AsyncConnection, located: LocateRequest) -> Req
 
 async def expire_learn_runs(conn: AsyncConnection, *, batch: int) -> int:
     """End up to `batch` runs that started more than `LEARN_RUN_TIMEOUT` ago as failed runs, and return how many: their
-    process died, and the state would otherwise stay `learning` (D-0624)."""
+    process died, and the state would otherwise stay `learning`."""
     job_ids = await stuck_running_jobs(conn, kinds=("learn",), older_than=LEARN_RUN_TIMEOUT, batch=batch)
     for job_id in job_ids:
         await _abandon(conn, job_id, EXPIRED)
@@ -255,7 +254,7 @@ async def expire_learn_runs(conn: AsyncConnection, *, batch: int) -> int:
 
 
 async def _abandon(conn: AsyncConnection, job_id: JobId, reason: str) -> Learned:
-    """End a run that will not finish: its state as a failed run leaves it (§4.8), and its job `failed`. A run that
+    """End a run that will not finish: its state as a failed run leaves it, and its job `failed`. A run that
     ended meanwhile is left as it ended: a stopping worker's cancel can come as the run's final transaction commits."""
     # FOR NO KEY UPDATE, as every lock of a job's row takes (`settle_job`).
     locked = select(Job.status, Job.request).where(Job.id == job_id).with_for_update(key_share=True)
@@ -265,7 +264,7 @@ async def _abandon(conn: AsyncConnection, job_id: JobId, reason: str) -> Learned
     if job.status == "queued":  # it failed to start: a job ends `failed` only from `running`
         await transition_job(conn, job_id, "running")
     # The state may have moved on already (an operator's config, a cancel), and then there is no run to end; a request
-    # that names no state has none either, and its job still ends, or every poll would pick it again (D-0624).
+    # that names no state has none either, and its job still ends, or every poll would pick it again.
     with suppress(NotLearning, ValidationError):
         await learning_failed(conn, StateKey.from_request(job.request))
     await _end(conn, job_id, "failed", config_id=None, reason=reason, report=None)
@@ -274,7 +273,7 @@ async def _abandon(conn: AsyncConnection, job_id: JobId, reason: str) -> Learned
 
 def split(schema: SchemaDef, pages: Sequence[StoredPage]) -> tuple[list[StoredPage], list[StoredPage]]:
     """The learning sample, the `SAMPLE_PAGES` pages with the most published required values (the most recent first
-    on a tie), and the held-out pages, the rest (§4.4)."""
+    on a tie), and the held-out pages, the rest."""
     required = {name for name, spec in schema.fields.items() if spec.required}
 
     def published(page: StoredPage) -> int:
@@ -306,7 +305,7 @@ async def _learned(client: LLMClient, run: _Run, vocabulary: Vocabulary, max_cha
     validated = await learn_config(
         client, target, sample, [page.held_out for page in held_out], vocabulary, max_chars, absent_from=run.pages
     )
-    # A recipe enters a validated config only (`attach`, D-0583), so nothing is replayed for a refused one.
+    # A recipe enters a validated config only (`attach`), so nothing is replayed for a refused one.
     if validated.ir is not None and hooks.replay is not None:
         validated = attach(validated, await _page_recipe(client, run, sample, held_out, hooks.replay, hooks.render))
     if run.locate is not None:
@@ -340,17 +339,17 @@ async def _page_recipe(
     replay: Replays,
     render: Render | None,
 ) -> RecipeValidated:
-    """The API recipe that serves the run's pages (adapters spec), or why there is none."""
+    """The API recipe that serves the run's pages, or why there is none."""
     try:
         return await learn_recipe(
             client, sample, held_out, run.schema, replay(run.job_id), job_id=run.job_id, render=render
         )
     except (LLMFailure, SQLAlchemyError):
-        # The run's own failures: role D's ends the run as role A's does (D-0738), and a database error would leave a
-        # replay's usage unaccounted (adapters spec, "Held-out validation"), so the run ends failed.
+        # The run's own failures: role D's ends the run as role A's does, and a database error would leave a
+        # replay's usage unaccounted, so the run ends failed.
         raise
     except Exception as e:
-        # D-1389: the recipe learner's own error refuses the recipe, not the config it would have joined.
+        # The recipe learner's own error refuses the recipe, not the config it would have joined.
         log.exception("learn job %s: recipe learning failed", run.job_id)
         return refused(f"recipe_error: {type(e).__name__}")
 
@@ -452,7 +451,7 @@ async def learn_config(
     `held_out` (§4.5 to §4.7). `absent_from` are the pages the run read, which say what the site never states."""
     absent = absent_fields(target.schema, absent_from)
     ir, unlearned = await _learn(client, target, [page.sample for page in sample], vocabulary, max_chars, absent)
-    # A field no page stated has no value to learn a step from; the config lists it instead (D-1341).
+    # A field no page stated has no value to learn a step from; the config lists it instead.
     ir = ir.model_copy(update={"absent": [name for name in absent if name in unlearned]})
     validated = await asyncio.to_thread(validate, ir, target.schema, held_out, vocabulary)
     return with_unlearned(validated, unlearned)
@@ -476,7 +475,7 @@ async def _learn(
     if schema.page_kind == "listing":
         listed = await asyncio.to_thread(induce_listing, schema, sample, vocabulary)
     ir, left = _induced(target, induction, listed)
-    # Fields an adapter or API recipe maps keep coming from it: they need no steps (D-0556).
+    # Fields an adapter or API recipe maps keep coming from it: they need no steps.
     reasons = {name: reason for name, reason in left.items() if name not in induction.mapped}
     for name in set(absent).intersection(reasons):
         reasons[name] = ABSENT
@@ -512,14 +511,14 @@ def _unpublished(schema: SchemaDef, sample: Sequence[SamplePage]) -> set[str]:
 
 def _uncovered(schema: SchemaDef, covered: set[str]) -> bool:
     """Whether a required field, or every member of a required group, is not `covered` (learned, mapped or absent):
-    role A runs for what a record needs (§10), not for an optional field alone."""
+    role A runs for what a record needs, not for an optional field alone."""
     required = {name for name, spec in schema.fields.items() if spec.required}
     return bool(required - covered) or any(not covered.intersection(group) for group in schema.required_groups)
 
 
 def learnable(schema: SchemaDef) -> tuple[SchemaDef, dict[str, str]]:
     """The schema learning learns steps for, and why each other field gets none. A row-mapped field gets none
-    (`row_field`, variants spec): induction generalizes one locator per field per page, and a row field needs a row
+    (`row_field`): induction generalizes one locator per field per page, and a row field needs a row
     selector, sub-field selectors relative to it and row matching. The structured collectors still fill it in `config`
     mode, and drift does not track it."""
     row_fields = {name: "row_field" for name, spec in schema.fields.items() if spec.row_mapped}
@@ -545,7 +544,7 @@ def _induced(
         listing = listing.model_copy(update={"next": next_steps.steps[0]})
     elif next_steps is not None:
         left[NEXT_PAGE_FIELD] = "no_listing"
-    # learning-configs spec: a config whose fields an adapter maps is the adapter's.
+    # A config whose fields an adapter maps is the adapter's.
     origin: ConfigOrigin = "adapter" if induction.mapped else "induced"
     ir = ExtractionConfigIR(
         ir_version="1",
@@ -585,14 +584,14 @@ async def _finish(conn: AsyncConnection, run: _Run, validated: Validated) -> Lea
 
 
 async def _requires_approval(conn: AsyncConnection, run: _Run) -> bool:
-    """Whether the site's project makes a learned config wait for approval (D-1342)."""
+    """Whether the site's project makes a learned config wait for approval."""
     project = select(Site.project_id).where(Site.id == run.key.site_id).scalar_subquery()
     query = select(Project.require_config_approval).where(Project.id == project)
     return bool((await conn.execute(query)).scalar_one())
 
 
 async def _operator_since(conn: AsyncConnection, run: _Run) -> bool:
-    """Whether an operator's config became active while the run was in flight (§4.10): the operator wrote it knowing
+    """Whether an operator's config became active while the run was in flight: the operator wrote it knowing
     the pages the run learns from, so the run does not replace it."""
     state, configs = ProgressiveState, ExtractionConfig
     query = (

@@ -27,9 +27,9 @@ function cleanValue(value: unknown, spec: FieldTypeSpec | undefined): unknown {
   return value;
 }
 
-/** `data` as a clean record (frontend spec), as the server writes one for `json_values`: its published fields in name
+/** `data` as a clean record, as the server writes one for `json_values`: its published fields in name
  * order, a null one left out, and a money value flat as its amount beside its currency. Names are ASCII
- * (`NAME_PATTERN`), so code-unit order is name order (D-0816). */
+ * (`NAME_PATTERN`), so code-unit order is name order. */
 function cleanObject(fields: FieldTypes, data: JsonObject): CleanRecord {
   const clean: Record<string, unknown> = {};
   for (const name of Object.keys(data).sort(codeUnitOrder)) {
@@ -47,7 +47,7 @@ function cleanObject(fields: FieldTypes, data: JsonObject): CleanRecord {
   return clean;
 }
 
-/** Fields in clean form: each one's published value (rest-api spec: `value` is null unless published). */
+/** Fields in clean form: each one's published value (`value` is null unless published). */
 function cleanFields(fields: ScrapeRecord["fields"], fieldTypes: FieldTypes): CleanRecord {
   const data = Object.fromEntries(
     Object.entries(fields).map(([name, field]) => [name, field.value ?? null]),
@@ -61,7 +61,7 @@ function cleanRecord(record: ScrapeRecord, fieldTypes: FieldTypes): CleanRecord 
 
 /** A page's JSON as the playground shows it: its one record as an object, or its records as an array (none, or a
  * listing's), with no URL or outcome around them. With `metadata` (Metadata in JSON), or `page` (the page's own fields
- * of a listing that kept no record, D-1476), they sit under `data` beside them. */
+ * of a listing that kept no record), they sit under `data` beside them. */
 export function pageJson(
   records: readonly CleanRecord[],
   metadata?: unknown,

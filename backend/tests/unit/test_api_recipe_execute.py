@@ -1,4 +1,4 @@
-"""Recipe execution (adapters spec): a site with an active recipe is served over `fetch_json` with no browser,
+"""Recipe execution: a site with an active recipe is served over `fetch_json` with no browser,
 the HTML page fetched first only when a binder reads its JSON documents; what the recipe cannot serve falls back to the
 configured rungs; a listing's pages come by incrementing the pagination parameter until the rows run out.
 
@@ -161,7 +161,7 @@ def test_a_page_is_served_over_the_api_with_no_browser_and_its_values_are_api_ca
     ]
 
 
-# --- pagination (§4.8) -----------------------------------------------------------------------------
+# --- pagination -----------------------------------------------------------------------------
 
 ITEMS = [f"Lamp {n}" for n in range(5)]
 

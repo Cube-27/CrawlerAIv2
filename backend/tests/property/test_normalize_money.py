@@ -1,7 +1,7 @@
-"""The money normalizer (normalization spec): CLDR currency symbols and number symbols (Babel) for the
+"""The money normalizer: CLDR currency symbols and number symbols (Babel) for the
 locales the context states, `price-parser` to locate the amount. A grounded amount always gives a value, its currency
 from the best evidence or unknown; it declines on ambiguous decimal separators, ranges and amounts that are not
-positive. The tests use ISO codes and CLDR symbols only (normalization spec)."""
+positive. The tests use ISO codes and CLDR symbols only."""
 
 import json
 from datetime import UTC, datetime

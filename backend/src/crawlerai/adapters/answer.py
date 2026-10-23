@@ -1,4 +1,4 @@
-"""What an adapter does with the answer of its request, beyond reading it as the shapes say (adapters spec): an
+"""What an adapter does with the answer of its request, beyond reading it as the shapes say: an
 answer with no row is not served, and an answer that is not JSON (a feed, a page embedding data) or that several
 requests made is recorded as the one JSON document its shapes read."""
 

@@ -1,4 +1,4 @@
-"""Role S: a draft schema from a prompt (llm spec).
+"""Role S: a draft schema from a prompt.
 
 The model reads the caller's prompt, the cleaned text of one to three sample pages, the field types and the presets as
 examples, and replies with a schema document without its name, in the wire form every provider's
@@ -7,10 +7,10 @@ through the role's reply check, read back as a `SchemaDocument`, whose rules (ev
 groups) JSON Schema does not express; either failure takes the client's one retry.
 
 The draft is stored as `draft_<sha256(prompt)[:12]>` with `origin='prompt_draft'`, and the same prompt
-(after whitespace normalization) returns the stored row without a call: one prompt gives one stable schema (§5.4).
-The schema is data: it is validated, stored and interpreted, never executed (§18).
+(after whitespace normalization) returns the stored row without a call: one prompt gives one stable schema.
+The schema is data: it is validated, stored and interpreted, never executed.
 
-Field names (frontend spec, D-0810) are drafted the same way without sample pages: the request is the names and the
+Field names are drafted the same way without sample pages: the request is the names and the
 page kind, and the reply check also refuses a draft of another page kind or whose top-level fields are not exactly
 those names. Its name is `draft_` and the hash of the page kind and the sorted names, so one set of names gives one
 schema per page kind. No job exists yet when a run's names are drafted, so the call is charged to none
@@ -40,10 +40,10 @@ from crawlerai.storage.capture_bundle import sha256_hex
 SYSTEM: Final = files("crawlerai.llm").joinpath("prompts/s_schema.txt").read_text(encoding="utf-8")
 
 MAX_SAMPLES: Final = 3
-# Each sample's cleaned text is cut to role C's detail limit (D-0025).
+# Each sample's cleaned text is cut to role C's detail limit.
 SAMPLE_MAX_CHARS: Final = DETAIL_MAX_CHARS
 MAX_OUTPUT_TOKENS: Final = 8_192
-# The most field names one draft takes (D-0925): a bound on the request, far above a page's fields.
+# The most field names one draft takes: a bound on the request, far above a page's fields.
 MAX_FIELD_NAMES: Final = 50
 
 # One line per §5.1 field type, as the model reads them.
@@ -68,12 +68,12 @@ TYPE_DEFINITIONS: Final[dict[FieldType, str]] = {
 
 def normalize_prompt(prompt: str) -> str:
     """The prompt with each run of whitespace (Unicode White_Space, as `str.split` reads it) made one space, and none
-    at the ends: two prompts that differ only in spacing are the same prompt (§4.5)."""
+    at the ends: two prompts that differ only in spacing are the same prompt."""
     return collapse(prompt)
 
 
 def draft_name(prompt: str) -> str:
-    """`draft_` and the first 12 hex digits of sha256 of the normalized prompt, UTF-8 (D-0026)."""
+    """`draft_` and the first 12 hex digits of sha256 of the normalized prompt, UTF-8."""
     return "draft_" + sha256_hex(normalize_prompt(prompt).encode())[:12]
 
 
@@ -118,7 +118,7 @@ def _request(user: str, job_id: JobId | None) -> LLMRequest:
 
 def draft_request(prompt: str, samples: Sequence[str], job_id: JobId) -> LLMRequest:
     """The role S request. Everything in it is ordered and cut the same way every time, so the same inputs give the
-    same `request_hash` (INV-10)."""
+    same `request_hash`."""
     text = _checked_prompt(prompt, samples)
     pages = "\n".join(
         f'<sample_page n="{n}">\n{sample[:SAMPLE_MAX_CHARS]}\n</sample_page>' for n, sample in enumerate(samples, 1)
@@ -131,7 +131,7 @@ async def draft_schema(
     engine: AsyncEngine, client: LLMClient, *, prompt: str, samples: Sequence[str], job_id: JobId
 ) -> SchemaDef:
     """The draft schema for `prompt`: the stored one when this prompt was drafted before, else a new draft from the
-    model, stored. No transaction is held during the call (the client commits usage on its own, D-0346).
+    model, stored. No transaction is held during the call (the client commits usage on its own).
 
     Raises the client's `LLMFailure`s (`OutputInvalid` after the retry)."""
     _checked_prompt(prompt, samples)
@@ -197,7 +197,7 @@ def _document(data: dict[str, JsonValue], name: str) -> SchemaDocument:
 
 def _parsed(data: dict[str, JsonValue], name: str) -> SchemaDocument | str:
     """The document `data` holds, or why it is not a valid one: a broken document, or one naming a schema.org term the
-    pinned vocabulary lacks, which a user's schema is refused for too (schemas spec, "schema.org paths")."""
+    pinned vocabulary lacks, which a user's schema is refused for too."""
     try:
         document = _document(data, name)
     except ValidationError as error:

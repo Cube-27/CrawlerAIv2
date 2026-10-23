@@ -1,4 +1,4 @@
-/** `POST /v1/scrape` (rest-api spec). The answer is the generated `ScrapeResult`. */
+/** `POST /v1/scrape`. The answer is the generated `ScrapeResult`. */
 import type { components } from "./schema";
 
 type Schemas = components["schemas"];
@@ -16,13 +16,13 @@ export type ScrapeFormat =
   | "records";
 export type PageKind = "detail" | "listing";
 export type MethodHint = "auto" | "http" | "browser";
-/** The paging mechanisms a listing's browser actions may be told to use (owner #52). */
+/** The paging mechanisms a listing's browser actions may be told to use. */
 export type PagingHint = "load_more" | "show_more" | "pagination" | "next" | "scroll";
 
-/** `fetch.cache` (D-1435): reuse a stored capture as `max_age` allows, always fetch, or only serve a stored one. */
+/** `fetch.cache`: reuse a stored capture as `max_age` allows, always fetch, or only serve a stored one. */
 export type CacheMode = "default" | "bypass" | "only";
 
-/** A page step the browser runs before it reads the page (D-1436, `config_ir/page_actions.py`). */
+/** A page step the browser runs before it reads the page (`config_ir/page_actions.py`). */
 export type PageAction =
   | { type: "wait"; ms?: number; selector?: string; network_idle?: boolean }
   | { type: "click"; selector?: string; text?: string }
@@ -55,8 +55,7 @@ export type Chunk = Schemas["Chunk"];
 /** A file the browser made of the page, served by the API at its `url` (a path on the API's own origin). */
 export type Artifact = Schemas["Artifact"];
 
-/** A schema by id, inline (a SchemaDef the server validates), or drafted by role S from a prompt or from field names
- * (frontend spec). */
+/** A schema by id, inline (a SchemaDef the server validates), or drafted by role S from a prompt or from field names. */
 export type SchemaRef =
   | { id: string }
   | { inline: Readonly<Record<string, unknown>> }
@@ -76,14 +75,14 @@ export interface ScrapeRequest {
   max_age?: number;
   timeout_s?: number;
   budget?: { llm_calls: number };
-  /** A listing's browser actions (owner #52): a soft row target and an optional mechanism. */
+  /** A listing's browser actions: a soft row target and an optional mechanism. */
   browser_actions?: { records?: number; hint?: PagingHint };
   /** `markdown_fit`'s and `chunks`' options: sent only with their format, with the members that are set. */
   fit?: FitOptions;
   chunking?: Partial<ChunkOptions>;
 }
 
-/** Every field carries the §13.1 attributes plus `reason`, `source_kind` and `derived_by` (rest-api spec). */
+/** Every field carries the §13.1 attributes plus `reason`, `source_kind` and `derived_by`. */
 export type RecordField = Schemas["RecordField"];
 export type ScrapeRecord = Schemas["ScrapedRecord"];
 

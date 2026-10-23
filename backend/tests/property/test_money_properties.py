@@ -1,7 +1,7 @@
 """verify-money (`.claude/skills/verify-money/SKILL.md`): generated inputs run on the real money normalizer
 (`normalize/money.py`), its number reader (`normalize/numbers.py`) and money grounding (`llm/grounding.py`).
 
-Properties (normalization spec, "money"; llm spec, INV-12; owner decisions 2026-10-18 and 2026-10-19):
+Properties:
 1. a grounded amount always publishes: the amount as written, its currency from evidence or `null` (never invented);
 2. the raw value grounded for a money claim occurs in the page text, whatever the spacing between sign and digits,
    and never as part of another number or one end of a range;

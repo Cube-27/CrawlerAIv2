@@ -1,4 +1,4 @@
-"""The URLs an HTML page states about itself and links to (adapters spec), read from its document: the references an
+"""The URLs an HTML page states about itself and links to, read from its document: the references an
 adapter weighs to tell which platform page a page on another host stands for (`adapters.base.Referring`)."""
 
 from urllib.parse import urljoin, urlsplit
@@ -59,7 +59,7 @@ def _links(tree: LexborHTMLParser, base: str) -> tuple[str, ...]:
 
 def _join(base: str, reference: str) -> str | None:
     """`reference` resolved against `base` (RFC 3986 §5), or None for one the URL parser refuses: an authority no URL
-    parser reads (§3.2.2, an unmatched bracket)."""
+    parser reads (an unmatched bracket)."""
     try:
         url = urljoin(base, reference.strip())
         urlsplit(url)

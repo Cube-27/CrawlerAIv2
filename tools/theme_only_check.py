@@ -1,6 +1,6 @@
-"""Fail when frontend code sets a visual value outside the theme layer, or imports UI from outside HeroUI (DESIGN.md).
+"""Fail when frontend code sets a visual value outside the theme layer, or imports UI from outside HeroUI.
 
-DESIGN.md, Theming and Stack: HeroUI v3 components are used as they are, every visual value is a variable in
+docs/rules.md: HeroUI v3 components are used as they are, every visual value is a variable in
 `frontend/src/app/theme.css`, and `@heroui/react` is the single UI layer. So a visual change is an edit to theme.css
 only. Scans the tracked files under `frontend/src/`, except theme.css itself, test files and generated files, and
 reports:
@@ -38,7 +38,7 @@ RUNTIME_PACKAGES = (
 )
 
 # Each rule's structural property: visual values live only in the theme layer, and @heroui/react is the single UI
-# layer (DESIGN.md, Theming and Stack).
+# layer.
 RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     # CSS Color 4 hex notation (#rgb, #rgba, #rrggbb, #rrggbbaa) and its color functions.
     ("color literal", re.compile(r"(?<![\w&])#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b")),

@@ -1,4 +1,4 @@
-"""The block history (acquisition spec, "Acquisition contract and block history"): refused HTTP requests start a
+"""The block history: refused HTTP requests start a
 browser-first window only when the browser then passed, and a browser the site refuses too ends one."""
 
 from collections.abc import Callable

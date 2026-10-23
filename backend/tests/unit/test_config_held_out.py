@@ -1,4 +1,4 @@
-"""Held-out facts from stored rows (learning-configs spec step 4): a detail page's published values are its record's,
+"""Held-out facts from stored rows: a detail page's published values are its record's,
 and its references are the valid structured or adapter values of the entities that published; a listing's rows are
 its records in stored order, with the page's fields split off and no references."""
 

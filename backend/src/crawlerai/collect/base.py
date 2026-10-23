@@ -1,4 +1,4 @@
-"""What every collector shares (extraction spec): the entities it finds, the candidates it
+"""What every collector shares: the entities it finds, the candidates it
 proposes for schema fields, and the `Collector` protocol.
 
 A collector proposes; it never chooses. Ownership, intent and preference are `crawlerai.resolve`'s.
@@ -16,7 +16,7 @@ from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Context, NormalizeResult, Ok, Raw
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
-# The page itself, as an entity: what page-level values (Open Graph, meta, cleaned text) belong to (§4.6).
+# The page itself, as an entity: what page-level values (Open Graph, meta, cleaned text) belong to.
 PAGE = "page"
 # An object item of a JSON array holding two or more objects, in JSON without standard keys (`js_state`, `xhr`): one of
 # a set of items, not its document's subject (`collect.admission`). It is no schema.org type.
@@ -55,7 +55,7 @@ class Entity(_Model):
     # schema.org `isVariantOf`: the IRIs (`@id`, `itemid`) of the nodes this product names as what it is a variant of.
     variant_of: tuple[str, ...] = ()
     # Whether its source already checked that it states the requested item: the root of an identity-checked data
-    # call's answer (acquisition spec "Data calls"). Identity merges it into the page's own item (`resolve.identity`).
+    # call's answer (a data call). Identity merges it into the page's own item (`resolve.identity`).
     requested: bool = False
     # A schema.org AggregateOffer's price range: its `lowPrice` and `highPrice` when they differ, with its
     # `priceCurrency` (None: unknown). The item's offers' prices span it; resolution reads its bounds
@@ -72,15 +72,15 @@ class Candidate(_Model):
     raw: Raw  # as the source holds it: a DOM string, or a JSON value from structured data
     normalized: NormalizeResult
     locator: LocatorText
-    independent: bool  # False for js_state/xhr values admitted only by equality to another candidate (§8.1)
+    independent: bool  # False for js_state/xhr values admitted only by equality to another candidate
     # A platform's record standing in for the property, not the page's statement of it (`Shape.fallbacks`): any value
-    # the page states outweighs it (resolution spec, "Candidate score").
+    # the page states outweighs it.
     fallback: bool = False
 
 
 def is_visible_amount(c: Candidate, spec: FieldSpec) -> bool:
-    """Whether `c` is an amount the page shows of a money field (resolution spec, "the visible price"): a rendered `dom`
-    value read as an amount, on its own evidence (not admitted by equality to another candidate, §8.1)."""
+    """Whether `c` is an amount the page shows of a money field: a rendered `dom`
+    value read as an amount, on its own evidence (not admitted by equality to another candidate)."""
     item = spec.item.type if spec.type is FieldType.LIST and spec.item is not None else spec.type
     return item is FieldType.MONEY and c.source_kind == "dom" and c.independent and isinstance(c.normalized, Ok)
 
@@ -88,7 +88,7 @@ def is_visible_amount(c: Candidate, spec: FieldSpec) -> bool:
 class CollectResult(_Model):
     entities: tuple[Entity, ...]
     candidates: tuple[Candidate, ...]
-    # What the collector skipped and why (an invalid JSON block); a collector never raises on page content (§4.5).
+    # What the collector skipped and why (an invalid JSON block); a collector never raises on page content.
     diagnostics: tuple[str, ...] = ()
 
     @model_validator(mode="after")
@@ -109,7 +109,7 @@ class CollectResult(_Model):
 
 
 def _check_tree(entities: Sequence[Entity]) -> None:
-    # Entities form a tree (§4.6): walking up the parents from any entity ends at a root.
+    # Entities form a tree: walking up the parents from any entity ends at a root.
     parents = {entity.id: entity.parent for entity in entities}
     for entity in entities:
         if descends(entity.parent, entity.id, parents):
@@ -117,15 +117,15 @@ def _check_tree(entities: Sequence[Entity]) -> None:
 
 
 class Collector(Protocol):
-    """One source kind's collector. It reads the page's parsed trees and script blocks, never the raw body (INV-26),
-    and normalizes each raw value with `ctx` (schemas spec)."""
+    """One source kind's collector. It reads the page's parsed trees and script blocks, never the raw body,
+    and normalizes each raw value with `ctx`."""
 
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> CollectResult: ...
 
 
 def descends(entity: str | None, ancestor: str, parents: Mapping[str, str | None]) -> bool:
     """Whether `entity` is `ancestor` or below it in `parents`; a collector checks it before giving a node a parent, so
-    that entities stay a tree (§4.6)."""
+    that entities stay a tree."""
     seen: set[str] = set()
     while entity is not None and entity not in seen:  # a walk into a cycle without `ancestor` ends
         if entity == ancestor:

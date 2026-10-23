@@ -1,22 +1,22 @@
-"""Browser profiles (acquisition spec, "HTTP and browser rungs", profiles; owner #50 as amended 2026-10-21): the browser
+"""Browser profiles (profiles): the browser
 rung renders each site in a Chromium profile of its own, as a user's browser keeps its state, rather than in an
 incognito context, which pages can tell apart (a storage quota a fraction of a profile's).
 
 - One profile per site (its registrable domain, HTML Standard §7.1.1), proxy pool and endpoint (`profile_name`), so
-  what a site set through one route never goes out through another (INV-16, INV-29 as amended). The directory is
+  what a site set through one route never goes out through another. The directory is
   named by a digest, never by the host.
 - Kept under `CRAWLERAI_BROWSER_PROFILES`, across jobs and processes; deleting that directory resets every profile. A
   profile is opened by one process at a time, under an OS lock on its `.lock` file that the OS releases when the
   process ends. A profile another process or fetch holds, a fetch with the caller's own cookies (which are no site's
   state), and every fetch when no directory is configured, get a fresh profile in a temporary directory, deleted when
   it closes.
-- A kept profile is the browser's cookie store for its site (owner #76): its cookies, challenge and clearance cookies
+- A kept profile is the browser's cookie store for its site: its cookies, challenge and clearance cookies
   included, are Chromium's own, in plaintext under the operator-managed `CRAWLERAI_BROWSER_PROFILES`, and nothing
   else writes them. Only a temporary profile of a site starts with the site's live session or encrypted stored cookie
   state, and only its `ok` writes that state (`acquire.session`).
 - Before each launch the profile's preferences get Chromium's WebRTC IP handling policy `disable_non_proxied_udp`
   (Chromium `prefs::kWebRTCIPHandlingPolicy`, with non-proxied UDP and multiple routes off), so WebRTC sends no UDP
-  around the SSRF guard's SOCKS proxy (INV-16). Chromium 153 ignores the `--force-webrtc-ip-handling-policy` switch:
+  around the SSRF guard's SOCKS proxy. Chromium 153 ignores the `--force-webrtc-ip-handling-policy` switch:
   a STUN request still left the machine directly with it.
 - Before each launch of a kept profile its HTTP cache and service workers (with their caches) are deleted, so no
   response a page captures is one an earlier job's visit left: a later page reads what the site serves now. Cookies

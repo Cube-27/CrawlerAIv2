@@ -1,9 +1,9 @@
-"""The browser rung's session (acquisition spec, "HTTP and browser rungs"): one Playwright driver per worker process
+"""The browser rung's session: one Playwright driver per worker process
 (`open_browser`) and one browser per open site profile (`_Profiles`, `acquire.browser_profiles`: a persistent context of
 the site's own, not an incognito one). Every connection a profile's browser opens goes through its `SocksGuard`, which
-applies the SSRF guard to every redirect hop, frame and worker (§4.5). The caller's cookies (`RequestContext`) are added
+applies the SSRF guard to every redirect hop, frame and worker. The caller's cookies (`RequestContext`) are added
 to the context before the navigation, as host-only cookies of the URL's host; the caller's headers are never set in the
-browser (INV-44). Every page, cross-site frame and popup presents the browser's own identity (`present`), and so
+browser. Every page, cross-site frame and popup presents the browser's own identity (`present`), and so
 does every service and shared worker (`present_workers`).
 """
 
@@ -50,13 +50,13 @@ __all__ = [
     "present_workers",
 ]
 
-# Patchright's documented setup (D-1204, D-1205, owner 2026-10-23): Google Chrome stable (`chrome`, installed with
+# Patchright's documented setup: Google Chrome stable (`chrome`, installed with
 # `patchright install chrome`), the build the Patchright README recommends, run headless, with its own client hints and
 # no custom headers. Each browser runs in a persistent profile, with the README's `no_viewport`, and two kinds of launch
-# argument: its user agent (`_USER_AGENT_SWITCH`), and the window and screen of the profile (`acquire.desktop_screen`,
-# owner 2026-10-23). WebRTC's proxy policy is a profile preference (`acquire.browser_profiles`).
+# argument: its user agent (`_USER_AGENT_SWITCH`), and the window and screen of the profile (`acquire.desktop_screen`).
+# WebRTC's proxy policy is a profile preference (`acquire.browser_profiles`).
 _CHANNEL = "chrome"
-# The one change to the browser's identity (owner #71 as amended 2026-10-21 and 2026-10-23, INV-44): its own user
+# The one change to the browser's identity: its own user
 # agent, read from the browser, with the token headless mode adds (`HeadlessChrome/`) named as a headed browser names
 # it, and its own User-Agent Client Hints. The user agent is Chrome's `--user-agent` switch, its default for every
 # request and every worker it starts: a service or shared worker's script request goes from the browser process, and
@@ -74,7 +74,7 @@ _OVERRIDE: Final = "Emulation.setUserAgentOverride"
 # Workers §3.1), in CDP's target types.
 _WORKERS: Final = ({"type": "service_worker"}, {"type": "shared_worker"})
 # The browser started only to read the identity it presents (`browser_identity`) loads no page of any site; anything it
-# requests in the background goes to this closed loopback port and fails, rather than around the guard (INV-16).
+# requests in the background goes to this closed loopback port and fails, rather than around the guard.
 _NOWHERE: Final = "socks5://127.0.0.1:9"
 # The page that browser navigates to, the one address its proxy bypasses: a listener of this process on the loopback
 # address (RFC 6890 §2.2.2), which reads the request as the browser's network stack sends it (Playwright's request
@@ -114,7 +114,7 @@ _HINTS_JS: Final = f"() => navigator.userAgentData.getHighEntropyValues({list(_H
 _HINT_FIELDS: Final = {"uaFullVersion": "fullVersion"}
 # Chromium's implicit proxy-bypass rules (`ProxyBypassRules`, net/proxy_resolution) send `localhost`, 127.0.0.0/8,
 # [::1], 169.254.0.0/16 and fe80::/10 around any proxy; 169.254.169.254 is the cloud metadata address. The bypass rule
-# `<-loopback>` removes those implicit rules, so they too go through the guard (INV-16). Playwright adds it itself
+# `<-loopback>` removes those implicit rules, so they too go through the guard. Playwright adds it itself
 # unless told not to; it is named here so the guard does not rest on a library default.
 _PROXY_ALL_LOOPBACK = "<-loopback>"
 # Site profiles a process keeps open (`_Profiles`), rendering or idle: as many as it renders at once, each a browser
@@ -128,7 +128,7 @@ _IDENTITY: dict[str, "Identity"] = {}
 
 
 class HeadlessIdentity(RuntimeError):
-    """What the browser presents still names headless mode: the process does not start (owner 2026-10-23)."""
+    """What the browser presents still names headless mode: the process does not start."""
 
 
 @dataclass(frozen=True)
@@ -189,7 +189,7 @@ def _exit_bound(key: ContextKey) -> bool:
 
 @dataclass
 class _Profiles:
-    """The site profiles open in this process (owner #50 as amended 2026-10-21): a site's next page, in any job, opens
+    """The site profiles open in this process: a site's next page, in any job, opens
     in the profile its earlier pages left, so its cookies, storage and passed challenges carry on, as in one user's
     browser. A profile is taken while a page renders in it, so no two pages share one at once (a second page of the
     site gets a temporary profile, `acquire.browser_profiles`); at most `_OPEN_PROFILES` are open, the least recently
@@ -389,7 +389,7 @@ async def _listening(sent: dict[str, str]) -> AsyncIterator[str]:
 
 async def present(page: Page, identity: Identity) -> None:
     """Set `identity` on `page` before it navigates, then on each cross-site frame and popup it opens: Chrome's user
-    agent override (the CDP Emulation domain's, owner 2026-10-23) with the browser's own client hints, which Chrome
+    agent override (the CDP Emulation domain's) with the browser's own client hints, which Chrome
     does not report itself under the `--user-agent` switch (`_USER_AGENT_SWITCH`). A dedicated worker takes its
     page's. A cross-site frame, which renders in a process of its own, and a popup take it once Playwright reports
     them, so their first requests carry the browser's default: the same user agent and brands, without the
@@ -447,7 +447,7 @@ async def _present_popup(popup: Page, identity: Identity) -> None:
 
 def context_locality(policy: FetchPolicy, session: BrowserSession, pool: ProxyPool | None) -> Locality:
     """The context's locality (`acquire.locality`) for the request's locale through the place the render goes out
-    from: the pool's declared place through a pool, else the machine's (acquisition spec, "Egress country"); a pool
+    from: the pool's declared place through a pool, else the machine's; a pool
     that declares none is not the machine's."""
     return locality(policy.locale_hint, session.direct if pool is None else pool.place)
 
@@ -469,7 +469,7 @@ async def open_context(
     `sessions` give (`SiteSessions.for_browser`; a kept profile holds its own), with the `locale` and `timezone_id`
     of `locale` (`context_locality`). Nothing intercepts its requests: Playwright's request routing
     turns the HTTP cache off, so every request carries `Cache-Control: no-cache` and `Pragma: no-cache`, which no
-    user's browser sends on a first load (acquisition spec, "HTTP and browser rungs")."""
+    user's browser sends on a first load."""
     stack = AsyncExitStack()
     traffic = Traffic()
     site = key or _site_key(url, policy, proxy)
@@ -516,8 +516,7 @@ def _closed(session: BrowserSession, held: _Context) -> None:
 def context_key(url: str, policy: FetchPolicy, proxy: ProxyEndpoint | None) -> ContextKey | None:
     """The profile a page renders in (`acquire.browser_profiles`): the page's site (HTML Standard §7.1.1) and the
     proxy pool and endpoint its guard goes through, a sticky exit's session id included (`core.proxy`). None for a
-    fetch with the caller's own cookies, which are no site's state (acquisition spec, "Cookies stay inside one
-    fetch"): it gets a temporary profile, never kept."""
+    fetch with the caller's own cookies, which are no site's state: it gets a temporary profile, never kept."""
     if policy.context is not None or urlsplit(url).hostname is None:
         return None
     return _site_key(url, policy, proxy)
@@ -539,7 +538,7 @@ def caller_cookies(url: str, context: RequestContext) -> list[SetCookieParam]:
 def seeded_cookies(cookies: Sequence[SessionCookie]) -> list[SetCookieParam]:
     """Session cookies as `BrowserContext.add_cookies` takes them, each with its own path: a host-only cookie with its
     host as the domain (RFC 6265 §5.3 step 6; as Playwright sets a cookie given with a URL), a `Domain` cookie with its
-    domain led by a dot (§5.2.3); a session cookie with no expiry."""
+    domain led by a dot; a session cookie with no expiry."""
     params: list[SetCookieParam] = []
     for cookie in cookies:
         domain = cookie.domain if cookie.host_only else f".{cookie.domain}"
@@ -553,7 +552,7 @@ def seeded_cookies(cookies: Sequence[SessionCookie]) -> list[SetCookieParam]:
 
 
 async def context_cookies(context: BrowserContext) -> tuple[SessionCookie, ...]:
-    """Every cookie the context holds, read without changing any (INV-42: nothing is set in the browser); none when
+    """Every cookie the context holds, read without changing any (nothing is set in the browser); none when
     the context is gone."""
     try:
         return browser_cookies(cast(list[Mapping[str, object]], await context.cookies()))

@@ -1,4 +1,4 @@
-"""Range normalizer (normalization spec): `{min, max, currency, unit, period}`, which covers salary.
+"""Range normalizer: `{min, max, currency, unit, period}`, which covers salary.
 
 Accepts:
 - a schema.org `MonetaryAmount` (`currency`, and `minValue`/`maxValue`/`value` either on it or on a nested
@@ -15,7 +15,7 @@ Exactly one of `currency` and `unit` is set. Bounds are decimal strings. The cur
 comes from the money rules, which the caller passes in (the dispatcher passes the money module): this module never
 reads a currency itself (C8), and it does not import the money module (the normalize-independence contract).
 
-Declines (§9): the currency unresolved, or the period unresolved on a monetary range → `Ambiguous`; min > max →
+Declines: the currency unresolved, or the period unresolved on a monetary range → `Ambiguous`; min > max →
 `Invalid`. A unit range (a `QuantitativeValue` with a unit) has no period to resolve.
 """
 
@@ -42,13 +42,13 @@ from crawlerai.normalize.base import (
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 MoneyRules = Callable[[Raw, Context], NormalizeResult]
-"""The money normalizer for one value (normalization spec). Range passes it a structured `{"price", "priceCurrency"}` or
+"""The money normalizer for one value. Range passes it a structured `{"price", "priceCurrency"}` or
 a text amount, and reads each value it returns as `{"amount", "currency"}` (a decimal and an ISO 4217 code)."""
 
 # schema.org `unitText` for a salary period, per the `baseSalary` / `MonetaryAmount` guidance on JobPosting:
 # HOUR, DAY, WEEK, MONTH, YEAR.
 _PERIODS = ("HOUR", "DAY", "WEEK", "MONTH", "YEAR")
-# The `type:period` vocabulary (normalization spec) maps each phrase to one of these units; its JUSTIFICATION.md names
+# The `type:period` vocabulary maps each phrase to one of these units; its JUSTIFICATION.md names
 # the source.
 _PERIOD_VOCABULARY = "period"
 # An interval written as a count of one and a unit word ("1 YEAR"): ISO 80000-1 writes a quantity as a number and a
@@ -61,17 +61,17 @@ _ISO_DURATION_UNITS = {"Y": "YEAR", "M": "MONTH", "W": "WEEK", "D": "DAY", "H": 
 # UN/CEFACT Recommendation 20 common codes of the schema.org `unitCode` for each period (annum, month, week, day,
 # hour).
 _UN_CEFACT_PERIODS = {"ANN": "YEAR", "MON": "MONTH", "WEE": "WEEK", "DAY": "DAY", "HUR": "HOUR"}
-# The range separators normalization spec names: hyphen-minus and en dash (the range dash, Unicode U+2013), in any
+# The range separators: hyphen-minus and en dash (the range dash, Unicode U+2013), in any
 # language; the `type:range_to` vocabulary holds the words, such as `en` "to", for the page's languages.
 _DASHES = r"-|\u2013"
 _SEPARATOR_VOCABULARY = "range_to"
 
-# The keys of a normalized range (D-0276).
+# The keys of a normalized range.
 _VALUE_KEYS = frozenset({"min", "max", "currency", "unit", "period"})
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context, *, money: MoneyRules) -> NormalizeResult:
-    """Normalize a range field (normalization spec), resolving every currency through `money`."""
+    """Normalize a range field, resolving every currency through `money`."""
     if spec.type is not FieldType.RANGE:
         raise TypeError(f"the range normalizer does not handle type {spec.type}")
     if isinstance(raw, str):
@@ -320,7 +320,7 @@ def _bounded_money(
 ) -> NormalizeResult:
     (lo_amount, lo_currency), (hi_amount, hi_currency) = lo, hi
     if lo_currency is None or hi_currency is None:
-        # A range states one currency or a unit (schemas spec); a sign the money rules leave unknown is neither, so
+        # A range states one currency or a unit; a sign the money rules leave unknown is neither, so
         # the range declines rather than publish a bare pair of numbers.
         return Ambiguous("currency_unknown", ())
     if lo_currency != hi_currency:
@@ -341,7 +341,7 @@ def _options(result: NormalizeResult) -> tuple[JsonValue, ...]:
 
 
 def _amount(money_value: JsonValue) -> tuple[Decimal, str | None]:
-    """A money value (`{amount, currency}`, normalization spec) as (amount, ISO 4217 code, `None` when unknown)."""
+    """A money value (`{amount, currency}`) as (amount, ISO 4217 code, `None` when unknown)."""
     fields = money_value if isinstance(money_value, dict) else {}
     amount, currency = _decimal(fields.get("amount")), fields.get("currency")
     if amount is None or not (currency is None or isinstance(currency, str)):
@@ -355,14 +355,14 @@ def _value(lo: Decimal, hi: Decimal, *, currency: str | None, unit: str | None, 
 
 
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
-    """Equality as a key (normalization spec): every part equal, the bounds as Decimals without rounding (`50000` equals
+    """Equality as a key: every part equal, the bounds as Decimals without rounding (`50000` equals
     `50000.00`)."""
     parts = _range_value(value)
     return raw_key(value) if parts is None else ("range", *parts[:2], *(frozen(p) for p in parts[2:]))
 
 
 def served(value: JsonValue) -> JsonValue:
-    """A published range as a record serves it (normalization spec, "Served form"): its bounds JSON numbers
+    """A published range as a record serves it: its bounds JSON numbers
     (`numbers.json_number`), its other parts as they are; any other value as it is."""
     parts = _range_value(value)
     if parts is None:

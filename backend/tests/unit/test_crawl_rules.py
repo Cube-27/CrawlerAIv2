@@ -1,4 +1,4 @@
-"""Which discovered URLs a request keeps (jobs spec, D-0037): the start URL's exact host unless `include`
+"""Which discovered URLs a request keeps: the start URL's exact host unless `include`
 says otherwise, `include` globs over the canonical URL, and `exclude`, which wins."""
 
 import pytest
@@ -28,7 +28,7 @@ def test_exclude_wins_over_include() -> None:
     assert scope.admits("https://shop.example.test/public/1")
 
 
-# Page-kind rules (jobs spec).
+# Page-kind rules.
 
 
 def test_the_first_rule_whose_pattern_matches_gives_the_page_kind() -> None:
@@ -41,7 +41,7 @@ def test_the_first_rule_whose_pattern_matches_gives_the_page_kind() -> None:
     assert page_kind_for("https://shop.example.test/p/2", rules) == "detail"
 
 
-# The URL globs of `extract` (jobs spec).
+# The URL globs of `extract`.
 
 
 @pytest.mark.parametrize(
@@ -67,7 +67,7 @@ def test_a_glob_is_expanded_on_its_canonical_origin(pattern: str, origin: str, c
         (("http", "HTTPS://www.Example.test/home#top"), "https://www.example.test/home"),
         (("browser", "https://www.example.test/"), "https://www.example.test/"),
         (("http", "https://example.test/en/"), "https://example.test/en/"),
-        # Off the start URL's site (a sibling or an unrelated host, D-0672), no capture, or an API recipe's, whose
+        # Off the start URL's site (a sibling or an unrelated host), no capture, or an API recipe's, whose
         # final URL is its endpoint: the start URL.
         (("http", "https://shop.test/"), "https://example.test/"),
         (("http", "https://login.idp.test/"), "https://example.test/"),

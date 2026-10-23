@@ -1,5 +1,5 @@
-"""Why a detail page's field is unpublished, from evidence the fetch and the resolution already hold (resolution spec,
-"Render-bound fields" and "Out of stock without a price"): no per-site rule, only schema.org semantics, the field
+"""Why a detail page's field is unpublished, from evidence the fetch and the resolution already hold ("Render-bound
+fields" and "Out of stock without a price"): no per-site rule, only schema.org semantics, the field
 sources of the site's config and the attempts the capture records.
 """
 

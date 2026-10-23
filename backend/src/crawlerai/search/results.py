@@ -1,4 +1,4 @@
-"""Reading a search provider's answer without knowing the provider (D-1443).
+"""Reading a search provider's answer without knowing the provider.
 
 A JSON answer holds its results as the largest array of objects that carry an absolute http(s) URL (RFC 3986 §4.3, RFC
 9110 §4.2.1): the first such string of an object is the result's URL, its title the first other string and its snippet

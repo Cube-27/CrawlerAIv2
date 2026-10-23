@@ -1,6 +1,6 @@
-"""The keyed digest of a caller's secret request context (acquisition spec, "Caller request context"): what a stored
+"""The keyed digest of a caller's secret request context: what a stored
 capture keeps of the header and cookie values it was fetched with, so that it stands only for a fetch with the same
-values (`services.stored_captures`), while the values themselves are never stored (D-1432, D-1510).
+values (`services.stored_captures`), while the values themselves are never stored.
 
 The digest is HMAC-SHA256 (RFC 2104) under a key derived from the server's `CRAWLERAI_COOKIE_KEY` (`configure`, called
 as a process opens its fetching): processes that share the key compute equal digests, and nobody without it can test a

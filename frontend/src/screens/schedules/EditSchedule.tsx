@@ -47,7 +47,7 @@ function EditForm({ schedule, onSaved }: Readonly<{ schedule: Schedule; onSaved:
   );
 }
 
-/** A schedule's Edit (D-1514): a dialog over its name, cadence and request. It starts from the schedule as stored and
+/** A schedule's Edit: a dialog over its name, cadence and request. It starts from the schedule as stored and
  * is rebuilt when the schedule is saved (`updated_at`), so it never shows a stale draft. */
 export function EditSchedule({ schedule }: Readonly<{ schedule: Schedule }>) {
   const [open, setOpen] = useState(false);

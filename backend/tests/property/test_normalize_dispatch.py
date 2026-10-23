@@ -1,6 +1,6 @@
-"""The normalize dispatcher (normalization spec): each field type goes to its one module, lists and objects recurse
+"""The normalize dispatcher: each field type goes to its one module, lists and objects recurse
 into their items and sub-fields, range resolves currencies by the registered money rules, no type returns `Ok`
-for empty input (INV-06), and records serve money, ranges and numbers as JSON numbers ("Served form")."""
+for empty input, and records serve money, ranges and numbers as JSON numbers ("Served form")."""
 
 import json
 from datetime import UTC, datetime

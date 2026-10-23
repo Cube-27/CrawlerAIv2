@@ -1,4 +1,4 @@
-"""How the MCP tools answer (jobs spec): a field without a published value reads "unknown" in
+"""How the MCP tools answer: a field without a published value reads "unknown" in
 the records' summary, never as a value, and every field shows its status and confidence."""
 
 import json

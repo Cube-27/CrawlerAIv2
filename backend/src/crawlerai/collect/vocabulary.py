@@ -1,4 +1,4 @@
-"""The schema.org vocabulary (schemas spec): the type hierarchy, the properties and their sub-properties, and the
+"""The schema.org vocabulary: the type hierarchy, the properties and their sub-properties, and the
 enumeration members of the pinned schema.org vocabulary file, and the check of a schema document's `schema_org` paths
 and `schema:` references against it.
 """
@@ -15,7 +15,7 @@ from crawlerai.core.engine_version import engine_data_dir
 from crawlerai.schemas.paths import MappedPath, parse_paths
 from crawlerai.schemas.types import FieldSpec
 
-# The pinned schema.org release in `backend/data/manifest.json` (schemas spec, D-0018).
+# The pinned schema.org release in `backend/data/manifest.json`.
 VOCABULARY_FILE = Path("schemaorg") / "schemaorg-all-https.jsonld"
 
 # The vocabulary file's compact IRIs: `schema:` is https://schema.org/, `rdfs:Class` the RDF Schema class of classes.
@@ -115,7 +115,7 @@ _ENUMERATION = "Enumeration"
 
 def reference_errors(fields: Mapping[str, FieldSpec], vocabulary: Vocabulary) -> list[tuple[str, str]]:
     """The `schema_org` paths and `schema:` enum references of a schema document's `fields` that the pinned schema.org
-    vocabulary does not define, as (field path, reason) pairs (schemas spec). A path's root must be a type, each step,
+    vocabulary does not define, as (field path, reason) pairs. A path's root must be a type, each step,
     predicate and `+` join a property and a predicate's value a member or type; a `schema:` reference must be an
     enumeration. `type:` references name the shipped type vocabularies, which the normalizer declines on when unknown
     (`unknown_vocab`)."""
@@ -157,9 +157,9 @@ def _alternative_problems(path: MappedPath, vocabulary: Vocabulary) -> Iterator[
 
 
 def pinned_reference_errors(fields: Mapping[str, FieldSpec]) -> list[tuple[str, str]]:
-    """`reference_errors` against the pinned vocabulary (`default_vocabulary`), for every path that stores a schema
-    (schemas spec, "schema.org paths"). A process without the vocabulary file checks syntax only, as it extracts no
-    records (`load_engine_data`)."""
+    """`reference_errors` against the pinned vocabulary (`default_vocabulary`), for every path that stores a schema.
+    A process without the vocabulary file checks syntax only, as it extracts no
+        records (`load_engine_data`)."""
     try:
         vocabulary = default_vocabulary()
     except VocabularyMissing:

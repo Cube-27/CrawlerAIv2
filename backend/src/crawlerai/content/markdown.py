@@ -1,7 +1,7 @@
-"""The `markdown` content format (rest-api spec): the page minus its furniture, as Markdown.
+"""The `markdown` content format: the page minus its furniture, as Markdown.
 
 The page's furniture (`content.regions`: what it never renders, its landmarks and the elements its class and id names
-call furniture) is taken out of a copy of the page's lxml tree, so the capture is parsed once (INV-26) and the shared
+call furniture) is taken out of a copy of the page's lxml tree, so the capture is parsed once and the shared
 tree stays as parsed; everything left is written, in document order, as CommonMark with GFM tables. No per-site rules
 (C2). A browser capture's body is the rendered DOM, so the same call covers both rungs.
 
@@ -10,19 +10,19 @@ The writer follows the HTML Standard's rendering: an element the user-agent styl
 2 §9.2.1.1: the inline box is broken around the block), but for a hyperlink, which stays one link around its content.
 A run of inline content between blocks is a paragraph, its whitespace collapsed to one space (CSS Text Level 3,
 `white-space: normal`) and a `br` a line break. Headings (`h1`-`h6`) are ATX headings (CommonMark §4.2); `ul`, `ol`
-and `menu` are lists (§5.3), their items' blocks on the item's lines and nested lists indented under them; a table
+and `menu` are lists, their items' blocks on the item's lines and nested lists indented under them; a table
 with no table inside it is a GFM table, its first row the header and each cell's content on one line, while a table
-that holds tables lays out the page and is read as blocks; `pre` is a fenced code block (§4.5) of its text as written;
-`blockquote` is a block quote (§5.1); `hr` a thematic break (§4.1). Inline, a hyperlink (an `a` with an `href`, HTML
-Standard §4.6.1) is a link (§6.3) whose text is its content, else its `aria-label` or `title`; an image is an image
-(§6.4) of its `alt`, from its `src`, else, where `src` is an inline `data:` placeholder (RFC 2397), from the `data-src`
-a lazy loader keeps it in (HTML Standard §3.2.6.6); `strong`/`b` and `em`/`i` are strong and emphasis (§6.2), `code`,
-`kbd` and `samp` code spans (§6.1). A form control's value (`input`, `select`, `textarea`, HTML Standard §4.10) is
+that holds tables lays out the page and is read as blocks; `pre` is a fenced code block of its text as written;
+`blockquote` is a block quote; `hr` a thematic break. Inline, a hyperlink (an `a` with an `href`, HTML
+Standard §4.6.1) is a link whose text is its content, else its `aria-label` or `title`; an image is an image
+ of its `alt`, from its `src`, else, where `src` is an inline `data:` placeholder (RFC 2397), from the `data-src`
+a lazy loader keeps it in (HTML Standard §3.2.6.6); `strong`/`b` and `em`/`i` are strong and emphasis, `code`,
+`kbd` and `samp` code spans. A form control's value (`input`, `select`, `textarea`, HTML Standard §4.10) is
 what a reader of the page enters, not reads: it is no text.
 
 Link and image targets are resolved against the document base URL (HTML Living Standard §2.4.1; RFC 3986 §5.2), so
 the Markdown can be read away from the page. The source's layout whitespace is not content: in Markdown an indent of
-four spaces starts a code block and a run of blank lines means one (CommonMark §4.4, §4.9). So a line's leading
+four spaces starts a code block and a run of blank lines means one (CommonMark §4.4). So a line's leading
 whitespace is dropped unless it nests a list item or continues one, and blank-line runs become one; fenced code is
 kept as written.
 
@@ -31,8 +31,7 @@ disabled renders it: its `noscript` content, which such a page serves to readers
 §4.12.2), is written too.
 
 A JSON body (an `api` capture's, `ParsedPage.json_body`) is no HTML document: its Markdown is the answer itself,
-pretty-printed in one fenced code block whose info string is `json` (CommonMark §4.5), never its text read as HTML
-(D-1473).
+pretty-printed in one fenced code block whose info string is `json` (CommonMark §4.5), never its text read as HTML.
 """
 
 import json
@@ -65,7 +64,7 @@ _SPACES = re.compile(" {2,}")
 _LANGUAGE = "language-"
 _INLINE_DATA = "data:"
 # CommonMark §4.2: an ATX heading's opening sequence. In a list item a heading is written as its text: an item's lines
-# are its own (§5.2), and readers of the Markdown by block (`content.md_blocks`) take a heading line for a section.
+# are its own, and readers of the Markdown by block (`content.md_blocks`) take a heading line for a section.
 _HEADING_MARK = re.compile(r"^#{1,6} ")
 _JAVASCRIPT = re.compile(r"\s*javascript:", re.IGNORECASE)
 
@@ -159,7 +158,7 @@ class _Writer:
         if tag == "blockquote":
             return _quoted(self.blocks(element))
         if tag == "hr":
-            return ["***"]  # CommonMark §4.1; `---` under a line would make it a setext heading (§4.3)
+            return ["***"]  # CommonMark §4.1; `---` under a line would make it a setext heading
         return self.blocks(element)
 
     def inline(self, element: HtmlElement) -> str:

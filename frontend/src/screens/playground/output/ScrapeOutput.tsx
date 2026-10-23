@@ -27,7 +27,7 @@ interface OutputTab {
   content: ReactNode;
 }
 
-/** The page's clean JSON (frontend spec), with one "uncalibrated" badge above it when a published field is. */
+/** The page's clean JSON, with one "uncalibrated" badge above it when a published field is. */
 function JsonTab({
   response,
   fieldTypes,
@@ -50,7 +50,7 @@ function JsonTab({
   );
 }
 
-/** The records with every field attribute (INV-22), or why there are none. */
+/** The records with every field attribute, or why there are none. */
 function TableTab({
   response,
   fieldTypes,
@@ -139,7 +139,7 @@ function formatTabs(response: ScrapeResponse): OutputTab[] {
   return tabs.filter((tab) => tab !== null);
 }
 
-/** frontend spec: JSON first, then Table, the page formats, and Usage with how the page was fetched. */
+/** JSON first, then Table, the page formats, and Usage with how the page was fetched. */
 function outputTabs(
   response: ScrapeResponse,
   fieldTypes: FieldTypes,

@@ -19,10 +19,9 @@ import {
 } from "./OptionsPanel";
 import type { WebhookSettings } from "./pageRequest";
 
-/** Options rows more than one mode has (frontend spec), each named after its request member. */
+/** Options rows more than one mode has, each named after its request member. */
 
-/** `page_kind`. With a schema, the page kind is the one its records can be for, `schemaPageKind`, or none (rest-api spec
- * §4.4), and the others are disabled. */
+/** `page_kind`. With a schema, the page kind is the one its records can be for, `schemaPageKind`, or none, and the others are disabled. */
 export function PageKindRow({
   value,
   hasSchema,
@@ -82,7 +81,7 @@ export function FetchMethodRow({
   );
 }
 
-/** `fetch.max_rows`: a soft row target for a list a platform adapter reads from its API in pages (D-1395). Empty
+/** `fetch.max_rows`: a soft row target for a list a platform adapter reads from its API in pages. Empty
  * asks for every page, up to the server's cap. */
 export function MaxRowsRow({
   value,
@@ -100,8 +99,8 @@ export function MaxRowsRow({
   );
 }
 
-/** `budget.llm_calls` (llm spec): the most LLM calls the request may make. Empty leaves `budget` out, and the
- * project's LLM call limit (Settings) applies, or none (D-1121). */
+/** `budget.llm_calls`: the most LLM calls the request may make. Empty leaves `budget` out, and the
+ * project's LLM call limit (Settings) applies, or none. */
 export function LlmCallsRow({
   value,
   help,
@@ -124,7 +123,7 @@ export function LlmCallsRow({
   );
 }
 
-/** `min_confidence` (resolution spec, "Evidence and confidence"), as a percent: a records field whose calibrated
+/** `min_confidence`, as a percent: a records field whose calibrated
  * confidence is below it is left unpublished. Empty leaves the member out, and every value publishes with its
  * confidence. */
 export function MinConfidenceRow<O extends { minConfidence: number }>({
@@ -148,7 +147,7 @@ export function MinConfidenceRow<O extends { minConfidence: number }>({
   );
 }
 
-/** `webhook_url`, `webhook_events` and `webhook_batch` (jobs spec, D-1419): where the job's events are posted,
+/** `webhook_url`, `webhook_events` and `webhook_batch`: where the job's events are posted,
  * which, and how many at once. Without a URL the others are disabled and nothing is sent. */
 export function WebhookRows({
   value,
@@ -206,7 +205,7 @@ export function WebhookRows({
   );
 }
 
-/** `include` and `exclude`: the URL globs that scope a crawl's or a map's URLs (jobs spec). */
+/** `include` and `exclude`: the URL globs that scope a crawl's or a map's URLs. */
 export function ScopeRows({
   include,
   exclude,
@@ -242,11 +241,11 @@ export function ScopeRows({
   );
 }
 
-// schemas spec: a schema's field names are lowercase snake case, `[a-z][a-z0-9_]{0,63}` (`NAME_PATTERN`); the server
+// A schema's field names are lowercase snake case, `[a-z][a-z0-9_]{0,63}` (`NAME_PATTERN`); the server
 // refuses any other, so a name is checked as it is added.
 const FIELD_NAME = /^[a-z][a-z0-9_]{0,63}$/;
 
-/** `schema.fields`: the names the server drafts a schema from (frontend spec), as chips, held in a mode's options. */
+/** `schema.fields`: the names the server drafts a schema from, as chips, held in a mode's options. */
 export function FieldsRow<O extends { fields: readonly string[] }>({
   options,
   onChange,

@@ -1,4 +1,4 @@
-"""What a browser render captures besides its document (acquisition spec, "Network body capture"): the JSON and Flight
+"""What a browser render captures besides its document: the JSON and Flight
 bodies the page loads and the HTML fragments it fetches from its own site, the network data-source layer's input
 (Appendix A #59) and API discovery's (§7.2 step 1); the resources it loaded, counted; the rendered area of a listing's
 item blocks; and the screenshot or PDF the policy asks for.
@@ -47,13 +47,13 @@ __all__ = [
     "json_bodies",
 ]
 
-# acquisition spec, "Network body capture": data bodies (JSON and Flight) and same-site HTML fragments are captured up
-# to 2 MB each and 50 per page; "Bounded bodies (INV-30)": at most 10 MB of them per page in all.
+# Data bodies (JSON and Flight) and same-site HTML fragments are captured up
+# to 2 MB each and 50 per page; at most 10 MB of them per page in all.
 _JSON_BODY_MAX_BYTES = 2_000_000
 JSON_BODIES_MAX = 50
 JSON_PAGE_MAX_BYTES = 10_000_000
 # The bodies read from the browser at once: each read is a round trip to it, and at most this many bodies of at most
-# `_JSON_BODY_MAX_BYTES` are held before the page cap is applied, so the reads stay within INV-30's bound.
+# `_JSON_BODY_MAX_BYTES` are held before the page cap is applied, so the reads stay bounded.
 _READS_AT_ONCE = 5
 # Fetch Standard §2.2.5: requests whose destination is the empty string (fetch() and XMLHttpRequest) or `document`
 # carry data or a new document; Playwright names them `fetch`, `xhr` and `document`. Scripts, styles, images and fonts
@@ -158,7 +158,7 @@ class Resources:
 async def capture_artifacts(page: Page, policy: FetchPolicy) -> dict[str, bytes]:
     """The files `policy` asks of the rendered page, by artifact name: a PNG of the viewport or the whole page, and a
     PDF print (HTML Standard §6.6 print media). A PNG has one pixel per CSS pixel (CSSOM View), whatever the screen's
-    `devicePixelRatio` (`acquire.desktop_screen`). Reading changes nothing in the page (INV-42). A file the browser
+    `devicePixelRatio` (`acquire.desktop_screen`). Reading changes nothing in the page. A file the browser
     could not make in `ARTIFACT_TIMEOUT_S`, or one past `_ARTIFACT_MAX_BYTES`, is left out: the fetch still reached
     its page."""
     asked: list[tuple[str, Callable[[], Awaitable[bytes]]]] = []
@@ -225,7 +225,7 @@ def _asks_json(request: Request) -> bool:
 
 
 async def _json_size(response: Response) -> int:
-    """A JSON body's size before it is read: its `Content-Length` (RFC 9110 §8.6), else its size on the wire (D-1265);
+    """A JSON body's size before it is read: its `Content-Length` (RFC 9110 §8.6), else its size on the wire;
     0 when the browser no longer holds the request, whose body then can't be read either."""
     declared = response.headers.get("content-length", "")
     if declared.isdigit():
@@ -356,7 +356,7 @@ def header_list(headers: Sequence[Mapping[str, object]]) -> HeaderList:
 # The rendered document with its open shadow roots (HTML Standard, `Element.getHTML` with `serializableShadowRoots` and
 # `shadowRoots`): every open root reachable from the document by walking `shadowRoot` is serialized as a declarative
 # `<template shadowrootmode="open">`, which the HTML reader flattens. Run in Patchright's isolated world with `evaluate`
-# (INV-44: no init script); a closed root is not reachable and stays out. The doctype and the root element's own tag
+# (no init script); a closed root is not reachable and stays out. The doctype and the root element's own tag
 # are written around `getHTML`, which serializes the children; a browser without it gives `outerHTML`.
 DOCUMENT_HTML_JS: Final = """() => {
   const roots = [];

@@ -1,4 +1,4 @@
-"""Image policy (normalization and resolution specs): which values name one image file, and which of its renditions
+"""Image policy (normalization and resolution): which values name one image file, and which of its renditions
 publishes.
 
 - The file: an absolute URL's canonical authority and path, scheme, query and stated size aside (`resource_key`), or a
@@ -31,9 +31,9 @@ _HTTPS = "https"  # RFC 9110 §4.2.2
 def resource_key(value: JsonValue) -> tuple[str, str, str] | None:
     """The stored resource an absolute URL names: its canonical authority and path (RFC 3986 §3.2, §3.3: the path
     identifies the resource within the authority), without the scheme, which only says how the authority is reached
-    (http or https), and without the query (§3.4), which may vary only how it is served, such as an image's size or
+    (http or https), and without the query, which may vary only how it is served, such as an image's size or
     crop. Not an equality (two queries can name two resources): it only tells which of one entity's own values
-    another source names, and which values are renditions of one file (extraction spec). `None` for anything that is no
+    another source names, and which values are renditions of one file. `None` for anything that is no
     absolute URL. An image proxy's URL, whose query names the file it serves in one `url` parameter (an image
     optimizer's `?url=<file>&w=640`), names that file's resource, resolved against the proxy URL (RFC 3986 §5)."""
     return _resource(value) if isinstance(value, str) else None

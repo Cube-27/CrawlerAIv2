@@ -1,6 +1,5 @@
-"""A learning run's recipe replays (adapters spec) go out as politely as a served recipe's request (acquisition spec,
-D-0731): at the endpoint host's rate, with no robots.txt request (owner decision #75); counted as the learn job's usage
-(D-1381)."""
+"""A learning run's recipe replays go out as politely as a served recipe's request: at the endpoint host's rate, with no
+robots.txt request; counted as the learn job's usage."""
 
 import json
 from collections.abc import Callable
@@ -32,7 +31,7 @@ class Web:
     transferred: int = 0  # the bytes each answer says it moved
 
     async def http(self, url: str, policy: FetchPolicy) -> FetchResult:
-        raise AssertionError("a replay fetches no page, and by default no robots.txt (owner decision #75)")
+        raise AssertionError("a replay fetches no page, and by default no robots.txt")
 
     async def browser(self, url: str, policy: FetchPolicy) -> FetchResult:
         raise AssertionError("a replay never needs a browser")

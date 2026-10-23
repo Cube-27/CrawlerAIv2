@@ -1,5 +1,5 @@
-"""Type equality (normalization spec) through the dispatcher: each type's rule, lists as multisets of item equality,
-objects field by field. The resolver's agreement rule (extraction spec) and eval (evaluation spec) compare values this
+"""Type equality through the dispatcher: each type's rule, lists as multisets of item equality,
+objects field by field. The resolver's agreement rule and eval compare values this
 way."""
 
 from hypothesis import strategies as st

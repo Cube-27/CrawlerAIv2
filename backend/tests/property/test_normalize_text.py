@@ -1,5 +1,5 @@
-"""The text and long_text normalizer (normalization spec): entity decoding, NFC, whitespace collapse,
-and declines on empty, over-long and template-placeholder input (INV-06)."""
+"""The text and long_text normalizer: entity decoding, NFC, whitespace collapse,
+and declines on empty, over-long and template-placeholder input."""
 
 from datetime import UTC, datetime
 
@@ -61,7 +61,7 @@ def test_a_non_string_is_invalid(raw: JsonValue) -> None:
 def test_word_overlap_is_dice_over_word_multisets_and_tells_a_differing_figure_apart() -> None:
     assert text.word_overlap("a a b", "a b") == pytest.approx(0.8)
     assert text.word_overlap("one two", "three four") == 0.0
-    # D-1583: "10" and "20" are words, so one of five words differs.
+    # "10" and "20" are words, so one of five words differs.
     assert text.word_overlap("The battery lasts 10 hours", "The battery lasts 20 hours") == pytest.approx(0.8)
 
 

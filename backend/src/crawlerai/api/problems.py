@@ -1,4 +1,4 @@
-"""Every error the API answers is an RFC 9457 problem (rest-api spec): its own, raised as `ProblemError`, and the
+"""Every error the API answers is an RFC 9457 problem: its own, raised as `ProblemError`, and the
 framework's (unknown path, wrong method, request validation, an unexpected exception)."""
 
 from collections.abc import Mapping, Sequence
@@ -54,7 +54,7 @@ def format_unavailable(detail: str) -> ProblemError:
 
 
 def target_refused(reason: str) -> ProblemError:
-    """422: the request names a target the API may not fetch (INV-16); `reason` is the SSRF guard's."""
+    """422: the request names a target the API may not fetch; `reason` is the SSRF guard's."""
     return ProblemError(422, "ssrf_rejected", "Target refused", reason)
 
 
@@ -76,7 +76,7 @@ _LLM_PROBLEMS: Final[dict[str, tuple[int, str]]] = {
 
 
 def llm_problem(failure: LLMFailure) -> ProblemError:
-    """An LLM call that gave no valid reply (llm spec), as a problem typed with the failure's code."""
+    """An LLM call that gave no valid reply, as a problem typed with the failure's code."""
     status, title = _LLM_PROBLEMS[failure.code]
     return ProblemError(status, failure.code, title, str(failure))
 

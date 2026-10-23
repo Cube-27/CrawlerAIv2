@@ -1,4 +1,4 @@
-"""The microdata collector (extraction spec): HTML Standard microdata, and RDFa Lite 1.1 read by the
+"""The microdata collector: HTML Standard microdata, and RDFa Lite 1.1 read by the
 same rules.
 
 An item is an element with `itemscope` (microdata) or `typeof` (RDFa Lite); an element with both is one item. Its

@@ -1,4 +1,4 @@
-"""`GET /v1/records` (rest-api spec): stored records with their full `field_meta`, a page at a time."""
+"""`GET /v1/records`: stored records with their full `field_meta`, a page at a time."""
 
 from typing import Annotated
 

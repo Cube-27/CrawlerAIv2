@@ -1,4 +1,4 @@
-"""LLM prices (llm spec): the shipped price lists, the one-price-per-call rule, and the lookup by provider, model,
+"""LLM prices: the shipped price lists, the one-price-per-call rule, and the lookup by provider, model,
 date and prompt length. Models in the synthetic lists are made-up names."""
 
 from datetime import date

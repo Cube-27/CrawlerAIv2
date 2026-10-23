@@ -50,7 +50,7 @@ function SourceRow({
   return null;
 }
 
-/** Extract's options (frontend spec): more URLs or globs and the page kind; page limit, fetch method, the LLM call
+/** Extract's options: more URLs or globs and the page kind; page limit, fetch method, the LLM call
  * limit and the webhook; then the JSON, prompt or field names of the toolbar's schema `source`. A stored schema's page
  * kind is its own, `schemaPageKind`. */
 export function ExtractOptions({
@@ -111,7 +111,7 @@ export function ExtractOptions({
           onChange({ ...options, maxRows });
         }}
       />
-      {/* jobs spec: an extract's `budget.llm_calls` bounds a prompt's draft. */}
+      {/* An extract's `budget.llm_calls` bounds a prompt's draft. */}
       <LlmCallsRow
         value={options.llmCalls}
         help="The most LLM calls drafting a schema from the prompt may make. Empty: the project's limit in Settings."

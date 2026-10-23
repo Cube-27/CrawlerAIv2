@@ -1,4 +1,4 @@
-"""`crawlerai jobs summary|reextract` (jobs spec, "Job outcome summary"): a job's outcomes from what it stored, and its
+"""`crawlerai jobs summary|reextract`: a job's outcomes from what it stored, and its
 captures extracted again offline. One JSON document each, on stdout."""
 
 import argparse

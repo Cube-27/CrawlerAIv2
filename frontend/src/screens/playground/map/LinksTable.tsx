@@ -3,7 +3,7 @@ import { useState } from "react";
 import { PAGE_SIZE, PagedTable } from "../../../components/PagedTable";
 import { SelectionCheckbox, selectOnPage } from "../run/scrapeAsBatch";
 
-/** The URLs a map found (frontend spec), a page at a time in the order the server returned them, with row selection
+/** The URLs a map found, a page at a time in the order the server returned them, with row selection
  * (`selected`, kept across pages). The whole list is in the map's answer, so the pages are slices of it. */
 export function LinksTable({
   urls,

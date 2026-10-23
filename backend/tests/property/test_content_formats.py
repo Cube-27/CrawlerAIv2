@@ -1,4 +1,4 @@
-"""Content-format properties (rest-api spec): `links` are absolute canonical http(s) URLs, cleaned `html` runs no
+"""Content-format properties: `links` are absolute canonical http(s) URLs, cleaned `html` runs no
 script, `metadata.language` is `<html lang>`, else `og:locale`, else absent, a wrapper named after furniture that
 holds the page's longest block is kept, and so is every slide of a carousel. Examples pin the markdown of an
 article, of a page with furniture and of a listing, and that two canonical links name none (RFC 6596 §3); all read

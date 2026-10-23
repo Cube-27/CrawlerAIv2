@@ -1,5 +1,5 @@
-"""Config exports (learning-configs spec): a config in `json` (the IR as stored) or `platform_draft`, with the release
-check (§12.3) run on the held-out pages."""
+"""Config exports: a config in `json` (the IR as stored) or `platform_draft`, with the release
+check run on the held-out pages."""
 
 from collections.abc import Sequence
 from typing import Literal

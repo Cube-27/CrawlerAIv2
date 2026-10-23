@@ -12,7 +12,7 @@ export type ScrapeRun =
   | { kind: "done"; response: ScrapeResponse; fieldTypes: FieldTypes }
   | { kind: "failed"; problem: Problem };
 
-/** The field types to show the records by: the stored schema's, the only kind Scrape sends (D-0818). Empty when there
+/** The field types to show the records by: the stored schema's, the only kind Scrape sends. Empty when there
  * are no records or the schema can't be read; the values are then shown as the server sent them. */
 async function fieldTypes(
   client: ApiClient,

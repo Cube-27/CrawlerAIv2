@@ -1,4 +1,4 @@
-"""Money normalizer (normalization spec): `{"amount": "<decimal>", "currency": "<ISO 4217>" | null}`.
+"""Money normalizer: `{"amount": "<decimal>", "currency": "<ISO 4217>" | null}`.
 
 Accepts:
 - a string, from the DOM or an LLM: the one amount in it (a percentage beside it is a discount, not an amount; a
@@ -14,7 +14,7 @@ Accepts:
   point (schema.org `price`: no grouping, no currency sign); a `price` written as display text instead (`$1,295.99`)
   is read like text, in the stated currency, which any sign it writes must denote.
 
-A grounded amount always gives a value; its currency comes from the best evidence (normalization spec, "money"): the
+A grounded amount always gives a value; its currency comes from the best evidence: the
 sign or code written with it, the item's structured data, a page-level declaration, the page's locale and region
 narrowing a shared sign to one currency, then the territory the page's URL names (owner 2026-10-19, basis `url`),
 then the currency CLDR's English locale gives a sign shared by several (`$` is USD, `¥` JPY; owner 2026-10-23, basis
@@ -54,7 +54,7 @@ _NUMBER_REASONS = {"no_number": "no_amount", "several_numbers": "range"}
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
-    """Normalize a money field (normalization spec)."""
+    """Normalize a money field."""
     if spec.type is not FieldType.MONEY:
         raise TypeError(f"the money normalizer does not handle type {spec.type}")
     active = price_role(spec) == "price"
@@ -67,8 +67,7 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
 
 def _per_text(raw: str, ctx: Context, *, active: bool, stated: str | None = None) -> NormalizeResult:
     """Money written as text, its amount read before a CLDR per pattern and unit written after it (`units`); for the
-    active price such an amount is no candidate: it prices a unit or a period, not the item (normalization spec,
-    "money")."""
+    active price such an amount is no candidate: it prices a unit or a period, not the item."""
     per = units.per_suffix(raw, ctx)
     if per is None:
         return _text(raw, ctx, stated)
@@ -197,7 +196,7 @@ def _page_currencies(ctx: Context) -> frozenset[str]:
 
 def _unwritten(ctx: Context, *, written: bool) -> _Currency:
     """The currency of an amount written without one: the one currency the page states and declares in its own name,
-    when every such statement agrees (normalization spec, "a page-level declaration ... consistent across the page");
+    when every such statement agrees;
     when it makes none, the one its state members hold; else the one its URL names (`url_currency`); else unknown."""
     own = set(ctx.page_currencies) | set(ctx.declared_currencies)
     declared = own or set(ctx.state_currencies)
@@ -415,7 +414,7 @@ def _value(amount: Decimal, currency: str | None) -> JsonValue:
 
 
 def _currencies_for(sign: str) -> frozenset[str]:
-    """The ISO 4217 codes `sign` can denote anywhere (normalization spec)."""
+    """The ISO 4217 codes `sign` can denote anywhere."""
     if sign in _currencies():
         # ISO 4217 alphabetic codes are three uppercase letters; a code names itself.
         return frozenset({sign})
@@ -494,7 +493,7 @@ def _signs_by_length() -> tuple[tuple[int, frozenset[str]], ...]:
 
 
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
-    """Equality as a key (normalization spec): the amounts equal as Decimals, without rounding (`19.9` equals `19.90`),
+    """Equality as a key: the amounts equal as Decimals, without rounding (`19.9` equals `19.90`),
     and the same currency."""
     money = _money_value(value)
     return raw_key(value) if money is None else ("money", money)
@@ -521,7 +520,7 @@ def without_currency(value: JsonValue) -> JsonValue:
 
 
 def served(value: JsonValue) -> JsonValue:
-    """A published money value as a record serves it (normalization spec, "Served form"): its amount a JSON number
+    """A published money value as a record serves it: its amount a JSON number
     (`numbers.json_number`), its currency as it is; any other value as it is."""
     money = _money_value(value)
     return value if money is None else {"amount": numbers.json_number(money[0]), "currency": money[1]}

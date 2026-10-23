@@ -1,7 +1,7 @@
-"""A site whose active config has an API recipe is served through it (adapters spec, acquisition spec,
-"Adapter / API" rung): in a scrape, and in the worker's `batch_scrape` and `crawl` tasks. The recipe's request goes
-through robots.txt and the site's rate like the page's would (acquisition spec); its values are `api` candidates in the
-`adapter` bucket (§10); a page the recipe serves joins no drift window, which measures the config's page steps."""
+"""A site whose active config has an API recipe is served through it ("Adapter / API" rung): in a scrape, and in the
+worker's `batch_scrape` and `crawl` tasks. The recipe's request goes
+through robots.txt and the site's rate like the page's would; its values are `api` candidates in the
+`adapter` bucket; a page the recipe serves joins no drift window, which measures the config's page steps."""
 
 import json
 import uuid

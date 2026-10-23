@@ -1,4 +1,4 @@
-"""Count normalizer (normalization spec, D-0782): a non-negative whole number of items, such as a stock quantity.
+"""Count normalizer: a non-negative whole number of items, such as a stock quantity.
 
 Accepts:
 - a JSON number with no fraction;
@@ -36,7 +36,7 @@ _IGNORED = frozenset({"Mn", "Mc", "Me", "Cf"})
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
-    """Normalize a count field (normalization spec)."""
+    """Normalize a count field."""
     if spec.type is not FieldType.COUNT:
         raise TypeError(f"the count normalizer does not handle type {spec.type}")
     if isinstance(raw, dict):
@@ -65,7 +65,7 @@ def _quantitative_value(raw: Mapping[str, JsonValue], ctx: Context) -> Normalize
 
 
 def _names_a_measure(unit_text: str, ctx: Context) -> bool:
-    """Whether `unitText` is the name or symbol of a CLDR measurement unit other than a count (D-1271): "one" and
+    """Whether `unitText` is the name or symbol of a CLDR measurement unit other than a count: "one" and
     "kg" cannot both be right. Text that names no CLDR unit ("items", "pieces") does not contradict "one"."""
     label = unicodedata.normalize("NFKC", unit_text).strip().casefold()
     languages = locales.page_languages(ctx, request=True) & _cldr_languages()
@@ -142,5 +142,5 @@ def _count(value: Decimal) -> NormalizeResult:
 
 
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
-    """Equality as a key (normalization spec): exact. A normalized count is one JSON integer."""
+    """Equality as a key: exact. A normalized count is one JSON integer."""
     return raw_key(value)

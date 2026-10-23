@@ -38,7 +38,7 @@ function Facts({ schedule }: Readonly<{ schedule: Schedule }>) {
   );
 }
 
-/** A schedule (D-1418): its cadence and last run, its actions, the request each run submits, and its jobs, newest
+/** A schedule: its cadence and last run, its actions, the request each run submits, and its jobs, newest
  * first (`GET /v1/jobs?schedule_id=`). */
 export function ScheduleScreen() {
   const { id = "" } = useParams();

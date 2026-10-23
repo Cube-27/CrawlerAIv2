@@ -1,4 +1,4 @@
-"""The extraction config IR (learning-configs spec): everything learned about a site, as one versioned
+"""The extraction config IR: everything learned about a site, as one versioned
 document that the engine executes and the exporters translate.
 
 These models are the boundary every config crosses (induction, role A, operator corrections, the DB row), so a
@@ -28,21 +28,21 @@ from crawlerai.config_ir.api_recipe.model import ApiRecipe, check_jsonpath
 from crawlerai.config_ir.portable_regex import PCRE_FLAGS, check_pattern, check_replacement
 from crawlerai.config_ir.xpath1 import check_xpath1
 from crawlerai.db.models import CaptureId, ConfigOrigin, FetchMethod, FieldStatus, PageKind
-from crawlerai.schemas.types import NEXT_PAGE_FIELD as NEXT_PAGE_FIELD  # the executors read it from here (§12.1)
+from crawlerai.schemas.types import NEXT_PAGE_FIELD as NEXT_PAGE_FIELD  # the executors read it from here
 from crawlerai.schemas.types import FieldType, Name
 
 # Where a `jsonpath` step reads JSON: the page's JSON-LD, its script state, its documented JSON attributes
-# (`attr`, extraction spec "Source documents"), each row of its inline RSC Flight stream (`rsc`), a captured network
+# (`attr`), each row of its inline RSC Flight stream (`rsc`), a captured network
 # body, an API response.
 JsonSource = Literal["jsonld", "js_state", "attr", "rsc", "xhr", "api"]
-# What a field's located source needs fetched (learning-configs spec, "Locate run"): the HTTP page (its HTML or an
+# What a field's located source needs fetched: the HTTP page (its HTML or an
 # embedded document), the HTTP page and a replayed call (`call`), or the browser's render.
 Needs = Literal["http", "call", "browser"]
 
 XPath1 = Annotated[str, AfterValidator(check_xpath1)]
 PortableRegex = Annotated[str, AfterValidator(check_pattern)]
 # RFC 9535: the subset the engine reads (the `select` of `json_doc`: `$` and name, wildcard and index segments), so
-# that a step that validates is one both executors run (§4.2); RFC 9535 §2.2: it starts with the root identifier `$`.
+# that a step that validates is one both executors run; RFC 9535 §2.2: it starts with the root identifier `$`.
 JsonPath = Annotated[str, StringConstraints(pattern=r"^\$"), AfterValidator(check_jsonpath)]
 # schema.org naming conventions: a type is UpperCamelCase.
 SchemaOrgType = Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Za-z0-9]*$")]
@@ -65,14 +65,14 @@ class _NoParams(_Model):
 
 
 def _has_own_values(type_: FieldType) -> FieldType:
-    # schemas spec: `list` and `object` have no values of their own, so no normalizer runs on them.
+    # `list` and `object` have no values of their own, so no normalizer runs on them.
     if type_ in (FieldType.LIST, FieldType.OBJECT):
         raise ValueError(f"{type_} has no normalizer of its own")
     return type_
 
 
 class NormalizeOp(_Model):
-    """`{"<field type>": {}}`: the type's normalizer (schemas spec) runs on the value."""
+    """`{"<field type>": {}}`: the type's normalizer runs on the value."""
 
     type: Annotated[FieldType, AfterValidator(_has_own_values)]
 
@@ -232,8 +232,8 @@ Step = Annotated[
 
 
 class FieldSteps(_Model):
-    """A field's steps in order (the first valid value wins, §12.1), its status, and its held-out yield and validity
-    (learning-configs spec) once validated."""
+    """A field's steps in order (the first valid value wins), its status, and its held-out yield and validity
+    once validated."""
 
     steps: list[Step] = Field(min_length=1)
     status: FieldStatus
@@ -256,8 +256,8 @@ class FieldSteps(_Model):
 
 class ListingSpec(_Model):
     """Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` locates the next
-    page's URL. A `jsonpath` row step selects the rows' JSON objects in its source's documents (listings spec, "Rows
-    from page state"), and its fields' steps are `jsonpath` steps of the same source read from each row (`$`)."""
+    page's URL. A `jsonpath` row step selects the rows' JSON objects in its source's documents, and its fields' steps
+    are `jsonpath` steps of the same source read from each row (`$`)."""
 
     row: Step
     fields: dict[Name, FieldSteps]
@@ -274,7 +274,7 @@ class ListingSpec(_Model):
 
 class SchemaRef(_Model):
     """The schema a config is for: its name, and the digest of its document at learning (`document_digest`). A schema
-    is edited in place (D-0950), so only the digest says which document the config was learned for."""
+    is edited in place, so only the digest says which document the config was learned for."""
 
     name: Name
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -299,13 +299,13 @@ class ExtractionConfigIR(_Model):
     fetch: Fetch
     fields: dict[Name, FieldSteps]
     listing: ListingSpec | None = None
-    # The recipe held-out validation accepted (adapters spec), served by the acquisition's API rung (§7.1).
+    # The recipe held-out validation accepted, served by the acquisition's API rung.
     api_recipe: ApiRecipe | None = None
-    # The recipes of the `call` fields (learning-configs spec, "Locate run"), one per endpoint, by id: each is a
-    # companion call of the HTTP page (acquisition spec, "Data calls").
+    # The recipes of the `call` fields, one per endpoint, by id: each is a
+    # companion call of the HTTP page.
     recipes: dict[Name, ApiRecipe] = Field(default_factory=dict)
     provenance: Provenance
-    # The required fields the learning pages never stated, which role C is not asked for (`config_ir.absent`, D-1341).
+    # The required fields the learning pages never stated, which role C is not asked for (`config_ir.absent`).
     absent: list[Name] = Field(default_factory=list)
 
     @model_validator(mode="after")

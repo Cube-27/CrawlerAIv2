@@ -1,4 +1,4 @@
-"""Identity (resolution spec): the entities that state one item are one entity, whichever collector found them.
+"""Identity: the entities that state one item are one entity, whichever collector found them.
 
 The entities considered are the items that stand on their own (a root, or an item only lists hold) and the members of
 a product group (`hasVariant`). Two of them are one item when
@@ -18,7 +18,7 @@ and, of most specific types each other's or a subtype of one another, when
   page's document: RFC 3986 authority and path) and state the same schema.org `name` values: each says it is the item
   this page is about, as a page often states its product twice (one block naming it by a relative `@id` and `url`,
   another by its absolute `url`).
-The root of an identity-checked data call's answer (`Entity.requested`, acquisition spec "Data calls") states the
+The root of an identity-checked data call's answer (`Entity.requested`) states the
 requested item by construction, though it may name it by no identifier the page's markup states (Shopify's product
 JSON holds its sku and barcode on its variants only): it is the page's one root item of its most specific type, when
 the page states exactly one and that root is the page's own (it names no other document than the page's,
@@ -27,14 +27,14 @@ every variant it has, so it never joins a product group's member, whichever vari
 the page shows. One of a repeated set of items in the markup (a carousel, a comparison table: `repeated`) is another
 page's item, as intent reads it, and is not counted.
 Every pair that agrees joins, so two later entities that agree join even when an earlier one stays apart. Two members
-of product groups never join (two variants sharing a sku are two sizes of one sku, variants spec INV-33), nor does an
+of product groups never join (two variants sharing a sku are two sizes of one sku), nor does an
 entity join its own ancestor. The merged entity is the group member when there is one, else the first in collector
 order; it takes every member's types (most specific first), URLs, identity and children, and their candidates
 (`EntityGraph.adopt`).
 
 A standalone Product whose `inProductGroupWithID` is the `productGroupID` of one standalone ProductGroup on the page is
 that group's variant, as `hasVariant` would state it (schema.org: "the productGroupID for a ProductGroup that this
-product isVariantOf"). So is a root Product that names its group by `isVariantOf` (D-1344), by the group's IRI or by
+product isVariantOf"). So is a root Product that names its group by `isVariantOf`, by the group's IRI or by
 holding it: a held group stands beside the Product as a root first, so the Product joins the group's member it is, or
 else becomes a member.
 """
@@ -99,7 +99,7 @@ def identify(entities: Sequence[Entity], vocabulary: Vocabulary, page_urls: Sequ
 
 def _detached_groups(entities: Sequence[Entity], vocabulary: Vocabulary) -> tuple[list[Entity], dict[str, str]]:
     """The entities with each ProductGroup a root Product names by `isVariantOf` standing beside it as a root, and the
-    Products by the group they named (D-1344). schema.org `isVariantOf` is the inverse of `hasVariant`: the Product is
+    Products by the group they named. schema.org `isVariantOf` is the inverse of `hasVariant`: the Product is
     one of the group's variants, not the holder of the group, so it is related as a standalone Product beside its
     group is, by its identity (one of the group's members) or else as the group's `hasVariant` member (`_grouped`)."""
     by_id = {e.id: e for e in entities}
@@ -254,7 +254,7 @@ def _url_joins(a: Entity, b: Entity) -> bool:
 
 
 def _collector(entity: Entity) -> str:
-    # An entity id starts with its collector's locator scheme (`jsonld:`, `microdata:`, resolution spec).
+    # An entity id starts with its collector's locator scheme (`jsonld:`, `microdata:`).
     return entity.id.partition(":")[0]
 
 

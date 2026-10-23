@@ -1,4 +1,4 @@
-"""The configured providers (llm spec): `CRAWLERAI_LLM_PROVIDERS` sets which providers and their failover order;
+"""The configured providers: `CRAWLERAI_LLM_PROVIDERS` sets which providers and their failover order;
 a listed provider without an API key stops the client from being built, and the log says so."""
 
 import pytest

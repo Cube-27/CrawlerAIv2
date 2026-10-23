@@ -1,4 +1,4 @@
-"""Keyset paging (rest-api spec): a page is the rows after a cursor, the key of the last row of the page before, in key
+"""Keyset paging: a page is the rows after a cursor, the key of the last row of the page before, in key
 order. Unlike an offset, a cursor stays valid while rows are added, and each page reads only its own rows through the
 key's index.
 """
@@ -34,6 +34,6 @@ async def keyset_page[K](
 
 
 async def total_rows(conn: AsyncConnection, statement: Select[*tuple[Any, ...]]) -> int:
-    """How many rows `statement` selects in all, whatever the cursor: the total a paged answer shows beside its page
-    (rest-api spec). `statement` is the filtered, unordered select, before any cursor or limit."""
+    """How many rows `statement` selects in all, whatever the cursor: the total a paged answer shows beside its page.
+    `statement` is the filtered, unordered select, before any cursor or limit."""
     return (await conn.execute(select(func.count()).select_from(statement.order_by(None).subquery()))).scalar_one()

@@ -1,7 +1,7 @@
-"""The API recipe (adapters spec): how to fetch the JSON document a page's values come
+"""The API recipe: how to fetch the JSON document a page's values come
 from, with its parameters bound from the page, and where each field sits in that document.
 
-A recipe is data that our interpreters run, never code (§18). A document that validates here names a binder for every
+A recipe is data that our interpreters run, never code. A document that validates here names a binder for every
 placeholder and uses every binder, keeps the request's scheme and host fixed, holds no credential value (a credential
 header is a reference to the caller's request context, sent with the value the context holds), and writes its
 JSONPaths in the subset the engine reads (`select` of `json_doc`). Site strings (the endpoint URL, a binder regex)
@@ -31,11 +31,11 @@ from crawlerai.db.models import CaptureId
 from crawlerai.schemas.types import NAME_PATTERN, Name
 
 # Where a binder reads a parameter's value: a path segment, a query value or a regex group of the page URL, or a
-# scalar in one of the page's JSON documents (the two need the HTML page fetched first, §4.4).
+# scalar in one of the page's JSON documents (the two need the HTML page fetched first).
 BinderKind = Literal["path", "query", "regex", "jsonld", "js_state"]
 PageDataKind = Literal["jsonld", "js_state"]
 PAGE_DATA_KINDS: Final = frozenset(get_args(PageDataKind))
-# What produced a recipe's request: deterministic binding (§4.4) or role D (§4.5).
+# What produced a recipe's request: deterministic binding or role D.
 BoundBy = Literal["deterministic", "role_d"]
 
 # `{name}`: a parameter's place in the URL, the body or a header value (RFC 6570 level 1 expression syntax).
@@ -48,7 +48,7 @@ _INDEX: Final = re.compile(r"0|[1-9]\d*", re.ASCII)
 _TOKEN: Final = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 # A value looks like a token when one of its items (RFC 9110 §5.6.1, §5.6.6: items split at commas, parameters at
 # semicolons, words at whitespace; RFC 7515 §7.1: the parts of a JWS compact serialization split at dots) is 20 or more
-# characters of one base64 alphabet (RFC 4648 §4 standard, §5 URL- and filename-safe; hex, §8, is in both), padding
+# characters of one base64 alphabet (RFC 4648 §4 standard, §5 URL- and filename-safe, hex, is in both), padding
 # allowed. A recipe never stores one: header minimization never sends such a header, and binding leaves such a query
 # value out unless the page states it (`binding.withhold_tokens`).
 _ITEM_SEPARATORS: Final = re.compile(r"[\s,;.]+")
@@ -61,10 +61,10 @@ def token_like(value: str) -> bool:
 
 # Fields that carry credentials: RFC 9110 §11.6.2 and §11.7.2, RFC 6265 §5.4. A recipe never holds a value of one: one
 # it needs is a reference to the header the caller's request context supplies (`ContextHeader`), and without such a
-# context the recipe is not learnable (§4.6).
+# context the recipe is not learnable.
 CREDENTIAL_FIELDS: Final = frozenset({"authorization", "proxy-authorization", "cookie"})
 # Fields the HTTP client sets for the connection it makes, never part of a recipe: Host (RFC 9110 §7.2), the content
-# length and transfer coding of the body (§8.6, RFC 9112 §6.1), the connection options (RFC 9110 §7.6.1: Connection,
+# length and transfer coding of the body (RFC 9112 §6.1), the connection options (RFC 9110 §7.6.1: Connection,
 # Keep-Alive, TE, Upgrade, Proxy-Connection) and the content codings the client decodes (RFC 9110 §12.5.3).
 CLIENT_FIELDS: Final = frozenset(
     {
@@ -196,7 +196,7 @@ class HeaderValue(_Model):
 
 
 class ContextHeader(_Model):
-    """A header the recipe sends with the value the caller's request context holds for `name` (D-1430): the recipe
+    """A header the recipe sends with the value the caller's request context holds for `name`: the recipe
     stores the name alone, never a value."""
 
     name: HeaderName
@@ -276,7 +276,7 @@ def body_pagination_path(pagination: "Pagination | None") -> str | None:
 
 
 class RequestSpec(_Model):
-    """The request half of a recipe: what deterministic binding (§4.4) and role D (§4.5) produce."""
+    """The request half of a recipe: what deterministic binding and role D produce."""
 
     method: Literal["GET", "POST"]
     url: UrlTemplate
@@ -339,7 +339,7 @@ def with_pagination(spec: RequestSpec, pagination: Pagination | None) -> Request
 
 
 class Proof(_Model):
-    """How the recipe was accepted: the held-out captures it reproduced (§4.7), the headers replay tried (§4.6) and
+    """How the recipe was accepted: the held-out captures it reproduced, the headers replay tried and
     what bound it."""
 
     validated_on: list[CaptureId] = Field(min_length=1)

@@ -1,5 +1,5 @@
-"""The structural DOM collector (extraction spec; the §22 candidate "generic structural DOM
-collectors", label-value pairs, admitted by the owner on 2026-10-16): values a detail page shows in HTML structures
+"""The structural DOM collector (the §22 candidate "generic structural DOM collectors", label-value pairs, admitted by
+the owner on 2026-10-16): values a detail page shows in HTML structures
 whose meaning the HTML Standard defines, for pages whose structured data leaves fields without candidates.
 
 - **Label-value pairs.** In the page's main region (the `main` element, else the one `role="main"` landmark, else the
@@ -65,7 +65,7 @@ from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 # A label's end: a colon (U+003A, or the fullwidth U+FF1A that CJK text writes) after optional white space.
 _COLON = re.compile(r"\s*[:\uff1a]")
 
-# The structures a pair is read from: rows and description lists (HTML Standard §4.9, §4.4.9), `Label: value` lines,
+# The structures a pair is read from: rows and description lists (HTML Standard §4.9), `Label: value` lines,
 # and sibling containers of one shape.
 _TABLE, _LINE, _SIBLINGS = "table", "line", "siblings"
 # HTML Standard §4.3.6: the heading elements.
@@ -80,7 +80,7 @@ _SPOT_LENGTH = 64
 # schema.org `Product`: the item type whose microdata items other than the page's are set apart (`product_apart`).
 _PRODUCT = "Product"
 # HTML Standard §4.5.4 `s` and §4.7.2 `del`: text that is no longer accurate or was removed is no current value; the
-# obsolete `strike` (§16.2) renders as `s` does. CSS Text Decoration 3 §2.1-§2.2: an inline `text-decoration` or
+# obsolete `strike` renders as `s` does. CSS Text Decoration 3 §2.1-§2.2: an inline `text-decoration` or
 # `text-decoration-line` holding `line-through` strikes the text through.
 _STRUCK_TAGS = frozenset({"s", "del", "strike"})
 _LINE_THROUGH = "line-through"
@@ -260,8 +260,7 @@ def other_item_paths(page: ParsedPage, ctx: Context, outside: frozenset[int]) ->
     """The node paths of the outermost elements of a detail page that hold other items' content: what `_other_items`
     finds in the main content (related and similar items, reviews, lists of other documents' cards) and the blocks
     outside the product container wherever they are (`outside`, `product_apart`: other items' priced cards, schema.org
-    Product items in a sidebar too). Role C reads the page's text without them (llm spec, "Role C input, claims and
-    candidates")."""
+    Product items in a sidebar too). Role C reads the page's text without them."""
     if page.json_body:
         return frozenset()
     region = content_region(page)

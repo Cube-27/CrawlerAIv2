@@ -1,4 +1,4 @@
-"""The part of JSON Schema each provider's structured output accepts (llm spec).
+"""The part of JSON Schema each provider's structured output accepts.
 
 A provider constrains its reply with the request's output schema only when the schema stays inside the provider's
 documented subset; outside it, the request is refused with a 400 and nothing is extracted. Every role's output schema

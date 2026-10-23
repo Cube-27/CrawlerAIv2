@@ -1,4 +1,4 @@
-"""`POST /v1/batch/scrape` (jobs spec): the batch scrape service over HTTP. The job runs in the workers; its status
+"""`POST /v1/batch/scrape`: the batch scrape service over HTTP. The job runs in the workers; its status
 is `GET /v1/jobs/{id}` and what it made `GET /v1/jobs/{id}/results`."""
 
 from typing import Annotated

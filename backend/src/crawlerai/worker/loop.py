@@ -1,4 +1,4 @@
-"""The worker process (persistence-storage spec): claim tasks, run each with the handler of its job's kind, record the
+"""The worker process: claim tasks, run each with the handler of its job's kind, record the
 result. Handlers are registered by later specs.
 
 A worker runs up to `TASK_SLOTS` tasks at once, and claims only as many as it has free slots, so a claimed task never
@@ -16,7 +16,7 @@ cancelled and recorded as failed (`DEADLINE`), so no page holds its job open; on
 releasing its row locks), and its failure recorded all the same, before its lease can expire: the task is never claimed
 again while work left behind runs, and that work sends no further request (`HostLimiter.admit`).
 
-Database errors outside a handler propagate (§4.8), including one raised while recording a handler's exception, which
+Database errors outside a handler propagate, including one raised while recording a handler's exception, which
 usually means the connection is gone: `run_worker` raises and the process exits. Nothing is lost: the tasks it still
 had claimed, the one that failed included, go back to the queue when the scheduler finds their leases expired
 (`release_expired_leases`), each counted as a transient failure.
@@ -77,7 +77,7 @@ URL: Final = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S+")
 
 @dataclass(frozen=True)
 class Postpone:
-    """The task did not run, because its site is not admitted yet (acquisition spec): run it `after` from now, without
+    """The task did not run, because its site is not admitted yet: run it `after` from now, without
     spending an attempt. The worker moves on instead of sleeping."""
 
     after: timedelta
@@ -141,7 +141,7 @@ async def run_worker(
                 )
                 running -= done
                 for finished in done - {stopping}:
-                    finished.result()  # a database error outside a handler ends the worker (§4.8)
+                    finished.result()  # a database error outside a handler ends the worker
         await asyncio.gather(*running)
     finally:
         stopping.cancel()

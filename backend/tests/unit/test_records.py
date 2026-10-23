@@ -1,4 +1,4 @@
-"""Records (extraction spec, INV-22): published values only in `data`,
+"""Records: published values only in `data`,
 `field_meta` for every field, `complete`, the entity key, `partial` for caller-supplied URLs and `no_match` with no
 record for crawl-discovered ones."""
 
@@ -118,7 +118,7 @@ def test_a_page_with_no_candidate_for_a_needed_field_beyond_its_own_address_has_
     assert outcome(stating) == "extracted"
 
 
-# Record confidence (§10)
+# Record confidence
 
 
 # Listings (§4.10: one record per row, keyed by the row's URL)

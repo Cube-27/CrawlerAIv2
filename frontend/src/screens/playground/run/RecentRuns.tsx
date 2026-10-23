@@ -8,10 +8,10 @@ import { ProblemAlert } from "../../../components/ProblemAlert";
 import { Section } from "../../../components/Section";
 import { JobRows } from "../../jobs/JobRows";
 
-/** How many runs the list shows (frontend spec). */
+/** How many runs the list shows. */
 const RECENT = 10;
 
-/** Recent runs' columns and their widths (D-0976): what the run was started on, its status, when, how long, and the
+/** Recent runs' columns and their widths: what the run was started on, its status, when, how long, and the
  * cue that the row opens it. */
 const RUN_COLUMNS = [
   ["target", "w-5/12"],
@@ -21,7 +21,7 @@ const RUN_COLUMNS = [
   ["open", "w-1/8"],
 ] as const;
 
-/** The last runs of a mode's `kind` (frontend spec), newest first, shown before any run on the page; a row opens its
+/** The last runs of a mode's `kind`, newest first, shown before any run on the page; a row opens its
  * run here (`?job=`), and "All runs" opens the Jobs screen on this kind. Every state fills the output area's box, so a
  * run that replaces the list moves nothing. */
 export function RecentRuns({ kind }: Readonly<{ kind: JobKind }>) {

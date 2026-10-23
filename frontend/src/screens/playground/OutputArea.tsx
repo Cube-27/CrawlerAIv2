@@ -9,7 +9,7 @@ export type OutputState =
   | { kind: "failed"; problem: Problem }
   | { kind: "done"; content: ReactNode };
 
-/** The playground's output area (frontend spec): mounted from the first run, it holds every state of the run in a box
+/** The playground's output area: mounted from the first run, it holds every state of the run in a box
  * of at least `min-h-playground-output`, so starting a run, its failure and its output move nothing around it (owner's
  * rule: no layout shift on interaction). */
 export function OutputArea({ state }: Readonly<{ state: OutputState }>) {

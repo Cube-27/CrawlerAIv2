@@ -1,16 +1,16 @@
-"""A scrape's browser actions (owner #52): the request member, its checks, and the paged fetch of a listing with the
+"""A scrape's browser actions: the request member, its checks, and the paged fetch of a listing with the
 gate its actions go through.
 
 A listing scrape that asks for browser actions is fetched by the listing rung (`acquire.browser_tab.fetch_listing`)
 with the paging driver (`crawl.paging.collect`), through the polite fetch (`services.polite`), as a page is. Each
 action waits for the site's rate too, and a next page is admitted only on the same host, when robots.txt allows it.
-The caller's `fetch.actions` and `wait_for` run first on the settled page (D-1513), and the site's API recipe is not
+The caller's `fetch.actions` and `wait_for` run first on the settled page, and the site's API recipe is not
 used then: the steps need the browser. The actions get at most half the scrape's `timeout_s`, and at most
-`MAX_ACTIONS_S`, so the kept states' extraction still fits in the scrape (D-0028: `timeout_s` ≤ 120).
+`MAX_ACTIONS_S`, so the kept states' extraction still fits in the scrape (`timeout_s` ≤ 120).
 
 A site whose active config has a listing recipe (one with pagination, Appendix A #59) is served by it instead, over
 HTTP with no browser: one response per page its pagination names, until the request's `records` target, each page
-a further kept state; when the recipe does not serve the first page, the browser actions run (adapters spec).
+a further kept state; when the recipe does not serve the first page, the browser actions run.
 """
 
 import time
@@ -30,7 +30,7 @@ from crawlerai.services.fetching import Fetching, TargetRejected, grown, recipe_
 from crawlerai.services.polite import IN_PLACE, HostRules, ReadRules, Refused, Turns, polite_fetch, rules_of
 from crawlerai.storage.capture_bundle import CaptureBundle
 
-# D-1222: the actions' time cap; the probe's slowest passing listing took under 50 s.
+# The actions' time cap; the probe's slowest passing listing took under 50 s.
 MAX_ACTIONS_S: Final = 60.0
 _TIMEOUT_SHARE: Final = 0.5
 
@@ -44,7 +44,7 @@ def actions_deadline(timeout_s: float) -> float:
 def check_browser_actions(
     actions: BrowserActions | None, page_kind: PageKind | None, max_age: int, fetch: FetchOptions
 ) -> None:
-    """Browser actions are for a listing fetched now, in the browser (owner #52). Raises `ValueError`, for a request
+    """Browser actions are for a listing fetched now, in the browser. Raises `ValueError`, for a request
     model's validator."""
     if actions is None:
         return
@@ -53,8 +53,8 @@ def check_browser_actions(
     if max_age:
         raise ValueError("browser_actions fetches the page, so max_age must be 0")
     if fetch.cache == "only":
-        # A stored capture's key holds the page steps and context, not the browser actions (jobs spec,
-        # "Request context and actions per page"): it would stand for the listing without its further pages.
+        # A stored capture's key holds the page steps and context, not the browser actions: it would stand for the
+        # listing without its further pages.
         raise ValueError("browser_actions fetches the page, so fetch.cache cannot be only")
     if fetch.method_hint == "http":
         raise ValueError("browser_actions runs in the browser, so method_hint cannot be http")
@@ -72,8 +72,7 @@ async def paged_fetch(
 ) -> PagedFetch | str:
     """The listing at `url` with `actions` through the polite fetch (`polite_fetch`), or why nothing was sent; served by
     `recipe`, the site's active API recipe, when it has pagination and serves the first page. The attempts,
-    robots.txt's too, are added to `attempts`. Raises `TargetRejected` when the guard refused a request of the fetch
-    (INV-16)."""
+    robots.txt's too, are added to `attempts`. Raises `TargetRejected` when the guard refused a request of the fetch."""
     deadline = actions_deadline(timeout_s)
     rules = rules_of(engine, fetching.rungs.http, attempts, Turns(fetching.limiter, IN_PLACE))
     paged: list[PagedFetch] = []
@@ -116,11 +115,11 @@ async def _recipe_pages(
     target or the deadline of `until`, with their attempts added to `attempts`; None when it served no first page,
     after waiting for the turn of the request that follows (`polite`'s `Admit`). A first page that asks for fewer
     requests, or whose following request the site's rate does not admit, is kept, and nothing more is sent, as
-    `acquire` keeps a recipe's outcome (adapters spec, "Recipe execution and fallback"). Each page request waits for its
+    `acquire` keeps a recipe's outcome. Each page request waits for its
     host's rate on its own (`recipe_rung`, by `polite`'s rules): the caller's admitted turn goes to the first."""
     rules, admit_next = polite
     if recipe is None or recipe.pagination is None or policy.steps:
-        # The caller's page steps (a cookie banner, a filter) change the page and need the browser (D-1513).
+        # The caller's page steps (a cookie banner, a filter) change the page and need the browser.
         return None
     rung = recipe_rung(fetching, recipe, urlsplit(url).hostname or "", rules)
     if rung is None:

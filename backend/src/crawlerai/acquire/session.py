@@ -1,12 +1,12 @@
-"""Site sessions (INV-29's one exception, owner #58, D-1350; one cookie rule, owner #76): the cookies a browser fetch of
+"""Site sessions (one cookie rule): the cookies a browser fetch of
 a site held, handed to the later HTTP and JSON fetches of the same site (browser to HTTP only: nothing an HTTP response
 sets is ever handed on).
 
 A live session is the cookies a browser fetch earned past a refusal that plain HTTP met, in this process's memory
 only, for the same proxy endpoint. The HTTP and JSON rungs send them with their own identity headers, which name the
 browser rung's Chrome (`acquire.impersonate`), over the nearest Chrome TLS and HTTP/2 handshake; no header is copied
-from the fetch that earned them. Challenge and clearance cookies go with the rest (owner #76: a clearance a
-browser earned may be reused). No cookie is logged or captured (`headers.recorded` keeps cookies out of every capture,
+from the fetch that earned them. Challenge and clearance cookies go with the rest (a clearance a browser
+earned may be reused). No cookie is logged or captured (`headers.recorded` keeps cookies out of every capture,
 and no repr shows a cookie value).
 
 The browser's own cookie state is its site profile (`acquire.browser_profiles`). Behind it is the stored cookie state

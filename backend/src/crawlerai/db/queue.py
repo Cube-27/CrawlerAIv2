@@ -1,4 +1,4 @@
-"""The task queue (persistence-storage spec): `url_task` rows claimed with `FOR UPDATE SKIP LOCKED`, leased, retried
+"""The task queue: `url_task` rows claimed with `FOR UPDATE SKIP LOCKED`, leased, retried
 with backoff, and settled into their job's status.
 
 A claim is fenced by its `(claimed_by, lease_until)`. Each claim sets `lease_until` from `clock_timestamp()`, which,
@@ -101,7 +101,7 @@ class LeaseLost(Exception):
 async def claim_tasks(conn: AsyncConnection, worker: str, n: int) -> list[ClaimedTask]:
     """Lease up to `n` due tasks to `worker`: highest priority first, then round robin between jobs (each job's
     best task, then each job's second best, and so on; jobs with fewer leased tasks first), then job and id; within
-    a job, best crawl score (`UrlTask.score`, a task with none after one with), then oldest (D-1593). Their queued
+    a job, best crawl score (`UrlTask.score`, a task with none after one with), then oldest. Their queued
     jobs start. The tasks come back in that order."""
     # The rank is a window function, which FOR UPDATE refuses, so the rows are ranked in a subquery and locked after.
     # The ids are read first, in order, and leased by a second statement of the same transaction, which holds the
@@ -159,7 +159,7 @@ async def insert_claimed(
     conn: AsyncConnection, job_id: JobId, url: str, canonical_url: str, page_kind: PageKind | None, worker: str
 ) -> ClaimedTask:
     """Add a task already claimed by `worker`, for a caller that runs it at once instead of queueing it (the
-    synchronous `scrape`, rest-api spec). It is leased like any claim, so it finishes through `complete_task` and
+    synchronous `scrape`). It is leased like any claim, so it finishes through `complete_task` and
     `fail_task`, and no worker takes it while it runs."""
     claim = (
         insert(UrlTask)
@@ -189,14 +189,14 @@ async def complete_task(
     ending: JobEnding | None = None,
 ) -> None:
     """Finish a task with `outcome`; `reason`, kept in `last_error`, says why when the outcome alone does not (a
-    `blocked` task's `robots`, acquisition spec). `capture_id` is the page the task fetched, if it fetched one. `ending`
+    `blocked` task's `robots`). `capture_id` is the page the task fetched, if it fetched one. `ending`
     runs if this ends the job (`settle_job`)."""
     values: dict[str, Any] = {} if capture_id is None else {"capture_id": capture_id}
     await _finish(conn, task, "done", ending, outcome=outcome, last_error=reason, **values)
 
 
 def retried(task: ClaimedTask, *, transient: bool) -> bool:
-    """Whether a failure of `task` on this attempt is retried: a transient one, until `MAX_ATTEMPTS` (D-0006)."""
+    """Whether a failure of `task` on this attempt is retried: a transient one, until `MAX_ATTEMPTS`."""
     return transient and task.attempts < MAX_ATTEMPTS
 
 
@@ -211,8 +211,8 @@ async def fail_task(
     capture_id: CaptureId | None = None,
     ending: JobEnding | None = None,
 ) -> None:
-    """Record a failure. A transient one is retried until `MAX_ATTEMPTS` (D-0006): after `after` when the target
-    asked for a delay (a `Retry-After`, acquisition spec), else after `backoff_delay`. A permanent failure, or the last
+    """Record a failure. A transient one is retried until `MAX_ATTEMPTS`: after `after` when the target
+    asked for a delay (a `Retry-After`), else after `backoff_delay`. A permanent failure, or the last
     attempt, ends the task with `exhausted`: `failed` or `timeout` (a `failed` task), or the outcome the failure
     stands for (a 429 is `blocked`, a finished task).
     `capture_id` is the page the failed attempt fetched, if it fetched one. `ending` runs if this ends the job."""
@@ -270,7 +270,7 @@ async def settle_task(
 
 
 async def cancel_task(conn: AsyncConnection, task: ClaimedTask, *, ending: JobEnding | None = None) -> None:
-    """End a claimed task without running it: one of a job whose cancel was requested (§4.3), or one its handler
+    """End a claimed task without running it: one of a job whose cancel was requested, or one its handler
     skipped. `ending` runs if this ends the job (`settle_job`)."""
     await _finish(conn, task, "cancelled", ending)
 
@@ -283,7 +283,7 @@ async def release_task(conn: AsyncConnection, task: ClaimedTask, *, after: timed
 
 async def release_expired_leases(conn: AsyncConnection, *, batch: int, ending: JobEnding | None = None) -> int:
     """Requeue, after the usual backoff, or fail on the last attempt, up to `batch` claimed tasks whose lease has run
-    out (§4.3), and return how many. Tasks a worker is finishing right now are skipped; the next run sees them.
+    out, and return how many. Tasks a worker is finishing right now are skipped; the next run sees them.
     `ending` runs for each job this ends.
     """
     expired = (

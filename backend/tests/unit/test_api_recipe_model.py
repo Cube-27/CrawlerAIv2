@@ -1,4 +1,4 @@
-"""The `ApiRecipe` model (adapters spec): a recipe document survives a JSON round trip, and documents that leave a
+"""The `ApiRecipe` model: a recipe document survives a JSON round trip, and documents that leave a
 placeholder unbound, move the host, carry a credential's value or use paths the engine cannot read are refused. A
 credential is a reference to the caller's request context (`ContextHeader`), which the stored recipe holds by name."""
 

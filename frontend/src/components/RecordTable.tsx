@@ -7,7 +7,7 @@ import { FieldValue } from "./FieldValue";
 import { JsonView } from "./JsonView";
 
 /** The fields whose published value differs from the version the record supersedes, or null when none, as for a
- * first version (jobs spec). */
+ * first version. */
 export function changedFieldsText({ changed_fields: changed }: StoredRecord): string | null {
   return changed.length === 0 ? null : changed.join(", ");
 }
@@ -36,7 +36,7 @@ function isNested(spec: FieldTypeSpec | null, value: unknown): boolean {
   );
 }
 
-/** The compact form of a list or an object (schemas spec field types): how many members it has, and a button to see
+/** The compact form of a list or an object (field types): how many members it has, and a button to see
  * them in a drawer, so a row stays one line however long a variants or images list is. */
 function nestedSummary(value: unknown): string {
   if (Array.isArray(value)) return value.length === 1 ? "1 item" : `${String(value.length)} items`;
@@ -93,7 +93,7 @@ const RECORD_COLUMNS: Column[] = [
 ];
 
 const STORED_COLUMNS: Column[] = [
-  // A job's record against its entity's previous record (jobs spec, "Page delta"): new, changed or same.
+  // A job's record against its entity's previous record: new, changed or same.
   { id: "delta", name: "Delta", render: (record) => record.delta?.kind ?? NO_VALUE },
   { id: "version", name: "Version", render: (record) => record.version ?? NO_VALUE },
   {
@@ -147,7 +147,7 @@ function NestedDrawer({ nested, onClose }: Readonly<{ nested: Nested; onClose: (
   );
 }
 
-/** Records of one schema as a table (frontend spec): the header row is the schema's field names in its order, and
+/** Records of one schema as a table: the header row is the schema's field names in its order, and
  * each row is one record. A list or object value shows its count and a button that opens it in a drawer. Stored
  * records (with an id) add their delta, version and changed fields, and a row opens by click or by Enter (`onOpen`). Rows are
  * the page shown, at most one API page (100 rows), so there is no more to hold or to virtualize. */

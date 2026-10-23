@@ -1,4 +1,4 @@
-"""The item layer's links (listings spec, "Rows from blocks"): which document a block of a group of repeated items
+"""The item layer's links: which document a block of a group of repeated items
 leads to, its item URL (`collect.items.align`'s module docstring, **item URL**), and whether a block stands for the
 page itself. URLs are compared by `normalize.url_key`'s `document_key` and `item_key`, never published so: a block's
 item URL publishes as its canonical URL, with the `href` the page writes.
@@ -289,7 +289,7 @@ def link_targets(
 def without_queries(targets: dict[str, tuple[str, HtmlElement]]) -> dict[str, tuple[str, HtmlElement]]:
     """The one target without a query when every other target names its document with a query added
     (`normalize.url_key.document_key`): the block links to one path (RFC 3986 §3.3: the path names the resource within
-    its authority), which some of its links refine with a query (§3.4), such as a variant chosen by a swatch; else
+    its authority), which some of its links refine with a query, such as a variant chosen by a swatch; else
     empty."""
     bare = [url for url in targets if not urlsplit(url).query]
     if len(bare) != 1:

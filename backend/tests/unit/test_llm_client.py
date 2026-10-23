@@ -1,6 +1,6 @@
-"""The LLM client without a database (llm spec): request checks, the request hash (INV-10), the
+"""The LLM client without a database: request checks, the request hash, the
 JSON-schema check with its one retry, and provider errors. Calls without a job touch no budget or usage, so these
-tests run on an engine that never connects; budgets and usage (INV-23) are in `tests/db/test_llm_client.py`."""
+tests run on an engine that never connects; budgets and usage are in `tests/db/test_llm_client.py`."""
 
 import asyncio
 import hashlib
@@ -55,7 +55,7 @@ def complete_with(providers: list[FakeProvider], req: LLMRequest = REQUEST) -> L
     return asyncio.run(client.complete_json(req))
 
 
-# --- the request hash (INV-10) ---
+# --- the request hash ---
 
 
 def test_the_hash_is_sha256_of_the_canonical_request() -> None:
@@ -119,7 +119,7 @@ def test_an_invalid_reply_is_retried_once_with_the_error_appended(text: str, err
     assert (retry.system, retry.output_schema) == (first.system, first.output_schema)
 
 
-# --- failover (§4.2) ---
+# --- failover ---
 
 
 def test_a_provider_that_does_not_answer_fails_over_to_the_next() -> None:

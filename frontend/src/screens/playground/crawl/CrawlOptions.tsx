@@ -28,8 +28,8 @@ const STRATEGIES: readonly (readonly [CrawlStrategy, string])[] = [
   ["best_first", "Best first"],
 ];
 
-/** Crawl's options (frontend spec): the scope globs; max depth, page limit, fetch method and Metadata in JSON; fields
- * (§4.10) and the webhook; then the page-kind rules. With a schema, every rule is for its page kind,
+/** Crawl's options: the scope globs; max depth, page limit, fetch method and Metadata in JSON; fields
+ * and the webhook; then the page-kind rules. With a schema, every rule is for its page kind,
  * `schemaPageKind`. `CrawlRequest` has no `budget`: the project's LLM call limit (Settings) bounds a crawl. */
 export function CrawlOptions({
   options,

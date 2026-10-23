@@ -1,4 +1,4 @@
-"""The search providers the operator configures (D-1442): a SearXNG instance's JSON API (`search_searxng_url`), or any
+"""The search providers the operator configures: a SearXNG instance's JSON API (`search_searxng_url`), or any
 endpoint named by a URL template (`search_url_template`) whose `{query}` and `{limit}` are filled in. The operator's
 own endpoint is trusted, so, unlike a page, it may be on a private network; it is asked over plain HTTP(S) with no
 cookies and redirects are not followed.

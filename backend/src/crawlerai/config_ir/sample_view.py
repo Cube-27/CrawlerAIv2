@@ -1,4 +1,4 @@
-"""What role A reads of a sample page (learning-configs spec): the page's HTML reduced
+"""What role A reads of a sample page: the page's HTML reduced
 to its elements, their text and a few attributes, cut around the published values, and its JSON documents as key
 paths without their values.
 
@@ -20,8 +20,8 @@ from crawlerai.collect import js_state, jsonld, xhr
 from crawlerai.collect.json_doc import is_scalar, nodes
 from crawlerai.content.page import ParsedPage
 
-# learning-configs spec: the attributes the model sees, besides every `data-*` one (HTML Standard §3.2.6.6, custom data
-# attributes). `id`, `class`, `itemprop` and `data-*` are the anchors induction also uses (§4.5); `href`, `src`,
+# The attributes the model sees, besides every `data-*` one (HTML Standard §3.2.6.6, custom data
+# attributes). `id`, `class`, `itemprop` and `data-*` are the anchors induction also uses; `href`, `src`,
 # `content`, `name` and `property` carry values (links, images, meta elements).
 KEPT_ATTRIBUTES: Final = frozenset({"id", "class", "itemprop", "href", "src", "content", "name", "property"})
 # HTML Standard §4.12.1, §4.2.6: a script's and a style's contents are not rendered text. Script JSON is shown as key

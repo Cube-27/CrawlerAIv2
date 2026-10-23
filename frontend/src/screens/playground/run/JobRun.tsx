@@ -18,7 +18,7 @@ import { ResultsTable } from "./ResultsTable";
 import { RunExports } from "./RunExports";
 import { pageOutputs } from "./storedRequest";
 
-/** A run's summary (frontend spec, D-0975), one outlined surface: its status with Cancel and the exports on the right,
+/** A run's summary, one outlined surface: its status with Cancel and the exports on the right,
  * kept in place as the run goes, then its progress and outcomes. */
 function RunSummary({
   job,
@@ -36,7 +36,7 @@ function RunSummary({
             {cancel === "requested" ? <StatusLabel text="cancel requested" tone="warning" /> : null}
           </div>
           <div className="flex flex-wrap items-start gap-2">
-            {/* A cancel asked for ends the job once its claimed tasks end (jobs spec). */}
+            {/* A cancel asked for ends the job once its claimed tasks end. */}
             <CancelJobAction id={job.id} isDisabled={cancel !== "cancellable"} />
             <ScheduleRun job={job} />
             <RunExports jobId={job.id} withMetadata={withMetadata} outputs={outputs} />
@@ -48,24 +48,24 @@ function RunSummary({
   );
 }
 
-/** A job's run on the page (frontend spec): one flow down the page, its summary, then its results table, then
+/** A job's run on the page: one flow down the page, its summary, then its results table, then
  * its live activity, collapsed. The run's events feed the activity and read the summary and the table again. */
 function JobRunView({ job, withMetadata }: Readonly<{ job: JobSummary; withMetadata: boolean }>) {
   const activity = useJobEvents(job.id);
-  // A job without a schema has page outputs, not records (jobs spec): its request says which.
+  // A job without a schema has page outputs, not records: its request says which.
   const request = useJobRequest(job.id).data;
   const outputs = request !== undefined && pageOutputs(request);
   return (
     <>
       <RunSummary job={job} withMetadata={withMetadata} outputs={outputs} />
-      {/* A crawl's pages open as a batch (frontend spec); a batch's or extract's are its own input. */}
+      {/* A crawl's pages open as a batch; a batch's or extract's are its own input. */}
       <ResultsTable
         jobId={job.id}
         withMetadata={withMetadata}
         selectable={job.kind === "crawl"}
         outputs={outputs}
       />
-      {/* A job with a schema extracts records: one row each, a column per schema field (frontend spec). */}
+      {/* A job with a schema extracts records: one row each, a column per schema field. */}
       {request === undefined || outputs ? null : (
         <section className="flex flex-col gap-2">
           <Typography.Heading level={2}>Records</Typography.Heading>

@@ -1,14 +1,14 @@
-"""The run events of a finished task (jobs spec), recorded from what the task left in its rows,
+"""The run events of a finished task, recorded from what the task left in its rows,
 in the transaction that finishes it: `task_fetched` for the page it fetched, `task_extracted` for its extraction,
 `task_abstained` for the fields the records it stands for abstained on (those it stored, or the equal
-latest version of an entity, jobs spec: `task_record`), and `task_failed`, with its `last_error`, when it failed for
-good (D-0745). Handlers write nothing for them.
+latest version of an entity, `task_record`), and `task_failed`, with its `last_error`, when it failed for
+good. Handlers write nothing for them.
 
 The same transaction owes the job's webhook its task events (`db.webhook_outbox`), when the request asked for them:
 `page` for the finished task, `record` for each record version its extraction stored, and `record_changed` for each
 of those that replaced an earlier version.
 
-Payloads carry the task's URL: the caller supplied the job, so the stream returns it unredacted (§4.2).
+Payloads carry the task's URL: the caller supplied the job, so the stream returns it unredacted.
 """
 
 from typing import Any, Final
@@ -66,8 +66,7 @@ async def record_task_events(conn: AsyncConnection, task_id: UrlTaskId) -> None:
         abstained = sorted({field for meta in metas for field, entry in meta.items() if entry["status"] == _ABSTAINED})
         if abstained:
             await record_event(conn, task.job_id, TASK_ABSTAINED, {"url": task.url, "fields": abstained})
-    # Only the `failed` status is a failure: a task that ended `blocked` or `not_found` is `done` (persistence-storage
-    # spec).
+    # Only the `failed` status is a failure: a task that ended `blocked` or `not_found` is `done`.
     if task.status == "failed":
         payload = {"task_id": str(task_id), "url": task.url, "attempts": task.attempts, "last_error": task.last_error}
         await record_event(conn, task.job_id, TASK_FAILED, payload)

@@ -1,4 +1,4 @@
-"""Failure classes of extraction replayed through `extract_page` on synthetic captures (extraction spec): each
+"""Failure classes of extraction replayed through `extract_page` on synthetic captures: each
 test builds the class's page shape on `example.test` names (C3, C9) and checks what the commerce preset publishes."""
 
 import asyncio

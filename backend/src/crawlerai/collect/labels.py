@@ -1,4 +1,4 @@
-"""The label vocabulary of a schema's fields (extraction spec, "Label vocabulary"): the words a page writes next to a
+"""The label vocabulary of a schema's fields: the words a page writes next to a
 field's value, in a label-value pair of its markup or a `PropertyValue` of its structured data.
 
 A field's labels are its name (`review_count`: "Review count"), the schema.org property its path names (`reviewCount`,

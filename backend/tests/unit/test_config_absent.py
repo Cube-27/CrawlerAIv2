@@ -1,4 +1,4 @@
-"""Absent fields (D-1341): learning lists the required fields of a detail schema that no page of its run stated and
+"""Absent fields: learning lists the required fields of a detail schema that no page of its run stated and
 that role C was asked for on every page; a config never lists a field it has steps for."""
 
 from datetime import UTC, datetime

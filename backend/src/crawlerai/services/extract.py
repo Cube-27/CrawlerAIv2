@@ -1,20 +1,20 @@
-"""The extract service (jobs spec): records of one page kind from URLs and URL globs, as one
+"""The extract service: records of one page kind from URLs and URL globs, as one
 job of kind `extract` with a `url_task` per page. Workers run the tasks as they run a records batch's
 (`crawlerai.worker.handlers.scrape`), and `GET /v1/jobs/{id}/results` returns the records.
 
-A URL with a `*` is a glob (`is_glob`), expanded through `map` on its host (§4.4): the URLs the host's
+A URL with a `*` is a glob (`is_glob`), expanded through `map` on its host: the URLs the host's
 sitemaps and start page give that the glob matches. The tasks are the given URLs, then each glob's URLs, once each in
 canonical form, cut at `limit`. Every URL is caller-supplied, those a glob gave too: a page whose
 required fields don't all publish keeps its record, `complete=false`, with outcome `partial`.
 
-The schema is named by id or given inline, or drafted from a `prompt` by role S (llm spec) while the caller
+The schema is named by id or given inline, or drafted from a `prompt` by role S while the caller
 waits: from the cleaned text of the first pages, up to three, of those reached among the first three task URLs. The
-draft is returned with the job. Field names are drafted from the names alone, before anything is stored (frontend spec
-§4.10). Each task is extracted in its site's progressive mode: the job
-pins the engine data and the configs active when it was submitted (INV-28), and its pages count toward the site's
-learning trigger (learning-configs spec).
+draft is returned with the job. Field names are drafted from the names alone, before anything is stored (the UI). Each
+task is extracted in its site's progressive mode: the job
+pins the engine data and the configs active when it was submitted, and its pages count toward the site's
+learning trigger.
 
-Submitting checks every URL, each glob's origin and `webhook_url` with the SSRF guard first (INV-16), a URL (not a
+Submitting checks every URL, each glob's origin and `webhook_url` with the SSRF guard first, a URL (not a
 glob) by its form alone: one refused only once its host is resolved (`dns`, a `private_address`) is queued and its task
 fails as the guard refuses its fetch. The fetches of a map or a draft go through the guard too. Nothing is
 stored for a target refused by its form, an unusable schema, or no URL to extract (beyond the `map` jobs of the globs).
@@ -66,16 +66,16 @@ from crawlerai.services.scrape_request import (
 from crawlerai.services.stored_captures import NotCached
 from crawlerai.services.webhook_options import WebhookOptions
 
-# The bound on a prompt's draft, its sample fetches included: the longest a scrape may wait (D-0028).
+# The bound on a prompt's draft, its sample fetches included: the longest a scrape may wait.
 DRAFT_TIMEOUT_S: Final = float(MAX_TIMEOUT_S)
 
 
 class ExtractRequest(WebhookOptions):
-    """The body of `POST /v1/extract` (§4.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it
-    inline, or asks for a draft from a `prompt` or from field names (`fields`, frontend spec), and its page kind must
+    """The body of `POST /v1/extract`. `urls` are URLs and URL globs; `schema` names a schema by id, gives it
+    inline, or asks for a draft from a `prompt` or from field names (`fields`), and its page kind must
     be `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` (else the project's cap) bounds a prompt's
-    draft. The `fetch` and `locale` are a scrape's (rest-api spec), for every URL. The webhook options are
-    `WebhookOptions` (§4.2)."""
+    draft. The `fetch` and `locale` are a scrape's, for every URL. The webhook options are
+    `WebhookOptions`."""
 
     urls: list[str] = Field(min_length=1, max_length=MAX_URLS)
     schema_: SchemaRequest = Field(alias="schema")
@@ -133,7 +133,7 @@ class NothingToExtract(Refusal):
 
 
 class NoSamplePage(Refusal):
-    """None of the pages a prompt is drafted from was reached (llm spec: role S drafts from fetched pages)."""
+    """None of the pages a prompt is drafted from was reached (role S drafts from fetched pages)."""
 
 
 class DraftTimedOut(Refusal):
@@ -153,14 +153,14 @@ async def submit_extract(
     placement: Placement = OWN_TRANSACTION,
 ) -> ExtractSubmitted:
     """Store `request` as a queued job with its tasks, where `placement` says (a prompt's job, stored before its
-    draft, always in transactions of its own); `api_key_id`, the key that submitted it, signs its webhook (§4.2).
-    Raises, storing no extract job: `UnknownProxyPool` for a proxy pool not configured (D-1434), `TargetsRejected` for
+    draft, always in transactions of its own); `api_key_id`, the key that submitted it, signs its webhook.
+    Raises, storing no extract job: `UnknownProxyPool` for a proxy pool not configured, `TargetsRejected` for
     a refused target (`check_targets`; a URL is checked by its form alone), `RecordsUnavailable` without `data`,
     `named_schema`'s errors for a schema that cannot be used (or field names `llm` could not draft), `TargetRejected`
     for a refused fetch of a map, and `NothingToExtract`. Raises, failing the job: `NoSamplePage`, the LLM client's
     `LLMFailure`, `SchemaUnusable` for a draft of another page kind, and `DraftTimedOut`."""
     check_proxy_pool(request.fetch, fetching.egresses.pools)
-    # A schedule's run checks its targets in full: a refused run stores no job (jobs spec, schedules).
+    # A schedule's run checks its targets in full: a refused run stores no job (schedules).
     queued = {f"urls[{i}]" for i, glob in enumerate(request.globs()) if glob is None and placement.schedule_id is None}
     await check_targets(fetching.connector, request.targets(), webhook_url=request.webhook_url, queued=queued)
     if data is None:
@@ -204,7 +204,7 @@ async def _expand(
     engine: AsyncEngine, fetching: Fetching, origin: str, include: list[str], request: ExtractRequest
 ) -> list[tuple[str, str]]:
     """The URLs that a map of `origin` finds and its globs, `include`, match, obeying robots.txt as `request` does; a
-    map's URLs are canonical (§4.4), so each is its own canonical form."""
+    map's URLs are canonical, so each is its own canonical form."""
     mapping = MapRequest(url=origin, include=include, limit=request.limit, respect_robots=request.fetch.respect_robots)
     found = await map_urls(engine, fetching, mapping)
     return [(url, url) for url in found.urls]
@@ -278,7 +278,7 @@ async def _samples(
 ) -> list[str]:
     """The cleaned text of each of `urls` reached, fetched one after another as a scrape fetches its page; the fetches
     count as the job's usage. With `fetch.cache` `only`, each is the latest stored capture of its URL made with the
-    request's steps and context, and nothing is fetched (jobs spec, "Request context and actions per page"); a URL
+    request's steps and context, and nothing is fetched; a URL
     without one is no sample. Raises `NoSamplePage` when none was reached."""
     samples: list[str] = []
     for url in urls:
@@ -307,7 +307,7 @@ async def _fetched_sample(
     engine: AsyncEngine, fetching: Fetching, job_id: JobId, url: str, page: PagePlan
 ) -> FetchResult | str:
     """The sample page at `url` fetched as a scrape fetches its page (`fetch_now`), its attempts counted as the job's
-    usage; the guard's refusal when it refused a request of the fetch (INV-16), which leaves the page unreached."""
+    usage; the guard's refusal when it refused a request of the fetch, which leaves the page unreached."""
     try:
         return await fetch_now(engine, fetching, url, page)
     except TargetRejected as e:
@@ -344,5 +344,5 @@ def _pairs(urls: dict[str, str]) -> list[tuple[str, str]]:
 
 
 def _cleaned_text(page: FetchResult) -> str:
-    # Role S's sample pages are their cleaned text (llm spec).
+    # Role S's sample pages are their cleaned text.
     return ParsedPage.of(page.bundle).cleaned_text.text

@@ -1,4 +1,4 @@
-"""Browser fetch (acquisition spec): a JS-only page is rendered, the JSON it loads is captured within the caps, every
+"""Browser fetch: a JS-only page is rendered, the JSON it loads is captured within the caps, every
 connection passes the SSRF guard, and the page and its workers present Chrome's own identity.
 
 A local server on 127.0.0.1 serves synthetic pages under `.test` hosts; no live network. The connector admits only
@@ -48,7 +48,7 @@ fetch('/api/items').then(r => r.json()).then(items => {
   return Promise.all([fetch('/api/note'), fetch('/style.css'), fetch('/api/flight')]);
 });
 </script></body></html>"""
-# Enough rendered text that the page is not a shell (acquisition spec: 200 visible characters).
+# Enough rendered text that the page is not a shell (200 visible characters).
 _ITEMS = json.dumps([{"name": f"Catalogue item {i} with a short description"} for i in range(12)]).encode()
 # A React Server Components Flight payload (React's row grammar), kept beside the JSON.
 _FLIGHT = b'0:{"price":"$$19.99"}\n'
@@ -477,13 +477,13 @@ def test_a_subresource_to_a_loopback_or_link_local_address_is_refused_by_the_gua
     assert result.bundle.manifest.network_bodies == ()
 
 
-# --- INV-29: cookies stay inside one fetch -----------------------------------------------------------------------
+# --- cookies stay inside one fetch -----------------------------------------------------------------------
 
 
-# --- challenges and proxy health (D-1326, D-1324) -------------------------------------------------------------------
+# --- challenges and proxy health -------------------------------------------------------------------
 
 
-# --- INV-30: untrusted bodies are bounded --------------------------------------------------------------------------
+# --- untrusted bodies are bounded --------------------------------------------------------------------------
 
 
 def test_inv30_a_body_over_the_cap_is_an_error_without_a_body(browser: Browser, server: Server) -> None:

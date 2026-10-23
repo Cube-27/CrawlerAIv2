@@ -6,7 +6,7 @@ import map from "../prompts/map.md?raw";
 import search from "../prompts/search.md?raw";
 import scrape from "../prompts/scrape.md?raw";
 
-/** One prompt for coding agents (frontend spec). */
+/** One prompt for coding agents. */
 export interface AgentPrompt {
   title: string;
   /** The prompt's short name: its heading in the mode's file. */

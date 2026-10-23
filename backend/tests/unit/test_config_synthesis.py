@@ -1,4 +1,4 @@
-"""Role A synthesis (learning-configs spec): steps are kept only when the engine executor reproduces the published
+"""Role A synthesis: steps are kept only when the engine executor reproduces the published
 values on every sample page; failing fields are repaired with diagnostics at most 3 times; the model returns steps,
 never values. The client is scripted; no provider is called. Pages are synthetic (`example.test`)."""
 

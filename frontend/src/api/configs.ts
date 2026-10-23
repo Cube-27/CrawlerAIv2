@@ -2,7 +2,7 @@ import type { ApiClient } from "./client";
 import { apiResult, type ApiResult } from "./result";
 import type { components } from "./schema";
 
-/** The site config endpoints (learning-configs spec), in the generated shapes. */
+/** The site config endpoints, in the generated shapes. */
 export type ConfigSummary = components["schemas"]["ConfigSummary"];
 export type ConfigDetail = components["schemas"]["ConfigDetail"];
 export type ConfigStatus = ConfigSummary["status"];
@@ -55,7 +55,7 @@ export function correctConfig(
   );
 }
 
-/** Approves a learned config waiting as `pending_approval` (D-1342): it becomes the active version. */
+/** Approves a learned config waiting as `pending_approval`: it becomes the active version. */
 export function approveConfig(client: ApiClient, id: string): Promise<ApiResult<ConfigDetail>> {
   return apiResult(
     () => client.POST("/v1/configs/{config_id}/approve", { params: { path: { config_id: id } } }),
@@ -63,7 +63,7 @@ export function approveConfig(client: ApiClient, id: string): Promise<ApiResult<
   );
 }
 
-/** Refuses a learned config waiting as `pending_approval` (D-1391): it becomes `suspended`, and what served before goes
+/** Refuses a learned config waiting as `pending_approval`: it becomes `suspended`, and what served before goes
  * on serving. */
 export function rejectConfig(client: ApiClient, id: string): Promise<ApiResult<ConfigDetail>> {
   return apiResult(

@@ -1,9 +1,9 @@
-"""The Gemini provider (llm spec): `generateContent` through the official `google-genai` SDK, with structured
+"""The Gemini provider: `generateContent` through the official `google-genai` SDK, with structured
 output.
 
 The reply is constrained by `response_json_schema` with `response_mime_type="application/json"`; the client still
-validates it (§4.2). Temperature is 0 (§4.2). The SDK does not retry unless asked to, so a rate limit, a server error
-or a timeout raises `ProviderError` at once and the client fails over (§4.2); any other error status raises
+validates it. Temperature is 0. The SDK does not retry unless asked to, so a rate limit, a server error
+or a timeout raises `ProviderError` at once and the client fails over; any other error status raises
 `ProviderRefused`.
 """
 

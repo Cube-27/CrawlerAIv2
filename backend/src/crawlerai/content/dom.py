@@ -1,4 +1,4 @@
-"""Document-level facts the content formats share (rest-api spec): HTML's token and whitespace rules and the
+"""Document-level facts the content formats share: HTML's token and whitespace rules and the
 document base URL."""
 
 import re

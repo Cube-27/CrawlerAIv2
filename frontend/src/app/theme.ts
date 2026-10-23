@@ -38,7 +38,7 @@ function systemTheme(): Theme {
   return window.matchMedia(SYSTEM_DARK).matches ? "dark" : "light";
 }
 
-/** The viewer's theme, applied as `data-theme` on `<html>` (DESIGN.md; HeroUI v3 keys dark mode on it): their choice,
+/** The viewer's theme, applied as `data-theme` on `<html>`: their choice,
  * else the system's scheme, followed live as it changes. */
 export function useTheme(): [Theme, (theme: Theme) => void] {
   const [choice, setChoice] = useState<Theme | null>(rememberedTheme);

@@ -1,4 +1,4 @@
-"""`POST /v1/search` (D-1442): the search service over HTTP. With `scrape`, the results are scraped by a batch job:
+"""`POST /v1/search`: the search service over HTTP. With `scrape`, the results are scraped by a batch job:
 its status is `GET /v1/jobs/{id}` and what it made `GET /v1/jobs/{id}/results`."""
 
 from typing import Annotated

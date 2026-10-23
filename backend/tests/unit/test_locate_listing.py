@@ -1,4 +1,4 @@
-"""A listing's rows in the locate run (learning-configs spec, "Locate run"; listings spec, "Rows from page state"): the
+"""A listing's rows in the locate run: the
 rows the renders published are located in the HTTP page's state as a `jsonpath` row step, else through the listing
 recipe of the renders' calls, else in the render's item blocks as a `browser` listing.
 

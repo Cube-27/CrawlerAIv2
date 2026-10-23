@@ -1,4 +1,4 @@
-"""The locate run (learning-configs spec, "Locate run"; acquisition spec, "Fetch plan"): a value the renders publish
+"""The locate run: a value the renders publish
 is induced in every source document that holds it, each step is validated on the other sample pages for its tier,
 and the cheapest tier wins; the config's field sources then plan the fetch.
 

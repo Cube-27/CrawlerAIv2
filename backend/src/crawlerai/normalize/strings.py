@@ -1,4 +1,4 @@
-"""The text forms every layer compares in (normalization spec, "One module per type"): composed, white space collapsed
+"""The text forms every layer compares in: composed, white space collapsed
 or set aside, cut short by an ellipsis, split into sentences, and folded to words.
 
 Folding is for comparison only: a published value keeps the form the page states (`compose` and `collapse` are the

@@ -46,8 +46,8 @@ _LABEL: Final = re.compile(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", re.ASCII)
 # The locale a career site's path may start with: a language and a region subtag (BCP 47, RFC 5646 §2.1), the form
 # Workday writes them in.
 _LOCALE: Final = re.compile(r"[a-z]{2}-[A-Z]{2}", re.ASCII)
-# A path segment of RFC 3986 unreserved characters and percent-encoded octets (§2.1, §2.3), other than a dot-segment
-# (§5.2.4), which would move the endpoint's path; it goes into the endpoint as it is written.
+# A path segment of RFC 3986 unreserved characters and percent-encoded octets, other than a dot-segment,
+# which would move the endpoint's path; it goes into the endpoint as it is written.
 _SEGMENT: Final = re.compile(r"(?!\.+$)(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})+", re.ASCII)
 
 

@@ -1,4 +1,4 @@
-"""The queue and the worker loop across several connections, with committed data (persistence-storage spec)."""
+"""The queue and the worker loop across several connections, with committed data."""
 
 import asyncio
 from collections import Counter

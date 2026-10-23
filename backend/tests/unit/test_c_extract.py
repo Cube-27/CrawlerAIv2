@@ -1,5 +1,5 @@
-"""Role C on a detail page through the pipeline (llm spec "Role C input, claims and candidates", resolution spec "LLM
-gap hook"): it reads the product's own text, not other items' cards; every missing field goes in one call; a claimed
+"""Role C on a detail page through the pipeline (role C input, claims and candidates; the LLM
+gap hook): it reads the product's own text, not other items' cards; every missing field goes in one call; a claimed
 value the evidence does not hold stays `missing` with reason `unverified`. The client is scripted; no provider is
 called. Pages are synthetic (`example.test`)."""
 

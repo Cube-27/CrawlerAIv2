@@ -1,4 +1,4 @@
-"""The `render` member of the requests that extract `records` (rest-api spec, "Render mode"): `{mode, fields}`, and the
+"""The `render` member of the requests that extract `records`: `{mode, fields}`, and the
 `render_fields` list it replaces is refused."""
 
 import asyncio

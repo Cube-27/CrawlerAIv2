@@ -1,4 +1,4 @@
-/** `GET /v1/usage/llm` (jobs spec): the LLM cost history, an estimate for visibility, not billing. */
+/** `GET /v1/usage/llm`: the LLM cost history, an estimate for visibility, not billing. */
 import type { ApiClient } from "./client";
 import { apiResult, type ApiResult } from "./result";
 import type { components } from "./schema";

@@ -11,8 +11,8 @@ import { DraftFields, viewerZone } from "./DraftFields";
 import { schedulePath } from "./paths";
 
 /** A button that opens a dialog storing `request` (the body a `kind` of job would be started with; null while it can't
- * be sent) as a recurring schedule (`POST /v1/schedules`) and opens it (D-1418). `label` names the button, which says
- * where the request comes from: a form (Schedule this) or a stored run (D-1514). */
+ * be sent) as a recurring schedule (`POST /v1/schedules`) and opens it. `label` names the button, which says
+ * where the request comes from: a form (Schedule this) or a stored run. */
 export function ScheduleDialog({
   kind,
   request,

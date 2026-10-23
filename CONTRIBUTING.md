@@ -7,7 +7,7 @@ it fixes a site.
 
 ## Before you start
 
-- What the code does: `docs/architecture.md`. The rules CI and agents enforce: `docs/rules.md`.
+- What the code does: `docs/architecture.md`. The rules CI and agents enforce: `docs/rules.md`. Decisions in force: `docs/decisions.md`.
 - One PR covers one concern: one branch, one PR (`CLAUDE.md`). The PR description carries the reasoning.
 
 ## Setup and checks

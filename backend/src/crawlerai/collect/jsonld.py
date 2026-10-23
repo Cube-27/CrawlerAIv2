@@ -1,4 +1,4 @@
-"""The JSON-LD collector (extraction spec): schema.org nodes in `application/ld+json` blocks.
+"""The JSON-LD collector: schema.org nodes in `application/ld+json` blocks.
 
 Each block is parsed as JSON, accepting raw control characters inside strings and a number written with leading
 zeros, read as its digits (RFC 8259 §9; `core.json_text.parse`); a block that is still invalid is skipped with a
@@ -275,7 +275,7 @@ def _scoped_objects(document: JsonValue) -> Iterator[tuple[Mapping[str, JsonValu
 
 
 def _scalars(written: JsonValue) -> Iterator[JsonValue]:
-    """The scalar values written for a property: each item of an array (§4.3.1), a value object's `@value` (§4.2)."""
+    """The scalar values written for a property: each item of an array, a value object's `@value`."""
     for item in written if isinstance(written, list) else [written]:
         scalar = item.get(_VALUE) if isinstance(item, dict) else item
         if scalar is not None and not isinstance(scalar, (list, dict)):

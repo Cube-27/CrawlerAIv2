@@ -1,4 +1,4 @@
-"""JS literal reader properties (extraction spec, "Source documents"): JSON text and the JS object-literal forms a
+"""JS literal reader properties: JSON text and the JS object-literal forms a
 serializer writes (unquoted keys, single quotes, trailing commas, `undefined`) read back as the value they write."""
 
 import json

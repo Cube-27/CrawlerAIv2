@@ -7,7 +7,7 @@ import type { RuleRow } from "./form";
 
 const isPageKind = isOptionOf(PAGE_KIND_LABELS);
 
-/** A crawl's `page_kind_rules` (jobs spec) as rows of a URL glob and a page kind, across the panel's width.
+/** A crawl's `page_kind_rules` as rows of a URL glob and a page kind, across the panel's width.
  * Without rules every page in scope is extracted; with rules, a page no glob matches is read for its links only. With
  * a schema every rule is for its page kind, `fixed`. `error` is why the rules can't be sent. */
 export function RuleRows({

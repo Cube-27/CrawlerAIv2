@@ -1,4 +1,4 @@
-"""Fail when a workflow, hook or tool config adds a size, complexity or coverage gate beyond C11's two (INV-18, C11).
+"""Fail when a workflow, hook or tool config adds a size, complexity or coverage gate beyond C11's two (C11).
 
 C11 allows exactly two size checks: cognitive complexity of at most 15 per function
 (complexipy for Python, the repo's Oxlint rule for TypeScript), and a warning, never a failure, for source files over

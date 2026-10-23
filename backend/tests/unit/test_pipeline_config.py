@@ -1,4 +1,4 @@
-"""Active mode in the pipeline (learning-configs spec): with a site's active config, `extract_page` runs the
+"""Active mode in the pipeline: with a site's active config, `extract_page` runs the
 engine executor on the page's one parse, the config's candidates resolve with the collectors' in the bucket of their
 field's status, and role C is asked only for fields the config does not run.
 
@@ -195,7 +195,7 @@ def test_a_config_value_publishes_in_its_fields_status_bucket() -> None:
     ]
 
 
-# Absent fields (D-1341): required fields the learning pages never stated.
+# Absent fields: required fields the learning pages never stated.
 
 
 # --- listings ---

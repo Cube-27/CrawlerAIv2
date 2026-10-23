@@ -1,5 +1,5 @@
-"""A detail page's own variants and images replayed through `extract_page` on synthetic captures (variants spec, own
-variants; extraction and normalization specs, renditions): a `hasVariant` member that states only a URL, or whose URL
+"""A detail page's own variants and images replayed through `extract_page` on synthetic captures (own variants,
+renditions): a `hasVariant` member that states only a URL, or whose URL
 names another page, is no variant; one image file is one image, its largest rendition. Pages are synthetic
 (`example.test`, C3, C9)."""
 

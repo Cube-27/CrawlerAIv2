@@ -19,7 +19,7 @@ import {
   INITIAL_EXTRACT,
 } from "./form";
 
-/** The Extract playground at `/extract` (frontend spec): a URL (more URLs and globs in the options), a schema (stored,
+/** The Extract playground at `/extract`: a URL (more URLs and globs in the options), a schema (stored,
  * inline or from a prompt) and its page kind (`POST /v1/extract`), and the run on the page (`?job=`) as Batch's
  * results table; before any run, the recent extracts. */
 export function ExtractPlayground() {

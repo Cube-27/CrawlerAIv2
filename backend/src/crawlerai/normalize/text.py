@@ -1,4 +1,4 @@
-"""Text and long_text normalizer (normalization spec): a decoded, composed, whitespace-collapsed string.
+"""Text and long_text normalizer: a decoded, composed, whitespace-collapsed string.
 
 Accepts a string, from the DOM, an LLM or a structured source (schema.org Text values are JSON strings). Any other
 JSON value is `Invalid("not_a_string")`. A long_text value arrives as its source states it (a structured value, or a
@@ -26,7 +26,7 @@ from crawlerai.normalize.base import (
 from crawlerai.normalize.strings import collapse, compose, fold_words
 from crawlerai.schemas.types import FieldSpec, FieldType
 
-# normalization spec and D-0017: length bounds after normalization, in characters.
+# Length bounds after normalization, in characters.
 _MAX_LEN = {FieldType.TEXT: 512, FieldType.LONG_TEXT: 100_000}
 # Structural: an unrendered template placeholder means the page shows its template, not a value. Covered syntaxes:
 # `{{ … }}` (Mustache, Handlebars, Jinja, Angular), `${ … }` (JavaScript template literals, shell parameter
@@ -39,7 +39,7 @@ _BLANK_LINE_RUN = re.compile(r"\n{3,}")
 
 
 def normalize(raw: Raw, spec: FieldSpec, _ctx: Context) -> NormalizeResult:
-    """Normalize a text or long_text field (normalization spec). Text needs no page evidence, so the context is
+    """Normalize a text or long_text field. Text needs no page evidence, so the context is
     unused."""
     if spec.type not in _MAX_LEN:
         raise TypeError(f"the text normalizer does not handle type {spec.type}")
@@ -47,7 +47,7 @@ def normalize(raw: Raw, spec: FieldSpec, _ctx: Context) -> NormalizeResult:
 
 
 def key(value: JsonValue, spec: FieldSpec) -> Hashable:
-    """Equality as a key (normalization spec): equal after the text normalization, case-sensitive."""
+    """Equality as a key: equal after the text normalization, case-sensitive."""
     text = _text(value, spec.type)
     return ("text", text.value, text.reasons) if isinstance(text, Ok) else raw_key(value)
 

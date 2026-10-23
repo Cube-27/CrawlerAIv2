@@ -1,4 +1,4 @@
-"""Cleaned page text with its offsets, and the visibility index (extraction spec), rendered in one walk of the page's
+"""Cleaned page text with its offsets, and the visibility index, rendered in one walk of the page's
 selectolax tree.
 
 The text is the page as a reader sees it, without a CSS engine: the HTML Standard's rendering rules (its user-agent
@@ -19,7 +19,7 @@ from selectolax.lexbor import LexborHTMLParser, LexborNode
 from crawlerai.normalize.strings import collapse, compose, is_cut_of, solid, uncut
 from crawlerai.normalize.text import text_form
 
-# HTML Standard, Rendering, "Hidden elements": the user-agent style sheet gives these `display: none`. extraction spec
+# HTML Standard, Rendering, "Hidden elements": the user-agent style sheet gives these `display: none`. extraction
 # also drops `noscript` (its content is for user agents without scripting) and `svg` (graphics, not page text);
 # `iframe` content is parsed as raw text and never rendered (HTML Standard, parsing: the generic raw text algorithm).
 NOT_RENDERED = frozenset(
@@ -41,12 +41,12 @@ LINE_BOXES = frozenset(
 )
 # `display: table-cell`: adjacent cells are separate boxes, so their texts are separated (by a tab in `innerText`).
 CELLS = frozenset({"td", "th"})
-# HTML attributes whose values the page shows or announces for a visible element (extraction spec).
+# HTML attributes whose values the page shows or announces for a visible element.
 _SHOWN_ATTRIBUTES = ("alt", "title", "content")
 # HTML Standard §4.10.5: an `input` shows its `value` as its text (text-like states) or as its button's label (Submit,
 # Reset, Button); the states below show it as no text (a checkmark, a swatch, a slider, masked characters, a chosen
 # file, an image) and `hidden` renders nothing. `value` on any other element is a form or machine value, not shown:
-# an `option`'s submitted value (§4.10.10, it shows its label or text), a `button`'s, `data` (§4.5.15), `li`'s ordinal,
+# an `option`'s submitted value (it shows its label or text), a `button`'s, `data`, `li`'s ordinal,
 # `meter`/`progress` gauges.
 _VALUE_NOT_SHOWN = frozenset({"checkbox", "radio", "file", "image", "password", "range", "color", "hidden"})
 # Namespaces in XML 1.0, NCName: a name without a colon, starting with a letter or `_` (`[^\W\d]`), then letters,
@@ -93,7 +93,7 @@ class CleanedText:
 
 
 class VisibleIndex:
-    """The visible text lines and the shown attributes of visible elements, in the schemas spec text form."""
+    """The visible text lines and the shown attributes of visible elements, in the schema text form."""
 
     def __init__(self, cleaned: CleanedText, shown: Iterable[str]) -> None:
         # One entry per line and per attribute: a match never spans two of them.
@@ -350,7 +350,7 @@ def script_revealed(node: LexborNode) -> bool:
 
 def _titled_content(node: LexborNode) -> bool:
     """It holds the document's one top-level heading (HTML Standard §4.3.6, `h1`: the page's title) and a form
-    (§4.10.3, the item's form). A page does not keep its title for later; a concealed template, modal or variant block
+    (the item's form). A page does not keep its title for later; a concealed template, modal or variant block
     holds no `h1` or is beside the page's own."""
     headings = node.css("h1")
     if len(headings) != 1 or node.css_first("form") is None:
@@ -363,7 +363,7 @@ def _titled_content(node: LexborNode) -> bool:
 
 def _main_content(node: LexborNode) -> bool:
     """It is a child of the `main` element (HTML Standard §4.4.14: the dominant contents of the document's body), none
-    of whose children renders, holds a heading (§4.3.6, `h1`-`h6`: content with a title of its own, not a stray value)
+    of whose children renders, holds a heading (`h1`-`h6`: content with a title of its own, not a stray value)
     and more of the element's text than any other concealed child (the gate's own message or form is the smaller one).
     A document does not keep its dominant content hidden: a script shows it."""
     parent = node.parent
@@ -416,7 +416,7 @@ def declarations(attributes: _Attributes) -> dict[str, str]:
 
 class _TextBuilder:
     """CSS Text 3 §4.1 white-space collapsing (`white-space: normal`) across text nodes, with Unicode White_Space as
-    the collapsible set, as the schemas spec text rules collapse it."""
+    the collapsible set, as the schema text rules collapse it."""
 
     def __init__(self) -> None:
         self.parts: list[str] = []

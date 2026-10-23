@@ -1,4 +1,4 @@
-"""Location normalizer (normalization spec): `{text, locality, region, country, remote_flag}`.
+"""Location normalizer: `{text, locality, region, country, remote_flag}`.
 
 A location publishes what the page states and nothing it does not: no place is looked up, completed or inferred.
 - `text` is the place as the page writes it: a string, or a `Place`'s `name` followed by its `PostalAddress`'s stated
@@ -43,7 +43,7 @@ _PARTS = ("locality", "region", "country")
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
-    """Normalize a location (normalization spec)."""
+    """Normalize a location."""
     if spec.type is not FieldType.LOCATION:
         raise TypeError(f"the location normalizer does not handle type {spec.type}")
     if isinstance(raw, str):
@@ -54,7 +54,7 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
 
 
 def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
-    """normalization spec: `remote_flag` and `country` equal, `locality` equal after Unicode case folding; `region` and
+    """`remote_flag` and `country` equal, `locality` equal after Unicode case folding; `region` and
     `text` (by `vocab.tokens`, so case, accents of form and punctuation don't count) count only when both values have
     one. Not transitive: a value without a region equals two values in different regions."""
     if a == b:
@@ -75,7 +75,7 @@ def names(text: JsonValue, place: JsonValue) -> bool:
     region when it states no locality: their words (`vocab.tokens`) run in its text (a locality is the place itself; a
     region holds other places, as "New York" does "New York City"). Then both state one place of the item, the text
     as the page shows it ("Austin", "Raleigh; Austin; Denver") and `place` as its structured data does: one member of a
-    list of places, not two (resolution spec, "Candidate score"). Nothing in the text is parsed."""
+    list of places, not two. Nothing in the text is parsed."""
     if not (_location(text) and _location(place)) or any(text[part] is not None for part in _PARTS):
         return False
     said = text["text"]
@@ -123,8 +123,8 @@ def _text(given: str, ctx: Context, *, remote: bool = False) -> NormalizeResult:
 
 
 def _telecommute(value: JsonValue) -> bool:
-    """Whether a `jobLocationType` value is TELECOMMUTE. JSON-LD 1.1 lets a property hold an array of values (§4.3)
-    or a node object naming its IRI in `@id` (§4.1); any one TELECOMMUTE value makes the job remote."""
+    """Whether a `jobLocationType` value is TELECOMMUTE. JSON-LD 1.1 lets a property hold an array of values
+    or a node object naming its IRI in `@id`; any one TELECOMMUTE value makes the job remote."""
     if isinstance(value, list):
         return any(_telecommute(item) for item in value)
     if isinstance(value, dict):
@@ -134,7 +134,7 @@ def _telecommute(value: JsonValue) -> bool:
 
 def _says_remote(text: str, ctx: Context) -> bool:
     # A phrase is stated only as a whole clause ("Lakeside, Remote"): "not remote" has other words in its clause, and
-    # no standard lists the words that negate (C4, C7), so it states nothing (INV-37's rule, D-1272).
+    # no standard lists the words that negate (C4, C7), so it states nothing.
     return bool(vocab.clause_codes(text, _remote_entries(ctx)))
 
 

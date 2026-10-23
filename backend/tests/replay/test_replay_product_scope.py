@@ -1,4 +1,4 @@
-"""A detail page's DOM passes replayed through `extract_page` (extraction spec, "Structural DOM values"): they skip the
+"""A detail page's DOM passes replayed through `extract_page`: they skip the
 cards of other items, whose prices structured data does not state. Pages are synthetic (`example.test`, C3, C9)."""
 
 import asyncio

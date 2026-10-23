@@ -1,4 +1,4 @@
-"""Steps as role A writes them (learning-configs spec): a form inside every provider's structured-output subset.
+"""Steps as role A writes them: a form inside every provider's structured-output subset.
 
 An IR step is an object with one selector key and optional parameters, and a post op is an object keyed by its op
 (`model.Step`, `model.PostOp`); neither is a closed object with every property required, which a provider's strict
@@ -24,12 +24,12 @@ from crawlerai.schemas.types import FieldType
 
 _NONE: Final = ""
 SELECTORS: Final = ("xpath", "css", "jsonld", "jsonpath", "regex", "attr")
-# The sources role A may name; `api` belongs to API recipes (adapters spec), not to steps the model writes.
+# The sources role A may name; `api` belongs to API recipes, not to steps the model writes.
 _SOURCES: Final = ("jsonld", "js_state", "attr", "rsc", "xhr")
 _REGEX_REPLACE: Final = "regex_replace"
 _ABSOLUTIZE: Final = "absolutize_url"
 _PARAMETERLESS: Final = ("trim", _ABSOLUTIZE)
-# schemas spec: `list` and `object` have no normalizer of their own, so no post op names them.
+# `list` and `object` have no normalizer of their own, so no post op names them.
 _NORMALIZERS: Final = tuple(t.value for t in FieldType if t not in (FieldType.LIST, FieldType.OBJECT))
 
 

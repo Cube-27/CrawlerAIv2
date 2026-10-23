@@ -1,7 +1,7 @@
 import { Table, Typography } from "@heroui/react";
 import type { FetchAttempt, FetchSummary } from "../api/scrape";
 
-/** Every rung tried to fetch a page, in order (acquisition spec): its method, the HTTP status, the block class, the
+/** Every rung tried to fetch a page, in order: its method, the HTTP status, the block class, the
  * challenge label the response presented (`acquire.challenge`), the time it took and the error it ended with. A
  * blocked page's attempts say why it was. */
 export function FetchAttemptsTable({ attempts }: Readonly<{ attempts: readonly FetchAttempt[] }>) {

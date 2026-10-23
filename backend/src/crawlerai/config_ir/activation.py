@@ -1,14 +1,14 @@
-"""Activation (learning-configs spec): a validated config is stored as the next version of its (site,
+"""Activation: a validated config is stored as the next version of its (site,
 schema, page kind) config, `active`, with its field statuses and `validation_report`; the config active before it is
 `suspended`, and the learning run in flight ends with the state `active` on the new config.
 
-When the project requires approval (D-1342), a learning run's validated config is stored `pending_approval` instead
+When the project requires approval, a learning run's validated config is stored `pending_approval` instead
 (`store_pending`), and becomes the active config only when a person approves it (`approve`).
 
-An operator's correction (§4.10) is stored as the next version whether or not it validates: active as above, without
+An operator's correction is stored as the next version whether or not it validates: active as above, without
 ending any learning run, or a `draft` with the report that says why not.
 
-Only a `Validated` with a config activates: nothing activates without validation (§4.13). Everything runs on the
+Only a `Validated` with a config activates: nothing activates without validation. Everything runs on the
 caller's connection, in its transaction, so a run that cannot end (`NotLearning`) stores nothing.
 """
 
@@ -66,7 +66,7 @@ async def activate(conn: AsyncConnection, key: StateKey, validated: Validated) -
 
 
 async def store_pending(conn: AsyncConnection, key: StateKey, validated: Validated) -> ExtractionConfigId:
-    """Store `validated`'s config for `key` as `pending_approval` and end `key`'s learning run (D-1342): the config
+    """Store `validated`'s config for `key` as `pending_approval` and end `key`'s learning run: the config
     serving before the run, if any, goes on serving until a person approves the new one (`approve`). A config that
     waited before is `suspended`: the newer run replaces it. Raises like `activate`."""
     ir = validated.ir
@@ -100,7 +100,7 @@ async def _lock_pending(conn: AsyncConnection, key: StateKey, config_id: Extract
 
 
 async def approve(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:
-    """Make `config_id`, a config of `key` waiting for approval, the active one (D-1342), suspending the config active
+    """Make `config_id`, a config of `key` waiting for approval, the active one, suspending the config active
     before it. Raises `NotPending` when it is not `pending_approval` or not its scope's latest version."""
     await _lock_pending(conn, key, config_id)
     await _suspend_active(conn, key)
@@ -109,7 +109,7 @@ async def approve(conn: AsyncConnection, key: StateKey, config_id: ExtractionCon
 
 
 async def reject(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:
-    """Refuse `config_id`, a config of `key` waiting for approval (D-1391): it is `suspended`, the config active before
+    """Refuse `config_id`, a config of `key` waiting for approval: it is `suspended`, the config active before
     it goes on serving, and the state learns again only after more pages. Raises `NotPending` as `approve` does."""
     await _lock_pending(conn, key, config_id)
     await conn.execute(update(ExtractionConfig).where(ExtractionConfig.id == config_id).values(status="suspended"))
@@ -132,7 +132,7 @@ async def store_correction(
     if validated.ir is None or not set(operated) <= _field_names(validated.ir):
         return await _store(conn, key, corrected, validated.report, "draft")
     await _suspend_active(conn, key)
-    await _suspend_waiting(conn, key)  # the operator's config is newer than one waiting for approval (D-1342)
+    await _suspend_waiting(conn, key)  # the operator's config is newer than one waiting for approval
     config_id = await _store(conn, key, validated.ir, validated.report, "active")
     await operator_activated(conn, key, config_id)
     return config_id
@@ -150,7 +150,7 @@ async def _check_key(conn: AsyncConnection, key: StateKey, ir: ExtractionConfigI
     learned = (ir.site, ir.schema_.name, ir.page_kind)
     if learned != (*found, key.page_kind):
         raise ConfigMismatch(f"config for {learned} activated for progressive_state {key}")
-    # A schema is edited in place (D-0950): a config learned before an edit is for another document.
+    # A schema is edited in place: a config learned before an edit is for another document.
     if ir.schema_.digest != document_digest(await registry.get_by_id(conn, key.schema_id)):
         raise ConfigMismatch(f"config learned for an earlier document of schema {ir.schema_.name} activated for {key}")
 

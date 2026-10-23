@@ -8,7 +8,7 @@ import { JOB_END_EVENTS, type WebhookSettings } from "../pageRequest";
 import { WEBHOOK_EVENTS } from "../../../components/requestOptions";
 
 /** Members picked out of a job's stored request (`GET /v1/jobs/{id}/request`, the request as the server validated it), to
- * show it again in a mode's bar and options (frontend spec). The UI reads only what its forms hold; a member that is
+ * show it again in a mode's bar and options. The UI reads only what its forms hold; a member that is
  * missing or not of its type reads as the form's empty value. */
 export type StoredRequest = Readonly<Record<string, unknown>>;
 
@@ -42,7 +42,7 @@ export function pageKind(request: StoredRequest): PageKind | null {
   return PAGE_KINDS.find(([kind]) => kind === request["page_kind"])?.[0] ?? null;
 }
 
-/** `fetch.method_hint`, else FetchPolicy's own default (acquisition spec). */
+/** `fetch.method_hint`, else FetchPolicy's own default. */
 export function methodHint(request: StoredRequest): MethodHint {
   const hint = member(request, "fetch")["method_hint"];
   return METHOD_HINTS.find(([option]) => option === hint)?.[0] ?? "auto";
@@ -53,7 +53,7 @@ export function maxRows(request: StoredRequest): number {
   return count(member(request, "fetch"), "max_rows");
 }
 
-/** Whether the job's results are page outputs rather than records (jobs spec): its request asks for formats, and
+/** Whether the job's results are page outputs rather than records: its request asks for formats, and
  * `records` is not one. An extract's request has no formats: its results are records. */
 export function pageOutputs(request: StoredRequest): boolean {
   return Array.isArray(request["formats"]) && !texts(request, "formats").includes("records");
@@ -74,7 +74,7 @@ export function schemaId(request: StoredRequest): string {
   return text(member(request, "schema"), "id");
 }
 
-/** The field names the request's schema is drafted from (frontend spec); none when it names its schema otherwise. */
+/** The field names the request's schema is drafted from; none when it names its schema otherwise. */
 export function schemaFields(request: StoredRequest): string[] {
   return texts(member(request, "schema"), "fields");
 }

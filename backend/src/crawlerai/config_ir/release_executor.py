@@ -1,17 +1,16 @@
-"""The release executor (learning-configs spec): a minimal second executor of the config IR, run only by
+"""The release executor: a minimal second executor of the config IR, run only by
 the release check on held-out pages.
 
 It shares no code with the engine executor beyond the IR model and the shared decoders of state documents
-(`.importlinter`), so a field on which the two agree is evidence that the exported config reproduces the engine
-(INV-20).
-It reads the engine's one parse of the page (INV-26): the lxml copy of its HTML Standard tree (`acquire.items.lxml_of`),
+(`.importlinter`), so a field on which the two agree is evidence that the exported config reproduces the engine.
+It reads the engine's one parse of the page: the lxml copy of its HTML Standard tree (`acquire.items.lxml_of`),
 the tree an exported config's consumer builds too (PHP 8.4 `Dom\\HTMLDocument`, `exporters.platform_draft`), so an
 XPath selects the same element in the engine, here and in an export. It reads the page with lxml (XPath 1.0), `re`,
 `json` and jsonpath-ng: no collector, normalizer or vocabulary. A state document is read as the engine reads it,
 through the one decode of serializer formats (`content.state_decoders`: devalue flat arrays, normalized caches, Astro
 island props) and the one RSC Flight reader (`content.state.flight_rows`, `content.rsc`), never a second mechanism.
 What it knows of the schema comes from the caller as one `FieldRule` per field. Selectors are data interpreted by lxml
-and jsonpath-ng, never code (INV-17).
+and jsonpath-ng, never code.
 """
 
 import json
@@ -54,7 +53,7 @@ from crawlerai.content.state_decoders import decode, revive_astro_props
 type Value = str | int | float | bool | list[Value] | dict[str, Value] | None
 
 # The IR's regexes are the subset Python and PCRE read alike when Python matches ASCII-only, as PCRE does without its
-# UCP option (learning-configs spec).
+# UCP option.
 _REGEX_FLAGS = re.ASCII
 # IANA media types: JSON-LD (embedded in HTML by a script of this type, JSON-LD 1.1 §7.1) and JSON (RFC 8259).
 _JSONLD = "application/ld+json"
@@ -62,7 +61,7 @@ _JSON = "application/json"
 # Adobe Commerce, JavaScript initialization: a `text/x-magento-init` script holds JSON.
 _MAGENTO_INIT = "text/x-magento-init"
 _ASTRO_PROPS = "props"
-# The attributes documented to hold JSON, on their elements (extraction spec, "Source documents"): Inertia `data-page`,
+# The attributes documented to hold JSON, on their elements: Inertia `data-page`,
 # Livewire `wire:snapshot`, WooCommerce `data-product_variations`, Adobe Commerce `data-mage-init`, Astro island
 # `props`, revived from its `[type, value]` tuples by the shared decoder (`revive_astro_props`).
 _JSON_ATTRIBUTES = (
@@ -93,7 +92,7 @@ class FieldRule:
     exactly one. `accepts(value, type)`: whether `value` is valid for the field type a normalizer post op names, or,
     with `None`, for the field itself. `structured(value)`: what the field reads of a value a `jsonld` or `jsonpath`
     step selects, as the engine's structured collectors read it (a text field reads markup as its rendered text). The
-    caller runs the normalizers and that read, the one definition of each (schemas spec, C8); what this module checks
+    caller runs the normalizers and that read, the one definition of each (C8); what this module checks
     independently is that the steps select and transform the values the engine did."""
 
     many: bool
@@ -121,7 +120,7 @@ class Released:
 
 def release_run(ir: ExtractionConfigIR, page: ReleasePage, rules: Mapping[str, FieldRule]) -> Released:
     """The IR's values on `page`. In each field the first step whose value passes its post ops and the field's rule
-    wins (§12.1); a field without a rule, or `suspended`, does not run."""
+    wins; a field without a rule, or `suspended`, does not run."""
     run = _Run(page, page.page.lxml_tree, rules)
     fields = run.fields(ir.fields, run.root, in_row=False)
     rows: tuple[dict[str, Value], ...] = ()
@@ -236,7 +235,7 @@ class _Run:
 
 def _take(matches: list[Value], post: Sequence[PostOp], rule: FieldRule, base_url: str | None) -> Value | None:
     """The step's valid value: every match through the post ops for a list field, else the one match; `None` when there
-    is none, more than one, or a value is not valid. A JSON `null` is no value of any field type (schemas spec: an
+    is none, more than one, or a value is not valid. A JSON `null` is no value of any field type (an
     absent value is a field status), so `None` is never a valid value."""
     if not matches or (len(matches) > 1 and not rule.many):
         return None
@@ -252,7 +251,7 @@ def _take(matches: list[Value], post: Sequence[PostOp], rule: FieldRule, base_ur
 
 def _post(value: Value, ops: Sequence[PostOp], rule: FieldRule, base_url: str | None) -> Value | None:
     """`value` through `ops` in order, or `None` when one declines it. A normalizer op is a check: the value passes on
-    unchanged, since the field's normalizer makes the value (schemas spec)."""
+    unchanged, since the field's normalizer makes the value."""
     if value is None:
         return None
     for op in ops:
@@ -275,7 +274,7 @@ def _post(value: Value, ops: Sequence[PostOp], rule: FieldRule, base_url: str | 
 
 
 def _xpath(xpath: str, node: etree._Element) -> list[Value]:
-    """XPath 1.0 §1: a result is a node-set, a string, a number or a boolean. A node's value is its string-value (§5);
+    """XPath 1.0 §1: a result is a node-set, a string, a number or a boolean. A node's value is its string-value;
     an empty string or NaN is no match, and a boolean is no value."""
     try:
         result = node.xpath(xpath)
@@ -333,7 +332,7 @@ def _documents(source: JsonSource, page: ReleasePage, root: etree._Element) -> I
             for body in page.page.network:
                 yield from _loads(body)
         case "api":
-            raise _Unreadable("an api source is read through adapters spec's api recipe executor")
+            raise _Unreadable("an api source is read through the api recipe executor")
 
 
 def _decoded(document: Value) -> Value:
@@ -381,7 +380,7 @@ def _script_json(source: JsonSource, media_type: str, text: str) -> Iterator[Val
     before it."""
     if source == "jsonld":
         if media_type == _JSONLD:
-            # As the jsonld collector reads it (extraction spec): raw control characters inside strings, which RFC 8259
+            # As the jsonld collector reads it: raw control characters inside strings, which RFC 8259
             # §7 requires escaped and §9 lets a parser accept, read as their escaped form (`strict=False`).
             yield from _loads(text, strict=False)
         return
@@ -403,7 +402,7 @@ def _script_json(source: JsonSource, media_type: str, text: str) -> Iterator[Val
 def _loads(data: str | bytes, *, strict: bool = True) -> Iterator[Value]:
     """The JSON value `data` holds, or none: a body that is not JSON (RFC 8259; bytes decoded as `json.loads` decodes
     them, UTF-8 or the UTF-16/32 forms RFC 4627 §3 tells apart), or nests deeper than the parser follows. The engine's
-    reader is `core.json_text`; this is the executor's own copy (INV-20)."""
+    reader is `core.json_text`; this is the executor's own copy."""
     try:
         yield json.loads(data, strict=strict)
     except (ValueError, RecursionError):

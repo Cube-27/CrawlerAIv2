@@ -2,7 +2,7 @@
 such site uses, so a body that is not JSON, is not text, or nests deeper than the parser can follow is the same
 `ValueError` everywhere instead of a crash (a deeply nested document raises `RecursionError` in Python's parser).
 
-The release executor keeps a copy of its own: it shares no code with the engine (INV-20).
+The release executor keeps a copy of its own: it shares no code with the engine.
 """
 
 import json
@@ -72,15 +72,15 @@ _DECODER = json.JSONDecoder(parse_constant=_not_json)
 # `strict=False` relaxes exactly the control characters inside strings (Python `json` docs); nothing else.
 _LENIENT_DECODER = json.JSONDecoder(parse_constant=_not_json, strict=False)
 # RFC 8259 §7: a string token, its escapes included (`[\s\S]`: lenient strings may hold raw line breaks), is skipped
-# whole; outside strings, a value (after `[`, `:`, `,` or the text's start and before `,`, `]`, `}` or its end, §2)
-# that is a number (§6, ASCII digits) with a zero before further integer digits.
+# whole; outside strings, a value (after `[`, `:`, `, ` or the text's start and before `, `, `]`, `}` or its end)
+# that is a number (ASCII digits) with a zero before further integer digits.
 _LEADING_ZEROS = re.compile(
     r'"(?:[^"\\]|\\[\s\S])*"'
     r"|(?:(?<=[\[:,])|(?<![\s\S]))(?P<space>[ \t\n\r]*)(?P<number>-?0[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)"
     r"(?=[ \t\n\r]*(?:[,\]}]|\Z))"
 )
-# RFC 8259 §7: a string token is skipped whole, as above, and so is a comma right after `[` or `{` (§4, §5: it follows
-# no value, so `[,]` stays invalid); outside strings, a comma (value separator) followed only by whitespace (§2) before
+# RFC 8259 §7: a string token is skipped whole, as above, and so is a comma right after `[` or `{` (§5: it follows no
+# value, so `[, ]` stays invalid); outside strings, a comma (value separator) followed only by whitespace before
 # the `]` or `}` that ends its array or object.
 _TRAILING_COMMAS = re.compile(r'"(?:[^"\\]|\\[\s\S])*"|[\[{][ \t\n\r]*,|,(?=[ \t\n\r]*[\]}])')
 # RFC 8259 §2: insignificant whitespace is space, horizontal tab, line feed and carriage return.

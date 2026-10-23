@@ -1,4 +1,4 @@
-"""Which fields induction leaves to synthesis or to a mapping (learning-configs spec)."""
+"""Which fields induction leaves to synthesis or to a mapping."""
 
 from datetime import UTC, datetime
 from pathlib import Path

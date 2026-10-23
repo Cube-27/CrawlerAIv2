@@ -1,4 +1,4 @@
-"""The FastAPI application factory (rest-api spec): routers, problem details for every error, and the database the
+"""The FastAPI application factory: routers, problem details for every error, and the database the
 routers share."""
 
 import logging
@@ -49,7 +49,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     """Settings that need a database are read at startup, not here, so `crawlerai openapi` builds the document
     without one."""
-    app = FastAPI(title="CrawlerAI", lifespan=_lifespan, openapi_url="/v1/openapi.json")  # rest-api spec
+    app = FastAPI(title="CrawlerAI", lifespan=_lifespan, openapi_url="/v1/openapi.json")
     settings = ApiSettings()
     app.state.trusted_proxies = settings.trusted_proxies
     app.state.rate_limiter = RateLimiter(settings.api_rate_per_s, settings.api_rate_burst)

@@ -1,4 +1,4 @@
-"""API discovery (adapters spec): from the learning sample's browser captures, the endpoints
+"""API discovery: from the learning sample's browser captures, the endpoints
 whose JSON responses carry the page's published values on every sample page, each with a JSONPath per field.
 
 Captured calls are read through `collect/network_match.py` (Appendix A #59), the one reader the `xhr` collector
@@ -6,12 +6,12 @@ shares: a readable call (a success, JSON) counts only when the capture recorded 
 since a recipe can only replay such a request. Calls group into endpoints by `network_match.EndpointKey` (request
 method, URL shape, request body shape); on each page the best-scoring body of a group stands for it.
 
-A body scores one point per required field (§10, required groups included) whose published value is `equal` to a
-reading of the body, and one per other field with a visible leaf of its type (§4.3). A reading is one scalar leaf,
-or for money, two scalar members of one object joined with `+` (§4.2, atomic money). A field's map path is the first
+A body scores one point per required field (required groups included) whose published value is `equal` to a
+reading of the body, and one per other field with a visible leaf of its type. A reading is one scalar leaf,
+or for money, two scalar members of one object joined with `+` (atomic money). A field's map path is the first
 path, in the first page's document order, that reads its value on every sample page; an endpoint is a candidate when
 the map holds a required field. Candidates come best first; the first is the one a recipe is bound from (one
-endpoint per config, D-0035).
+endpoint per config).
 """
 
 from collections.abc import Iterator, Mapping, Sequence
@@ -70,7 +70,7 @@ def discover(samples: Sequence[DiscoverySample], schema: SchemaDef) -> list[Endp
 
 def endpoint_request(bundle: CaptureBundle, endpoint: EndpointCandidate) -> CapturedRequest | None:
     """The request to `endpoint` a capture holds a readable answer to, the first in capture order; `None` when it holds
-    none. Held-out validation reads the captures that hold one (§4.7)."""
+    none. Held-out validation reads the captures that hold one."""
     first = endpoint.requests[0]
     key = endpoint_key(first.method, first.url, first.body)
     return next((_request(call) for call in _replayable(bundle) if call.endpoint == key), None)
@@ -181,10 +181,10 @@ def _hits(readings: Normalized, value: JsonValue, spec: FieldSpec) -> dict[str, 
 
 
 def member_pairs(document: JsonValue) -> Iterator[Reading]:
-    """The ordered pairs of scalar members of one object that may join into one money value (`+`, §4.2), in
+    """The ordered pairs of scalar members of one object that may join into one money value (`+`), in
     document order: one member holds a digit and the other none.
 
-    schemas spec money text reading (`normalize/numbers.py`, `AMOUNT_RUN`): a money value holds exactly one run of
+    The schema money text reading (`normalize/numbers.py`, `AMOUNT_RUN`): a money value holds exactly one run of
     amount digits, so a joined pair is an amount member and a currency member without digits. Two digit-free members
     state no amount, and two amounts are two runs (a range or a list). So an object gives amounts x digit-free members
     pairs, not the square of its size.

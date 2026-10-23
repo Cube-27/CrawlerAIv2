@@ -1,5 +1,5 @@
-"""Decoders of parsed state documents by their documented shape, never by a variable name (extraction spec, "Source
-documents"): each turns a document written in a serializer's reference format into the tree it stands for.
+"""Decoders of parsed state documents by their documented shape, never by a variable name: each turns a document written
+in a serializer's reference format into the tree it stands for.
 
 - **devalue flat array** (devalue `stringify`, Nuxt 3's `__NUXT_DATA__` payload): an array whose element 0 is an
   object whose every value is an in-range index into the array after it, or a Nuxt reviver tuple naming such an

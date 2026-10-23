@@ -52,4 +52,5 @@ CI checks and the contract agents rely on. `CLAUDE.md` holds the full agent text
 - Branch `change/<id>` in a worktree (`tools/orchestrator/new_worktree.sh`); `main` takes PRs only; merge needs green CI and
   every review thread resolved; never merge your own PR.
 - Tests: only files you touched locally; `pytest.raises` blocks hold one call; verification is runtime grounding plus `.claude/skills/verify-*`.
+- Code is the source of truth. Delete a plan or spec once it's implemented; record only important decisions in `docs/decisions.md`.
 - Update `docs/` when a change makes them wrong. Reasoning goes in the PR body.
