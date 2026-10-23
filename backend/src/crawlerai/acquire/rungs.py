@@ -5,16 +5,16 @@ render (or the surface renders every page), and adds the companion calls of its 
 HTTP detail page of a platform that documents its product JSON is joined with that JSON, always (`_joined`).
 
 A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) first, and to the page rungs when the
-adapter does not serve it. A fetched page a page-scoped adapter detects (a storefront collection), at
-its final URL when a redirect kept it on its site, is joined with that adapter's answer for the rows the page lists, a
-data call marked `ADAPTER_CALL`. A fetched page whose own canonical link is its URL without the query,
+adapter does not serve it; a URL a custom recipe's pattern matches is served by that recipe first, before any adapter,
+and goes on to the adapter when the recipe does not serve it. A fetched page a page-scoped adapter detects (a storefront
+collection), at its final URL when a redirect kept it on its site, is joined with that adapter's answer for the rows the
+page lists, a data call marked `ADAPTER_CALL`. A fetched page whose own canonical link is its URL without the query,
 which an adapter detects, or which an adapter says stands for one of its platform's pages, is then served by that
-adapter; an HTTP shell that would be rendered for lacking content asks it before the render. A
-site whose active config has an API recipe is served by the recipe's rung, which the caller binds to
-the recipe: the config IR sits above `acquire` (`.importlinter`). The browser rung is
-`crawlerai.acquire.browser.fetch_browser`. Every rung is a function of (url, policy), so `acquire` decides and records
-only. The one exception is the browser rung's exporting form, which also hands the context's cookies to a site session
-(`acquire.session`).
+adapter; an HTTP shell that would be rendered for lacking content asks it before the render. A site whose active config
+has an API recipe is served by the recipe's rung, which the caller binds to the recipe: the config IR sits above
+`acquire` (`.importlinter`). The browser rung is `crawlerai.acquire.browser.fetch_browser`. Every rung is a function of
+(url, policy), so `acquire` decides and records only. The one exception is the browser rung's exporting form, which also
+hands the context's cookies to a site session (`acquire.session`).
 """
 
 import asyncio
@@ -139,11 +139,39 @@ async def acquire(
     remembered: Remembered,
     rungs: Rungs,
     *,
+    custom: Rung | None = None,
     recipe: Rung | None = None,
     admit_next: Admit | None = None,
     send: JsonFetcher | None = None,
     deadline: float | None = None,
     plan: FetchPlan = NO_PLAN,
+) -> FetchResult:
+    """Fetch `url` through `custom`, the custom recipe whose URL pattern it matches bound to its fetch, when there is
+    one: its result is kept when it is `ok` or asks for fewer requests, or when `admit_next` admits no further
+    request; otherwise the page is fetched as if there were none (`_ladder`), and the result lists the recipe's
+    attempts first. A policy that captures the page uses no custom recipe."""
+    first = None if custom is None or policy.captures_page else await custom(url, policy)
+    if first is not None and (first.block_class == "ok" or slow_down(first) or not await _admitted(admit_next)):
+        return first
+    result = await _ladder(
+        url, policy, remembered, rungs, recipe=recipe, admit_next=admit_next, send=send, deadline=deadline, plan=plan
+    )
+    if first is None:
+        return result
+    return with_attempts(result, first.attempts + result.attempts, first.duration_ms + result.duration_ms)
+
+
+async def _ladder(
+    url: str,
+    policy: FetchPolicy,
+    remembered: Remembered,
+    rungs: Rungs,
+    *,
+    recipe: Rung | None,
+    admit_next: Admit | None,
+    send: JsonFetcher | None,
+    deadline: float | None,
+    plan: FetchPlan,
 ) -> FetchResult:
     """Fetch `url` through the active adapter that detects it, if any, requesting its API with `send` (no adapter runs
         without it); a page an adapter does not serve skips the recipe. Otherwise through `recipe`, the

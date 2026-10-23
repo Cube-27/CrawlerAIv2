@@ -206,6 +206,9 @@ class AttemptRecord(_Frozen):
     # An `api` attempt that was a detail page's data call (`acquire.identity`): the platform whose documented product
     # JSON it requested. Stored only on such an attempt.
     data_call: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    # An attempt a config's API recipe made (its warm-up, main call or an extra call): the config's id, so the trail
+    # names the recipe. Stored only on such an attempt.
+    recipe: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class FetchResult(_Frozen):

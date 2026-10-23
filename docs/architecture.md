@@ -26,6 +26,13 @@ handler of the job kind (`worker/handlers/`); `scheduler/loop.py` enqueues sched
    Site memory (the rung a site's pages start with): `memory.py`. The result is a capture bundle (`core/capture.py`,
    `storage/capture_bundle.py`); every record can be replayed from it (`POST /v1/captures/{id}/replay`).
    URLs an adapter detects go to the adapter first (`adapters/`: Greenhouse, Lever, Shopify, Workday, … `registry.py`).
+   The ladder: custom recipe → adapter → learned recipe → page rungs. A URL a custom recipe's pattern matches is served
+   by that recipe before any adapter (`config_ir/api_recipe/execute.py` `RecipeRung` with `Custom`, one fetch whose
+   requests share one cookie jar, `acquire/cookies.py` `shared`): warm-up, the HTML page when a binder or page field
+   reads it, the main call (GET/POST, JSON or form body, JSON or HTML answer), then extra calls bound from the page
+   URL, the pattern, the warm-up or main answer. Its extra answers and page join the `api` capture as marked network
+   bodies; its attempts carry the config id (`AttemptRecord.recipe`) and come first when it does not serve and the URL
+   goes on down the ladder; its calls also wait for its `rate_ms` (`services/fetching.py` `RecipePaces`).
 2. **Content** (`content/`). Parse once (`content/page.py`), then markdown/html/links/metadata/chunks for the content formats.
 3. **Collect** (`collect/`). `collect/run.py` runs every collector over the one parse: `jsonld`, `microdata`, `og`, `dom`,
    `js_state`, `xhr`, `platform_json`, `adapter`, `config`; listing rows via `collect/items/`, their precedence picked once

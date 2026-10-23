@@ -2,12 +2,15 @@
 with: the rungs and guard of this process, the SSRF guard's refusals, and the page fetch they send through
 the one polite fetch (`services.polite`): the page through `acquire`, its adapter's and active
 config's API recipe's requests sent as politely as a page's, as a learning run's recipe replays
-are, and the plain HTTP fetches of a site's sitemaps.
+are, and the plain HTTP fetches of a site's sitemaps. A custom recipe's requests also keep its own least interval
+(`RecipePaces`).
 """
 
 import asyncio
-from collections.abc import Collection
+import time
+from collections.abc import Callable, Collection
 from dataclasses import dataclass, field, replace
+from datetime import timedelta
 from functools import partial
 from urllib.parse import urlsplit
 
@@ -17,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.browser_tab import Tab
+from crawlerai.acquire.cookies import shared
 from crawlerai.acquire.politeness import Admit, HostLimiter
 from crawlerai.acquire.rungs import NO_PLAN, FetchPlan, Rung, Rungs, acquire
 from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
@@ -28,7 +32,7 @@ from crawlerai.acquire.types import (
     FetchResult,
     PagedFetch,
 )
-from crawlerai.config_ir.api_recipe.execute import MAX_PAGES, RecipeRung, unserved
+from crawlerai.config_ir.api_recipe.execute import MAX_PAGES, Custom, RecipeRung, unserved
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Replay, Replays
 from crawlerai.core.egress import Egresses
@@ -55,10 +59,29 @@ from crawlerai.services.polite import (
 from crawlerai.storage.base import ObjectStore
 
 
+@dataclass
+class RecipePaces:
+    """The turns of this process's custom recipes at their own least interval (`Custom.rate_ms`), beside the host's
+    rate, which each request still waits for (`polite_fetch`): a recipe's requests are never closer than either."""
+
+    clock: Callable[[], float] = time.monotonic
+    _next: dict[str, float] = field(default_factory=dict)
+
+    async def wait(self, recipe: str, rate_ms: int, bound: timedelta) -> bool:
+        """Wait for the recipe's next turn and take it; False, taking none, when it is further off than `bound`."""
+        now = self.clock()
+        at = max(now, self._next.get(recipe, now))
+        if at - now > bound.total_seconds():
+            return False
+        self._next[recipe] = at + rate_ms / 1000  # taken before the wait: a concurrent request waits for the next
+        await asyncio.sleep(at - now)
+        return True
+
+
 @dataclass(frozen=True)
 class Fetching:
     """What a service fetches with: the rungs, the SSRF guard they connect through, the object store captures go to,
-    and the per-host limiter of this process."""
+    the per-host limiter of this process and its custom recipes' turns."""
 
     rungs: Rungs
     connector: SafeConnector
@@ -67,6 +90,7 @@ class Fetching:
     # The configured proxy pools (`CRAWLERAI_PROXY_POOLS`), which a request's `fetch.proxy_pool` is checked against,
     # and the countries fetches go out from (`core.egress`).
     egresses: Egresses = field(default_factory=Egresses)
+    paces: RecipePaces = field(default_factory=RecipePaces)
 
 
 class TargetRejected(Refusal):
@@ -166,25 +190,64 @@ class _Turn:
 
 
 def recipe_rung(
-    fetching: Fetching, recipe: ApiRecipe, page_host: str, rules: ReadRules, waiting: Waiting = IN_PLACE
+    fetching: Fetching,
+    recipe: ApiRecipe,
+    page_host: str,
+    rules: ReadRules,
+    waiting: Waiting = IN_PLACE,
+    custom: Custom | None = None,
 ) -> RecipeRung | None:
     """`recipe` bound to this process's rungs, for a page on `page_host` whose robots.txt the caller
         has checked and whose turn at the host's rate it has taken. That turn goes to the first request to the host: the
         HTML page the recipe fetches to bind, or else its endpoint. An endpoint is requested only where its host's
         robots.txt (`rules`) allows it, at that host's rate, waiting in place for a turn of its own when it needs one; a
         request robots.txt keeps from being sent leaves the page unserved, and `acquire` fetches it the configured way.
+        A custom recipe's (`custom`) calls also wait for its own interval (`RecipePaces`).
     None without the JSON rung."""
     json = fetching.rungs.json
     if json is None:
         return None
     turn = _Turn(page_host)
     http = fetching.rungs.http
+    rules = _unshared(rules)
+
+    async def fetch_page(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
+        return await http(request.url, policy)
+
+    # The page goes on the caller's turn unless a warm-up request to its host took it; then at the host's rate.
+    via_page = _polite_send(fetching, fetch_page, rules, turn, waiting)
+    send = _polite_send(fetching, json, rules, turn, waiting)
+    if custom is not None and custom.rate_ms is not None:
+        via_page = _paced(fetching.paces, custom.recipe_id, custom.rate_ms, waiting, via_page)
+        send = _paced(fetching.paces, custom.recipe_id, custom.rate_ms, waiting, send)
 
     async def page(url: str, policy: FetchPolicy) -> FetchResult:
-        turn.host = None  # the page is the first request: its host's turn is the one the caller took
-        return await http(url, policy)
+        return await via_page(JsonRequest(url, url), policy)
 
-    return RecipeRung(recipe, _polite_send(fetching, json, rules, turn, waiting), page, ENGINE_VERSION)
+    return RecipeRung(recipe, send, page, ENGINE_VERSION, custom)
+
+
+def _unshared(rules: ReadRules) -> ReadRules:
+    """`rules` reading robots.txt with a jar of its own: a recipe's shared jar (`shared`) holds its own calls' cookies
+    only, and robots.txt is no call of the recipe (RFC 9309 §2.3 asks it as a plain resource)."""
+
+    async def read(url: str, policy: FetchPolicy) -> HostRules | None:
+        with shared(None):
+            return await rules(url, policy)
+
+    return read
+
+
+def _paced(paces: RecipePaces, recipe: str, rate_ms: int, waiting: Waiting, send: JsonFetcher) -> JsonFetcher:
+    """`send` after the recipe's turn at its own interval; a request whose turn is further off than the caller waits
+    in place answers `blocked`, `SLOW_DOWN`, and sends nothing, as one the host's rate holds back does."""
+
+    async def paced(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
+        if not await paces.wait(recipe, rate_ms, waiting.bound):
+            return unserved(request.page_url, policy, ENGINE_VERSION, "blocked", SLOW_DOWN)
+        return await send(request, policy)
+
+    return paced
 
 
 def adapter_send(
@@ -372,6 +435,8 @@ class PagePlan:
     deadline: float | None = None
     # What the config's field sources ask of the fetch: the browser, companion calls (`config_ir.active.fetch_plan`).
     fetch: FetchPlan = NO_PLAN
+    # What the config's `recipe` serves beyond its main call when it is a custom recipe (`config_ir.active.custom_of`).
+    custom: Custom | None = None
 
 
 def page_fetch(
@@ -381,17 +446,16 @@ def page_fetch(
     config's API recipe ask their endpoints politely (`adapter_send`, `recipe_rung`; endpoints on the page's host by the
     rules the polite fetch read, others by `rules`), and every attempt is added to the request's attempts. A listing
     recipe's pages are requested only for a page `acquire` fetches through the recipe: not one the policy captures as a
-    file, nor one an adapter detects (`by_adapter`)."""
-    uses_recipe = not page.policy.captures_page and not by_adapter
+    file, nor one an adapter detects (`by_adapter`), unless the recipe is a custom one, which `acquire` tries before
+    the adapter. A custom recipe serves only a page its robots.txt allows: it may fetch the page itself."""
+    custom = page.custom
+    uses_recipe = not page.policy.captures_page and (custom is not None or not by_adapter)
 
     async def fetch(url: str, admit_next: Admit, known: HostRules) -> FetchResult:
         host = urlsplit(url).hostname or ""
         here = page_first(host, known, rules)
         send = adapter_send(fetching, host, here, waiting)
-        rung: Rung | None = None
-        recipe = None if page.recipe is None else recipe_rung(fetching, page.recipe, host, here, waiting)
-        if recipe is not None:
-            rung = recipe if page.pages is None or not uses_recipe else await page.pages.rung(recipe, url, page.policy)
+        rung = await _recipe_served(fetching, page, url, here, known, waiting, uses_recipe=uses_recipe)
 
         rungs = page.rungs
         if page.growth is not None:
@@ -404,7 +468,8 @@ def page_fetch(
             page.policy,
             page.site.remembered,
             rungs,
-            recipe=rung,
+            custom=rung if custom is not None else None,
+            recipe=rung if custom is None else None,
             admit_next=admit_next,
             send=send,
             deadline=page.deadline,
@@ -414,6 +479,26 @@ def page_fetch(
         return result
 
     return fetch
+
+
+async def _recipe_served(
+    fetching: Fetching,
+    page: PagePlan,
+    url: str,
+    here: ReadRules,
+    known: HostRules,
+    waiting: Waiting,
+    *,
+    uses_recipe: bool,
+) -> Rung | None:
+    """The rung of the page's recipe (`page_fetch`), a listing's first page fetched when it `uses_recipe`
+    (`RecipePages.rung`); None without one, or for a custom recipe's page robots.txt disallows."""
+    host = urlsplit(url).hostname or ""
+    custom = page.custom
+    recipe = None if page.recipe is None else recipe_rung(fetching, page.recipe, host, here, waiting, custom)
+    if recipe is None or (custom is not None and not known.allows(url)):
+        return None
+    return recipe if page.pages is None or not uses_recipe else await page.pages.rung(recipe, url, page.policy)
 
 
 async def fetch_planned(

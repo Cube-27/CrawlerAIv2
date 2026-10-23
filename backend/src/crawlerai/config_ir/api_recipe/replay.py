@@ -21,7 +21,7 @@ from crawlerai.acquire.identity import identifies
 from crawlerai.acquire.types import FetchResult, RequestContext
 from crawlerai.collect import json_doc
 from crawlerai.collect.api import read_map
-from crawlerai.config_ir.api_recipe.binding import PageData, Sample, render_body, render_url, resolve_params
+from crawlerai.config_ir.api_recipe.binding import PageData, Sample, Served, render_body, render_url, resolve_params
 from crawlerai.config_ir.api_recipe.model import FORM_TYPE, PAGE_URL, ContextHeader, Pagination, RequestSpec
 from crawlerai.config_ir.api_recipe.pagination import first_request, next_request
 from crawlerai.core import json_text
@@ -40,6 +40,8 @@ Scalar = str | int | float
 Render = Callable[[str, PageKind], Awaitable[Sequence[CaptureBundle]]]
 # A learning run's `Replay`, for its job, whose usage the requests count as.
 Replays = Callable[[JobId], Replay]
+# Fetch §4.1 (fetch, step 12): the `Accept` a script's request sends when it names none, as a call answering HTML does.
+ANY_TYPE: Final = "*/*"
 # Appendix A #59: a listing recipe is validated on its first two pages, the one the page loaded and the next.
 REPLAYED_PAGES: Final = 2
 
@@ -59,14 +61,24 @@ class ReplayPage:
 
 
 def request_for(
-    spec: RequestSpec, page_url: str, page_data: PageData, context: RequestContext | None = None
+    spec: RequestSpec,
+    page_url: str,
+    page_data: PageData,
+    context: RequestContext | None = None,
+    served: Served | None = None,
 ) -> JsonRequest | None:
     """The request `spec` makes for the page, a header it takes from the caller's request context with the value
     `context` holds; `None` when a parameter, or such a header, has no value there. The context goes only to the page's
-    own host, so a recipe that references it on another host makes no request."""
-    params = resolve_params(spec, page_url, page_data)
-    if params is None:
-        return None
+    own host, so a recipe that references it on another host makes no request. A custom recipe's binders read what
+    serving it fetched (`served`); a call that answers HTML is sent raw (`JsonRequest.raw`)."""
+    params = resolve_params(spec, page_url, page_data, served)
+    return None if params is None else request_from(spec, page_url, params, context)
+
+
+def request_from(
+    spec: RequestSpec, page_url: str, params: Mapping[str, str], context: RequestContext | None = None
+) -> JsonRequest | None:
+    """`request_for` with the parameters already read (`resolve_params`)."""
     url = render_url(spec.url, params)
     own_host = urlsplit(url).hostname == urlsplit(page_url).hostname
     supplied = {} if context is None or not own_host else {name.lower(): value for name, value in context.headers}
@@ -79,9 +91,19 @@ def request_for(
         else:  # `{page_url}` is the one placeholder a header value takes
             headers.append((header.name, header.value.replace(f"{{{PAGE_URL}}}", page_url)))
     body = None if spec.body is None else render_body(spec.body.template, params, spec.body.encoding)
-    if spec.body is not None and spec.body.encoding == "form" and all(n.lower() != "content-type" for n, _ in headers):
-        headers.append(("Content-Type", FORM_TYPE))
-    return JsonRequest(url, page_url, spec.method, tuple(headers), body)
+    return JsonRequest(url, page_url, spec.method, _with_defaults(spec, headers), body, raw=spec.answer == "html")
+
+
+def _with_defaults(spec: RequestSpec, headers: list[tuple[str, str]]) -> tuple[tuple[str, str], ...]:
+    """`headers` with the `Content-Type` of a form body and the `Accept` of a call answering HTML, where the recipe
+    names neither."""
+    named = {name.lower() for name, _ in headers}
+    defaults = []
+    if spec.body is not None and spec.body.encoding == "form" and "content-type" not in named:
+        defaults.append(("Content-Type", FORM_TYPE))
+    if spec.answer == "html" and "accept" not in named:
+        defaults.append(("Accept", ANY_TYPE))
+    return (*headers, *defaults)
 
 
 async def reproduces(

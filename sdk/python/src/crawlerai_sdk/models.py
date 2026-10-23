@@ -1533,6 +1533,7 @@ class AttemptRecord(BaseModel):
     duration_ms: Annotated[int, Field(title="Duration Ms")]
     error: Annotated[str | None, Field(title="Error")] = None
     method: Annotated[Method2, Field(title="Method")]
+    recipe: Annotated[str | None, Field(title="Recipe")] = None
     status: Annotated[int | None, Field(title="Status")] = None
     steps: Annotated[list[StepOutcome], Field(title="Steps")]
 

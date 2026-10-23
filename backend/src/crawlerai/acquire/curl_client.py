@@ -29,7 +29,7 @@ from curl_cffi.curl import (
 from curl_cffi.requests import AsyncSession, Response
 from curl_cffi.requests.exceptions import RequestException
 
-from crawlerai.acquire.cookies import FetchCookies
+from crawlerai.acquire.cookies import FetchCookies, fetch_jar
 from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.impersonate import Impersonation
 from crawlerai.acquire.outcome import Exchange, Route, Traffic
@@ -207,16 +207,19 @@ async def follow(
     page_url: str | None = None,
 ) -> Wire:
     """The final response for `url`, every hop checked by the guard first, at most `MAX_REDIRECTS` followed.
-    Cookies set by one hop go with the next whose host and path they match, and none outlive the fetch; a
+    Cookies set by one hop go with the next whose host and path they match, and none outlive the fetch (a shared
+    jar's fetch, `cookies.shared`, spans several requests); a
     site `session`'s cookies are held from the start. The caller's `context` cookies are held from the start as
     host-only cookies of the page's host (`page_url`'s, else `url`'s), and its headers go with every hop to that host
     only. Raises `Failed`."""
     target = await _checked(connector.check(url), deadline, None)
-    cookies = await FetchCookies.new()
+    cookies, shared = await fetch_jar()
+    # In a shared jar, what earlier requests' responses set is newer than this request's seeds.
+    keep = cookies.held() if shared else frozenset()
     if session is not None:
-        cookies.seed(session.cookies)
+        cookies.seed(session.cookies, keep)
     caller = _Caller.of(page_url or url, context)
-    cookies.seed(caller.cookies)
+    cookies.seed(caller.cookies, keep)
     hop = first
     response = await _send(transport, target, hop, cookies, caller)
     for hops in range(MAX_REDIRECTS + 1):

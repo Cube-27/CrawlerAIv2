@@ -5,8 +5,8 @@ manifest.json      # CaptureManifest
 body.html          # response body as received (transfer/content encoding removed); body.json for API captures;
                    # for browser captures, the rendered DOM
 body.raw.html      # browser captures only: the navigation response body as the server sent it
-network/0001.json  # JSON bodies in response order, as received: a render's captured calls, or an HTTP page's data
-                   # calls (`acquire.identity`)
+network/0001.json  # JSON bodies in response order, as received: a render's captured calls, an HTTP page's data
+                   # calls (`acquire.identity`), or a custom recipe's extra calls and page beside its main answer
 ```
 
 `encode` and `decode` are pure and `decode(encode(b)) == b`. Replay reads nothing but the bundle.
@@ -34,6 +34,27 @@ Sha256 = Annotated[str, Field(pattern=SHA256_PATTERN)]
 # A header list, not a mapping: HTTP allows a field name to repeat (RFC 9110 §5.3, e.g. Set-Cookie), and the
 # bundle keeps headers as received.
 HeaderList = tuple[tuple[str, str], ...]
+
+# The `data_call` marks of what an `api` capture holds beside its main answer: the HTML page its recipe fetched
+# (`RECIPE_PAGE`) and each extra call's answer, by the call's name (`recipe_call`).
+RECIPE_PAGE: Final = "recipe_page"
+_RECIPE_CALL: Final = "recipe_call:"
+
+
+def recipe_call(name: str) -> str:
+    """The mark of the answer of the recipe's extra call `name`."""
+    return _RECIPE_CALL + name
+
+
+def recipe_call_name(mark: str | None) -> str | None:
+    """The extra call a body marked `mark` answers; None for any other body."""
+    return mark.removeprefix(_RECIPE_CALL) if mark is not None and mark.startswith(_RECIPE_CALL) else None
+
+
+def recipe_mark(mark: str | None) -> bool:
+    """Whether a body marked `mark` is a recipe's: its page or an extra call's answer."""
+    return mark == RECIPE_PAGE or recipe_call_name(mark) is not None
+
 
 _MANIFEST = "manifest.json"
 _RAW_BODY = "body.raw.html"
@@ -124,8 +145,10 @@ class CaptureBundle(_Frozen):
         raw_sha256 = None if self.raw_body is None else sha256_hex(self.raw_body)
         if raw_sha256 != self.manifest.raw_html_sha256:
             raise ValueError("raw_body does not match manifest raw_html_sha256")
-        if entries and self.manifest.method == "api":
-            raise ValueError("network bodies are a page's: captured by the browser, or data calls an HTTP fetch made")
+        if self.manifest.method == "api" and not all(recipe_mark(entry.data_call) for entry in entries):
+            raise ValueError(
+                "network bodies are a page's: captured by the browser, data calls an HTTP fetch made, or a recipe's"
+            )
         if len(self.network) != len(entries):
             raise ValueError(f"network has {len(self.network)} bodies but the manifest lists {len(entries)}")
         for i, (data, entry) in enumerate(zip(self.network, entries, strict=True)):
