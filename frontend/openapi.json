@@ -1847,6 +1847,16 @@
             ],
             "title": "Pending Repair"
           },
+          "recipe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomRecipe-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "renders": {
             "items": {
               "type": "string"
@@ -1927,6 +1937,7 @@
           "drifting",
           "pending_repair",
           "ir",
+          "recipe",
           "repair_changes"
         ],
         "title": "ConfigDetail",

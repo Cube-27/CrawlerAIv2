@@ -69,6 +69,7 @@ function EndpointCard({
   sampleOf,
   onOpen,
   onPick,
+  onAdd,
 }: Readonly<{
   endpoint: Endpoint;
   samples: number;
@@ -76,6 +77,8 @@ function EndpointCard({
   sampleOf: SampleNumber;
   onOpen: (call: CallSummary) => void;
   onPick: () => void;
+  /** Adds the group as an extra call; none before a main call is chosen. */
+  onAdd: (() => void) | null;
 }>) {
   const lines = endpoint.fields.flatMap((match) => matchLines(match, samples));
   const title = endpointText(endpoint);
@@ -87,14 +90,26 @@ function EndpointCard({
           {isMain ? (
             <Chip color="success">Main call</Chip>
           ) : (
-            <Button
-              size="sm"
-              variant="secondary"
-              aria-label={`Use ${title} as the main call`}
-              onPress={onPick}
-            >
-              Use as main call
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {onAdd === null ? null : (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  aria-label={`Add ${title} as an extra call`}
+                  onPress={onAdd}
+                >
+                  Add as extra call
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="secondary"
+                aria-label={`Use ${title} as the main call`}
+                onPress={onPick}
+              >
+                Use as main call
+              </Button>
+            </div>
           )}
         </div>
         <Card.Description>
@@ -120,19 +135,22 @@ function EndpointCard({
 }
 
 /** The samples' calls by endpoint, the page's own site first; a call opens in a drawer. `main` is the chosen group's
- * key (`endpointKey`), `onPick` chooses one. */
+ * key (`endpointKey`), `onPick` chooses one and `onAdd` adds one as an extra call. */
 export function CallList({
   endpoints,
   samples,
   sampleOf,
   main,
   onPick,
+  onAdd,
 }: Readonly<{
   endpoints: readonly Endpoint[];
   samples: number;
   sampleOf: SampleNumber;
   main: string | null;
-  onPick: (key: string) => void;
+  onPick: (endpoint: Endpoint) => void;
+  /** Null while no extra call can be added: before a main call, while a draft or another addition is read. */
+  onAdd: ((endpoint: Endpoint) => void) | null;
 }>) {
   const [open, setOpen] = useState<CallSummary | null>(null);
   return (
@@ -148,8 +166,15 @@ export function CallList({
             sampleOf={sampleOf}
             onOpen={setOpen}
             onPick={() => {
-              onPick(key);
+              onPick(endpoint);
             }}
+            onAdd={
+              main === null || onAdd === null
+                ? null
+                : () => {
+                    onAdd(endpoint);
+                  }
+            }
           />
         );
       })}

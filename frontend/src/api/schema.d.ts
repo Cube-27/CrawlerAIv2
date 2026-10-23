@@ -1686,6 +1686,7 @@ export interface components {
             patterns: string[];
             /** Pending Repair */
             pending_repair: string | null;
+            recipe: components["schemas"]["CustomRecipe-Output"] | null;
             /** Renders */
             renders: string[];
             /** Repair Changes */

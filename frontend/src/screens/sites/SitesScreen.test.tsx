@@ -91,6 +91,7 @@ const v2 = summary();
 
 const detail: ConfigDetail = {
   ...v2,
+  recipe: null,
   repair_changes: null,
   ir: {
     ir_version: "1",

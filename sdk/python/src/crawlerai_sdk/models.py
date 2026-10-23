@@ -3005,6 +3005,7 @@ class ConfigDetail(BaseModel):
     page_kind: Annotated[PageKind, Field(title="Page Kind")]
     patterns: Annotated[list[str], Field(title="Patterns")]
     pending_repair: Annotated[UUID | None, Field(title="Pending Repair")] = None
+    recipe: CustomRecipeOutput | None = None
     renders: Annotated[list[str], Field(title="Renders")]
     repair_changes: Annotated[
         list[RecipeChange] | None, Field(title="Repair Changes")

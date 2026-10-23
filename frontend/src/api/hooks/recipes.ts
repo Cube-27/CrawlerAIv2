@@ -1,7 +1,14 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "../../app/auth";
 import { captureCalls, captureSample, getCall, getHar, type CaptureRequest } from "../captures";
-import { recipeCalls } from "../recipes";
+import {
+  proposeRecipe,
+  recipeCalls,
+  saveRecipe,
+  testRecipe,
+  type CustomRecipe,
+  type ProposeBody,
+} from "../recipes";
 import { unwrap } from "./query";
 
 /** The Recipes screen's builder endpoints as TanStack Query hooks; every key starts with `recipes`. A capture is
@@ -48,5 +55,51 @@ export function useHarExport() {
   const client = useApiClient();
   return useMutation({
     mutationFn: (captureId: string) => unwrap(getHar(client, captureId)),
+  });
+}
+
+/** The draft `body` asks for; none while it is null (no main call chosen). Proposing is deterministic and stores
+ * nothing, so one draft per choice is read once; the last draft stays while the next is read. */
+export function useProposal(body: ProposeBody | null) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: [...RECIPES, "propose", body],
+    queryFn: () =>
+      body === null
+        ? Promise.reject(new Error("no main call"))
+        : unwrap(proposeRecipe(client, body)),
+    enabled: body !== null,
+    staleTime: Infinity,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** A draft of another endpoint, made when it is added as an extra call. */
+export function useProposeCall() {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: (body: ProposeBody) => unwrap(proposeRecipe(client, body)),
+  });
+}
+
+/** A test fetches the URLs anew each time and stores nothing. */
+export function useTestRecipe() {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: (body: { recipe: CustomRecipe; urls: string[] }) =>
+      unwrap(testRecipe(client, body)),
+  });
+}
+
+/** Saves the recipe, new or as the next version of `replaces`; every config is read again, as a correction's are. */
+export function useSaveRecipe(host: string, replaces: string | null) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (recipe: CustomRecipe) => unwrap(saveRecipe(client, host, recipe, replaces)),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["configs", "one", saved.id], saved);
+      return queryClient.invalidateQueries({ queryKey: ["configs"] });
+    },
   });
 }
