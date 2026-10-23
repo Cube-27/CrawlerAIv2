@@ -29,7 +29,7 @@ from crawlerai.acquire.browser_capture import AREAS_JS, DATA_REQUESTS, JSON_BODI
 from crawlerai.acquire.browser_session import BrowserSession, Failed, context_cookies
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.page_steps import steps_budget_s
-from crawlerai.acquire.session import SiteSessions
+from crawlerai.acquire.session import SessionScope
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import ActionsReport, BlockClass, FetchPolicy, FetchResult, PagedFetch, StepOutcome
 from crawlerai.core.proxy import ProxyPool
@@ -314,18 +314,16 @@ async def fetch_listing(
     engine_version: str,
     connector: SafeConnector | None = None,
     pools: Mapping[str, ProxyPool] | None = None,
-    sessions: SiteSessions | None = None,
+    scope: SessionScope | None = None,
 ) -> PagedFetch:
     """Render the listing at `url` as `fetch_browser` does and, when it is reached (`ok`), let `drive` act on it; the
     answer holds the document states the driver kept (at least one) and its report. A page not reached is the one
     page, with no report, labelled with the challenge it presents. The navigation is bounded by
     `policy.browser_timeout_s`; the driver bounds its own actions. The render ends as `fetch_browser`'s does
-    (`Render.finish`, with `sessions` unless the caller's own context is used), and the navigation's attempt (the first
+    (`Render.finish`, with its `scope`), and the navigation's attempt (the first
     page's) carries the bytes the whole run moved (`Traffic`)."""
-    if policy.context is not None:
-        sessions = None
-    run = Render(url, policy, engine_version)
-    paged = await _listing(run, drive, session, connector or SafeConnector(), pools, sessions)
+    run = Render(url, policy, engine_version, scope)
+    paged = await _listing(run, drive, session, connector or SafeConnector(), pools)
     if paged is None:
         first = run.result()
         paged = PagedFetch(pages=(first,), report=None)
@@ -334,7 +332,7 @@ async def fetch_listing(
         navigation = first.attempts[0].model_copy(update={"transferred": run.traffic.bytes})
         first = first.model_copy(update={"attempts": (navigation, *first.attempts[1:])})
         paged = paged.model_copy(update={"pages": (first, *paged.pages[1:])})
-    await run.finish(first, session, sessions)
+    await run.finish(first, session)
     return paged
 
 
@@ -344,7 +342,6 @@ async def _listing(
     session: BrowserSession,
     connector: SafeConnector,
     pools: Mapping[str, ProxyPool] | None,
-    sessions: SiteSessions | None,
 ) -> PagedFetch | None:
     """The document states the driver kept and its report; None when the page was not reached or not kept, `run`
     then holding its one outcome."""
@@ -354,7 +351,7 @@ async def _listing(
     try:
         async with AsyncExitStack() as stack:
             async with asyncio.timeout(policy.browser_timeout_s + steps_budget_s(policy.steps)):
-                page = await stack.enter_async_context(rendered(url, policy, session, connector, run, sessions))
+                page = await stack.enter_async_context(rendered(url, policy, session, connector, run))
                 landed = page.page.url
                 await run.read(page)  # the caller's steps first, then the paging driver reads the page
             if run.block_class != "ok":

@@ -10,9 +10,7 @@ where the site has one (`acquire.session`).
 """
 
 import asyncio
-import time
 from collections.abc import Mapping
-from datetime import UTC, datetime
 from functools import partial
 from typing import cast
 
@@ -20,13 +18,13 @@ from curl_cffi import CurlOpt
 from curl_cffi.requests import AsyncSession
 from curl_cffi.requests.exceptions import RequestException
 
-from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_label, count
+from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_label
 from crawlerai.acquire.classify import Redirect, unread_media
 from crawlerai.acquire.curl_client import BODY_CAP, Hop, pinned, reason, send
 from crawlerai.acquire.impersonate import Impersonation
 from crawlerai.acquire.locality import exit_place, language_headers
-from crawlerai.acquire.outcome import Content, fetch_result, report_proxy
-from crawlerai.acquire.session import SiteSessions
+from crawlerai.acquire.outcome import Content, Sending
+from crawlerai.acquire.session import SessionScope
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.core.proxy import UNDECLARED, ExitPlace, ProxyPool
@@ -41,18 +39,14 @@ async def fetch_http(
     impersonate: Impersonation,
     connector: SafeConnector | None = None,
     pools: Mapping[str, ProxyPool] | None = None,
-    sessions: SiteSessions | None = None,
+    scope: SessionScope | None = None,
     direct: ExitPlace = UNDECLARED,
 ) -> FetchResult:
     """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every request, from its place
-    (`direct` without a pool: the machine's), whose locale the request's language falls back to. `sessions`
-    are this process's site sessions: the site's, if any, goes with the fetch, and is dropped when it is `blocked`; a
-    fetch with the caller's own context takes none."""
-    fetched_at = datetime.now(UTC)
-    started = time.monotonic()
-    if policy.context is not None:
-        sessions = None
-    session = None if sessions is None else sessions.take(url, url, policy.proxy_pool)
+    (`direct` without a pool: the machine's), whose locale the request's language falls back to. `scope` is the fetch's
+    site state (`SiteSessions.scope_for`): the site's session, if any, goes with the fetch, and is dropped when it is
+    `blocked`."""
+    sending = Sending(url, "http", policy, engine_version, scope)
     sent = await send(
         url,
         Hop("GET", language_headers(policy.locale_hint, exit_place(policy.proxy_pool, pools, direct))),
@@ -61,7 +55,7 @@ async def fetch_http(
         connector=connector or SafeConnector(),
         pools=pools,
         redirected=_follow,
-        session=session,
+        session=sending.session(url),
     )
     last, challenge, text = sent.last, None, None
     block_class: BlockClass = "error"
@@ -85,25 +79,14 @@ async def fetch_http(
     elif sent.error == BODY_CAP and last is not None and unread_media(last.status, last.response_headers):
         # The body was stopped, which no page reader would read: its status and media type class the answer.
         block_class = "unsupported_media"
-    count(challenge, "http")
-    result = fetch_result(
-        url=url,
-        method="http",
-        policy=policy,
-        engine_version=engine_version,
-        fetched_at=fetched_at,
-        started=started,
+    return sending.finish(
         exchange=None if last is None else last.exchange,
         content=Content(body=b"" if last is None else last.body, text=text),
         block_class=block_class,
         error=sent.error,
         challenge=challenge,
-        transferred=sent.transferred,
+        route=sent.route,
     )
-    report_proxy(sent.pool, sent.proxy, result)
-    if sessions is not None:
-        sessions.settle(sent.session, result)
-    return result
 
 
 def _follow(hop: Hop, _status: int, _target: Target) -> Hop:

@@ -12,17 +12,22 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import SecretStr
 
+from crawlerai.acquire.browser_session import context_key
 from crawlerai.acquire.http import fetch_http
+from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
+from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.session import (
     ENGINE,
     CookieExport,
     SessionCookie,
     SiteSessions,
 )
-from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
+from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult, RequestContext
 from crawlerai.core.capture import CaptureMethod
+from crawlerai.core.proxy import SESSION_FETCHES
 from crawlerai.db.models import BrowserEngine
 from crawlerai.storage.capture_bundle import encode
 from tests.local_server import LoopbackConnector, Reply, Server, serving
@@ -108,15 +113,16 @@ def server() -> Iterator[Server]:
     yield from serving()
 
 
-def http(server: Server, url: str, sessions: SiteSessions | None) -> FetchResult:
+def http(server: Server, url: str, sessions: SiteSessions | None, policy: FetchPolicy | None = None) -> FetchResult:
+    policy = policy or FetchPolicy()
     return asyncio.run(
         fetch_http(
             url,
-            FetchPolicy(),
+            policy,
             engine_version="test",
             impersonate=IMPERSONATE,
             connector=LoopbackConnector(server.port, {}),
-            sessions=sessions,
+            scope=None if sessions is None else sessions.scope_for(policy),
         )
     )
 
@@ -135,6 +141,42 @@ def test_inv29_a_site_sessions_cookies_go_with_the_sites_fetches_and_never_into_
     manifest = result.bundle.manifest
     assert all(name.lower() != "cookie" for name, _ in manifest.headers.request)
     assert COOKIE_VALUE.encode() not in encode(result.bundle)
+
+
+def test_a_callers_context_isolates_the_fetch_from_the_sites_state(server: Server) -> None:
+    """A fetch with the caller's own context (RFC 6265 §5.4: a request carries its own store's cookies) sends only the
+    caller's cookie, spends no site session, opens none from a browser retry and gets no kept profile."""
+    server.route("/p", Reply(200, (("Content-Type", "text/html"),), _PAGE))
+    sessions = sessions_with(server.url("/"), (cookie("clearance", "example.test"),))
+    callers = FetchPolicy(context=RequestContext(cookies=(("own", SecretStr("caller-value")),)))
+    plain: list[str] = []
+    exported: list[str] = []
+
+    async def browser(url: str, policy: FetchPolicy) -> FetchResult:
+        plain.append(url)
+        return outcome("ok", method="browser")
+
+    async def exporting(url: str, policy: FetchPolicy, *, export: CookieExport | None = None) -> FetchResult:
+        exported.append(url)
+        return outcome("ok", method="browser")
+
+    async def refused(url: str, policy: FetchPolicy) -> FetchResult:
+        return outcome("blocked")
+
+    http(server, server.url("/p"), sessions, callers)
+    rungs = Rungs(http=refused, browser=browser, sessions=sessions, exporting=exporting)
+    retried = asyncio.run(acquire(server.url("/p"), callers, Remembered(), rungs))
+
+    assert sent(server, 0, "cookie") == "own=caller-value"
+    assert not any(attempt.site_session for attempt in retried.attempts)
+    assert context_key(server.url("/p"), sessions.scope_for(callers), None) is None
+    # The site's own fetch still finds its session whole: the caller's fetches spent none of it.
+    site = sessions.scope_for(FetchPolicy())
+    assert site is not None
+    taken = site.take(server.url("/"), server.url("/p"))
+    assert taken is not None
+    assert taken.fetches_left == SESSION_FETCHES - 1
+    assert (plain, exported) == ([server.url("/p")], [])  # the plain browser rung, never asked to export
 
 
 # --- the browser retry opens it -------------------------------------------------------------------------------------

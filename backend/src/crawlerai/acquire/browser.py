@@ -56,7 +56,7 @@ from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
 from crawlerai.acquire.page_steps import run_steps, steps_budget_s
 from crawlerai.acquire.public_suffix import site_of
-from crawlerai.acquire.session import CookieExport, SessionCookie, SiteSessions
+from crawlerai.acquire.session import CookieExport, SessionCookie, SessionScope
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult, StepOutcome
@@ -79,6 +79,7 @@ class Render:
     url: str
     policy: FetchPolicy
     engine_version: str
+    scope: SessionScope | None = None  # the fetch's site state (`SiteSessions.scope_for`): None for none
     fetched_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     started: float = field(default_factory=time.monotonic)
     timings: dict[str, int] = field(default_factory=dict)
@@ -149,18 +150,16 @@ class Render:
             artifacts=self.artifacts,
         )
 
-    async def finish(self, first: FetchResult, session: BrowserSession, sessions: SiteSessions | None) -> None:
+    async def finish(self, first: FetchResult, session: BrowserSession) -> None:
         """Record how the render went, `first` being the result of its first document: its challenge label is counted,
-        the pool endpoint told, a `blocked` profile deleted, and with `sessions`, the site's sessions updated
+        the pool endpoint told, a `blocked` profile deleted, and with a `scope`, the site's sessions updated
         (`SiteSessions.after_browser`)."""
         count(self.challenge, "browser")
         report_proxy(self.pool, self.proxy, first)
-        if first.block_class == "blocked" and (key := context_key(self.url, self.policy, self.proxy)) is not None:
+        if first.block_class == "blocked" and (key := context_key(self.url, self.scope, self.proxy)) is not None:
             await session.profiles.discard(key)
-        if sessions is not None:
-            await sessions.after_browser(
-                self.url, self.policy.proxy_pool, self.cookies, first, temporary=self.temporary
-            )
+        if self.scope is not None:
+            await self.scope.after_browser(self.url, self.cookies, first, temporary=self.temporary)
 
 
 async def fetch_browser(
@@ -172,21 +171,19 @@ async def fetch_browser(
     connector: SafeConnector | None = None,
     pools: Mapping[str, ProxyPool] | None = None,
     export: CookieExport | None = None,
-    sessions: SiteSessions | None = None,
+    scope: SessionScope | None = None,
 ) -> FetchResult:
     """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every connection. `export`,
     when given, receives the context's cookies and the endpoint, whatever the outcome; the caller decides whether a
-    session opens. `sessions` are this process's site sessions: a temporary profile starts with the site's cookies
-    (`SiteSessions.for_browser`), and the outcome is recorded with them (`SiteSessions.after_browser`); a fetch with the
-    caller's own context neither reads nor writes them."""
-    if policy.context is not None:
-        sessions = None
-    run = Render(url, policy, engine_version)
+    session opens. `scope` is the fetch's site state (`SiteSessions.scope_for`): the site's kept profile, a temporary
+    profile's starting cookies (`SiteSessions.for_browser`), and the sessions the outcome is recorded with
+    (`SiteSessions.after_browser`); without one the page renders in a temporary profile that reads and writes none."""
+    run = Render(url, policy, engine_version, scope)
     if run.route(pools):
         try:
             extra_s = steps_budget_s(policy.steps) + SCROLL_MAX_S + (ARTIFACT_TIMEOUT_S if policy.captures_page else 0)
             async with asyncio.timeout(policy.browser_timeout_s + extra_s):
-                async with rendered(url, policy, session, connector or SafeConnector(), run, sessions) as page:
+                async with rendered(url, policy, session, connector or SafeConnector(), run) as page:
                     await run.read(page, scroll=True)
                     if policy.screenshot == "viewport":
                         await scroll_back(page.page)  # the viewport the page first showed
@@ -198,7 +195,7 @@ async def fetch_browser(
         except TimeoutError:
             run.failed("timeout")
     result = run.result()
-    await run.finish(result, session, sessions)
+    await run.finish(result, session)
     return result
 
 
@@ -274,24 +271,23 @@ async def rendered(
     session: BrowserSession,
     connector: SafeConnector,
     run: Render,
-    sessions: SiteSessions | None = None,
 ) -> AsyncIterator[Rendered]:
     """The page at `url`, once it is ready to read (`settle`), in a new tab of the site's profile: the open one its
-    last page left (`_Profiles`), else the profile opened (a temporary one starting with the cookies `sessions`
-    give), through `run`'s proxy endpoint. The tab closes when the block ends, and the profile's browser with it unless
-    it is kept for the site's next page; the tab's wall time is `run.timings["context"]`, and the bytes the guard relays
-    for the page are added to `run.traffic`. Raises `Failed`."""
+    last page left (`_Profiles`), else the profile opened (a temporary one starting with the cookies of `run.scope`),
+    through `run`'s proxy endpoint. The tab closes when the block ends, and the profile's browser with it unless it is
+    kept for the site's next page; the tab's wall time is `run.timings["context"]`, and the bytes the guard relays for
+    the page are added to `run.traffic`. Raises `Failed`."""
     try:
         first = await connector.check(url)  # also refuses `file:`, `data:` and other non-web schemes
     except SsrfRejected as e:
         raise Failed(str(e), None) from e
-    key = context_key(url, policy, run.proxy)
+    key = context_key(url, run.scope, run.proxy)
     locale = context_locality(policy, session, run.pool)
     held = None if key is None else await session.profiles.take(key, locale, connector)
     if held is None:
         await session.profiles.room()
         try:
-            held = await open_context(url, policy, session, connector, first, run.proxy, sessions, key, locale)
+            held = await open_context(url, policy, session, connector, first, run.proxy, run.scope, key, locale)
         except BaseException:
             session.profiles.busy -= 1
             raise
@@ -307,7 +303,9 @@ async def rendered(
             yield shown
             latest = shown.frame.latest or shown.response
             kept = (
-                key is not None and latest.status < _ERROR_STATUS and context_key(latest.url, policy, run.proxy) == key
+                key is not None
+                and latest.status < _ERROR_STATUS
+                and context_key(latest.url, run.scope, run.proxy) == key
             )
         finally:
             with contextlib.suppress(PlaywrightError):
