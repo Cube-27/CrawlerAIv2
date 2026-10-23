@@ -8,7 +8,10 @@ Dotted tokens are also file names (`cli.py`) and attribute accesses in code, so:
 - in source code (Python, including `*.py.*` templates, and JS/TS) only string literals and comments are scanned;
 - a two-label token whose last label is the extension of a tracked file, or of a data file
   `backend/data/manifest.json` pins (a fetched one is not tracked), is a file name;
-- a token that is the dotted path of a tracked Python module is a module name;
+- a token that is the dotted path of a tracked Python module is a module name, and so is one whose leading labels,
+  two or more, are such a path: an attribute of the module (`pkg.mod.func`), as code and its comments name it. One
+  leading label is not enough, since one-word module names (`api`, `app`) are common host labels too. A Python file
+  not yet added (untracked and not ignored) also counts, so a new module may be named before `git add`;
 - a two-label token `table.column` naming a column of a table the repository's schema defines is a qualified column
   reference (SQL's `<column reference>`), as in `ForeignKey("table.column")`. The schema is read from the tracked
   Python files: Alembic `create_table` and `add_column`, SQLAlchemy `Table`, and declarative `__tablename__` classes;
@@ -223,6 +226,10 @@ def module_names(pure: PurePosixPath) -> set[str]:
     return {".".join(parts[start:]).lower() for start in range(len(parts))}
 
 
+def python_modules(paths: list[str]) -> set[str]:
+    return {name for path in paths if path.endswith(".py") for name in module_names(PurePosixPath(path))}
+
+
 @dataclass(frozen=True)
 class RepoNames:
     """Names the repository itself defines, which dotted tokens may refer to instead of a host."""
@@ -233,15 +240,13 @@ class RepoNames:
     schema_paths: frozenset[str]
 
     @classmethod
-    def of(cls, root: Path, paths: list[str]) -> "RepoNames":
+    def of(cls, root: Path, paths: list[str], untracked: list[str]) -> "RepoNames":
         extensions: set[str] = set()
-        modules: set[str] = set()
+        modules = python_modules([*paths, *untracked])
         for path in paths:
             pure = PurePosixPath(path)
             if pure.suffix:
                 extensions.add(pure.suffix[1:].lower())
-            if pure.suffix == ".py":
-                modules.update(module_names(pure))
             if path == DATA_MANIFEST:
                 extensions.update(manifest_extensions(root / path))
         # An exempt file is not scanned, so it may hold anything: a schema it defines excuses no token.
@@ -256,11 +261,12 @@ class RepoNames:
         return cls(frozenset(extensions), frozenset(modules), frozenset(columns), frozenset(schema_paths))
 
     def names(self, token: str) -> bool:
-        """Whether the token, as written, is a file name, a module or a schema.org path."""
-        lowered = token.lower()
-        labels = lowered.split(".")
+        """Whether the token, as written, is a file name, a module or one of its attributes, or a schema.org path."""
+        labels = token.lower().split(".")
         return (
-            (len(labels) == 2 and labels[1] in self.extensions) or lowered in self.modules or token in self.schema_paths
+            (len(labels) == 2 and labels[1] in self.extensions)
+            or any(".".join(labels[:end]) in self.modules for end in range(2, len(labels) + 1))
+            or token in self.schema_paths
         )
 
     def without_column_references(self, text: str) -> str:
@@ -387,7 +393,7 @@ def file_findings(path: str, text: str, allowlist: Allowlist, tlds: frozenset[st
 def scan(root: Path, allowlist: Allowlist, tlds: frozenset[str], *, staged: bool) -> tuple[list[str], int]:
     """Return the findings and the number of files scanned."""
     tracked = tracked_files(root)
-    repo_names = RepoNames.of(root, tracked)
+    repo_names = RepoNames.of(root, tracked, git_paths(root, "ls-files", "-z", "--others", "--exclude-standard"))
     findings: list[str] = []
     scanned = 0
     for path in paths_to_scan(root, tracked, staged=staged):

@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# Each job's checks are one `tools/dev.py check-<job>` command, the one definition `uv run tools/dev.py check` also runs
+# locally; a job here only checks out, installs and starts services. `UV_RUN`: dev.py runs against the environment the
+# job installed (`uv sync` below), without re-syncing or building.
+env:
+  UV_RUN: uv run --no-sync --no-build
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -62,8 +68,6 @@ jobs:
           version: "0.11.28"
       # Installed as in the backend job: dependency wheels only, the project built from this repo's source.
       - run: uv sync --frozen --no-build --no-binary-package crawlerai --no-editable
-      - run: uv run --no-sync --no-build ruff check
-      - run: uv run --no-sync --no-build ruff format --check
       # mypy's incremental cache, per lockfile: each run saves its own, and restores the newest for the same lockfile
       # (a pull request also reads main's). mypy re-checks every module whose source changed, so a stale cache only
       # costs time.
@@ -72,11 +76,7 @@ jobs:
           path: backend/.mypy_cache
           key: mypy-${{ hashFiles('backend/uv.lock') }}-${{ github.sha }}
           restore-keys: mypy-${{ hashFiles('backend/uv.lock') }}-
-      - run: uv run --no-sync --no-build mypy src tests migrations
-      - run: uv run --no-sync --no-build lint-imports
-      # C11: cognitive complexity of at most 15 per function, for src, tests, migrations and ../tools
-      # ([tool.complexipy] in pyproject.toml). `--no-ignore`: an inline suppression does not exempt a function.
-      - run: uv run --no-sync --no-build complexipy --no-ignore
+      - run: python3 ../tools/dev.py check-backend-static
 
   # migrations and the tests. Later rows add the replay split and the other jobs.
   backend:
@@ -115,30 +115,11 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -h localhost -U postgres -f infra/postgres/init.sql
         env:
           PGPASSWORD: postgres
-      - name: Alembic upgrade, downgrade, upgrade
-        run: |
-          uv run --no-sync --no-build alembic upgrade head
-          uv run --no-sync --no-build alembic downgrade base
-          uv run --no-sync --no-build alembic upgrade head
+      # The migrations, then the tests in one database per pytest worker (`tools/dev.py check-backend`).
+      - run: python3 ../tools/dev.py check-backend
         env:
-          CRAWLERAI_DATABASE_URL: postgresql+asyncpg://app:app@localhost:5432/crawlerai
-      # A test database per pytest worker. The main ones are copies of the migrated `crawlerai`
-      # (TEMPLATE), so the workers' upgrade to head finds nothing to do.
-      - name: Create the test databases
-        run: |
-          args=()
-          for ((i = 0; i < PYTEST_WORKERS; i++)); do
-            args+=(-c "CREATE DATABASE crawlerai_gw$i TEMPLATE crawlerai OWNER app")
-          done
-          psql -v ON_ERROR_STOP=1 -q -h localhost -U postgres "${args[@]}"
-        env:
+          PSQL: psql -h 127.0.0.1 -U postgres
           PGPASSWORD: postgres
-      # tests/db own the database they run against (tests/db/conftest.py); they are skipped only where no test
-      # database URL is set. Each xdist worker suffixes the names below with its id (`_gw0`, ...). `--durations=20` lists
-      # the slowest tests in the log.
-      - run: uv run --no-sync --no-build pytest -n "$PYTEST_WORKERS" --durations=20
-        env:
-          CRAWLERAI_TEST_DATABASE_URL: postgresql+asyncpg://app:app@localhost:5432/crawlerai
 
   # The verify-money skill's one command (.claude/skills/verify-money/SKILL.md): money property checks with the `verify`
   # Hypothesis profile, on a PR that touches the money code (tools/ci_changes.py). No database, no browser.
@@ -155,7 +136,7 @@ jobs:
         with:
           version: "0.11.28"
       - run: uv sync --frozen --no-build --no-binary-package crawlerai --no-editable
-      - run: uv run --no-sync --no-build pytest tests/property/test_money_properties.py -q --hypothesis-profile=verify
+      - run: python3 ../tools/dev.py check-verify-money
 
   frontend:
     needs: changes
@@ -166,9 +147,6 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Visual values only in theme.css, UI only from @heroui/react (docs/rules.md). Needs no
-      # node_modules, so it runs before the install.
-      - run: python3 ../tools/theme_only_check.py
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: frontend/package.json
@@ -178,10 +156,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      # Vite+: format check (Oxfmt), lint (Oxlint) and the strict type-check (tsgo) in one pass.
-      - run: pnpm check
-      - run: pnpm test
-      - run: pnpm build
+      - run: python3 ../tools/dev.py check-frontend
 
   # The API client freshness check: the committed client matches one generated from the backend.
   api-client:
@@ -207,13 +182,7 @@ jobs:
       - name: Install backend
         working-directory: backend
         run: uv sync --frozen --no-build --no-binary-package crawlerai --no-editable
-      - name: API client freshness
-        run: |
-          UV_RUN="uv run --no-sync --no-build" python3 tools/dev.py api-client
-          git diff --exit-code -- frontend/openapi.json frontend/src/api/schema.d.ts || {
-            echo "::error::API client out of date: run 'uv run tools/dev.py api-client' and commit the result."
-            exit 1
-          }
+      - run: python3 tools/dev.py check-api-client
 
   # The SDKs (`tools/dev.py check-sdk`, rest-api "SDKs"): both regenerated from frontend/openapi.json and compared with the
   # committed files, then each SDK's type check, lint and tests.
@@ -249,7 +218,7 @@ jobs:
         shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: python3 tools/verify/worker_queue.py --shard ${{ matrix.shard }}/3
+      - run: python3 tools/dev.py check-verify-worker-queue --shard ${{ matrix.shard }}/3
         env:
           TLC_HEAP: 4g
 
@@ -267,18 +236,14 @@ jobs:
           version: "0.11.28"
       # The tools need only the dev tooling, not the backend package, so nothing is built.
       - run: uv sync --frozen --no-build --no-install-project
-      - run: uv run --no-sync --no-build ruff check ../tools
-      - run: uv run --no-sync --no-build ruff format --check ../tools
-      - run: uv run --no-sync --no-build mypy --strict ../tools
-      - run: uv run --no-sync --no-build pytest ../tools/tests
-      - run: uv run --no-sync --no-build python ../tools/site_literal_scan.py --public
+      - run: python3 ../tools/dev.py check-site-literals
 
   # every file under backend/data/ is pinned in the manifest (C4).
   data-manifest:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: python3 tools/data_manifest_check.py
+      - run: python3 tools/dev.py check-data-manifest
 
   # dependency license deny-list and CycloneDX SBOMs.
   licenses:
@@ -300,7 +265,7 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
         working-directory: frontend
-      - run: tools/license_scan.sh license-report
+      - run: python3 tools/dev.py check-licenses
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
@@ -313,5 +278,4 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: python3 tools/no_size_gates.py
-      - run: python3 tools/file_length.py
+      - run: python3 tools/dev.py check-no-size-gates
