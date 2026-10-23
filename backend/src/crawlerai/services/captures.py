@@ -63,7 +63,9 @@ async def replay(
             stored = stored.where(UrlTask.job_id == job_id, UrlTask.capture_id == capture_id)
         schema_ids = (await conn.execute(stored.order_by(Record.schema_id))).scalars()
         schemas = [await registry.get_by_id(conn, schema_id) for schema_id in schema_ids]
-        configs = [await active_config(conn, capture.site_id, schema, data.vocabulary) for schema in schemas]
+        configs = [
+            await active_config(conn, capture.site_id, schema, data.vocabulary, capture.url) for schema in schemas
+        ]
     if not schemas:
         raise NotReplayable(f"no record was made from capture {capture_id}, so no schema says what to extract")
     bundle = await _bundle(store, capture)

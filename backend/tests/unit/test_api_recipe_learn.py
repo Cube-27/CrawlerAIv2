@@ -164,6 +164,7 @@ def test_an_ambiguous_binding_is_bound_by_role_d_and_accepted_by_replay(stand_in
 
     assert learned.report == _held_out_report(5, 6, 7)
     assert learned.recipe is not None
+    assert learned.recipe.proof is not None
     assert (learned.recipe.params_from_url, learned.recipe.proof.bound_by) == (
         {"p1": "regex:^/p/[a-z-]+-([0-9]+)$"},
         "role_d",

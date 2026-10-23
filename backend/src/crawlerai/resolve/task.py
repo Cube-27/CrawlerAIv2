@@ -38,6 +38,12 @@ class ActiveConfig:
     # Whether a page `executor` ran on joins the config's drift window, which measures its page
     # steps.
     drifts: bool = True
+    # A custom recipe's URL patterns (`config_ir.url_pattern`); none for a learned config.
+    patterns: tuple[str, ...] = ()
+
+    @property
+    def custom(self) -> bool:
+        return bool(self.patterns)
 
     def for_capture(self, manifest: CaptureManifest, adapters: Adapters | None) -> "ActiveConfig | None":
         """The config as it runs on the capture `manifest` describes; None when it does not run on it. An `api`

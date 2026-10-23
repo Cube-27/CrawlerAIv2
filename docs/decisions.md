@@ -24,6 +24,10 @@ Reasoning for a single change goes in its PR body.
   (`CRAWLERAI_DISABLED_ADAPTERS` opts out); a page-stated value outranks an adapter's fallback.
 - **Greenfield.** No versioning or compatibility shims; one baseline migration; a schema edit sends its configs to relearning.
 - **No in-repo evaluation.** The e2e run and its eval set live outside the repo, scored by one scorer (C1, C10).
+- **Custom recipes are engineer-driven.** An engineer picks the calls a site's pages make; the system proposes, never
+  saves. Saving needs no approval or audit; the output is always the selected schema.
+- **The learned config stays active beside custom recipes.** A recipe serves the URLs its patterns match; the learned
+  config serves the rest. Ladder: custom recipe, then adapter, then learned recipe, then page rungs.
 
 ## Acquisition
 

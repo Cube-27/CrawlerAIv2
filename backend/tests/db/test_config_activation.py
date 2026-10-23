@@ -11,7 +11,8 @@ from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.activation import activate
+from crawlerai.config_ir.activation import activate, store_recipe
+from crawlerai.config_ir.custom_recipe import CustomRecipe
 from crawlerai.config_ir.executor import ConfigMismatch
 from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.config_ir.progressive import StateKey, request_learning
@@ -109,6 +110,47 @@ async def test_a_new_activation_suspends_the_previous_config(conn: AsyncConnecti
     configs = await _configs(conn, key)
     assert [(c.id, c.version, c.status) for c in configs] == [(first, 1, "suspended"), (second, 2, "active")]
     assert (await _state(conn, key)).active_config_id == second
+
+
+def _recipe(key: StateKey, host: str, name: str, segment: str) -> ExtractionConfigIR:
+    recipe = CustomRecipe.model_validate(
+        {
+            "schema_id": key.schema_id,
+            "page_kind": "detail",
+            "patterns": [f"{host}/{segment}/{{slug}}"],
+            "main": {
+                "method": "GET",
+                "url": f"https://{host}/api/{{p1}}",
+                "params_from_url": {"p1": "path:1"},
+                "map": {"title": "$['name']"},
+            },
+        }
+    )
+    schema = SchemaDefinition.model_validate(
+        {"id": key.schema_id, "origin": "user", "status": "active", "name": name, "page_kind": "detail"}
+        | {"fields": FIELDS}
+    )
+    return recipe.to_ir(schema, at=datetime(2026, 10, 1, tzinfo=UTC), engine_version="test")
+
+
+async def test_recipes_stay_active_beside_the_learned_config_and_its_activations(conn: AsyncConnection) -> None:
+    key, host, name = await _key(conn)
+    await request_learning(conn, key)
+    learned = await activate(conn, key, _validated(host, name))
+    items = await store_recipe(conn, key, _recipe(key, host, name, "item"), replaces=None)
+    sales = await store_recipe(conn, key, _recipe(key, host, name, "sale"), replaces=None)
+    await request_learning(conn, key, force=True)
+
+    relearned = await activate(conn, key, _validated(host, name))
+
+    configs = await _configs(conn, key)
+    assert [(c.id, c.status, c.pattern_shape) for c in configs] == [
+        (learned, "suspended", ""),
+        (items, "active", f"{host}/item/{{}}"),
+        (sales, "active", f"{host}/sale/{{}}"),
+        (relearned, "active", ""),
+    ]
+    assert (await _state(conn, key)).active_config_id == relearned
 
 
 @pytest.mark.parametrize("other", ["site", "schema"])

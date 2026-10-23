@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import FetchResult
-from crawlerai.config_ir.active import active_config, config_by_id, recipe_of
+from crawlerai.config_ir.active import active_config, pinned_config, recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Replays
 from crawlerai.config_ir.learn_job import (
@@ -154,7 +154,7 @@ class LearnSite:
             job_id: JobId = (await conn.execute(job.values(engine_version="e").returning(Job.id))).scalar_one()
             capture_id = await store_capture(conn, self.store, fetched, self.site_id)
             task = await insert_claimed(conn, job_id, url, url, "detail", "test-worker")
-            config = await active_config(conn, self.site_id, self.schema, self.data.vocabulary)
+            config = await active_config(conn, self.site_id, self.schema, self.data.vocabulary, url)
             result = await extract_page(
                 fetched.bundle, self.schema, None if config is None else config.executor, role_c, data=self.data
             )
@@ -202,7 +202,10 @@ class LearnSite:
 
     async def recipe(self, config_id: ExtractionConfigId) -> ApiRecipe | None:
         async with self.engine.connect() as conn:
-            return recipe_of(await config_by_id(conn, config_id, self.data.vocabulary))
+            # A learned config serves any URL of its site.
+            config = await pinned_config(conn, [config_id], "https://shop.example.test/", self.data.vocabulary)
+        assert config is not None
+        return recipe_of(config)
 
     async def state(self) -> Any:
         async with self.engine.connect() as conn:

@@ -22,7 +22,7 @@ from crawlerai.acquire.types import FetchResult, RequestContext
 from crawlerai.collect import json_doc
 from crawlerai.collect.api import read_map
 from crawlerai.config_ir.api_recipe.binding import PageData, Sample, render_body, render_url, resolve_params
-from crawlerai.config_ir.api_recipe.model import PAGE_URL, ContextHeader, Pagination, RequestSpec
+from crawlerai.config_ir.api_recipe.model import FORM_TYPE, PAGE_URL, ContextHeader, Pagination, RequestSpec
 from crawlerai.config_ir.api_recipe.pagination import first_request, next_request
 from crawlerai.core import json_text
 from crawlerai.db.models import JobId, PageKind
@@ -78,7 +78,9 @@ def request_for(
             headers.append((header.name, secret.get_secret_value()))
         else:  # `{page_url}` is the one placeholder a header value takes
             headers.append((header.name, header.value.replace(f"{{{PAGE_URL}}}", page_url)))
-    body = None if spec.body is None else render_body(spec.body.template, params)
+    body = None if spec.body is None else render_body(spec.body.template, params, spec.body.encoding)
+    if spec.body is not None and spec.body.encoding == "form" and all(n.lower() != "content-type" for n, _ in headers):
+        headers.append(("Content-Type", FORM_TYPE))
     return JsonRequest(url, page_url, spec.method, tuple(headers), body)
 
 

@@ -22,7 +22,7 @@ from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.ssrf import SsrfRejected
-from crawlerai.config_ir.active import config_by_id
+from crawlerai.config_ir.active import pinned_config
 from crawlerai.config_ir.api_recipe.execute import MAX_PAGES
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.db.models import Job, SchemaId
@@ -53,7 +53,8 @@ async def load_job(
     conn: AsyncConnection, task: ClaimedTask, data: EngineData | None, margins: DriftMargins | None
 ) -> tuple[dict[str, object], Records | None] | Failed:
     """The task's job request, and what the task extracts records with from the job's schema and pins (`JobPins`):
-    None for a job without records. The pinned config is read and bound once, whatever its status now. A
+    None for a job without records. Of the host's pinned configs, the one that serves the task's URL is read and
+    bound once, whatever its status now. A
     records task fails in a worker without the engine's data (`data` None)."""
     job: _JobRow = (
         await conn.execute(select(Job.request, Job.schema_id, Job.pinned).where(Job.id == task.job_id))
@@ -67,8 +68,8 @@ async def load_job(
     pinned = data.pinned(pins.engine_data).with_min_confidence(
         None if floor is None else _MIN_CONFIDENCE.validate_python(floor)
     )
-    config_id = pins.configs.get(urlsplit(task.url).hostname or "")
-    config = None if config_id is None else await config_by_id(conn, config_id, pinned.vocabulary)
+    config_ids = pins.configs.get(urlsplit(task.url).hostname or "", [])
+    config = await pinned_config(conn, config_ids, task.url, pinned.vocabulary)
     render = job.request.get("render")
     pinned_render = None if render is None else RenderOptions.model_validate(render)
     schema = await _with_drafted_labels(conn, job.schema_id, pins.schema_)

@@ -42,6 +42,11 @@ class ActionsReport(BaseModel):
     stop: Annotated[Stop, Field(title="Stop")]
 
 
+class Answer(Enum):
+    json = "json"
+    html = "html"
+
+
 class Method(Enum):
     GET = "GET"
     POST = "POST"
@@ -65,7 +70,7 @@ class BlockClass(Enum):
     unsupported_media = "unsupported_media"
 
 
-class Method1(Enum):
+class Method2(Enum):
     http = "http"
     browser = "browser"
     api = "api"
@@ -226,6 +231,11 @@ class Origin(Enum):
     located = "located"
 
 
+class SentBy(Enum):
+    http = "http"
+    browser = "browser"
+
+
 class Status(Enum):
     draft = "draft"
     active = "active"
@@ -291,6 +301,10 @@ class CursorPagination(BaseModel):
     name: Annotated[str, Field(min_length=1, title="Name")]
     rows: Annotated[str, Field(title="Rows")]
     where: Annotated[Where, Field(title="Where")]
+
+
+class RateMs(RootModel[int]):
+    root: Annotated[int, Field(ge=0, title="Rate Ms")]
 
 
 class DayUsage(BaseModel):
@@ -384,7 +398,7 @@ class AbsentItem(RootModel[str]):
     root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,63}$")]
 
 
-class Method2(Enum):
+class Method3(Enum):
     http = "http"
     browser = "browser"
 
@@ -393,7 +407,7 @@ class Fetch(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    method: Annotated[Method2, Field(title="Method")]
+    method: Annotated[Method3, Field(title="Method")]
 
 
 class Cache(Enum):
@@ -433,7 +447,7 @@ class WaitFor3(RootModel[str]):
     root: Annotated[str, Field(min_length=1, title="Wait For")]
 
 
-class Method3(Enum):
+class Method4(Enum):
     http = "http"
     browser = "browser"
     api = "api"
@@ -810,6 +824,11 @@ class OutcomeCounts(BaseModel):
     unsupported_media: Annotated[int, Field(title="Unsupported Media")]
 
 
+class Needs1(Enum):
+    http = "http"
+    browser = "browser"
+
+
 class PageKindRule(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1071,10 +1090,24 @@ class ReplayRequest(BaseModel):
     allow_llm: Annotated[bool | None, Field(title="Allow Llm")] = False
 
 
-class RequestBody(BaseModel):
+class Encoding(Enum):
+    json = "json"
+    form = "form"
+
+
+class RequestBodyInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    encoding: Annotated[Encoding | None, Field(title="Encoding")] = "json"
+    template: Annotated[str, Field(min_length=1, title="Template")]
+
+
+class RequestBodyOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    encoding: Annotated[Encoding, Field(title="Encoding")]
     template: Annotated[str, Field(min_length=1, title="Template")]
 
 
@@ -1410,6 +1443,20 @@ class WaitActionOutput(BaseModel):
     xpath: Annotated[str | None, Field(title="Xpath")] = None
 
 
+class WarmUpInput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    url: Annotated[str | None, Field(title="Url")] = None
+
+
+class WarmUpOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    url: Annotated[str | None, Field(title="Url")] = None
+
+
 class WebhookBatch(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1432,11 +1479,37 @@ class AbsolutizeUrlOp(BaseModel):
     absolutize_url: FieldNoParams
 
 
-class ApiRecipe(BaseModel):
+class ApiRecipeInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    body: RequestBody | None = None
+    answer: Annotated[Answer | None, Field(title="Answer")] = "json"
+    body: RequestBodyInput | None = None
+    headers: Annotated[
+        list[HeaderValue | ContextHeader] | None, Field(title="Headers")
+    ] = []
+    map: Annotated[dict[str, str], Field(title="Map")]
+    method: Annotated[Method, Field(title="Method")]
+    pagination: Annotated[
+        ParamPagination | CursorPagination | NextUrlPagination | LinkPagination | None,
+        Field(title="Pagination"),
+    ] = None
+    params_from_url: Annotated[
+        dict[str, str] | None, Field(title="Params From Url")
+    ] = {}
+    proof: Proof | None = None
+    requires_page_fetch: Annotated[bool | None, Field(title="Requires Page Fetch")] = (
+        False
+    )
+    url: Annotated[str, Field(title="Url")]
+
+
+class ApiRecipeOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    answer: Annotated[Answer, Field(title="Answer")]
+    body: RequestBodyOutput | None = None
     headers: Annotated[list[HeaderValue | ContextHeader], Field(title="Headers")]
     map: Annotated[dict[str, str], Field(title="Map")]
     method: Annotated[Method, Field(title="Method")]
@@ -1445,7 +1518,7 @@ class ApiRecipe(BaseModel):
         Field(title="Pagination"),
     ] = None
     params_from_url: Annotated[dict[str, str], Field(title="Params From Url")]
-    proof: Proof
+    proof: Proof | None = None
     requires_page_fetch: Annotated[bool, Field(title="Requires Page Fetch")]
     url: Annotated[str, Field(title="Url")]
 
@@ -1459,7 +1532,7 @@ class AttemptRecord(BaseModel):
     data_call: Annotated[str | None, Field(title="Data Call")] = None
     duration_ms: Annotated[int, Field(title="Duration Ms")]
     error: Annotated[str | None, Field(title="Error")] = None
-    method: Annotated[Method1, Field(title="Method")]
+    method: Annotated[Method2, Field(title="Method")]
     status: Annotated[int | None, Field(title="Status")] = None
     steps: Annotated[list[StepOutcome], Field(title="Steps")]
 
@@ -1468,11 +1541,15 @@ class ConfigSummary(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    custom: Annotated[bool, Field(title="Custom")]
     field_status: Annotated[dict[str, FieldStatus], Field(title="Field Status")]
     id: Annotated[UUID, Field(title="Id")]
     origin: Annotated[Origin, Field(title="Origin")]
     page_kind: Annotated[PageKind, Field(title="Page Kind")]
+    patterns: Annotated[list[str], Field(title="Patterns")]
+    renders: Annotated[list[str], Field(title="Renders")]
     schema_id: Annotated[UUID, Field(title="Schema Id")]
+    sent_by: Annotated[SentBy, Field(title="Sent By")]
     site: Annotated[str, Field(title="Site")]
     status: Annotated[Status, Field(title="Status")]
     validation_report: ValidationReport | None = None
@@ -1563,7 +1640,7 @@ class FetchSummary(BaseModel):
     adapter: Annotated[str | None, Field(title="Adapter")] = None
     attempts: Annotated[list[AttemptRecord], Field(title="Attempts")]
     block_class: Annotated[BlockClass, Field(title="Block Class")]
-    method: Annotated[Method3, Field(title="Method")]
+    method: Annotated[Method4, Field(title="Method")]
     status_code: Annotated[int | None, Field(title="Status Code")] = None
 
 
@@ -2545,11 +2622,29 @@ class ListingSpec(BaseModel):
     ]
 
 
+class PageField(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    needs: Annotated[Needs1 | None, Field(title="Needs")] = "http"
+    steps: Annotated[
+        list[
+            XPathStepInput
+            | CssStepInput
+            | JsonLdStepInput
+            | JsonPathStepInput
+            | RegexStepInput
+            | AttrStepInput
+        ],
+        Field(min_length=1, title="Steps"),
+    ]
+
+
 class PlatformDraft(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    api_recipe: ApiRecipe | None = None
+    api_recipe: ApiRecipeOutput | None = None
     api_recipe_php: Annotated[str | None, Field(title="Api Recipe Php")] = None
     draft: Annotated[Literal[True], Field(title="Draft")]
     fetch: Fetch
@@ -2606,33 +2701,56 @@ class ScrapeResult(BaseModel):
     usage: Usage
 
 
+class CustomRecipe(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    calls: Annotated[dict[str, ApiRecipeInput] | None, Field(title="Calls")] = {}
+    fields: Annotated[dict[str, PageField] | None, Field(title="Fields")] = {}
+    main: ApiRecipeInput
+    page_kind: Annotated[PageKind, Field(title="Page Kind")]
+    patterns: Annotated[list[str], Field(min_length=1, title="Patterns")]
+    rate_ms: Annotated[RateMs | None, Field(title="Rate Ms")] = None
+    schema_id: Annotated[UUID, Field(title="Schema Id")]
+    sent_by: Annotated[SentBy | None, Field(title="Sent By")] = "http"
+    warm_up: WarmUpInput | None = None
+
+
 class ExtractionConfigIR(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
     absent: Annotated[list[AbsentItem], Field(title="Absent")]
-    api_recipe: ApiRecipe | None = None
+    api_recipe: ApiRecipeOutput | None = None
     fetch: Fetch
     fields: Annotated[dict[str, FieldSteps], Field(title="Fields")]
     ir_version: Annotated[Literal["1"], Field(title="Ir Version")]
     listing: ListingSpec | None = None
     page_kind: Annotated[PageKind, Field(title="Page Kind")]
+    patterns: Annotated[list[str], Field(title="Patterns")]
     provenance: Provenance
-    recipes: Annotated[dict[str, ApiRecipe], Field(title="Recipes")]
+    rate_ms: Annotated[RateMs | None, Field(title="Rate Ms")] = None
+    recipes: Annotated[dict[str, ApiRecipeOutput], Field(title="Recipes")]
     schema_: Annotated[SchemaRef, Field(alias="schema")]
+    sent_by: Annotated[SentBy, Field(title="Sent By")]
     site: Annotated[str, Field(min_length=1, title="Site")]
+    warm_up: WarmUpOutput | None = None
 
 
 class ConfigDetail(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    custom: Annotated[bool, Field(title="Custom")]
     field_status: Annotated[dict[str, FieldStatus], Field(title="Field Status")]
     id: Annotated[UUID, Field(title="Id")]
     ir: ExtractionConfigIR
     origin: Annotated[Origin, Field(title="Origin")]
     page_kind: Annotated[PageKind, Field(title="Page Kind")]
+    patterns: Annotated[list[str], Field(title="Patterns")]
+    renders: Annotated[list[str], Field(title="Renders")]
     schema_id: Annotated[UUID, Field(title="Schema Id")]
+    sent_by: Annotated[SentBy, Field(title="Sent By")]
     site: Annotated[str, Field(title="Site")]
     status: Annotated[Status, Field(title="Status")]
     validation_report: ValidationReport | None = None

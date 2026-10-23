@@ -80,6 +80,10 @@ def _ir(host: str, schema: SchemaDef, step: dict[str, Any], **more: dict[str, An
             "engine_version": "test",
         },
         "absent": [],
+        "patterns": [],
+        "warm_up": None,
+        "sent_by": "http",
+        "rate_ms": None,
     }
 
 
@@ -228,6 +232,10 @@ async def test_a_sites_configs_are_listed_with_their_status_and_one_config_has_i
                 "origin": "induced",
                 "field_status": {"title": "uncorroborated"},
                 "validation_report": None,
+                "patterns": [],
+                "custom": False,
+                "renders": [],
+                "sent_by": "http",
             }
         ]
     }
@@ -246,9 +254,11 @@ async def test_the_config_api_needs_a_key(client: httpx.AsyncClient, world: Worl
         await client.post(f"/v1/sites/{world.host}/learn", json={"schema_id": str(world.schema.id)}),
         await client.post(f"/v1/configs/{config_id}/approve"),
         await client.post(f"/v1/configs/{config_id}/reject"),
+        await client.post(f"/v1/sites/{world.host}/configs", json=_recipe(world, "item")),
+        await client.put(f"/v1/configs/{config_id}/recipe", json=_recipe(world, "item")),
     ]
 
-    assert [r.status_code for r in responses] == [401, 401, 401, 401, 401, 401]
+    assert [r.status_code for r in responses] == [401] * 8
 
 
 # Approval.
@@ -319,6 +329,82 @@ async def test_a_correction_that_validates_becomes_the_active_operator_version(
     assert await world.configs() == [(1, "suspended", "induced"), (2, "active", "operator")]
     state = await world.state()
     assert (state.mode, str(state.active_config_id)) == ("active", body["id"])
+
+
+# Custom recipes.
+
+
+def _recipe(world: World, *segments: str, **more: Any) -> dict[str, Any]:
+    """A recipe for the URLs `/<segments>/{slug}` that reads the title from an endpoint of the site, and the about
+    text from the page only a render fills."""
+    return {
+        "schema_id": str(world.schema.id),
+        "page_kind": "detail",
+        "patterns": [f"{world.host}/{'/'.join(segments)}/{{slug}}"],
+        "main": {
+            "method": "GET",
+            "url": f"{world.origin}/api/items/{{p1}}",
+            "params_from_url": {"p1": f"path:{len(segments)}"},
+            "map": {"title": "$['data']['name']"},
+        },
+        "fields": {"about": {"steps": [H2], "needs": "browser"}},
+        **more,
+    }
+
+
+async def test_a_saved_recipe_is_active_beside_the_learned_config_and_listed_with_it(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    learned = await world.active_config(H2)
+
+    saved = await client.post(f"/v1/sites/{world.host}/configs", json=_recipe(world, "item"))
+    listed = await client.get(f"/v1/sites/{world.host}/configs")
+
+    assert saved.status_code == 201, saved.text
+    body = saved.json()
+    assert (body["version"], body["status"], body["origin"], body["custom"]) == (2, "active", "operator", True)
+    assert (body["patterns"], body["renders"], body["sent_by"]) == ([f"{world.host}/item/{{slug}}"], ["about"], "http")
+    assert body["ir"]["api_recipe"]["proof"] is None
+    assert [(c["id"], c["status"], c["custom"]) for c in listed.json()["items"]] == [
+        (str(learned), "active", False),
+        (body["id"], "active", True),
+    ]
+    # The progressive state goes on naming the learned config.
+    assert (await world.state()).active_config_id == learned
+
+
+async def test_a_recipe_of_a_shape_another_active_recipe_serves_is_refused(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    await client.post(f"/v1/sites/{world.host}/configs", json=_recipe(world, "item"))
+    renamed = _recipe(world, "item")
+    renamed["patterns"] = [f"{world.host}/item/{{other}}", f"{world.host}/sale/{{slug}}"]
+
+    taken = await client.post(f"/v1/sites/{world.host}/configs", json=renamed)
+    other_host = await client.post(
+        f"/v1/sites/{world.host}/configs", json=_recipe(world, "item", patterns=["other.example.test/item/{slug}"])
+    )
+
+    assert (taken.status_code, taken.json()["type"]) == (409, "conflict")
+    assert (other_host.status_code, other_host.json()["type"]) == (422, "validation")
+    assert await world.configs() == [(1, "active", "operator")]
+
+
+async def test_an_edit_replaces_the_recipe_and_only_its_shapes_latest_version_is_edited(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    learned = await world.active_config(H2)
+    first = (await client.post(f"/v1/sites/{world.host}/configs", json=_recipe(world, "item"))).json()["id"]
+
+    edited = await client.put(f"/v1/configs/{first}/recipe", json=_recipe(world, "item", rate_ms=500))
+    stale = await client.put(f"/v1/configs/{first}/recipe", json=_recipe(world, "item"))
+    not_a_recipe = await client.put(f"/v1/configs/{learned}/recipe", json=_recipe(world, "item"))
+    corrected = await client.put(f"/v1/configs/{edited.json()['id']}", json={"confirm": ["about"]})
+
+    assert edited.status_code == 200, edited.text
+    assert (edited.json()["version"], edited.json()["ir"]["rate_ms"]) == (3, 500)
+    assert [r.status_code for r in (stale, not_a_recipe, corrected)] == [409, 409, 409]
+    assert await world.configs() == [(1, "active", "induced"), (2, "suspended", "operator"), (3, "active", "operator")]
 
 
 # Learning.
