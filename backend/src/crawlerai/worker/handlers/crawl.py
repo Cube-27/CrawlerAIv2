@@ -44,7 +44,7 @@ from crawlerai.crawl.rules import located
 from crawlerai.crawl.sitemaps import SitemapReader, roots
 from crawlerai.db.jobs import record_event
 from crawlerai.db.models import FinishedOutcome, Job, UrlTask
-from crawlerai.db.queue import ClaimedTask, Failed
+from crawlerai.db.queue import ClaimedTask, Failed, Postpone, Skipped, TaskResult, ends_task
 from crawlerai.llm.client import LLMClient
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.recurring.listing_diff import SITEMAPS_TIMED_OUT
@@ -59,7 +59,7 @@ from crawlerai.services.polite import QUEUED, NoTurn, Turns, listed_sitemaps, ru
 from crawlerai.services.scrape_request import PageFormat
 from crawlerai.storage.base import ObjectStore
 from crawlerai.worker.handlers.steps import Ended, count_fetch, fetch_page, load_job
-from crawlerai.worker.loop import Postpone, Settle, Skipped, TaskHandler, TaskResult, ends_task
+from crawlerai.worker.loop import Settle, TaskHandler
 
 log = logging.getLogger(__name__)
 

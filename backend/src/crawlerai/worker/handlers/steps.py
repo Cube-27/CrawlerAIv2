@@ -39,7 +39,7 @@ from crawlerai.config_ir.active import config_by_id, recipe_of
 from crawlerai.config_ir.api_recipe.execute import MAX_PAGES
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.db.models import Job, SchemaId
-from crawlerai.db.queue import LEASE, TASK_DEADLINE, ClaimedTask, Failed, Finished
+from crawlerai.db.queue import LEASE, TASK_DEADLINE, ClaimedTask, Failed, Finished, Postpone, TaskResult
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.types import Probability
 from crawlerai.schemas import registry
@@ -71,7 +71,6 @@ from crawlerai.services.polite import (
 )
 from crawlerai.services.scrape_request import PageFormat, RenderOptions
 from crawlerai.services.stored_captures import NOT_CACHED, NotCached
-from crawlerai.worker.loop import Postpone, TaskResult
 
 log = logging.getLogger(__name__)
 

@@ -13,9 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobEvent, JobId, JobKind, JobStatus, Project, UrlTask, UrlTaskId
-from crawlerai.db.queue import MAX_ATTEMPTS, ClaimedTask, Failed, Finished, claim_tasks
+from crawlerai.db.queue import MAX_ATTEMPTS, ClaimedTask, Failed, Finished, TaskResult, claim_tasks
 from crawlerai.worker import loop
-from crawlerai.worker.loop import Settle, TaskHandler, TaskResult, run_worker
+from crawlerai.worker.loop import Settle, TaskHandler, run_worker
 
 pytestmark = pytest.mark.anyio
 

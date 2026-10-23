@@ -30,7 +30,7 @@ import secrets
 import socket
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager, suppress
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from datetime import timedelta
 from functools import partial
 from typing import Final, assert_never
@@ -49,11 +49,13 @@ from crawlerai.db.queue import (
     Finished,
     JobEnding,
     LeaseLost,
+    Postpone,
+    Skipped,
+    TaskResult,
     cancel_task,
     claim_tasks,
     fail_task,
     release_task,
-    retried,
     settle_task,
 )
 
@@ -75,37 +77,12 @@ _LOCK_WAIT: Final = TASK_DEADLINE + CANCEL_GRACE + timedelta(seconds=10)
 URL: Final = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S+")
 
 
-@dataclass(frozen=True)
-class Postpone:
-    """The task did not run, because its site is not admitted yet: run it `after` from now, without
-    spending an attempt. The worker moves on instead of sleeping."""
-
-    after: timedelta
-
-
-@dataclass(frozen=True)
-class Skipped:
-    """The task is not run, because its job no longer needs it: a scored crawl that spent its page limit."""
-
-
-TaskResult = Finished | Failed | Postpone | Skipped
 # A task's writes, run in its transaction: they return the result it ends this run with.
 Settle = Callable[[AsyncConnection], Awaitable[TaskResult]]
 # A job kind's handler: runs the task up to its writes outside any transaction of the task, through the engine (its
 # fetch; every read and write there in a short transaction of its own), and returns its writes, or the result it ends
 # with when it has none.
 TaskHandler = Callable[[ClaimedTask, AsyncEngine], Awaitable[Settle | TaskResult]]
-
-
-def ends_task(task: ClaimedTask, result: TaskResult) -> bool:
-    """Whether `result` ends `task`, rather than leaving it to run again: postponed, or failed and retried."""
-    match result:
-        case Postpone():
-            return False
-        case Failed(transient=transient):
-            return not retried(task, transient=transient)
-        case _:
-            return True
 
 
 async def run_worker(

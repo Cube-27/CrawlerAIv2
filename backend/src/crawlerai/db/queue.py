@@ -31,8 +31,11 @@ from sqlalchemy.orm import aliased
 
 from crawlerai.core.retry import backoff_delay
 from crawlerai.db.jobs import (
+    JOB_TRANSITIONS,
     InvalidTransition,
     blocking_statuses,
+    lock_job,
+    locking,
     settled_status,
     start_jobs,
     transition_job,
@@ -249,6 +252,34 @@ class Failed:
     capture_id: CaptureId | None = None
 
 
+@dataclass(frozen=True)
+class Postpone:
+    """The task did not run, because its site is not admitted yet: run it `after` from now, without
+    spending an attempt. The worker moves on instead of sleeping."""
+
+    after: timedelta
+
+
+@dataclass(frozen=True)
+class Skipped:
+    """The task is not run, because its job no longer needs it: a scored crawl that spent its page limit."""
+
+
+# How a run of a task ends.
+TaskResult = Finished | Failed | Postpone | Skipped
+
+
+def ends_task(task: ClaimedTask, result: TaskResult) -> bool:
+    """Whether `result` ends `task`, rather than leaving it to run again: postponed, or failed and retried."""
+    match result:
+        case Postpone():
+            return False
+        case Failed(transient=transient):
+            return not retried(task, transient=transient)
+        case _:
+            return True
+
+
 async def settle_task(
     conn: AsyncConnection, task: ClaimedTask, result: Finished | Failed, *, ending: JobEnding | None = None
 ) -> None:
@@ -305,13 +336,11 @@ async def stuck_running_jobs(
 ) -> list[JobId]:
     """Up to `batch` ids of jobs of `kinds` `running` since more than `older_than` ago (with `taskless`, only those with
     no task), oldest id first, locked for the caller's transaction: the one query the scheduler's reapers share. The
-    partial index on running jobs answers it. FOR NO KEY UPDATE, as `settle_job` takes; a job another transaction holds
-    is left to the next run."""
+    partial index on running jobs answers it. A job another transaction holds is left to the next run."""
     stuck = select(Job.id).where(Job.status == "running", Job.kind.in_(kinds), Job.started_at < func.now() - older_than)
     if taskless:
         stuck = stuck.where(~select(UrlTask.id).where(UrlTask.job_id == Job.id).exists())
-    locked = stuck.order_by(Job.id).limit(batch).with_for_update(key_share=True, skip_locked=True)
-    return list((await conn.execute(locked)).scalars())
+    return list((await conn.execute(locking(stuck.order_by(Job.id).limit(batch), skip_locked=True))).scalars())
 
 
 async def fail_stalled_jobs(conn: AsyncConnection, *, batch: int) -> int:
@@ -352,10 +381,7 @@ async def _move(conn: AsyncConnection, task: ClaimedTask, target: TaskStatus, **
 
 async def settle_job(conn: AsyncConnection, job_id: JobId, ending: JobEnding | None = None) -> None:
     """End a running job once its tasks allow it (`settled_status`), running `ending` first."""
-    # FOR NO KEY UPDATE: it serializes with every other write to the job's row, but not with a running task's inserts
-    # that refer to the job (FOR KEY SHARE, PostgreSQL row-level locks), which hold until that task commits.
-    locked = select(Job.status, Job.cancel_requested).where(Job.id == job_id).with_for_update(key_share=True)
-    job = (await conn.execute(locked)).one()
+    job = await lock_job(conn, job_id, Job.status, Job.cancel_requested)
     if job.status != "running":
         return
     # Most finished tasks leave others open. The partial index on open tasks answers that without counting every
@@ -373,3 +399,24 @@ async def settle_job(conn: AsyncConnection, job_id: JobId, ending: JobEnding | N
     if ending is not None:
         await ending(conn, job_id, target)
     await transition_job(conn, job_id, target)
+
+
+async def request_cancel(conn: AsyncConnection, job_id: JobId, unstarted: JobEnding | None = None) -> None:
+    """Ask the job to stop: its queued tasks are cancelled, and the job is `cancelled` at once when it never started
+    (`unstarted` runs first), else once none of its tasks is claimed (`settle_job`). A job that ended meanwhile is left
+    as it ended. A started `learn` job has no tasks: its run ends itself on `cancel_requested`."""
+    # Tasks first, then the job row: the order a finishing worker locks them in, so the two never wait on each other.
+    # A claim that starts the job locks its tasks before the job too.
+    await conn.execute(
+        update(UrlTask).where(UrlTask.job_id == job_id, UrlTask.status == "queued").values(status="cancelled")
+    )
+    job = await lock_job(conn, job_id, Job.status, Job.kind)
+    if not JOB_TRANSITIONS[job.status]:
+        return  # it ended while its tasks were cancelled
+    await conn.execute(update(Job).where(Job.id == job_id).values(cancel_requested=True))
+    if job.status == "queued":  # no task of it was ever claimed: a claim starts its job in the same transaction
+        if unstarted is not None:
+            await unstarted(conn, job_id, "cancelled")
+        await transition_job(conn, job_id, "cancelled")
+    elif job.kind != "learn":
+        await settle_job(conn, job_id)

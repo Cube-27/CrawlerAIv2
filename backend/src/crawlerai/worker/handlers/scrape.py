@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.config_ir.role_c import role_c
-from crawlerai.db.queue import ClaimedTask, Failed
+from crawlerai.db.queue import ClaimedTask, Failed, TaskResult
 from crawlerai.llm.client import LLMClient
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.fetch_options import FetchOptions
@@ -31,7 +31,7 @@ from crawlerai.services.fetching import Fetching
 from crawlerai.services.page_run import extract_run, page_run
 from crawlerai.services.scrape_request import PageFormat
 from crawlerai.worker.handlers.steps import Ended, count_fetch, fetch_page, load_job
-from crawlerai.worker.loop import Settle, TaskHandler, TaskResult
+from crawlerai.worker.loop import Settle, TaskHandler
 
 
 class _PageFetch(BaseModel):

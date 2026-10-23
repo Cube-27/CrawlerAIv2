@@ -23,6 +23,7 @@ from crawlerai.content.links import anchor_texts, links
 from crawlerai.content.page import ParsedPage
 from crawlerai.crawl.rules import PageKindRule, Scope, on_site, page_kind_for
 from crawlerai.crawl.scoring import Strategy, best_first_scores, depth_score, page_relevance
+from crawlerai.db.jobs import lock_job
 from crawlerai.db.models import Job, JobId, UrlTask, UrlTaskId
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.normalize.url_key import canonicalize
@@ -140,10 +141,8 @@ class Frontier:
         if depth > self.max_depth or not taken:
             return 0
         # The job's row lock makes counting and adding one step: two workers adding a job's URLs at once would each
-        # see room for the same `limit`. FOR NO KEY UPDATE, as `settle_job` takes: another task's inserts that refer
-        # to the job do not hold it up.
-        locked = select(Job.cancel_requested).where(Job.id == job_id).with_for_update(key_share=True)
-        if (await conn.execute(locked)).scalar_one():
+        # see room for the same `limit`.
+        if (await lock_job(conn, job_id, Job.cancel_requested)).cancel_requested:
             return 0
         tasks = select(func.count()).where(UrlTask.job_id == job_id)
         room = self.capacity - (await conn.execute(tasks)).scalar_one()
@@ -231,7 +230,7 @@ class Frontier:
         if self.strategy == "bfs":
             return
         # The job's row lock makes the count and the cancel one step, as in `enqueue`.
-        await conn.execute(select(Job.id).where(Job.id == task.job_id).with_for_update(key_share=True))
+        await lock_job(conn, task.job_id)
         if await self.spent_before(conn, task) + 1 >= self.limit:
             queued = (UrlTask.job_id == task.job_id, UrlTask.status == "queued")
             await conn.execute(update(UrlTask).where(*queued).values(status="cancelled"))
