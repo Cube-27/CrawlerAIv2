@@ -16,7 +16,7 @@ further pages come from its config's listing recipe within the task's lease (`RE
 import logging
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Final, Protocol
 from urllib.parse import urlsplit
@@ -130,8 +130,10 @@ async def fetch_task(
         async with engine.connect() as conn:
             by_sources = await surface_plan(conn, site.id, records.schema, config, records.render)
     rungs = site_rungs(fetching, urlsplit(task.url).hostname or "", site)
-    plain = PagePlan(rungs, site, policy, [], growth=page_task.growth, deadline=page_task.deadline, fetch=by_sources)
-    plan = _with_recipe(plain, page_task, recipe)
+    attempts: list[AttemptRecord] = []
+    pages = _recipe_pages(page_task, recipe, attempts)
+    growth, deadline = page_task.growth, page_task.deadline
+    plan = PagePlan(rungs, site, policy, attempts, recipe, pages, growth, deadline=deadline, fetch=by_sources)
     try:
         fetched, further = await _fetched(engine, fetching, page_task, plan, waiting)
     except TargetRejected as e:  # a scrape's growth or browser actions met a refused request
@@ -139,17 +141,16 @@ async def fetch_task(
     return await _kept(engine, plan, fetched, further)
 
 
-def _with_recipe(plan: PagePlan, page_task: PageTask, recipe: ApiRecipe | None) -> PagePlan:
-    """`plan` with the config's API `recipe`, serving a listing in pages when it has pagination and the task bounds
-    them (`listing_pages`)."""
-    if recipe is None:
-        return plan
+def _recipe_pages(page_task: PageTask, recipe: ApiRecipe | None, attempts: list[AttemptRecord]) -> RecipePages | None:
+    """The config's API `recipe` serving a listing in pages, their attempts added to `attempts`, when it has
+    pagination and the task bounds them (`listing_pages`); None otherwise."""
     records, bound = page_task.records, page_task.listing_pages
-    lists = records is not None and records.schema.page_kind == "listing" and recipe.pagination is not None
-    if bound is None or not lists:
-        return replace(plan, recipe=recipe)
+    if recipe is None or recipe.pagination is None or bound is None:
+        return None
+    if records is None or records.schema.page_kind != "listing":
+        return None
     deadline = time.monotonic() + RECIPE_PAGES_SHARE.total_seconds()
-    return replace(plan, recipe=recipe, pages=RecipePages(bound, plan.attempts, deadline=deadline))
+    return RecipePages(bound, attempts, deadline=deadline)
 
 
 async def _fetched(

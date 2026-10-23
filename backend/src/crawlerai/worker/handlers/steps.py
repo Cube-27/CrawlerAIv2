@@ -4,7 +4,7 @@ its page politely, or reading its stored capture (`fetch.cache`, as a scrape doe
 job's usage.
 
 The task's page is fetched before the worker's transaction for the task opens (`fetch_page`, through the one page-task
-fetch, `services.page_task`, as a queued task: `QUEUED`): the site's row, its robots.txt, its adapter declines and what
+fetch, `fetch_task`, as a queued task: `QUEUED`): the site's row, its robots.txt, its adapter declines and what
 the fetch taught its memory (`acquire.memory`) are each read or written in a short transaction of their own, so no task
 holds a site's rows while it fetches or extracts, and the tasks of one site run side by side. The page's run
 (`page_run`: its capture, extraction and records) writes in the worker's transaction for the task, so a task that

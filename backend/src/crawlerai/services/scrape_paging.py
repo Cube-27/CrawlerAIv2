@@ -66,7 +66,7 @@ class Actions:
     """A scrape's browser actions, the listing fetched with them in place of `acquire` (`page_task.Paging`), and the
     report of what they did."""
 
-    actions: BrowserActions
+    requested: BrowserActions
     timeout_s: float
     report: ActionsReport | None = None
 
@@ -83,10 +83,10 @@ class Actions:
         paged: list[PagedFetch] = []
 
         async def fetch(target: str, admit_next: Admit, known: HostRules) -> FetchResult:
-            until = (self.actions.records, deadline)
+            until = (self.requested.records, deadline)
             served = await _recipe_pages(fetching, target, policy, attempts, plan.recipe, until, (rules, admit_next))
             if served is None:
-                served = await grown(fetching, target, policy, self.actions, deadline, admit_next, known)
+                served = await grown(fetching, target, policy, self.requested, deadline, admit_next, known)
                 record_states(served.pages, attempts)
             paged.append(served)
             return served.pages[0]
