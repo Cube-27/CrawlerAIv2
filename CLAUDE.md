@@ -2,12 +2,21 @@
 
 CrawlerAI v2 is a schema-driven web extraction engine; see `README.md`.
 
+## Project charter
+
+1. **Objective.** Improve crawl and extraction coverage and accuracy in general. Keep one coherent browser/HTTP
+   fingerprint. Keep the code machine-agnostic (Windows and Linux).
+2. **Bug.** An extracted value differs from the live page AND it is a pattern, not a site-specific issue. Site-only
+   problems are fixed by config or data (C5).
+3. **Decisions** are kept until proven wrong; then they are flagged to the owner instead of followed. No technology or
+   decision is frozen.
+
 ## Layout
 
 - `backend/` (Python, `src/crawlerai/`, `tests/`, `migrations/`), `frontend/` (Vite+, React), `sdk/`, `infra/`,
   `tools/` (repo checks and `tools/orchestrator/` worktree/CI scripts).
 - `docs/architecture.md`: what the code does and where. `docs/rules.md`: the rules CI and agents enforce. `docs/archive/`:
-  frozen history (old specs, design, decisions, handover), not maintained; the code wins over it.
+  historical record (old specs, design, decisions, handover), not maintained; the code wins over it.
 - Read only what your change needs. Where the docs and the contract disagree, stop and ask the owner.
 - Work on a branch `change/<id>` in a worktree made by `tools/orchestrator/new_worktree.sh <id> change/<id>`, never
   in the main checkout. `main` takes PRs only. Never merge your own PR.
@@ -47,7 +56,7 @@ unpublished. No site-specific steps, no speculative layers, no second path for e
   The set grows in fresh batches (20–30 pages, one per host not in it before, stratified by schema, language,
   platform and render mode); a batch is scored once, before any change is made on it, and that first score is the
   only generalization number; then it joins the set. Never look at a fresh batch's pages before that score.
-  Calibration, precedence and drift margins are frozen as fitted on 2026-10-18; a refit needs the owner. The set, its
+  Calibration, precedence and drift margins are as fitted on 2026-10-18; a refit is flagged to the owner. The set, its
   URLs, values and captures stay out of the repo (C3).
 - **C2.** Every generic rule names its standard (schema.org, ISO, CLDR, RFC, HTML) or structural property in a
   comment. "Site X does Y" is never a justification.

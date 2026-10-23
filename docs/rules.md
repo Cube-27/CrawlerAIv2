@@ -2,6 +2,15 @@
 
 CI checks and the contract agents rely on. `CLAUDE.md` holds the full agent text; this is the quick list.
 
+## Project charter
+
+1. **Objective.** Improve crawl and extraction coverage and accuracy in general. Keep one coherent browser/HTTP
+   fingerprint. Keep the code machine-agnostic (Windows and Linux).
+2. **Bug.** An extracted value differs from the live page AND it is a pattern, not a site-specific issue. Site-only
+   problems are fixed by config or data (C5).
+3. **Decisions** are kept until proven wrong; then they are flagged to the owner instead of followed. No technology or
+   decision is frozen.
+
 ## Extraction contract (C1–C13)
 
 - **C1** Accuracy claims come only from the e2e run over the eval set (kept outside the repo); a fresh batch's first score is

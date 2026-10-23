@@ -60,4 +60,4 @@ SDKs in `sdk/python`, `sdk/typescript` (`make sdk`); web UI in `frontend/`.
 ## Pinned data
 
 Vocabularies live in `backend/data/` and are pinned with sha256 in `backend/data/manifest.json` (`tools/data_manifest_check.py`).
-`calibration.json`, `source_precedence.yaml`, `drift_margins.json` are frozen as fitted on 2026-10-18; a refit needs the owner.
+`calibration.json`, `source_precedence.yaml`, `drift_margins.json` are as fitted on 2026-10-18; no code refits them, a refit is flagged to the owner.
