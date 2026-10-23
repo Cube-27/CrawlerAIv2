@@ -41,7 +41,8 @@ def locality(hint: str | None, country: str | None = None) -> Locality:
 
 def language_headers(hint: str | None) -> dict[str, str]:
     """The `Accept-Language` (RFC 9110 §12.5.4) the browser rung sends for the request's locale `hint`, its context's
-    `locale` alone, for the HTTP and JSON rungs to send as well; none without a locale (the impersonation's own)."""
+    `locale` alone, for the HTTP and JSON rungs to send as well; none without a locale (the browser's own, which the
+    impersonation's headers carry, `acquire.impersonate`)."""
     locale = locality(hint).get("locale")
     return {} if locale is None else {"Accept-Language": locale}
 

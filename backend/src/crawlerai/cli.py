@@ -112,7 +112,7 @@ async def _schedule() -> None:
     fetch = partial(
         fetch_http,
         engine_version=ENGINE_VERSION,
-        impersonate=await rung_impersonation(settings),
+        impersonate=await rung_impersonation(settings, browser_rung=True),  # its `open_fetching` renders too
         pools=settings.proxy_pools,
     )
     # A schedule's run submits its job with the schema its creation resolved, so it drafts nothing: no LLM client.
@@ -145,7 +145,7 @@ async def _fetch(
             url,
             policy,
             engine_version=ENGINE_VERSION,
-            impersonate=await rung_impersonation(settings),
+            impersonate=await rung_impersonation(settings, browser_rung=False),
             connector=connector,
             pools=settings.proxy_pools,
         )
