@@ -1,6 +1,7 @@
 """`POST /v1/scrape`: the scrape service over HTTP. A page that could not be fetched is an outcome in
 a 200 answer; a refused target, a schema `records` cannot use, and a timeout are problems."""
 
+from collections.abc import Awaitable
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -47,8 +48,8 @@ async def scrape(body: ScrapeRequest, caller: Annotated[Caller, Depends(caller)]
     holds the page's record against the schema; an inline schema is stored as a `user` schema, or matched to the
     stored schema of its name, and one that differs from it is a 409."""
     runtime = caller.runtime
-    try:
-        return await scrape_service.scrape(
+    return await scrape_answer(
+        scrape_service.scrape(
             runtime.database,
             runtime.fetching,
             body,
@@ -56,6 +57,13 @@ async def scrape(body: ScrapeRequest, caller: Annotated[Caller, Depends(caller)]
             data=runtime.engine_data,
             margins=runtime.drift_margins,
         )
+    )
+
+
+async def scrape_answer[T](scraped: Awaitable[T]) -> T:
+    """What a scrape (`services.scrape.scrape`) answers, each of its refusals as its problem."""
+    try:
+        return await scraped
     except TargetRejected as e:
         raise target_refused(e.reason) from e
     except UnknownProxyPool as e:

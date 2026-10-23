@@ -25,6 +25,11 @@ handler of the job kind (`worker/handlers/`); `scheduler/loop.py` enqueues sched
    Politeness, robots (off by default), SSRF guard and redirects: `politeness.py`, `robots.py`, `ssrf.py`, `redirects.py`.
    Site memory (the rung a site's pages start with): `memory.py`. The result is a capture bundle (`core/capture.py`,
    `storage/capture_bundle.py`); every record can be replayed from it (`POST /v1/captures/{id}/replay`).
+   A browser capture keeps the page's data calls (`browser_capture.py`, `FetchPolicy.calls` `data`), or, for an
+   engineer capture (`POST /v1/captures`, `services/captures.py`, a scrape in the browser), every call (`all`): each
+   fetch/xhr answer on any site and each document a page step navigated to, never an event stream or binary media, own
+   site first, with the page step it followed. Its calls are listed by endpoint with the paths that carry the schema's
+   fields (`services/recipe_calls.py` over `config_ir/api_recipe/discovery.py`) and exported as HAR (`services/har.py`).
    URLs an adapter detects go to the adapter first (`adapters/`: Greenhouse, Lever, Shopify, Workday, … `registry.py`).
 2. **Content** (`content/`). Parse once (`content/page.py`), then markdown/html/links/metadata/chunks for the content formats.
 3. **Collect** (`collect/`). `collect/run.py` runs every collector over the one parse: `jsonld`, `microdata`, `og`, `dom`,
@@ -82,8 +87,9 @@ recurring diffing: `recurring/`; webhooks: `db/webhook_outbox.py`, `services/web
 ## Surfaces
 
 REST under `/v1` (`scrape`, `batch/scrape`, `map`, `search`, `crawl`, `extract`, `schemas`, `records`, `captures`, `jobs`,
-`schedules`, `configs`/`sites`, `usage/llm`, `project/settings`; `GET /healthz`): the contract is `frontend/openapi.json`
-(`tools/dev.py api-client`). Bearer API keys (`crawlerai apikey create`). Schemas (presets in `schemas/presets/*.json`) are data.
+`schedules`, `configs`/`sites`, `recipes`, `usage/llm`, `project/settings`; `GET /healthz`): the contract is `frontend/openapi.json`
+(`tools/dev.py api-client`). Captures' calls and `recipes` answer internals (calls, paths, headers) for the Recipes
+screen only. Bearer API keys (`crawlerai apikey create`). Schemas (presets in `schemas/presets/*.json`) are data.
 SDKs in `sdk/python`, `sdk/typescript` (`tools/dev.py sdk`); web UI in `frontend/`.
 
 ## Pinned data

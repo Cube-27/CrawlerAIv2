@@ -80,6 +80,11 @@ class NetworkBody(_Frozen):
     # the identity check (`acquire.identity`); None for a render's captured call. Left out of the manifest when None,
     # so a bundle written before it was kept encodes as it did.
     data_call: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    # Whether the call went to the page's own site (HTML Standard §7.1.1: the same registrable domain), and the
+    # cross-site script inclusion guard its JSON answer opens with (`guard_prefix`); kept by a render, left out of the
+    # manifest when None, as `data_call` is.
+    same_site: bool | None = Field(default=None, exclude_if=lambda value: value is None)
+    guard_prefix: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class CaptureManifest(_Frozen):
@@ -324,9 +329,22 @@ def network_json(data: bytes) -> JsonValue:
     either one JSON text or a short guard prefix followed by an object or array (`_GUARD_PREFIX_MAX`). Raises
     `ValueError` when it is neither. The browser reads bodies to keep with it and every reader of the bundle's
     network bodies parses them with it, so the two agree."""
+    return _guarded_json(data)[1]
+
+
+def guard_prefix(data: bytes) -> str | None:
+    """The guard prefix a JSON body opens with (`network_json`), None when it has none or is not JSON."""
+    try:
+        return _guarded_json(data)[0]
+    except ValueError:
+        return None
+
+
+def _guarded_json(data: bytes) -> tuple[str | None, JsonValue]:
+    """The body's guard prefix (None without one) and its JSON value (`network_json`)."""
     text = data.decode("utf-8-sig")  # UnicodeDecodeError is a ValueError
     try:
-        return _loads(text)
+        return None, _loads(text)
     except ValueError:
         starts = [i for i in (text.find(opener) for opener in _OPENERS) if i > 0]
         if not starts or min(starts) > _GUARD_PREFIX_MAX:
@@ -334,7 +352,7 @@ def network_json(data: bytes) -> JsonValue:
     value = _loads(text[min(starts) :])
     if not isinstance(value, (dict, list)):
         raise ValueError("a guard prefix is followed by an object or an array")
-    return value
+    return text[: min(starts)], value
 
 
 def _not_json(constant: str) -> JsonValue:

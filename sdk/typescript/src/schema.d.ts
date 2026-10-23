@@ -43,6 +43,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/captures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Capture
+         * @description Render `url` in the browser after the page steps, keeping every call the page makes, and store the capture and
+         *     its record of the schema: a sample page to choose a custom recipe's calls from. Answers when the page has been
+         *     fetched and read, as `POST /v1/scrape` does, with its problems.
+         */
+        post: operations["capture_v1_captures_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/captures/{capture_id}/artifacts/{name}": {
         parameters: {
             query?: never;
@@ -57,6 +79,70 @@ export interface paths {
          *     no such file.
          */
         get: operations["get_artifact_v1_captures__capture_id__artifacts__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/captures/{capture_id}/calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Calls
+         * @description The capture's calls by endpoint, each with where it carries the fields of the schema it was read for (the values
+         *     of its record, else the paths of each field's type). 404: no such capture, or its bundle expired; 409: it was read
+         *     for no schema.
+         */
+        get: operations["get_calls_v1_captures__capture_id__calls_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/captures/{capture_id}/calls.har": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Har
+         * @description The capture as an HTTP Archive (HAR 1.2): the page's document and every call it kept, without cookies, the
+         *     caller's own header values masked. 404: no such capture, or its bundle expired.
+         */
+        get: operations["get_har_v1_captures__capture_id__calls_har_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/captures/{capture_id}/calls/{index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Call
+         * @description One call the capture kept, by its index in the call list: the request and the answer's text. 404: no such
+         *     capture or call, or its bundle expired.
+         */
+        get: operations["get_call_v1_captures__capture_id__calls__index__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -506,6 +592,27 @@ export interface paths {
          *     `draft_call_cap` from a key's next draft; `require_config_approval` from the next learning run's end.
          */
         patch: operations["patch_project_settings_v1_project_settings_patch"];
+        trace?: never;
+    };
+    "/v1/recipes/calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Calls
+         * @description The samples' calls by endpoint, each field's paths counted on how many samples they read it. 404: no such
+         *     capture, or its bundle expired; 409: a capture was read for no schema, or they were read for different ones.
+         */
+        post: operations["calls_v1_recipes_calls_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/records": {
@@ -1221,6 +1328,158 @@ export interface components {
             llm_calls: number;
         };
         /**
+         * CallDetail
+         * @description One call a capture kept (`GET /v1/captures/{id}/calls/{n}`): the request as sent (headers as recorded: no
+         *     cookies, the caller's own values masked), the answer's status, headers and text (its UTF-8 decoding, at most
+         *     `ANSWER_MAX_BYTES`), the page step it followed and whether it went to the page's own site, and the guard prefix
+         *     its JSON opens with.
+         */
+        CallDetail: {
+            /** Answer */
+            answer: string;
+            /** Content Type */
+            content_type: string | null;
+            /** Guard Prefix */
+            guard_prefix: string | null;
+            /** Index */
+            index: number;
+            /** Method */
+            method: string | null;
+            /** Request Body */
+            request_body: string | null;
+            /** Request Headers */
+            request_headers: [
+                string,
+                string
+            ][] | null;
+            /** Resource Type */
+            resource_type: string | null;
+            /** Response Headers */
+            response_headers: [
+                string,
+                string
+            ][] | null;
+            /** Same Site */
+            same_site: boolean | null;
+            /** Size */
+            size: number;
+            /** Status */
+            status: number;
+            /** Step */
+            step: number | null;
+            /** Url */
+            url: string;
+        };
+        /**
+         * CallList
+         * @description The calls of the samples, by endpoint in the order they were first called (the samples' order, then each
+         *     capture's: its own site's calls first).
+         */
+        CallList: {
+            /** Endpoints */
+            endpoints: components["schemas"]["Endpoint"][];
+            /** Samples */
+            samples: string[];
+            /**
+             * Schema Id
+             * Format: uuid
+             */
+            schema_id: string;
+        };
+        /**
+         * CallSummary
+         * @description One call of a sample: its index among the capture's network bodies (`GET /v1/captures/{id}/calls/{n}`), its
+         *     answer's status, content type and size, the request's Fetch destination, the page step it followed (0: the page's
+         *     load), and whether it went to the page's own site.
+         */
+        CallSummary: {
+            /**
+             * Capture Id
+             * Format: uuid
+             */
+            capture_id: string;
+            /** Content Type */
+            content_type: string | null;
+            /** Index */
+            index: number;
+            /** Resource Type */
+            resource_type: string | null;
+            /** Same Site */
+            same_site: boolean | null;
+            /** Size */
+            size: number;
+            /** Status */
+            status: number;
+            /** Step */
+            step: number | null;
+        };
+        /**
+         * CallsRequest
+         * @description The sample captures whose calls are merged: two to five, read for one schema, all distinct.
+         */
+        CallsRequest: {
+            /** Capture Ids */
+            capture_ids: string[];
+        };
+        /**
+         * CaptureRequest
+         * @description The body of `POST /v1/captures`: a sample page of `schema_id`'s page kind, rendered in the browser after the
+         *     page steps (`actions`, `wait_for`, as `fetch` names them), with the caller's `cookies`, through `proxy_pool`.
+         */
+        CaptureRequest: {
+            /** Actions */
+            actions?: (components["schemas"]["WaitAction-Input"] | components["schemas"]["ClickAction-Input"] | components["schemas"]["ScrollAction-Input"] | components["schemas"]["PressAction-Input"] | components["schemas"]["TypeAction-Input"])[];
+            /** Cookies */
+            cookies?: {
+                [key: string]: string;
+            };
+            /** Locale */
+            locale?: string | null;
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            /** Proxy Pool */
+            proxy_pool?: string | null;
+            /**
+             * Schema Id
+             * Format: uuid
+             */
+            schema_id: string;
+            /**
+             * Timeout S
+             * @default 60
+             */
+            timeout_s?: number;
+            /** Url */
+            url: string;
+            /** Wait For */
+            wait_for?: number | string | null;
+        };
+        /**
+         * CaptureResult
+         * @description An engineer capture: the stored capture (None when nothing was sent: `reason` says why, as a scrape's does),
+         *     how its page ended, the records stored from it, and every fetch attempt.
+         */
+        CaptureResult: {
+            /** Attempts */
+            attempts: components["schemas"]["AttemptRecord"][];
+            /** Capture Id */
+            capture_id: string | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "extracted" | "partial" | "blocked" | "shell" | "not_found" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "unsupported_media" | "geo_blocked" | "no_match" | "timeout" | "failed";
+            /** Reason */
+            reason: string | null;
+            /** Records */
+            records: components["schemas"]["ScrapedRecord"][];
+            /** Url */
+            url: string;
+        };
+        /**
          * Chunk
          * @description One chunk of a page's markdown: its position, text, size in words and the headings above it.
          */
@@ -1928,6 +2187,34 @@ export interface components {
             reason: string;
         };
         /**
+         * Endpoint
+         * @description One endpoint group: its request method, URL shape (origin, whether there is a path, its segment count, the
+         *     query names in order) and request body shape, the samples it was called on, its calls, the fields it carries and
+         *     the row query of the rows it lists.
+         */
+        Endpoint: {
+            /** Body Shape */
+            body_shape: string[] | null;
+            /** Calls */
+            calls: components["schemas"]["CallSummary"][];
+            /** Fields */
+            fields: components["schemas"]["FieldMatch"][];
+            /** Has Path */
+            has_path: boolean;
+            /** Method */
+            method: string | null;
+            /** Origin */
+            origin: string;
+            /** Query */
+            query: string[];
+            /** Rows */
+            rows: string | null;
+            /** Samples */
+            samples: string[];
+            /** Segments */
+            segments: number;
+        };
+        /**
          * ExportPage
          * @description One page of a job's records in an export format; `next_cursor` as in `RecordPage`.
          */
@@ -2292,6 +2579,22 @@ export interface components {
             field: string;
             /** Reason */
             reason: string;
+        };
+        /**
+         * FieldMatch
+         * @description Where an endpoint carries one schema field: `published` paths read the value a sample published, else `paths`
+         *     read a value of the field's type; `in_text` counts the samples whose HTML answer holds the published value's
+         *     text.
+         */
+        FieldMatch: {
+            /** Field */
+            field: string;
+            /** In Text */
+            in_text: number;
+            /** Paths */
+            paths: components["schemas"]["PathCount"][];
+            /** Published */
+            published: boolean;
         };
         /**
          * FieldReport
@@ -3263,6 +3566,16 @@ export interface components {
              * @enum {string}
              */
             where: "query" | "body";
+        };
+        /**
+         * PathCount
+         * @description A map path, and on how many of the samples a call of the endpoint read it.
+         */
+        PathCount: {
+            /** Path */
+            path: string;
+            /** Samples */
+            samples: number;
         };
         /** PlatformDraft */
         PlatformDraft: {
@@ -4643,6 +4956,110 @@ export interface operations {
             };
         };
     };
+    capture_v1_captures_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaptureRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     get_artifact_v1_captures__capture_id__artifacts__name__get: {
         parameters: {
             query?: never;
@@ -4663,6 +5080,203 @@ export interface operations {
                 content: {
                     "application/pdf": string;
                     "image/png": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_calls_v1_captures__capture_id__calls_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capture_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_har_v1_captures__capture_id__calls_har_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capture_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_call_v1_captures__capture_id__calls__index__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capture_id: string;
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallDetail"];
                 };
             };
             /** @description Unauthorized */
@@ -6218,6 +6832,80 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    calls_v1_recipes_calls_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CallsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

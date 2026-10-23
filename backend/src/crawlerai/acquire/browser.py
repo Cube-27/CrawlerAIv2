@@ -201,7 +201,8 @@ async def fetch_browser(
 
 async def stepped(page: "Rendered") -> tuple[StepOutcome, ...]:
     """Run the policy's page steps on the ready page, each change followed by the wait for the data calls it started
-    (`called`), within the step's settle bound."""
+    (`called`), within the step's settle bound. Each step is a browser action: the calls answered after it carry its
+    number (`NetworkBody.action`, 0 the page's load)."""
     if not page.policy.steps:
         return ()
 
@@ -217,7 +218,10 @@ async def stepped(page: "Rendered") -> tuple[StepOutcome, ...]:
 
         await until(page.frame, done, within_s, deadline)
 
-    return await run_steps(page.page, page.policy.steps, step_settle, lambda: len(page.calls.in_flight))
+    def begun() -> None:
+        page.calls.actions += 1
+
+    return await run_steps(page.page, page.policy.steps, step_settle, lambda: len(page.calls.in_flight), begun)
 
 
 def markup(content: Content) -> str:
@@ -296,6 +300,7 @@ async def rendered(
     kept = False
     try:
         page = await held.context.new_page()
+        shown: Rendered | None = None
         try:
             await _presented(page, session)
             shown = await _navigate(page, url, first, policy, held.guard, run.started)
@@ -308,6 +313,8 @@ async def rendered(
                 and context_key(latest.url, run.scope, run.proxy) == key
             )
         finally:
+            if shown is not None:
+                shown.calls.cancel()
             with contextlib.suppress(PlaywrightError):
                 await page.close()
     finally:
@@ -332,7 +339,7 @@ async def _navigate(
     page: Page, url: str, first: Target, policy: FetchPolicy, guard: SocksGuard, started: float
 ) -> Rendered:
     frame = MainFrame(page, first.url)
-    calls, resources = DataCalls(), Resources()
+    calls, resources = DataCalls(mode=policy.calls), Resources()
     page.on("request", resources.on_request)
     page.on("response", resources.on_response)
     page.on("websocket", lambda _: resources.on_websocket())
@@ -387,7 +394,12 @@ async def read_state(
     body, raw_body, network = await asyncio.gather(
         _rendered(rendered.page, exchange),
         _raw_body(response),
-        json_bodies([entry for entry in rendered.calls.responses[slice(*calls)] if rendered.calls.finished(entry[0])]),
+        json_bodies(
+            [entry for entry in rendered.calls.responses[slice(*calls)] if rendered.calls.finished(entry[0])],
+            rendered.response.url,
+            policy.calls,
+            rendered.calls.early,
+        ),
     )
     if max(len(body), len(raw_body or b"")) > policy.max_decompressed_bytes:
         raise Failed("body_cap", exchange)

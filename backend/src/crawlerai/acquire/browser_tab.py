@@ -274,7 +274,9 @@ class _PatchrightTab:
         for index in range(first, count):
             # A body still arriving is left for a later read (`DataCalls.done`).
             if index not in self._bodies and self._page.calls.finished(responses[index][0]):
-                self._bodies[index] = self._within_cap(next(iter(await json_bodies([responses[index]])), None))
+                self._bodies[index] = self._within_cap(
+                    next(iter(await json_bodies([responses[index]], self._page.response.url)), None)
+                )
         found = (self._bodies.get(index) for index in range(first, count))
         return tuple(body for body in found if body is not None)
 

@@ -151,6 +151,80 @@ class Budget(BaseModel):
     llm_calls: Annotated[int, Field(ge=0, title="Llm Calls")]
 
 
+class RequestHeader(RootModel[list]):
+    root: Annotated[list, Field(max_length=2, min_length=2)]
+
+
+class ResponseHeader(RootModel[list]):
+    root: Annotated[list, Field(max_length=2, min_length=2)]
+
+
+class CallDetail(BaseModel):
+    answer: Annotated[str, Field(title="Answer")]
+    content_type: Annotated[str | None, Field(title="Content Type")] = None
+    guard_prefix: Annotated[str | None, Field(title="Guard Prefix")] = None
+    index: Annotated[int, Field(title="Index")]
+    method: Annotated[str | None, Field(title="Method")] = None
+    request_body: Annotated[str | None, Field(title="Request Body")] = None
+    request_headers: Annotated[
+        list[RequestHeader] | None, Field(title="Request Headers")
+    ] = None
+    resource_type: Annotated[str | None, Field(title="Resource Type")] = None
+    response_headers: Annotated[
+        list[ResponseHeader] | None, Field(title="Response Headers")
+    ] = None
+    same_site: Annotated[bool | None, Field(title="Same Site")] = None
+    size: Annotated[int, Field(title="Size")]
+    status: Annotated[int, Field(title="Status")]
+    step: Annotated[int | None, Field(title="Step")] = None
+    url: Annotated[str, Field(title="Url")]
+
+
+class CallSummary(BaseModel):
+    capture_id: Annotated[UUID, Field(title="Capture Id")]
+    content_type: Annotated[str | None, Field(title="Content Type")] = None
+    index: Annotated[int, Field(title="Index")]
+    resource_type: Annotated[str | None, Field(title="Resource Type")] = None
+    same_site: Annotated[bool | None, Field(title="Same Site")] = None
+    size: Annotated[int, Field(title="Size")]
+    status: Annotated[int, Field(title="Status")]
+    step: Annotated[int | None, Field(title="Step")] = None
+
+
+class CallsRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    capture_ids: Annotated[
+        list[UUID], Field(max_length=5, min_length=2, title="Capture Ids")
+    ]
+
+
+class WaitFor(RootModel[int]):
+    root: Annotated[int, Field(ge=1, le=15000, title="Wait For")]
+
+
+class WaitFor1(RootModel[str]):
+    root: Annotated[str, Field(min_length=1, title="Wait For")]
+
+
+class Outcome(Enum):
+    extracted = "extracted"
+    partial = "partial"
+    blocked = "blocked"
+    shell = "shell"
+    not_found = "not_found"
+    auth_wall = "auth_wall"
+    soft_404 = "soft_404"
+    geo_redirect = "geo_redirect"
+    redirected_to_listing = "redirected_to_listing"
+    unsupported_media = "unsupported_media"
+    geo_blocked = "geo_blocked"
+    no_match = "no_match"
+    timeout = "timeout"
+    failed = "failed"
+
+
 class Chunk(BaseModel):
     heading_path: Annotated[list[str], Field(title="Heading Path")]
     index: Annotated[int, Field(title="Index")]
@@ -431,19 +505,19 @@ class Screenshot(Enum):
     full_page = "full_page"
 
 
-class WaitFor(RootModel[int]):
-    root: Annotated[int, Field(ge=1, le=15000, title="Wait For")]
-
-
-class WaitFor1(RootModel[str]):
-    root: Annotated[str, Field(min_length=1, title="Wait For")]
-
-
 class WaitFor2(RootModel[int]):
     root: Annotated[int, Field(ge=1, le=15000, title="Wait For")]
 
 
 class WaitFor3(RootModel[str]):
+    root: Annotated[str, Field(min_length=1, title="Wait For")]
+
+
+class WaitFor4(RootModel[int]):
+    root: Annotated[int, Field(ge=1, le=15000, title="Wait For")]
+
+
+class WaitFor5(RootModel[str]):
     root: Annotated[str, Field(min_length=1, title="Wait For")]
 
 
@@ -675,7 +749,7 @@ class JsonValue(RootModel[Any]):
     root: Any
 
 
-class Outcome(Enum):
+class Outcome1(Enum):
     extracted = "extracted"
     partial = "partial"
     links_only = "links_only"
@@ -864,6 +938,11 @@ class ParamPagination(BaseModel):
     start: Annotated[int, Field(ge=0, title="Start")]
     step: Annotated[int, Field(ge=1, title="Step")]
     where: Annotated[Where, Field(title="Where")]
+
+
+class PathCount(BaseModel):
+    path: Annotated[str, Field(title="Path")]
+    samples: Annotated[int, Field(title="Samples")]
 
 
 class PressActionInput(BaseModel):
@@ -1232,7 +1311,7 @@ class Format7(Enum):
     records = "records"
 
 
-class Outcome2(Enum):
+class Outcome3(Enum):
     extracted = "extracted"
     partial = "partial"
     blocked = "blocked"
@@ -1316,7 +1395,7 @@ class Action(Enum):
     type = "type"
 
 
-class Outcome3(Enum):
+class Outcome4(Enum):
     done = "done"
     not_found = "not_found"
     timeout = "timeout"
@@ -1330,7 +1409,7 @@ class StepOutcome(BaseModel):
         extra="forbid",
     )
     action: Annotated[Action, Field(title="Action")]
-    outcome: Annotated[Outcome3, Field(title="Outcome")]
+    outcome: Annotated[Outcome4, Field(title="Outcome")]
 
 
 class StoredMap(BaseModel):
@@ -1537,6 +1616,42 @@ class AttemptRecord(BaseModel):
     steps: Annotated[list[StepOutcome], Field(title="Steps")]
 
 
+class Actions(
+    RootModel[
+        WaitActionInput
+        | ClickActionInput
+        | ScrollActionInput
+        | PressActionInput
+        | TypeActionInput
+    ]
+):
+    root: Annotated[
+        WaitActionInput
+        | ClickActionInput
+        | ScrollActionInput
+        | PressActionInput
+        | TypeActionInput,
+        Field(discriminator="type"),
+    ]
+
+
+class CaptureRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    actions: Annotated[list[Actions] | None, Field(max_length=20, title="Actions")] = (
+        None
+    )
+    cookies: Annotated[dict[str, SecretStr] | None, Field(title="Cookies")] = None
+    locale: Annotated[str | None, Field(title="Locale")] = None
+    page_kind: Annotated[PageKind, Field(title="Page Kind")]
+    proxy_pool: Annotated[str | None, Field(title="Proxy Pool")] = None
+    schema_id: Annotated[UUID, Field(title="Schema Id")]
+    timeout_s: Annotated[float | None, Field(gt=0.0, le=120.0, title="Timeout S")] = 60
+    url: Annotated[str, Field(title="Url")]
+    wait_for: Annotated[WaitFor | WaitFor1 | None, Field(title="Wait For")] = None
+
+
 class ConfigSummary(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1566,25 +1681,6 @@ class CostReport(BaseModel):
     total: LLMUsage
 
 
-class Actions(
-    RootModel[
-        WaitActionInput
-        | ClickActionInput
-        | ScrollActionInput
-        | PressActionInput
-        | TypeActionInput
-    ]
-):
-    root: Annotated[
-        WaitActionInput
-        | ClickActionInput
-        | ScrollActionInput
-        | PressActionInput
-        | TypeActionInput,
-        Field(discriminator="type"),
-    ]
-
-
 class FetchOptionsInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1598,10 +1694,10 @@ class FetchOptionsInput(BaseModel):
     proxy_pool: Annotated[str | None, Field(title="Proxy Pool")] = None
     respect_robots: Annotated[bool | None, Field(title="Respect Robots")] = False
     screenshot: Annotated[Screenshot | None, Field(title="Screenshot")] = "viewport"
-    wait_for: Annotated[WaitFor | WaitFor1 | None, Field(title="Wait For")] = None
+    wait_for: Annotated[WaitFor2 | WaitFor3 | None, Field(title="Wait For")] = None
 
 
-class Actions1(
+class Actions2(
     RootModel[
         WaitActionOutput
         | ClickActionOutput
@@ -1624,7 +1720,7 @@ class FetchOptionsOutput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    actions: Annotated[list[Actions1], Field(max_length=20, title="Actions")]
+    actions: Annotated[list[Actions2], Field(max_length=20, title="Actions")]
     cache: Annotated[Cache, Field(title="Cache")]
     cookies: Annotated[dict[str, str], Field(title="Cookies")]
     headers: Annotated[dict[str, str], Field(title="Headers")]
@@ -1633,7 +1729,7 @@ class FetchOptionsOutput(BaseModel):
     proxy_pool: Annotated[str | None, Field(title="Proxy Pool")] = None
     respect_robots: Annotated[bool, Field(title="Respect Robots")]
     screenshot: Annotated[Screenshot, Field(title="Screenshot")]
-    wait_for: Annotated[WaitFor2 | WaitFor3 | None, Field(title="Wait For")] = None
+    wait_for: Annotated[WaitFor4 | WaitFor5 | None, Field(title="Wait For")] = None
 
 
 class FetchSummary(BaseModel):
@@ -1651,6 +1747,13 @@ class FieldChange(BaseModel):
     field: Annotated[str, Field(title="Field")]
     previous: JsonValue
     value: JsonValue
+
+
+class FieldMatch(BaseModel):
+    field: Annotated[str, Field(title="Field")]
+    in_text: Annotated[int, Field(title="In Text")]
+    paths: Annotated[list[PathCount], Field(title="Paths")]
+    published: Annotated[bool, Field(title="Published")]
 
 
 class FieldSpecInput(BaseModel):
@@ -1723,7 +1826,7 @@ class JobSummary(BaseModel):
 class JsonValuesItem(BaseModel):
     fetch: FetchSummary | None = None
     metadata: PageMetadata | None = None
-    outcome: Annotated[Outcome | None, Field(title="Outcome")] = None
+    outcome: Annotated[Outcome1 | None, Field(title="Outcome")] = None
     pdf: Artifact | None = None
     records: Annotated[list[dict[str, JsonValue]], Field(title="Records")]
     screenshot: Artifact | None = None
@@ -1780,7 +1883,7 @@ class PageOutput(BaseModel):
     markdown: Annotated[str | None, Field(title="Markdown")] = None
     markdown_fit: Annotated[str | None, Field(title="Markdown Fit")] = None
     metadata: PageMetadata | None = None
-    outcome: Annotated[Outcome | None, Field(title="Outcome")] = None
+    outcome: Annotated[Outcome1 | None, Field(title="Outcome")] = None
     pdf: Artifact | None = None
     raw_html: Annotated[str | None, Field(title="Raw Html")] = None
     screenshot: Artifact | None = None
@@ -2251,6 +2354,19 @@ class Delta(BaseModel):
     kind: DeltaKind
 
 
+class Endpoint(BaseModel):
+    body_shape: Annotated[list[str] | None, Field(title="Body Shape")] = None
+    calls: Annotated[list[CallSummary], Field(title="Calls")]
+    fields: Annotated[list[FieldMatch], Field(title="Fields")]
+    has_path: Annotated[bool, Field(title="Has Path")]
+    method: Annotated[str | None, Field(title="Method")] = None
+    origin: Annotated[str, Field(title="Origin")]
+    query: Annotated[list[str], Field(title="Query")]
+    rows: Annotated[str | None, Field(title="Rows")] = None
+    samples: Annotated[list[UUID], Field(title="Samples")]
+    segments: Annotated[int, Field(title="Segments")]
+
+
 class ExtractRequestInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2513,6 +2629,21 @@ class StoredRecord(BaseModel):
     version: Annotated[int, Field(title="Version")]
 
 
+class CallList(BaseModel):
+    endpoints: Annotated[list[Endpoint], Field(title="Endpoints")]
+    samples: Annotated[list[UUID], Field(title="Samples")]
+    schema_id: Annotated[UUID, Field(title="Schema Id")]
+
+
+class CaptureResult(BaseModel):
+    attempts: Annotated[list[AttemptRecord], Field(title="Attempts")]
+    capture_id: Annotated[UUID | None, Field(title="Capture Id")] = None
+    outcome: Annotated[Outcome, Field(title="Outcome")]
+    reason: Annotated[str | None, Field(title="Reason")] = None
+    records: Annotated[list[ScrapedRecord], Field(title="Records")]
+    url: Annotated[str, Field(title="Url")]
+
+
 class CorrectedSteps(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2689,7 +2820,7 @@ class ScrapeResult(BaseModel):
     markdown: Annotated[str | None, Field(title="Markdown")] = None
     markdown_fit: Annotated[str | None, Field(title="Markdown Fit")] = None
     metadata: PageMetadata | None = None
-    outcome: Annotated[Outcome2, Field(title="Outcome")]
+    outcome: Annotated[Outcome3, Field(title="Outcome")]
     page: Annotated[dict[str, RecordField] | None, Field(title="Page")] = None
     pdf: Artifact | None = None
     raw_html: Annotated[str | None, Field(title="Raw Html")] = None

@@ -27,6 +27,7 @@ __all__ = [
     "BlockClass",
     "BrowserActions",
     "CallEndpoint",
+    "CallsMode",
     "FetchPolicy",
     "FetchResult",
     "PageStep",
@@ -132,6 +133,11 @@ class CallEndpoint(_Frozen):
         )
 
 
+# Which calls a browser capture keeps: the data calls a page's extraction reads (`data`), or every call an engineer
+# chooses a recipe's from (`all`, `acquire.browser_capture.DataCalls`).
+CallsMode = Literal["data", "all"]
+
+
 class PolicyFields[ContextModel: BaseModel](_Frozen):
     """What a fetch is asked to do, with its caller's request context as `ContextModel`: the `RequestContext` itself
     for a fetch to make (`FetchPolicy`), or its serialized form for one a capture keeps (`stored_fetch.StoredFetch`)."""
@@ -168,11 +174,16 @@ class PolicyFields[ContextModel: BaseModel](_Frozen):
     # viewport or of the whole page, and a PDF print. Either needs the browser rung (`method_hint` `browser`).
     screenshot: Literal["viewport", "full_page"] | None = None
     pdf: bool = False
+    # Browser only: the calls the capture keeps (`CallsMode`). An engineer capture (`all`) is of the page itself, so it
+    # ends on the rendered page as a file does. Left out of the stored fetch when `data`, so a capture made before it
+    # was kept reads as one.
+    calls: CallsMode = Field(default="data", exclude_if=lambda calls: calls == "data")
 
     @property
     def captures_page(self) -> bool:
-        """Whether the fetch must end on the rendered page itself, for a file the browser makes of it."""
-        return self.screenshot is not None or self.pdf
+        """Whether the fetch must end on the rendered page itself: for a file the browser makes of it, or for every call
+        it makes."""
+        return self.screenshot is not None or self.pdf or self.calls == "all"
 
 
 class FetchPolicy(PolicyFields[RequestContext]):

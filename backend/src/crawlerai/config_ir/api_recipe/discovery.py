@@ -141,10 +141,8 @@ def _scored(
     schema: SchemaDef,
     required: frozenset[str],
 ) -> _Body:
-    leaves = [Reading(path, raw) for path, raw in json_doc.scalars(document)]
     # Each leaf is normalized once per field: for equality with the published value and for the visible-type count.
-    typed = {name: normalized(leaves, spec, sample.ctx) for name, spec in schema.fields.items()}
-    hits = _field_hits(typed, document, sample, schema)
+    typed, hits = body_readings(document, sample.values, sample.ctx, schema)
     matched = required & hits.keys()
     others = [name for name in schema.fields if name not in matched]
     used = {leaf for name in matched for path in hits[name] for leaf in map_paths(path)}
@@ -153,18 +151,33 @@ def _scored(
     return _Body(request, hits, len(matched) + len(shown))
 
 
-def _field_hits(
-    typed: Mapping[str, Normalized], document: JsonValue, sample: DiscoverySample, schema: SchemaDef
+def body_readings(
+    document: JsonValue, values: Mapping[str, JsonValue], ctx: Context, schema: SchemaDef
+) -> tuple[dict[str, Normalized], dict[str, dict[str, None]]]:
+    """A body's readings of each field that normalize as its type (one scalar leaf each), and each published field's
+    map paths in it (`field_hits`)."""
+    leaves = [Reading(path, raw) for path, raw in json_doc.scalars(document)]
+    typed = {name: normalized(leaves, spec, ctx) for name, spec in schema.fields.items()}
+    return typed, field_hits(typed, document, values, ctx, schema)
+
+
+def field_hits(
+    typed: Mapping[str, Normalized],
+    document: JsonValue,
+    values: Mapping[str, JsonValue],
+    ctx: Context,
+    schema: SchemaDef,
 ) -> dict[str, dict[str, None]]:
-    """Each published field's map paths in the body; money also reads joined member pairs."""
+    """Each field published in `values`: its map paths in the body (`typed`, its readings); money also reads joined
+    member pairs."""
     money = any(spec.type is FieldType.MONEY for spec in schema.fields.values())
     pairs = list(member_pairs(document)) if money else []
     hits: dict[str, dict[str, None]] = {}
     for name, spec in schema.fields.items():
-        if name not in sample.values:
+        if name not in values:
             continue
-        joined = normalized(pairs, spec, sample.ctx) if spec.type is FieldType.MONEY else []
-        if paths := _hits(typed[name] + joined, sample.values[name], spec):
+        joined = normalized(pairs, spec, ctx) if spec.type is FieldType.MONEY else []
+        if paths := _hits(typed[name] + joined, values[name], spec):
             hits[name] = paths
     return hits
 

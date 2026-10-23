@@ -29,6 +29,8 @@ __all__ = ["Settle", "run_steps", "steps_budget_s"]
 Settle = Callable[[float], Awaitable[None]]
 # How many fetch and XMLHttpRequest calls are in flight now.
 InFlight = Callable[[], int]
+# Told before each step runs, so that the calls it starts are counted as its (`DataCalls.actions`).
+Begun = Callable[[], None]
 
 # A step that changes the page is followed by a settle of at most this long, within its own timeout.
 _SETTLE_MAX_S: Final = 3.0
@@ -57,11 +59,12 @@ def steps_budget_s(steps: Sequence[PageStep]) -> float:
 
 
 async def run_steps(
-    page: Page, steps: Sequence[PageStep], settle: Settle, in_flight: InFlight
+    page: Page, steps: Sequence[PageStep], settle: Settle, in_flight: InFlight, begun: Begun
 ) -> tuple[StepOutcome, ...]:
-    """Run `steps` in order on `page`; how each ended."""
+    """Run `steps` in order on `page`, `begun` told before each; how each ended."""
     outcomes: list[StepOutcome] = []
     for index, step in enumerate(steps):
+        begun()
         outcome = await _bounded(page, step, settle, in_flight)
         outcomes.append(StepOutcome(action=step.action, outcome=outcome))
         if outcome != "done":
