@@ -234,15 +234,18 @@ class ProxyPool:
         held.fetches_left -= 1
         return held.endpoint
 
-    def serves(self, site: str, endpoint: ProxyEndpoint) -> bool:
-        """Whether a request to `site` may still go through `endpoint`: it is available, and a sticky exit is still
-        the site's."""
+    def carries(self, site: str, endpoint: ProxyEndpoint) -> bool:
+        """Whether a request to `site` may still go through `endpoint`, as a site session's fetch does without `pick`:
+        it is available, and a sticky exit is still the site's, one of its fetches spent."""
         if not self.health.available(endpoint.configured):
             return False
         if endpoint.gateway is None:
             return True
         held = self.exits.held(site)
-        return held is not None and held.endpoint == endpoint
+        if held is None or held.endpoint != endpoint:
+            return False
+        held.fetches_left -= 1
+        return True
 
     def _configured(self, site: str) -> ProxyEndpoint:
         choices = [endpoint for endpoint in self.endpoints if self.health.available(endpoint)]

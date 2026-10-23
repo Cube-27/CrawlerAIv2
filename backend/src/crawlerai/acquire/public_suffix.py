@@ -117,7 +117,7 @@ class SuffixCookiePolicy(DefaultCookiePolicy):
 
 
 def site_of(url: str) -> str:
-    """The site of `url`'s host (`PublicSuffixes.site`), by the default list."""
+    """The site of `url`'s host (`site` above), by the default list."""
     return default_suffixes().site(urlsplit(url).hostname or "")
 
 

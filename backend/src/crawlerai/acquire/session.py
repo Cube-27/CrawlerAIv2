@@ -20,7 +20,7 @@ Public Suffix List's registrable domain), are keyed by it, and serve requests in
 most `SESSION_TTL` and `SESSION_FETCHES` fetches (`core.proxy`, as a sticky exit does), and is dropped when a fetch it
 served is `blocked`; a `blocked` browser fetch on a direct route drops the stored state too. Sessions are keyed by
 the registrable domain and the fetch's proxy pool; a live session keeps the endpoint its cookies were earned through,
-and serves only requests sent through it, while the pool still serves the site through it (`ProxyPool.serves`: a
+and serves only requests sent through it, while the pool still serves the site through it (`ProxyPool.carries`: a
 sticky exit's end ends the sessions earned through it).
 """
 

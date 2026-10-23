@@ -295,8 +295,9 @@ def test_an_exit_of_a_country_of_several_zones_declaring_none_is_logged_once_at_
     assert [record.getMessage() for record in caplog.records] == [
         "proxy pool 'us': country US has several time zones and none is declared; renders keep the machine's"
     ]
+    unnamed = ExitPlace(timezone="Nowhere/Atlantis")
     with pytest.raises(ValueError, match="IANA"):
-        check_places({}, ExitPlace(timezone="Nowhere/Atlantis"))
+        check_places({}, unnamed)
 
 
 # --- sticky exits -----------------------------------------------------------------------------------------------
@@ -320,12 +321,12 @@ def test_a_sites_sticky_exit_keys_its_profile_and_ends_with_its_ttl_or_a_block()
     now[0] = SESSION_TTL.total_seconds()
     second = pool.pick("example.test")
     assert second != first
-    assert not pool.serves("example.test", first)  # a cookie session earned through it ends with it
+    assert not pool.carries("example.test", first)  # a cookie session earned through it ends with it
 
     pool.report(second, healthy=False)  # a block through it
     third = pool.pick("example.test")
     assert third not in (first, second)
-    assert pool.serves("example.test", third)
+    assert pool.carries("example.test", third)
 
 
 def test_the_http_and_json_rungs_take_the_sites_sticky_exit(origin: Origin, proxy: StubProxy) -> None:

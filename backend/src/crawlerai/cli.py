@@ -21,7 +21,6 @@ from crawlerai.acquire.browser import fetch_browser
 from crawlerai.acquire.browser_session import open_browser
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.impersonate import rung_impersonation
-from crawlerai.acquire.locality import check_places
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.api.app import create_app
 from crawlerai.api.webhooks import poster
@@ -44,7 +43,7 @@ from crawlerai.services.fetch_options import FetchOptions, UnknownProxyPool, che
 from crawlerai.services.fetching import learning_replay
 from crawlerai.services.page_store import learning_extract
 from crawlerai.services.records import MAX_PAGE
-from crawlerai.services.runtime import load_drift_margins, load_engine_data, open_fetching
+from crawlerai.services.runtime import check_exits, load_drift_margins, load_engine_data, open_fetching
 from crawlerai.services.schedules import ScheduleListQuery, ScheduleNotFound, Submitting
 from crawlerai.services.scrape_paging import learning_render
 from crawlerai.storage import open_store
@@ -115,6 +114,7 @@ async def _schedule() -> None:
         engine_version=ENGINE_VERSION,
         impersonate=await rung_impersonation(settings, browser_rung=True),  # its `open_fetching` renders too
         pools=settings.proxy_pools,
+        direct=settings.direct,
     )
     # A schedule's run submits its job with the schema its creation resolved, so it drafts nothing: no LLM client.
     async with open_fetching(settings) as fetching:
@@ -131,7 +131,7 @@ async def _fetch(
     settings = AcquireSettings()
     options = options or FetchOptions()
     policy = fetch_policy(options, None)
-    check_places(settings.proxy_pools, settings.direct)
+    check_exits(settings.proxy_pools, settings.direct)
     if options.in_browser:
         async with open_browser(settings.browser_profiles, settings.direct) as session:
             result = await fetch_browser(

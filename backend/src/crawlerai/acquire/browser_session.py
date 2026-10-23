@@ -298,7 +298,7 @@ class _Profiles:
 class BrowserSession:
     """A Playwright driver, shared by the fetches of one worker process, the identity its profiles present (`Identity`),
     the site profiles it keeps open, and the place this machine's direct fetches go out from
-    (`CRAWLERAI_EGRESS_*`, `AcquireSettings.direct`)."""
+    (`CRAWLERAI_EGRESS_*`, the settings' `direct`)."""
 
     playwright: Playwright
     identity: Identity

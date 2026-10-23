@@ -74,7 +74,7 @@ def check_places(pools: Mapping[str, ProxyPool], direct: ExitPlace) -> None:
     for name, place in places.items():
         if place.timezone is not None and place.timezone not in available_timezones():
             raise ValueError(f"{name}: the timezone is not a zone of the IANA tz database")
-        if place.locale is not None and _parsed(place.locale) is None:
+        if place.locale is not None and not _well_formed(place.locale):
             raise ValueError(f"{name}: the locale is not a BCP 47 language tag")
         if place.timezone is None and place.country is not None and _zone(place.country) is None:
             log.warning(
@@ -82,6 +82,14 @@ def check_places(pools: Mapping[str, ProxyPool], direct: ExitPlace) -> None:
                 name,
                 place.country,
             )
+
+
+def _well_formed(tag: str) -> bool:
+    """A BCP 47 tag `_parsed` reads, every subtag of it one to eight ASCII letters or digits (RFC 5646 §2.1)."""
+    subtags = tag.replace("_", "-").split("-")
+    return _parsed(tag) is not None and all(
+        1 <= len(part) <= 8 and part.isascii() and part.isalnum() for part in subtags
+    )
 
 
 def _parsed(hint: str | None) -> tuple[str, str | None, str | None] | None:
