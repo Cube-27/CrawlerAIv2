@@ -46,9 +46,11 @@ from crawlerai.storage.capture_bundle import HeaderList
 
 __all__ = [
     "BrowserSession",
+    "ContextKey",
     "Failed",
     "HeadlessIdentity",
     "Identity",
+    "OpenProfile",
     "browser_identity",
     "context_cookies",
     "context_key",
@@ -166,10 +168,12 @@ class Failed(Exception):
 
 
 @dataclass
-class _Context:
+class OpenProfile:
     """A site profile's browser (a persistent context), the guard every connection it opens goes through and the
     connector that guard checks with, the bytes the guard has relayed, the locale it was opened with, and what closes
-    them and releases the profile. `gone` once its browser closed unasked (it crashed or was killed)."""
+    them and releases the profile. `gone` once its browser closed unasked (it crashed or was killed). `warm` is the tab
+    a recipe's calls are sent from (`acquire.browser_send`), opened on its first call and kept while the profile is
+    open: it closes with the browser."""
 
     context: BrowserContext
     guard: SocksGuard
@@ -180,6 +184,7 @@ class _Context:
     profile: Profile
     closing: bool = False
     gone: bool = False
+    warm: Page | None = None
 
     async def close(self) -> None:
         self.closing = True
@@ -208,12 +213,12 @@ class _Profiles:
     profile is a temporary one kept idle like the rest (`_exit_bound`)."""
 
     root: Path | None = None
-    idle: OrderedDict[ContextKey, _Context] = field(default_factory=OrderedDict)
+    idle: OrderedDict[ContextKey, OpenProfile] = field(default_factory=OrderedDict)
     busy: int = 0
     _timers: dict[ContextKey, asyncio.TimerHandle] = field(default_factory=dict)
     _closing: set[asyncio.Task[None]] = field(default_factory=set)
 
-    async def take(self, key: ContextKey, locale: Locality, connector: SafeConnector) -> _Context | None:
+    async def take(self, key: ContextKey, locale: Locality, connector: SafeConnector) -> OpenProfile | None:
         """The idle profile of `key`, now rendering; None when there is none, or it has another locale or guard
         connector (then it is closed)."""
         self._stop_timer(key)
@@ -233,7 +238,7 @@ class _Profiles:
             await oldest.close()
         self.busy += 1
 
-    async def keep(self, key: ContextKey, context: _Context) -> None:
+    async def keep(self, key: ContextKey, context: OpenProfile) -> None:
         """`context` stops rendering and is kept idle for the site's next page; a temporary profile opened because the
         site's own was held, or one whose browser is gone, is closed instead, so it never stands in for the site's
         profile."""
@@ -261,7 +266,7 @@ class _Profiles:
         held.profile.discarded = True
         await held.close()
 
-    async def release(self, context: _Context) -> None:
+    async def release(self, context: OpenProfile) -> None:
         """`context` stops rendering and closes."""
         self.busy -= 1
         await context.close()
@@ -276,13 +281,13 @@ class _Profiles:
         if self._closing:
             await asyncio.gather(*self._closing, return_exceptions=True)
 
-    def _expire(self, key: ContextKey, context: _Context) -> None:
+    def _expire(self, key: ContextKey, context: OpenProfile) -> None:
         self._timers.pop(key, None)
         if self.idle.get(key) is context:
             del self.idle[key]
             self._close_soon(context)
 
-    def forget(self, context: _Context) -> None:
+    def forget(self, context: OpenProfile) -> None:
         """`context`'s browser closed unasked: no page may take it again. An idle one is closed now, so its guard
         stops and its profile is released; a rendering one is released when its page ends (`keep`)."""
         context.gone = True
@@ -292,7 +297,7 @@ class _Profiles:
                 self._stop_timer(key)
                 self._close_soon(context)
 
-    def _close_soon(self, context: _Context) -> None:
+    def _close_soon(self, context: OpenProfile) -> None:
         """Close `context` from a callback (no await there); `aclose` waits for it."""
         task = asyncio.get_running_loop().create_task(context.close())
         self._closing.add(task)
@@ -511,7 +516,7 @@ async def open_context(
     scope: SessionScope | None,
     key: ContextKey | None,
     locale: Locality,
-) -> _Context:
+) -> OpenProfile:
     """The site profile of `key` (a temporary one without a key, `acquire.browser_profiles`), launched as a persistent
     context behind a guard of its own, in the session's mode (`_mode_options`: headless, on the screen of the page's
     site, pool and endpoint even in a temporary profile), holding the caller's cookies, or, in a temporary profile of
@@ -537,7 +542,7 @@ async def open_context(
             **_mode_options(session, site),
             **locale,
         )
-        held = _Context(context, guard, connector, traffic, stack, locale, profile)
+        held = OpenProfile(context, guard, connector, traffic, stack, locale, profile)
         stack.push_async_callback(context.close)
         context.on("close", lambda _: _closed(session, held))
         await present_workers(context, session)
@@ -555,7 +560,7 @@ async def open_context(
     return held
 
 
-def _closed(session: BrowserSession, held: _Context) -> None:
+def _closed(session: BrowserSession, held: OpenProfile) -> None:
     """A profile's browser closed: unasked, it crashed or was killed, and only that profile is dropped."""
     if not held.closing:
         session.profiles.forget(held)

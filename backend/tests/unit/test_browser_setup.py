@@ -267,18 +267,21 @@ def test_inv44_no_source_file_changes_the_browser_identity() -> None:
     ]
 
     # The browser's user agent switch, and Chrome's user agent override with the browser's own client hints on tabs,
-    # frames and workers (`present`, `present_workers`).
+    # frames and workers (`present`, `present_workers`); and a custom recipe's call sent by the browser, through the
+    # warm page's own `fetch` in its main world, so the page's hooks on it apply (`acquire.browser_send`).
     allowed = ("user-agent=", '"Emulation.setUserAgentOverride"', "new_browser_cdp_session", "new_cdp_session(target)")
-    assert offenders == sorted((f"acquire/browser_session.py:{_line_of(line)}" for line in allowed), key=_number)
+    session = sorted((f"acquire/browser_session.py:{_line_of(line)}" for line in allowed), key=_number)
+    sent = f"acquire/browser_send.py:{_line_of('isolated_context=False', 'browser_send.py')}"
+    assert offenders == [sent, *session]  # in path order
 
 
 def _number(offender: str) -> int:
     return int(offender.rsplit(":", 1)[1])
 
 
-def _line_of(text: str) -> int:
-    """The one line of the browser session's source holding `text`."""
-    lines = (_SRC / "acquire" / "browser_session.py").read_text(encoding="utf-8").splitlines()
+def _line_of(text: str, module: str = "browser_session.py") -> int:
+    """The one line of the acquire `module`'s source holding `text`."""
+    lines = (_SRC / "acquire" / module).read_text(encoding="utf-8").splitlines()
     (number,) = (number for number, line in enumerate(lines, 1) if text in line)
     return number
 

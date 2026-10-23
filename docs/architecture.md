@@ -37,7 +37,11 @@ handler of the job kind (`worker/handlers/`); `scheduler/loop.py` enqueues sched
    reads it, the main call (GET/POST, JSON or form body, JSON or HTML answer), then extra calls bound from the page
    URL, the pattern, the warm-up or main answer. Its extra answers and page join the `api` capture as marked network
    bodies; its attempts carry the config id (`AttemptRecord.recipe`) and come first when it does not serve and the URL
-   goes on down the ladder; its calls also wait for its `rate_ms` (`services/fetching.py` `RecipePaces`).
+   goes on down the ladder; its calls also wait for its `rate_ms` (`services/fetching.py` `RecipePaces`). A recipe
+   with `sent_by = browser` sends its calls from a warm page of the site's own profile (`acquire/browser_send.py`,
+   `Rungs.in_page`): one tab opened on first use at the warm-up URL or the page, kept while the profile is open, each
+   call a `fetch()` in its main world with the page's cookies and hooks, holding a shared-browser slot like a render;
+   nothing is rendered per URL, and the HTML page it reads still comes over HTTP.
 2. **Content** (`content/`). Parse once (`content/page.py`), then markdown/html/links/metadata/chunks for the content formats.
 3. **Collect** (`collect/`). `collect/run.py` runs every collector over the one parse: `jsonld`, `microdata`, `og`, `dom`,
    `js_state`, `xhr`, `platform_json`, `adapter`, `config`; listing rows via `collect/items/`, their precedence picked once

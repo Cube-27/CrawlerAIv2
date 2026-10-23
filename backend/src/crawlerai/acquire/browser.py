@@ -42,7 +42,9 @@ from crawlerai.acquire.browser_capture import (
 from crawlerai.acquire.browser_scroll import SCROLL_MAX_S, scroll_back, scroll_through, watch
 from crawlerai.acquire.browser_session import (
     BrowserSession,
+    ContextKey,
     Failed,
+    OpenProfile,
     context_cookies,
     context_key,
     context_locality,
@@ -60,10 +62,24 @@ from crawlerai.acquire.session import CookieExport, SessionCookie, SessionScope
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult, StepOutcome
+from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint, proxy_pool
 from crawlerai.storage.capture_bundle import decode_html
 
-__all__ = ["Render", "Rendered", "classified", "fetch_browser", "markup", "read_state", "rendered", "stepped"]
+__all__ = [
+    "HeldProfile",
+    "Render",
+    "Rendered",
+    "classified",
+    "fetch_browser",
+    "markup",
+    "navigation_error",
+    "presented",
+    "read_state",
+    "rendered",
+    "site_profile",
+    "stepped",
+]
 
 # RFC 9110 §15.5, §15.6: a 4xx or 5xx document; the profile that rendered one is not reused (`_Profiles`).
 _ERROR_STATUS = 400
@@ -130,10 +146,11 @@ class Render:
         if exchange is not None:
             self.exchange = exchange
 
-    def result(self) -> FetchResult:
+    def result(self, method: CaptureMethod = "browser") -> FetchResult:
+        """The render's result; `method` is `api` for a call sent from a warm page (`acquire.browser_send`)."""
         return fetch_result(
             url=self.url,
-            method="browser",
+            method=method,
             policy=self.policy,
             engine_version=self.engine_version,
             fetched_at=self.fetched_at,
@@ -268,19 +285,25 @@ class Rendered:
     temporary: bool = False  # its profile is a temporary one (`acquire.browser_profiles`)
 
 
+@dataclass
+class HeldProfile:
+    """A site profile taken for one fetch (`site_profile`): its browser, the guard's check of the URL it was taken
+    for, its key (None: a temporary profile), and whether it is kept for the site's next fetch (`keep`), else closed."""
+
+    context: OpenProfile
+    first: Target
+    key: ContextKey | None
+    keep: bool = False
+
+
 @asynccontextmanager
-async def rendered(
-    url: str,
-    policy: FetchPolicy,
-    session: BrowserSession,
-    connector: SafeConnector,
-    run: Render,
-) -> AsyncIterator[Rendered]:
-    """The page at `url`, once it is ready to read (`settle`), in a new tab of the site's profile: the open one its
-    last page left (`_Profiles`), else the profile opened (a temporary one starting with the cookies of `run.scope`),
-    through `run`'s proxy endpoint. The tab closes when the block ends, and the profile's browser with it unless it is
-    kept for the site's next page; the tab's wall time is `run.timings["context"]`, and the bytes the guard relays for
-    the page are added to `run.traffic`. Raises `Failed`."""
+async def site_profile(
+    url: str, policy: FetchPolicy, session: BrowserSession, connector: SafeConnector, run: Render
+) -> AsyncIterator[HeldProfile]:
+    """The site's profile for a fetch of `url`, taken while the block runs: the open one its last fetch left
+    (`_Profiles`), else the profile opened (a temporary one starting with the cookies of `run.scope`), through `run`'s
+    proxy endpoint. Kept when the block sets `keep`, else closed; the profile's wall time is `run.timings["context"]`,
+    and the bytes the guard relays meanwhile are added to `run.traffic`. Raises `Failed`."""
     try:
         first = await connector.check(url)  # also refuses `file:`, `data:` and other non-web schemes
     except SsrfRejected as e:
@@ -297,36 +320,47 @@ async def rendered(
             raise
     relayed = held.traffic.bytes
     opened = time.monotonic()
-    kept = False
+    taken = HeldProfile(held, first, key)
     try:
-        page = await held.context.new_page()
-        shown: Rendered | None = None
-        try:
-            await _presented(page, session)
-            shown = await _navigate(page, url, first, policy, held.guard, run.started)
-            shown.temporary = held.profile.lock is None
-            yield shown
-            latest = shown.frame.latest or shown.response
-            kept = (
-                key is not None
-                and latest.status < _ERROR_STATUS
-                and context_key(latest.url, run.scope, run.proxy) == key
-            )
-        finally:
-            if shown is not None:
-                shown.calls.cancel()
-            with contextlib.suppress(PlaywrightError):
-                await page.close()
+        yield taken
     finally:
         run.traffic.bytes += held.traffic.bytes - relayed
         run.timings["context"] = round((time.monotonic() - opened) * 1000)
-        if kept and key is not None:
+        if taken.keep and key is not None:
             await session.profiles.keep(key, held)
         else:
             await session.profiles.release(held)
 
 
-async def _presented(page: Page, session: BrowserSession) -> None:
+@asynccontextmanager
+async def rendered(
+    url: str,
+    policy: FetchPolicy,
+    session: BrowserSession,
+    connector: SafeConnector,
+    run: Render,
+) -> AsyncIterator[Rendered]:
+    """The page at `url`, once it is ready to read (`settle`), in a new tab of the site's profile (`site_profile`). The
+    tab closes when the block ends, and the profile's browser with it unless it is kept for the site's next page: when
+    the page ended on the site with no error status. Raises `Failed`."""
+    async with site_profile(url, policy, session, connector, run) as held:
+        page = await held.context.context.new_page()
+        shown: Rendered | None = None
+        try:
+            await presented(page, session)
+            shown = await _navigate(page, url, held.first, policy, held.context.guard, run.started)
+            shown.temporary = held.context.profile.lock is None
+            yield shown
+            latest = shown.frame.latest or shown.response
+            held.keep = latest.status < _ERROR_STATUS and context_key(latest.url, run.scope, run.proxy) == held.key
+        finally:
+            if shown is not None:
+                shown.calls.cancel()
+            with contextlib.suppress(PlaywrightError):
+                await page.close()
+
+
+async def presented(page: Page, session: BrowserSession) -> None:
     """The browser's identity set on the new tab before it navigates (`present`); a tab that cannot take it is not
     rendered."""
     try:
@@ -359,7 +393,7 @@ async def _navigate(
             url, wait_until="domcontentloaded", timeout=ms_until(started + policy.browser_timeout_s)
         )
     except PlaywrightError as e:
-        raise Failed(_navigation_error(e, guard.rejection_for(frame.last_hop)), None) from e
+        raise Failed(navigation_error(e, guard.rejection_for(frame.last_hop)), None) from e
     if response is None:  # only a same-document navigation has none, and a new page has no document yet
         raise Failed("no_response", None)
     # A page that never becomes ready is read as it is when the wait ends.
@@ -432,7 +466,7 @@ async def _wire_size(response: Response, exchange: Exchange) -> int:
         raise Failed("network_error", exchange) from e
 
 
-def _navigation_error(error: PlaywrightError, rejected: RejectReason | None) -> str:
+def navigation_error(error: PlaywrightError, rejected: RejectReason | None) -> str:
     if isinstance(error, PlaywrightTimeout):
         return "timeout"
     if rejected is not None:

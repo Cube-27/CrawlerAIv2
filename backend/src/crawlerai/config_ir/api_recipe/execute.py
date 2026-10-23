@@ -54,7 +54,7 @@ from crawlerai.config_ir.api_recipe.binding import (
 from crawlerai.config_ir.api_recipe.model import PLACEHOLDER, ApiRecipe
 from crawlerai.config_ir.api_recipe.pagination import first_request, next_request
 from crawlerai.config_ir.api_recipe.replay import ANY_TYPE, request_from
-from crawlerai.config_ir.model import WarmUp
+from crawlerai.config_ir.model import SentBy, WarmUp
 from crawlerai.config_ir.url_pattern import match, most_specific
 from crawlerai.content.page import ParsedPage
 from crawlerai.core import json_text
@@ -77,8 +77,9 @@ def recipe_collector(recipe: ApiRecipe, recipe_id: str) -> ApiCollector:
 @dataclass(frozen=True, slots=True)
 class Custom:
     """What a custom recipe serves beyond its main call (module docstring): its config id (`recipe_id`), its URL
-    patterns, its extra calls by name, its warm-up, whether a field is read from the HTTP page (`page_fields`), and
-    the least interval between its requests, in milliseconds (`rate_ms`)."""
+    patterns, its extra calls by name, its warm-up, whether a field is read from the HTTP page (`page_fields`), the
+    least interval between its requests, in milliseconds (`rate_ms`), and what sends its calls (`sent_by`: the JSON
+    rung, or the browser from the site's warm page, `acquire.browser_send`)."""
 
     recipe_id: str
     patterns: tuple[str, ...]
@@ -86,6 +87,7 @@ class Custom:
     warm_up: WarmUp | None = None
     page_fields: bool = False
     rate_ms: int | None = None
+    sent_by: SentBy = "http"
 
     @property
     def page_warm_up(self) -> bool:
@@ -97,6 +99,19 @@ class Custom:
         JSON documents."""
         reads = main.requires_page_fetch or any(call.requires_page_fetch for call in self.calls.values())
         return self.page_warm_up or self.page_fields or reads
+
+    def warm_url(self, url: str) -> str:
+        """The URL the site's warm page opens at for the page at `url` (`sent_by = browser`): the fixed warm-up's, when
+        the pattern binds each of its parameters, else the page itself."""
+        return self.warm_up_url(self.pattern_params(url)) or url
+
+    def warm_up_url(self, params: Mapping[str, str]) -> str | None:
+        """The fixed warm-up's URL with the pattern's `params`; None without one, or when they leave a placeholder of
+        it unbound."""
+        warm_up = None if self.warm_up is None else self.warm_up.url
+        if warm_up is None or not set(PLACEHOLDER.findall(warm_up)) <= set(params):
+            return None
+        return render_url(warm_up, params)
 
     def pattern_params(self, url: str) -> dict[str, str]:
         """The parameters the most specific of the patterns binds from `url` (none when no pattern matches it)."""
@@ -307,12 +322,12 @@ class RecipeRung:
         """The answer of a custom recipe's warm-up at a fixed URL, sent as the page's script would send it and read
         whatever it is (raw); None without one (the page itself is fetched as the HTML page). A URL whose parameters
         the pattern did not bind is not sent: an `error` result."""
-        warm_up = None if self.custom is None else self.custom.warm_up
-        if warm_up is None or warm_up.url is None:
+        custom = self.custom
+        if custom is None or custom.warm_up is None or custom.warm_up.url is None:
             return None
-        if not set(PLACEHOLDER.findall(warm_up.url)) <= set(served.pattern):
+        target = custom.warm_up_url(served.pattern)
+        if target is None:
             return self._unserved(url, policy, "unbound_parameter")
-        target = render_url(warm_up.url, served.pattern)
         request = JsonRequest(target, url, headers=(("Accept", ANY_TYPE),), raw=True)
         return await _in(jar, self.fetch_json(request, policy))
 

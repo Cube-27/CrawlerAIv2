@@ -20,7 +20,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from crawlerai.acquire.challenge import CHALLENGED, challenge_label
 from crawlerai.acquire.classify import classify
-from crawlerai.acquire.curl_client import Hop, Transport, Wire, send
+from crawlerai.acquire.curl_client import Hop, Transport, send
 from crawlerai.acquire.impersonate import Impersonation
 from crawlerai.acquire.locality import exit_place, language_headers
 from crawlerai.acquire.outcome import Content, Sending
@@ -32,7 +32,7 @@ from crawlerai.core import json_text
 from crawlerai.core.proxy import UNDECLARED, ExitPlace, ProxyPool
 from crawlerai.storage.capture_bundle import HeaderList, decode_html
 
-__all__ = ["ACCEPT", "JsonFetcher", "JsonRequest", "fetch_json"]
+__all__ = ["ACCEPT", "JsonFetcher", "JsonRequest", "answer_class", "answer_label", "fetch_json"]
 
 # RFC 8259 §11: the JSON media type.
 ACCEPT = "application/json"
@@ -117,10 +117,10 @@ async def fetch_json(
     block_class: BlockClass = "error"
     body = b""
     if error is None and last is not None:
-        block_class, error = await asyncio.to_thread(_outcome, last.status, last.body, request.raw)
+        block_class, error = await asyncio.to_thread(answer_class, last.status, last.body, request.raw)
         body = last.body
         if block_class in CHALLENGED:
-            challenge = await asyncio.to_thread(_label, last, request.url)
+            challenge = await asyncio.to_thread(answer_label, last.status, last.response_headers, body, request.url)
     return sending.finish(
         exchange=None if last is None else last.exchange,
         content=Content(body=body),
@@ -131,14 +131,15 @@ async def fetch_json(
     )
 
 
-def _label(last: Wire, url: str) -> str | None:
-    # A refused API answer is labelled by its markup, decoded as a page's is (`decode_html`).
-    return challenge_label(
-        last.status, last.response_headers, decode_html(last.body, last.response_headers, "api"), url
-    )
+def answer_label(status: int, headers: HeaderList, body: bytes, url: str) -> str | None:
+    """The challenge label of a refused answer to a request to `url`, read from its markup, decoded as a page's is
+    (`decode_html`)."""
+    return challenge_label(status, headers, decode_html(body, headers, "api"), url)
 
 
-def _outcome(status: int, body: bytes, raw: bool) -> tuple[BlockClass, str | None]:
+def answer_class(status: int, body: bytes, raw: bool) -> tuple[BlockClass, str | None]:
+    """The block class of an answer, and its error: a 2xx answer is `ok` when it is JSON (RFC 8259), or whatever its
+    body for a `raw` request; any other status follows the status rules."""
     if 200 <= status < 300:
         if raw:
             return "ok", None
