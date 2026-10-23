@@ -6,7 +6,7 @@ workers may poll at once: `run_learn_job` starts a job in one process only. An e
 gone) is logged, and the learner polls again.
 
 A run makes role A calls of minutes each, so a stopping worker does not wait for it: the run is cancelled, and ends
-as a failed run (`learning.SHUTDOWN`); the state learns again as after any failed run.
+as a failed run (`learn_job.SHUTDOWN`); the state learns again as after any failed run.
 """
 
 import asyncio
@@ -19,9 +19,8 @@ from typing import Any, Final
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.api_recipe.replay import Render, Replays
-from crawlerai.config_ir.learning import next_learn_job, run_learn_job
-from crawlerai.config_ir.locate import Extract
+from crawlerai.config_ir.learn_job import next_learn_job, run_learn_job
+from crawlerai.config_ir.learning import Hooks
 from crawlerai.llm.client import LLMClient
 from crawlerai.storage.base import ObjectStore
 
@@ -39,13 +38,11 @@ async def run_learner(
     *,
     vocabulary: Vocabulary,
     max_chars: int,
-    replay: Replays | None,
-    render: Render | None = None,
-    extract: Extract | None = None,
+    hooks: Hooks,
 ) -> None:
     """Run queued `learn` jobs until `stop` is set, which cancels the run in progress. `max_chars` is role A's HTML
-    limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`); `replay` sends the runs' recipe replays, `render`
-    their browser renders, and `extract` extracts a locate run's renders."""
+    limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`); `hooks` send the runs' recipe replays and browser renders,
+    and extract a locate run's renders."""
     while not stop.is_set():
         try:
             async with engine.connect() as conn:
@@ -58,9 +55,7 @@ async def run_learner(
                     job_id,
                     vocabulary=vocabulary,
                     max_chars=max_chars,
-                    replay=replay,
-                    render=render,
-                    extract=extract,
+                    hooks=hooks,
                 )
                 await _until_stopped(run, stop)
                 continue

@@ -25,6 +25,7 @@ from crawlerai.acquire.session import SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.api.app import create_app
 from crawlerai.api.webhooks import poster
+from crawlerai.config_ir.learning import Hooks
 from crawlerai.core.data import fetch_data
 from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.event_loop import quiet_peer_resets
@@ -98,9 +99,11 @@ async def _work() -> None:
                     stop,
                     vocabulary=data.vocabulary,
                     max_chars=settings.llm_a_max_chars,
-                    replay=learning_replay(engine, fetching),
-                    render=learning_render(engine, fetching),
-                    extract=learning_extract(data, llm),
+                    hooks=Hooks(
+                        learning_replay(engine, fetching),
+                        learning_render(engine, fetching),
+                        learning_extract(data, llm),
+                    ),
                 )
                 work.append(learner)
             await asyncio.gather(*work)

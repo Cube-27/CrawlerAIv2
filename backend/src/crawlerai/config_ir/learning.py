@@ -1,36 +1,30 @@
-"""The learning run: what a `learn` job does, from a state's stored pages to an active config
-or a failed run.
+"""The learning pipeline: from a state's stored pages to a validated config, without a database.
 
 The sample is the stored pages with the most published required values, the rest are held out (`split`). Induction
 proposes selectors without an LLM, role A synthesizes the fields it left, and the config is validated on the held-out
-pages and activated (or left `pending_approval`), with an API recipe when one is learned and validated. A run whose
-surface locates also renders the newest stored pages and writes the fields it locates (`_located`). A run takes two
-transactions, one to start the job and one to end it; none is open while an LLM is called or a recipe replayed.
+pages, with an API recipe when one is learned and validated. A `Locate` request also renders the surface's newest
+stored pages and adds the fields it locates (`_located`). What a `learn` job does around this, from starting the job to
+activating the config, is `learn_job`.
 """
 
 import asyncio
 import logging
 from collections.abc import Mapping, Sequence
-from contextlib import suppress
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from functools import partial
-from typing import Any, Final
+from typing import Final
 
-from pydantic import JsonValue, SecretStr, ValidationError
-from sqlalchemy import select
+from pydantic import JsonValue
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.memory import remembered
 from crawlerai.acquire.types import RequestContext
 from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.absent import ABSENT, absent_fields
-from crawlerai.config_ir.activation import activate, store_pending
 from crawlerai.config_ir.api_recipe.learn import learn_recipe
 from crawlerai.config_ir.api_recipe.replay import Render, Replays
 from crawlerai.config_ir.api_recipe.validate import RecipeValidated, attach, refused
-from crawlerai.config_ir.held_out import StoredPage, load_pages
+from crawlerai.config_ir.held_out import StoredPage
 from crawlerai.config_ir.induction import Induction, SamplePage, induce, page_level
 from crawlerai.config_ir.listing_induction import ListingInduction, induce_listing, row_fields
 from crawlerai.config_ir.locate import (
@@ -44,229 +38,80 @@ from crawlerai.config_ir.locate import (
     sampled,
 )
 from crawlerai.config_ir.model import NEXT_PAGE_FIELD, ExtractionConfigIR, Fetch, Provenance, SchemaRef
-from crawlerai.config_ir.progressive import (
-    LEARN_AFTER_PAGES,
-    LocateRequest,
-    NotLearning,
-    StateKey,
-    learning_failed,
-    lock_state,
-)
 from crawlerai.config_ir.synthesis import synthesize
-from crawlerai.config_ir.validation import Facts, HeldOutPage, Validated, ValidationReport, validate, with_unlearned
+from crawlerai.config_ir.validation import Facts, HeldOutPage, Validated, validate, with_unlearned
 from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.core.redaction import REDACTED
-from crawlerai.db.jobs import JOB_TRANSITIONS, lock_job, record_event, transition_job
-from crawlerai.db.models import (
-    ConfigOrigin,
-    ExtractionConfig,
-    ExtractionConfigId,
-    FetchMethod,
-    Job,
-    JobId,
-    JobStatus,
-    ProgressiveState,
-    Project,
-    Site,
-)
-from crawlerai.db.queue import stuck_running_jobs
+from crawlerai.db.models import ConfigOrigin, FetchMethod, JobId
 from crawlerai.llm.client import LLMClient, LLMFailure
-from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef, document_digest
-from crawlerai.storage.base import ObjectStore
 
 log = logging.getLogger(__name__)
 
 # Of the 8 pages a run reads, five are the learning sample and the rest are held out.
 SAMPLE_PAGES: Final = 5
-LEARNING_STARTED: Final = "learning_started"
-LEARNING_FINISHED: Final = "learning_finished"
-# The reason a run ends with when its schema was edited while it ran.
-SCHEMA_EDITED: Final = "schema_edited"
-# A run makes a few role A calls, each at most `llm.client.TIMEOUT_S["strong"]` per provider, plus a retry; a run still
-# `running` an hour after it started has lost its process.
-LEARN_RUN_TIMEOUT: Final = timedelta(hours=1)
-# How many expired runs one scheduler turn ends; a full batch runs again at once (`scheduler.loop`).
-EXPIRE_BATCH: Final = 100
-EXPIRED: Final = "expired"
-# The reason a completed run reports when its config waits for approval.
-PENDING: Final = "pending_approval"
-# The reason of a run cancelled because its worker stops (`run_learner`).
-SHUTDOWN: Final = "shutdown"
+# A validation report reason stays short: it is a table cell in the config view, not a log.
+REASON_CHARS: Final = 200
 
 
 @dataclass(frozen=True, slots=True)
-class Learned:
-    """How a run ended: the config it activated, or why it activated none."""
+class Target:
+    """What a run learns a config for: the schema, the site's host and fetch method, and the job role A is charged
+    to."""
 
-    config_id: ExtractionConfigId | None
-    reason: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class _Run:
-    """A started run: its job and state, the schema and site it learns, the config the state served when it
-    started, and the pages it reads."""
-
-    job_id: JobId
-    key: StateKey
     schema: SchemaDef
     host: str
     fetch: FetchMethod
-    serving: ExtractionConfigId | None
-    pages: Sequence[StoredPage] = ()
-    # The locate run it is too (module docstring), the surface's stored pages it samples, the config the surface
-    # serves, and the starting job's context.
-    locate: LocateRequest | None = None
-    surface: Sequence[StoredPage] = ()
-    serving_ir: ExtractionConfigIR | None = None
-    context: RequestContext | None = None
+    job_id: JobId
 
 
-async def next_learn_job(conn: AsyncConnection) -> JobId | None:
-    """The oldest queued `learn` job, if any."""
-    query = select(Job.id).where(Job.kind == "learn", Job.status == "queued").order_by(Job.id).limit(1)
-    job_id: JobId | None = (await conn.execute(query)).scalar_one_or_none()
-    return job_id
+@dataclass(frozen=True, slots=True)
+class Learn:
+    """A request to learn a config for `target` from the state's stored `pages`, most recent first."""
+
+    target: Target
+    pages: Sequence[StoredPage]
 
 
-async def run_learn_job(
-    engine: AsyncEngine,
-    store: ObjectStore,
-    client: LLMClient,
-    job_id: JobId,
-    *,
-    vocabulary: Vocabulary,
-    max_chars: int,
-    replay: Replays | None,
-    render: Render | None = None,
-    extract: Extract | None = None,
-) -> Learned | None:
-    """Run the `learn` job `job_id` to its end and return how it ended; None when it is not queued (another process
-    took it). `max_chars` is role A's HTML limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`); without `replay`, the run
-    learns no API recipe, with it, its recipe replays count as its usage; `render` renders the
-    pages whose captures hold no calls to learn a recipe from, and a locate run's samples, which `extract` extracts
-    (without both, nothing is located)."""
-    try:
-        async with engine.begin() as conn:
-            run = await _start(conn, job_id)
-    except Exception:  # a job that cannot start ends failed, or every poll would pick it again
-        log.exception("learn job %s could not start", job_id)
-        async with engine.begin() as conn:
-            return await _abandon(conn, job_id, "error")
-    if not isinstance(run, _Run):
-        return run
-    try:
-        # The job is running and its row unlocked, so the bundle reads hold no lock anyone waits on.
-        async with engine.connect() as conn:
-            pages = await load_pages(conn, store, run.key.site_id, run.schema, limit=LEARN_AFTER_PAGES)
-            surface = pages
-            # A listing's pages that listed nothing are the surface's too: a locate run renders them.
-            if run.locate is not None and run.schema.page_kind == "listing":
-                surface = await load_pages(
-                    conn, store, run.key.site_id, run.schema, limit=LEARN_AFTER_PAGES, listed_nothing=True
-                )
-        hooks = _Hooks(replay, render, extract)
-        run = replace(run, pages=pages, surface=surface)
-        validated = await _learned(client, run, vocabulary, max_chars, hooks)
-        async with engine.begin() as conn:
-            return await _finish(conn, run, validated)
-    except LLMFailure as e:
-        async with engine.begin() as conn:
-            return await _fail(conn, run, e.code)
-    except asyncio.CancelledError:  # the worker stops: the run ends as one that cannot finish, then the cancel goes on
-        async with engine.begin() as conn:
-            await _abandon(conn, job_id, SHUTDOWN)
-        raise
-    except Exception:  # §4.8: a run that cannot finish leaves the state as a failed run would, never `learning`
-        log.exception("learn job %s failed", job_id)
-        async with engine.begin() as conn:
-            return await _fail(conn, run, "error")
+@dataclass(frozen=True, slots=True)
+class Locate:
+    """A request to learn as `learn` does, then locate `fields` (none named: the page-level fields the config does not
+    read, and a listing's row fields when it reads no rows) on the surface's rendered pages. `surface` are the
+    surface's stored pages, `serving` the config it serves, and `context` the request context of the job that asked."""
+
+    learn: Learn
+    fields: Sequence[str]
+    surface: Sequence[StoredPage]
+    serving: ExtractionConfigIR | None
+    context: RequestContext | None
 
 
-async def _start(conn: AsyncConnection, job_id: JobId) -> _Run | Learned | None:
-    job = (
-        await conn.execute(
-            select(Job.status, Job.request, Job.cancel_requested)
-            .where(Job.id == job_id, Job.kind == "learn")
-            # One process starts the job: a second waits here, then sees it no longer queued.
-            .with_for_update()
-        )
-    ).one_or_none()
-    if job is None or job.status != "queued":
-        return None
-    key = StateKey.from_request(job.request)
-    if job.cancel_requested:
-        await learning_failed(conn, key)
-        await transition_job(conn, job_id, "cancelled")
-        return Learned(None, "cancelled")
-    await transition_job(conn, job_id, "running")
-    schema = await registry.get_by_id(conn, key.schema_id)
-    host = (await conn.execute(select(Site.host).where(Site.id == key.site_id))).scalar_one()
-    fetch = (await remembered(conn, key.site_id, key.page_kind, blocks=False)).method
-    state = ProgressiveState
-    found = (await conn.execute(select(state.active_config_id, state.render_mode).where(*key.where()))).one()
-    await record_event(conn, job_id, LEARNING_STARTED)
-    run = _Run(job_id, key, schema, host, fetch, found.active_config_id)
-    located = StateKey.locate_of(job.request) or (LocateRequest() if found.render_mode != "off" else None)
-    if located is None:
-        return run
-    return replace(
-        run,
-        locate=located,
-        serving_ir=await _config_ir(conn, found.active_config_id),
-        context=await _request_context(conn, located),
+@dataclass(frozen=True, slots=True)
+class Hooks:
+    """What a run sends and renders with: recipe replays, browser renders, and the extraction of a render. Without
+    `replay`, a run learns no API recipe; without `render` and `extract`, it locates nothing."""
+
+    replay: Replays | None
+    render: Render | None = None
+    extract: Extract | None = None
+
+
+async def learned(
+    client: LLMClient, request: Learn | Locate, vocabulary: Vocabulary, max_chars: int, hooks: Hooks
+) -> Validated:
+    """The config learned from the request's sample and validated on its held-out pages, with its API recipe, and the
+    fields a `Locate` request located. `max_chars` is role A's HTML limit per page."""
+    learn = request.learn if isinstance(request, Locate) else request
+    target = learn.target
+    sample, held_out = split(target.schema, learn.pages)
+    validated = await learn_config(
+        client, target, sample, [page.held_out for page in held_out], vocabulary, max_chars, absent_from=learn.pages
     )
-
-
-async def _config_ir(conn: AsyncConnection, config_id: ExtractionConfigId | None) -> ExtractionConfigIR | None:
-    if config_id is None:
-        return None
-    ir: dict[str, Any] = (
-        await conn.execute(select(ExtractionConfig.ir).where(ExtractionConfig.id == config_id))
-    ).scalar_one()
-    return ExtractionConfigIR.model_validate(ir)
-
-
-async def _request_context(conn: AsyncConnection, located: LocateRequest) -> RequestContext | None:
-    """The headers of the request context of the job that started the locate run, as its stored request keeps them
-    (an asynchronous job's keeps the values while it runs; a redacted one is none)."""
-    if located.job_id is None:
-        return None
-    request: dict[str, Any] | None = (
-        await conn.execute(select(Job.request).where(Job.id == located.job_id))
-    ).scalar_one_or_none()
-    fetch = (request or {}).get("fetch") or {}
-    headers = fetch.get("headers") or {}
-    kept = tuple(
-        (name, SecretStr(value)) for name, value in headers.items() if isinstance(value, str) and value != REDACTED
-    )
-    return RequestContext(headers=kept) if kept else None
-
-
-async def expire_learn_runs(conn: AsyncConnection, *, batch: int) -> int:
-    """End up to `batch` runs that started more than `LEARN_RUN_TIMEOUT` ago as failed runs, and return how many: their
-    process died, and the state would otherwise stay `learning`."""
-    job_ids = await stuck_running_jobs(conn, kinds=("learn",), older_than=LEARN_RUN_TIMEOUT, batch=batch)
-    for job_id in job_ids:
-        await _abandon(conn, job_id, EXPIRED)
-    return len(job_ids)
-
-
-async def _abandon(conn: AsyncConnection, job_id: JobId, reason: str) -> Learned:
-    """End a run that will not finish: its state as a failed run leaves it, and its job `failed`. A run that
-    ended meanwhile is left as it ended: a stopping worker's cancel can come as the run's final transaction commits."""
-    job = await lock_job(conn, job_id, Job.status, Job.request)
-    if not JOB_TRANSITIONS[job.status]:
-        return Learned(None, reason)
-    if job.status == "queued":  # it failed to start: a job ends `failed` only from `running`
-        await transition_job(conn, job_id, "running")
-    # The state may have moved on already (an operator's config, a cancel), and then there is no run to end; a request
-    # that names no state has none either, and its job still ends, or every poll would pick it again.
-    with suppress(NotLearning, ValidationError):
-        await learning_failed(conn, StateKey.from_request(job.request))
-    await _end(conn, job_id, "failed", config_id=None, reason=reason, report=None)
-    return Learned(None, reason)
+    # A recipe enters a validated config only (`attach`), so nothing is replayed for a refused one.
+    if validated.ir is not None and hooks.replay is not None:
+        validated = attach(validated, await _page_recipe(client, target, sample, held_out, hooks.replay, hooks.render))
+    if isinstance(request, Locate):
+        validated = await _locate_step(client, request, validated, vocabulary, hooks)
+    return validated
 
 
 def split(schema: SchemaDef, pages: Sequence[StoredPage]) -> tuple[list[StoredPage], list[StoredPage]]:
@@ -282,65 +127,36 @@ def split(schema: SchemaDef, pages: Sequence[StoredPage]) -> tuple[list[StoredPa
     return ranked[:SAMPLE_PAGES], ranked[SAMPLE_PAGES:]
 
 
-# A validation report reason stays short: it is a table cell in the config view, not a log.
-REASON_CHARS: Final = 200
-
-
-@dataclass(frozen=True, slots=True)
-class _Hooks:
-    """What a run sends and renders with: recipe replays, browser renders, and the extraction of a render."""
-
-    replay: Replays | None
-    render: Render | None
-    extract: Extract | None
-
-
-async def _learned(client: LLMClient, run: _Run, vocabulary: Vocabulary, max_chars: int, hooks: _Hooks) -> Validated:
-    """The config learned from the run's sample and validated on its held-out pages, with its API recipe, and the
-    fields a locate run located."""
-    sample, held_out = split(run.schema, run.pages)
-    target = Target(run.schema, run.host, run.fetch, run.job_id)
-    validated = await learn_config(
-        client, target, sample, [page.held_out for page in held_out], vocabulary, max_chars, absent_from=run.pages
-    )
-    # A recipe enters a validated config only (`attach`), so nothing is replayed for a refused one.
-    if validated.ir is not None and hooks.replay is not None:
-        validated = attach(validated, await _page_recipe(client, run, sample, held_out, hooks.replay, hooks.render))
-    if run.locate is not None:
-        validated = await _locate_step(client, run, target, validated, vocabulary, hooks)
-    return validated
-
-
 async def _locate_step(
-    client: LLMClient, run: _Run, target: "Target", validated: Validated, vocabulary: Vocabulary, hooks: _Hooks
+    client: LLMClient, request: Locate, validated: Validated, vocabulary: Vocabulary, hooks: Hooks
 ) -> Validated:
-    """`validated` with the fields the locate run located; unchanged when the locate step fails: its error refuses
+    """`validated` with the fields the request located; unchanged when the locate step fails: its error refuses
     the located fields, not the config learning validated (as a recipe's does); unchanged too when the run cannot
     render."""
     if hooks.render is None or hooks.extract is None:
         return validated
     try:
-        rendered = await _samples(run, hooks.render, hooks.extract)
-        return await _located(client, run, target, validated, vocabulary, rendered, hooks)
+        rendered = await _samples(request, hooks.render, hooks.extract)
+        return await _located(client, request, validated, vocabulary, rendered, hooks)
     except (LLMFailure, SQLAlchemyError):
         raise  # the run's own failures, as `_page_recipe` re-raises them
     except Exception:
-        log.exception("learn job %s: locate failed", run.job_id)
+        log.exception("learn job %s: locate failed", request.learn.target.job_id)
         return validated
 
 
 async def _page_recipe(
     client: LLMClient,
-    run: _Run,
+    target: Target,
     sample: Sequence[StoredPage],
     held_out: Sequence[StoredPage],
     replay: Replays,
     render: Render | None,
 ) -> RecipeValidated:
-    """The API recipe that serves the run's pages, or why there is none."""
+    """The API recipe that serves the pages, or why there is none."""
     try:
         return await learn_recipe(
-            client, sample, held_out, run.schema, replay(run.job_id), job_id=run.job_id, render=render
+            client, sample, held_out, target.schema, replay(target.job_id), job_id=target.job_id, render=render
         )
     except (LLMFailure, SQLAlchemyError):
         # The run's own failures: role D's ends the run as role A's does, and a database error would leave a
@@ -348,72 +164,67 @@ async def _page_recipe(
         raise
     except Exception as e:
         # The recipe learner's own error refuses the recipe, not the config it would have joined.
-        log.exception("learn job %s: recipe learning failed", run.job_id)
+        log.exception("learn job %s: recipe learning failed", target.job_id)
         return refused(f"recipe_error: {type(e).__name__}")
 
 
-async def _samples(run: _Run, render: Render, extract: Extract) -> list[Sampled]:
+async def _samples(request: Locate, render: Render, extract: Extract) -> list[Sampled]:
     """The surface's `LOCATE_SAMPLES` newest stored pages rendered, each with what its render published."""
+    target = request.learn.target
     pages: list[Sampled] = []
-    for page in run.surface[:LOCATE_SAMPLES]:
-        bundles = await render(page.bundle.manifest.url, run.schema.page_kind)
+    for page in request.surface[:LOCATE_SAMPLES]:
+        bundles = await render(page.bundle.manifest.url, target.schema.page_kind)
         if bundles:
-            extraction = await extract(bundles[0], run.schema, run.job_id)
+            extraction = await extract(bundles[0], target.schema, target.job_id)
             pages.append(await asyncio.to_thread(sampled, page, bundles[0], extraction))
     return pages
 
 
 async def _located(
     client: LLMClient,
-    run: _Run,
-    target: "Target",
+    request: Locate,
     validated: Validated,
     vocabulary: Vocabulary,
     pages: Sequence[Sampled],
-    hooks: _Hooks,
+    hooks: Hooks,
 ) -> Validated:
-    """`validated` with the fields the run's locate request asks for (none named: the page-level fields the config
-    does not read, and a listing's row fields when it reads no rows) located on the rendered `pages` (`locate`), and
-    why each other one was not."""
-    replays = hooks.replay
-    base = validated.ir or run.serving_ir or _induced(target, Induction(), ListingInduction())[0]
-    asked = run.locate.fields if run.locate is not None else []
+    """`validated` with the fields the request asks for located on the rendered `pages` (`locate`), and why each other
+    one was not."""
+    target = request.learn.target
+    schema = target.schema
+    base = validated.ir or request.serving or _induced(target, Induction(), ListingInduction())[0]
     # A listing whose config reads no rows (no listing, no listing recipe) has its rows located too.
-    rowless = run.schema.page_kind == "listing" and base.listing is None and base.api_recipe is None
-    names = asked or [
+    rowless = schema.page_kind == "listing" and base.listing is None and base.api_recipe is None
+    names = list(request.fields) or [
         *(
             name
-            for name, spec in run.schema.fields.items()
-            if page_level(run.schema, name) and not spec.row_mapped and name not in base.fields
+            for name, spec in schema.fields.items()
+            if page_level(schema, name) and not spec.row_mapped and name not in base.fields
         ),
-        *(row_fields(run.schema) if rowless else ()),
+        *(row_fields(schema) if rowless else ()),
     ]
     if not names:
         return validated
-    replay = None if replays is None else replays(run.job_id)
-    calls = None if replay is None else Calls(client, replay, run.job_id, run.context)
-    recipe = _listing_recipe(client, run, validated, replays, hooks.render, pages)
-    located = await locate(base, run.schema, names, pages, vocabulary, calls, recipe)
+    replay = None if hooks.replay is None else hooks.replay(target.job_id)
+    calls = None if replay is None else Calls(client, replay, target.job_id, request.context)
+    recipe = _listing_recipe(client, request, validated, hooks, pages)
+    located = await locate(base, schema, names, pages, vocabulary, calls, recipe)
     return with_unlearned(located_config(validated, base, located), located.reasons)
 
 
 def _listing_recipe(
-    client: LLMClient,
-    run: _Run,
-    validated: Validated,
-    replays: Replays | None,
-    render: Render | None,
-    rendered: Sequence[Sampled],
+    client: LLMClient, request: Locate, validated: Validated, hooks: Hooks, rendered: Sequence[Sampled]
 ) -> ListingRecipe | None:
     """A listing's `call` tier: its recipe, learned from the surface's pages as `_page_recipe` learns one, a page that
     listed nothing with the rows its render published (`rendered`), which the recipe's calls are matched with; None
     when the run already tried (a config validated) or cannot replay."""
-    if validated.ir is not None or replays is None:
+    if validated.ir is not None or hooks.replay is None:
         return None
+    target = request.learn.target
     rows = {page.stored.held_out.capture_id: page.rows for page in rendered if not page.stored.held_out.rows}
-    pages = [_with_rows(page, rows.get(page.held_out.capture_id, ())) for page in run.surface]
-    sample, held_out = split(run.schema, pages)
-    return partial(_page_recipe, client, run, sample, held_out, replays, render)
+    pages = [_with_rows(page, rows.get(page.held_out.capture_id, ())) for page in request.surface]
+    sample, held_out = split(target.schema, pages)
+    return partial(_page_recipe, client, target, sample, held_out, hooks.replay, hooks.render)
 
 
 def _with_rows(page: StoredPage, rows: Sequence[Mapping[str, JsonValue]]) -> StoredPage:
@@ -422,17 +233,6 @@ def _with_rows(page: StoredPage, rows: Sequence[Mapping[str, JsonValue]]) -> Sto
         return page
     facts = tuple(Facts(published=dict(row)) for row in rows)
     return replace(page, held_out=replace(page.held_out, rows=facts))
-
-
-@dataclass(frozen=True, slots=True)
-class Target:
-    """What a run learns a config for: the schema, the site's host and fetch method, and the job role A is charged
-    to."""
-
-    schema: SchemaDef
-    host: str
-    fetch: FetchMethod
-    job_id: JobId
 
 
 async def learn_config(
@@ -557,91 +357,3 @@ def _induced(
         ),
     )
     return ir, left
-
-
-async def _finish(conn: AsyncConnection, run: _Run, validated: Validated) -> Learned:
-    await lock_state(conn, run.key)
-    job = (await conn.execute(select(Job.status, Job.cancel_requested).where(Job.id == run.job_id))).one()
-    if job.status != "running":  # `expire_learn_runs` gave the run up and ended it
-        return Learned(None, EXPIRED)
-    if await _schema_edited(conn, run):
-        return await _edited(conn, run, validated.report)
-    if job.cancel_requested:
-        return await _fail(conn, run, "cancelled", validated.report, status="cancelled")
-    if validated.ir is None:
-        return await _fail(conn, run, validated.report.refused or "refused", validated.report)
-    if await _operator_since(conn, run):
-        return await _fail(conn, run, "operator_config", validated.report)
-    if await _requires_approval(conn, run):
-        config_id = await store_pending(conn, run.key, validated)
-        await _end(conn, run.job_id, "completed", config_id=config_id, reason=PENDING, report=validated.report)
-        return Learned(config_id, PENDING)
-    config_id = await activate(conn, run.key, validated)
-    await _end(conn, run.job_id, "completed", config_id=config_id, reason=None, report=validated.report)
-    return Learned(config_id)
-
-
-async def _requires_approval(conn: AsyncConnection, run: _Run) -> bool:
-    """Whether the site's project makes a learned config wait for approval."""
-    project = select(Site.project_id).where(Site.id == run.key.site_id).scalar_subquery()
-    query = select(Project.require_config_approval).where(Project.id == project)
-    return bool((await conn.execute(query)).scalar_one())
-
-
-async def _operator_since(conn: AsyncConnection, run: _Run) -> bool:
-    """Whether an operator's config became active while the run was in flight: the operator wrote it knowing
-    the pages the run learns from, so the run does not replace it."""
-    state, configs = ProgressiveState, ExtractionConfig
-    query = (
-        select(configs.origin)
-        .join(state, state.active_config_id == configs.id)
-        .where(*run.key.where(), configs.id.is_distinct_from(run.serving))
-    )
-    return (await conn.execute(query)).scalar_one_or_none() == "operator"
-
-
-async def _schema_edited(conn: AsyncConnection, run: _Run) -> bool:
-    """Whether the schema was edited since the run started: what it learned is for another document, and the edit
-    already sent the state back to `cold` (`progressive.relearn_schema`), where a later run may now be in flight."""
-    current = await registry.get_by_id(conn, run.key.schema_id)
-    return document_digest(current) != document_digest(run.schema)
-
-
-async def _edited(conn: AsyncConnection, run: _Run, report: ValidationReport | None) -> Learned:
-    """End a run its schema's edit overtook, leaving the state, and any run started since, as they are."""
-    await _end(conn, run.job_id, "failed", config_id=None, reason=SCHEMA_EDITED, report=report)
-    return Learned(None, SCHEMA_EDITED)
-
-
-async def _fail(
-    conn: AsyncConnection,
-    run: _Run,
-    reason: str,
-    report: ValidationReport | None = None,
-    *,
-    status: JobStatus = "failed",
-) -> Learned:
-    await lock_state(conn, run.key)
-    if await _schema_edited(conn, run):
-        return await _edited(conn, run, report)
-    await learning_failed(conn, run.key)
-    await _end(conn, run.job_id, status, config_id=None, reason=reason, report=report)
-    return Learned(None, reason)
-
-
-async def _end(
-    conn: AsyncConnection,
-    job_id: JobId,
-    status: JobStatus,
-    *,
-    config_id: ExtractionConfigId | None,
-    reason: str | None,
-    report: ValidationReport | None,
-) -> None:
-    payload = {
-        "config_id": None if config_id is None else str(config_id),
-        "reason": reason,
-        "report": None if report is None else report.model_dump(mode="json"),
-    }
-    await record_event(conn, job_id, LEARNING_FINISHED, payload)
-    await transition_job(conn, job_id, status)
