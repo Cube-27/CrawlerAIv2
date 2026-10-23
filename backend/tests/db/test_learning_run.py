@@ -17,7 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import FetchResult
-from crawlerai.collect.base import Candidate
 from crawlerai.config_ir.active import active_config, config_by_id, recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Replays
@@ -45,22 +44,19 @@ from crawlerai.db.models import (
 )
 from crawlerai.db.queue import complete_task, insert_claimed
 from crawlerai.llm.client import LLMRequest, LLMResponse, ReplyCheck, request_hash
-from crawlerai.normalize.base import Ok
 from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import (
     EngineData,
-    GapReply,
-    GapRequest,
-    ListingGapReply,
-    ListingGapRequest,
     extract_page,
 )
 from crawlerai.resolve.task import Stored, store_extraction
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument, document_digest
 from crawlerai.services import configs as configs_service
-from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, sha256_hex
+from crawlerai.storage.capture_bundle import CaptureBundle
 from crawlerai.storage.fs import FsStore
+from tests.support.captures import call
+from tests.support.role_c import FakeRoleC
 
 pytestmark = pytest.mark.anyio
 
@@ -93,48 +89,10 @@ def _answer(n: int) -> bytes:
 
 def _browser_capture(fetched: FetchResult, n: int) -> FetchResult:
     """`fetched` as the browser captured it, with the API's answer for product `n` among its network bodies."""
-    data = _answer(n)
-    entry = NetworkBody(
-        url=f"{ENDPOINT}/{n}",
-        status=200,
-        content_type="application/json",
-        sha256=sha256_hex(data),
-        file="network/0001.json",
-        method="GET",
-    )
+    entry, data = call(0, f"{ENDPOINT}/{n}", _answer(n), method="GET")
     manifest = fetched.bundle.manifest.model_copy(update={"method": "browser", "network_bodies": (entry,)})
     bundle = CaptureBundle(manifest=manifest, body=fetched.bundle.body, network=(data,))
     return fetched.model_copy(update={"bundle": bundle})
-
-
-class TextRoleC:
-    """Role C reading the price from the page text, grounded on its offsets; counts its calls."""
-
-    def __init__(self) -> None:
-        self.calls = 0
-
-    async def detail(self, request: GapRequest) -> GapReply:
-        self.calls += 1
-        text = request.page.cleaned_text.text
-        start = text.index(" EUR") - 4
-        raw = text[start : start + 8]
-        candidates = tuple(
-            Candidate(
-                field=name,
-                entity_id=request.target.id,
-                source_kind="llm",
-                raw=raw,
-                normalized=Ok({"amount": raw.removesuffix(" EUR"), "currency": "EUR"}),
-                locator=f"text:{start}-{start + len(raw)}",
-                independent=True,
-            )
-            for name in request.missing
-            if name == "price"
-        )
-        return GapReply(candidates, ())
-
-    async def listing(self, request: ListingGapRequest) -> ListingGapReply:
-        raise AssertionError("no listing here")
 
 
 class RoleA:
@@ -183,7 +141,7 @@ class LearnSite:
     def key(self) -> StateKey:
         return StateKey(self.site_id, self.schema.id, "detail")
 
-    async def extract(self, n: int, role_c: TextRoleC, *, api: bool = False, anchored: bool = False) -> Stored:
+    async def extract(self, n: int, role_c: FakeRoleC, *, api: bool = False, anchored: bool = False) -> Stored:
         """Page `n` fetched and extracted by a scrape job's task, with the site's active config if it has one; with
         `api`, fetched by the browser, which captured the API's answer for it."""
         url = f"{self.origin}/p/{n}"
@@ -224,7 +182,7 @@ class LearnSite:
     async def pages(self, count: int, *, api: bool = False, anchored: bool = False) -> None:
         async with self.engine.begin() as conn:
             await conn.execute(insert(ProgressiveState).values(**self.key.columns()))
-        role_c = TextRoleC()
+        role_c = FakeRoleC(from_text=True)
         for n in range(1, count + 1):
             assert (await self.extract(n, role_c, api=api, anchored=anchored)).outcome == "extracted"
 
@@ -299,9 +257,9 @@ async def test_a_site_with_8_extracted_pages_is_learned_and_then_served_from_its
     assert (status, payload["config_id"], payload["reason"]) == ("completed", str(learned.config_id), None)
 
     # A repeat page: config mode, and no role C call for the covered fields.
-    role_c = TextRoleC()
+    role_c = FakeRoleC(from_text=True)
     stored = await site.extract(9, role_c)
-    assert (stored.outcome, stored.result.mode, role_c.calls, stored.result.llm_calls) == (
+    assert (stored.outcome, stored.result.mode, len(role_c.requests), stored.result.llm_calls) == (
         "extracted",
         "config",
         0,
@@ -351,7 +309,7 @@ async def test_with_approval_required_a_learned_config_waits_until_approved(site
     state = await site.state()
     assert (state.mode, state.active_config_id, state.learning_started_at) == ("cold", None, None)
     # Pages are still served cold, and no run starts while the config waits, however many pages come.
-    role_c = TextRoleC()
+    role_c = FakeRoleC(from_text=True)
     assert (await site.extract(9, role_c)).result.mode == "adhoc"
     async with site.engine.begin() as conn:
         await conn.execute(update(ProgressiveState).where(*site.key.where()).values(pages_extracted=100))

@@ -532,10 +532,10 @@ async def test_a_page_whose_resolution_fails_is_failed_without_formats_or_record
     url = f"{own_origin}/kettles/blue"
     web.serve(url, _product_page(url))
 
-    def broken(*_args: object) -> None:
+    def broken(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("resolution bug")
 
-    monkeypatch.setattr(pipeline, "_read_and_resolve", broken)
+    monkeypatch.setattr(pipeline, "Resolver", broken)
 
     result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}, "markdown"), data=engine_data)
 

@@ -5,19 +5,16 @@ written here (C3). Tenants and the recorded API responses under `tests/fixtures/
 """
 
 import asyncio
-from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.adapters.base import AdapterMatch
 from crawlerai.adapters.greenhouse import API, BOARD_HOSTS, Greenhouse
-
-StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
+from tests.stand_in import StandInApi
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "greenhouse"
 HOST = sorted(BOARD_HOSTS)[0]

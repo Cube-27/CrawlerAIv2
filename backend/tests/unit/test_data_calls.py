@@ -13,7 +13,7 @@ from hypothesis import strategies as st
 from pydantic import JsonValue
 
 from crawlerai.acquire.identity import NOT_THE_PRODUCT, identified, joined
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.acquire.types import FetchResult
 from crawlerai.collect.base import Entity
 from crawlerai.collect.currencies import with_page_declarations
 from crawlerai.collect.jsonld import JsonLdCollector
@@ -29,8 +29,7 @@ from crawlerai.resolve.intent import primary_types, select_target
 from crawlerai.resolve.ownership import EntityGraph
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, NetworkBody, network_file
-from crawlerai.storage.capture_bundle import sha256_hex as sha
+from tests.support.captures import calls, fetched
 
 HOST = "https://shop.example.test"
 KEYS = st.from_regex(r"[a-z][a-z0-9]{2,8}-[a-z0-9]{2,8}", fullmatch=True)
@@ -43,31 +42,9 @@ SCHEMA = next(
 )
 
 
-def _capture(url: str, method: CaptureMethod, body: bytes, calls: tuple[tuple[str, bytes], ...] = ()) -> FetchResult:
-    entries = tuple(
-        NetworkBody(
-            url=u, status=200, content_type="application/json", sha256=sha(b), file=network_file(i), method="GET"
-        )
-        for i, (u, b) in enumerate(calls)
-    )
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=url,
-        final_url=url,
-        fetched_at=datetime.now(UTC),
-        method=method,
-        status_code=200,
-        block_class="ok",
-        headers=Headers(request=(), response=(("content-type", "application/json"),)),
-        timings_ms={"total": 1},
-        html_sha256=sha(body),
-        network_bodies=entries,
-        fetch_policy=FetchPolicy().model_dump(mode="json"),
-        engine_version="test",
-    )
-    bundle = CaptureBundle(manifest=manifest, body=body, network=tuple(b for _, b in calls))
-    attempt = AttemptRecord(method=method, status=200, block_class="ok", duration_ms=1)
-    return FetchResult(bundle=bundle, duration_ms=1, attempts=(attempt,))
+def _capture(url: str, method: CaptureMethod, body: bytes, answers: tuple[tuple[str, bytes], ...] = ()) -> FetchResult:
+    headers = (("content-type", "application/json"),)
+    return fetched(url, 200, body, headers, method=method, network=calls(answers, method="GET"))
 
 
 def _product(key: str, cents: int = 2900) -> bytes:

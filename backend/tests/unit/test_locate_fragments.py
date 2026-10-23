@@ -23,7 +23,8 @@ from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import CaptureId, PageKind
 from crawlerai.schemas.types import SchemaDef, document_digest
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, NetworkBody, sha256_hex
+from crawlerai.storage.capture_bundle import CaptureBundle
+from tests.support.captures import calls, capture
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 SITE = "https://shop.example.test"
@@ -61,37 +62,11 @@ LISTING = _schema(
 
 
 def _bundle(n: int, html: str, method: CaptureMethod, answer: str | None) -> CaptureBundle:
-    body = html.encode()
-    url = f"{SITE}/p/{n}"
     bodies = () if answer is None else ((f"{SITE}/f/{n}", answer.encode()),)
-    entries = tuple(
-        NetworkBody(
-            url=src,
-            status=200,
-            content_type="text/html",
-            sha256=sha256_hex(data),
-            file=f"network/{i + 1:04d}.json",
-            method="GET",
-            resource_type="fetch",
-        )
-        for i, (src, data) in enumerate(bodies)
+    network = calls(bodies, content_type="text/html", method="GET", resource_type="fetch")
+    return capture(
+        html.encode(), url=f"{SITE}/p/{n}", method=method, headers=(("content-type", "text/html"),), network=network
     )
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=url,
-        final_url=url,
-        fetched_at=datetime(2026, 10, 20, tzinfo=UTC),
-        method=method,
-        status_code=200,
-        block_class="ok",
-        headers=Headers(request=(), response=(("content-type", "text/html"),)),
-        timings_ms={},
-        html_sha256=sha256_hex(body),
-        network_bodies=entries,
-        fetch_policy={},
-        engine_version="test",
-    )
-    return CaptureBundle(manifest=manifest, body=body, network=tuple(data for _, data in bodies))
 
 
 def _page(n: int, inside: str, *, filled: bool) -> str:

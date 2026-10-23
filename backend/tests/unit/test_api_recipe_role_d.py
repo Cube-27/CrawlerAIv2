@@ -8,7 +8,7 @@ The client is scripted and a stand-in API (`tests.stand_in`, synthetic `.test` h
 
 import asyncio
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from pydantic import JsonValue
@@ -24,9 +24,9 @@ from crawlerai.core.ids import uuid7
 from crawlerai.db.models import JobId
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from tests.stand_in import StandInApi
 from tests.support.fake_llm import ScriptedClient
 
-StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
 JOB = JobId(uuid7())
 SCHEMA = SchemaDef.model_validate(
     {

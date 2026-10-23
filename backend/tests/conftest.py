@@ -20,7 +20,7 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest, fetch_json
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.storage.capture_bundle import HeaderList
-from tests.stand_in import IMPERSONATE, STAND_IN_BROWSER, handler_transport
+from tests.stand_in import IMPERSONATE, STAND_IN_BROWSER, StandInApi, handler_transport
 
 settings.register_profile("ci", max_examples=200)
 # The verify-* skills' one command (`.claude/skills/verify-*/SKILL.md`) asks for more examples, with no per-example
@@ -98,13 +98,13 @@ def _stand_in_api(routes: Mapping[str, bytes]) -> JsonFetcher:
 
 
 @pytest.fixture
-def stand_in_api() -> Callable[[Mapping[str, bytes]], JsonFetcher]:
+def stand_in_api() -> StandInApi:
     return _stand_in_api
 
 
 @pytest.fixture
 def scripted_api(
-    stand_in_api: Callable[[Mapping[str, bytes]], JsonFetcher],
+    stand_in_api: StandInApi,
 ) -> Callable[[Callable[[JsonRequest], bytes], list[JsonRequest]], JsonFetcher]:
     """A stand-in API whose answer to each request is `answer(request)`, which sees the body and headers too (a paged
     list's pages differ by them); every request it gets is added to `sent`."""

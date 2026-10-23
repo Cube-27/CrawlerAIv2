@@ -2,7 +2,6 @@
 the calls, and the next request of each kind is the one the series made next. Synthetic calls under RFC 2606 names
 (C9): a series is made by the same `next_request` serving uses, and inference must give back the pagination."""
 
-import hashlib
 import json
 from collections.abc import Callable
 
@@ -24,7 +23,8 @@ from crawlerai.config_ir.api_recipe.pagination import (
     infer,
     next_request,
 )
-from crawlerai.storage.capture_bundle import HeaderList, NetworkBody, network_file
+from crawlerai.storage.capture_bundle import HeaderList
+from tests.support.captures import call
 
 API = "https://api.example.test/v2/items"
 ROWS = "$['items'][*]"
@@ -35,16 +35,7 @@ _calls = st.integers(min_value=2, max_value=6)
 
 def _call(index: int, request: JsonRequest, document: JsonValue, headers: HeaderList = ()) -> Call:
     raw = json.dumps(document).encode()
-    entry = NetworkBody(
-        url=request.url,
-        status=200,
-        content_type="application/json",
-        sha256=hashlib.sha256(raw).hexdigest(),
-        file=network_file(index),
-        method=request.method,
-        request_body=request.body,
-        response_headers=headers,
-    )
+    entry, _ = call(index, request.url, raw, method=request.method, request_body=request.body, response_headers=headers)
     return Call(index, entry, document)
 
 

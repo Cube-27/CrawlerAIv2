@@ -13,7 +13,7 @@ from crawlerai.collect.xhr import network_documents
 from crawlerai.content.page import ParsedPage, ScriptBlock
 from crawlerai.content.rsc import read_rows
 from crawlerai.content.state import flight_rows
-from crawlerai.storage.capture_bundle import NetworkBody, sha256_hex
+from tests.support.captures import call
 
 _TEXT = "line one\nlíne twö — €\n"
 _ROWS = (
@@ -88,13 +88,7 @@ def test_a_push_in_a_comment_or_a_string_and_a_chunk_that_is_not_base64_add_noth
 def test_the_json_rows_are_one_state_document_and_one_xhr_document() -> None:
     html = "<html><body>" + "".join(f"<script>{s.text}</script>" for s in _scripts()) + "</body></html>"
     stream = _ROWS + _BINARY_ROW
-    entry = NetworkBody(
-        url="https://shop.example.test/p/1?_rsc=1",
-        status=200,
-        content_type="text/x-component; charset=utf-8",
-        sha256=sha256_hex(stream),
-        file="network/0001.json",
-    )
+    entry, _ = call(0, "https://shop.example.test/p/1?_rsc=1", stream, content_type="text/x-component; charset=utf-8")
     page = ParsedPage(html, (stream,), (entry,))
     model = {row_id: value for row_id, tag, value in _EXPECTED if not tag}
 

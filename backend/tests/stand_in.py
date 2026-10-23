@@ -3,16 +3,17 @@ rule and the fetch's cookie jar have run, goes to an httpx-style handler instead
 (pinning, proxies, caps, decoding) is tested against local servers (`unit/test_api_fetch.py`, `test_proxy_pools.py`).
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 import httpx
 
+from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.curl_client import Failed, Hop, Transport, Wire
 from crawlerai.acquire.impersonate import Impersonation
 from crawlerai.acquire.ssrf import Target
 from crawlerai.core.settings import IMPERSONATE_DEFAULT
 
-__all__ = ["CONNECT_FAILED", "IMPERSONATE", "STAND_IN_BROWSER", "handler_transport"]
+__all__ = ["CONNECT_FAILED", "IMPERSONATE", "STAND_IN_BROWSER", "StandInApi", "handler_transport"]
 
 # The default target with its own headers, as when the browser rung's Chrome is not read.
 IMPERSONATE = Impersonation(IMPERSONATE_DEFAULT)
@@ -24,6 +25,8 @@ STAND_IN_BROWSER = (("user-agent", f"Mozilla/5.0 (X11; Linux x86_64) Chrome/{IMP
 CONNECT_FAILED = "network_error: curl 7"
 
 Handler = Callable[[httpx.Request], httpx.Response]
+# The `stand_in_api` fixture (`tests/conftest.py`): `fetch_json` against a stand-in API serving its routes.
+StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]
 
 
 def handler_transport(handler: Handler) -> Transport:

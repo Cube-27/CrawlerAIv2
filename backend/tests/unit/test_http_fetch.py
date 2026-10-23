@@ -164,7 +164,7 @@ def test_the_fetch_command_writes_a_bundle_that_decodes(
     server.route("/p", reply)
     out = tmp_path / "bundle.zst"
 
-    asyncio.run(cli._fetch(server.url("/p"), out, LoopbackConnector(server.port, _DNS)))
+    asyncio.run(cli.fetch_to_file(server.url("/p"), out, LoopbackConnector(server.port, _DNS)))
 
     bundle = decode(out.read_bytes())
     manifest = bundle.manifest

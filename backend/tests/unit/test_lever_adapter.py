@@ -6,20 +6,17 @@ written here (C3). Sites and the recorded API responses under `tests/fixtures/le
 
 import asyncio
 import json
-from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.adapters.base import AdapterMatch
 from crawlerai.adapters.lever import JOB_SITE_APIS, Lever
+from tests.stand_in import StandInApi
 from tests.unit.adapter_support import candidates
-
-StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "lever"
 HOSTS = sorted(JOB_SITE_APIS)

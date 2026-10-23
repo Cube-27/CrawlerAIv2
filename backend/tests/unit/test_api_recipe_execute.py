@@ -18,7 +18,6 @@ import httpx
 
 from crawlerai.acquire.api import JsonFetcher, fetch_json
 from crawlerai.acquire.memory import Remembered
-from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
@@ -32,12 +31,12 @@ from crawlerai.config_ir.api_recipe.model import (
     Proof,
 )
 from crawlerai.content.page import ParsedPage
-from crawlerai.core.capture import BlockClass
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import CaptureId, PageKind, SchemaId
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from tests.stand_in import IMPERSONATE, handler_transport
+from tests.support.captures import ScriptedRung
 
 SITE = "https://shop.example.test"
 ENDPOINT = "https://api.example.test/v1"
@@ -103,34 +102,8 @@ def _products(request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, json={"data": {"slug": slug, "name": name, "price": price, "currency": "EUR"}})
 
 
-@dataclass
-class PageRung:
-    """The HTTP rung as a stub: answers every URL with `body` and `block_class`, and records the URLs."""
-
-    body: bytes = b"<html></html>"
-    block_class: BlockClass = "ok"
-    status: int | None = None
-    calls: list[str] = field(default_factory=list)
-
-    async def __call__(self, url: str, policy: FetchPolicy) -> FetchResult:
-        self.calls.append(url)
-        status = self.status or (200 if self.block_class == "ok" else 403)
-        return fetch_result(
-            url=url,
-            method="http",
-            policy=policy,
-            engine_version="test",
-            fetched_at=datetime.now(UTC),
-            started=0.0,
-            exchange=Exchange(url=url, status=status, request_headers=(), response_headers=()),
-            content=Content(body=self.body),
-            block_class=self.block_class,
-            error=None,
-        )
-
-
-def _rung(recipe: ApiRecipe, api: StandIn, page: PageRung | None = None) -> RecipeRung:
-    return RecipeRung(recipe, api.fetch_json(), page or PageRung(), engine_version="test")
+def _rung(recipe: ApiRecipe, api: StandIn, page: ScriptedRung | None = None) -> RecipeRung:
+    return RecipeRung(recipe, api.fetch_json(), page or ScriptedRung(), engine_version="test")
 
 
 def _ctx(url: str) -> Context:
@@ -138,7 +111,7 @@ def _ctx(url: str) -> Context:
 
 
 def test_a_page_is_served_over_the_api_with_no_browser_and_its_values_are_api_candidates() -> None:
-    api, http, browser = StandIn(_products), PageRung(), PageRung()
+    api, http, browser = StandIn(_products), ScriptedRung(), ScriptedRung()
     url = f"{SITE}/p/desk-lamp"
 
     result = asyncio.run(

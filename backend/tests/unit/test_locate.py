@@ -35,8 +35,9 @@ from crawlerai.core.ids import uuid7
 from crawlerai.db.models import CaptureId, ExtractionConfigId, JobId
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, document_digest
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, NetworkBody, sha256_hex
+from crawlerai.storage.capture_bundle import CaptureBundle
 from tests.stand_in import IMPERSONATE, handler_transport
+from tests.support.captures import calls, capture
 from tests.support.fake_llm import ScriptedClient
 
 SCHEMA_ORG = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
@@ -77,36 +78,14 @@ def _html(n: int, *, state: bool, element: bool) -> str:
 
 
 def _bundle(n: int, html: str, method: CaptureMethod, bodies: Sequence[tuple[str, bytes]] = ()) -> CaptureBundle:
-    body = html.encode()
-    entries = tuple(
-        NetworkBody(
-            url=url,
-            status=200,
-            content_type="application/json",
-            sha256=sha256_hex(data),
-            file=f"network/{i + 1:04d}.json",
-            method="GET",
-            resource_type="fetch",
-        )
-        for i, (url, data) in enumerate(bodies)
-    )
-    page_url = f"{SITE}/p/{SLUGS[n]}"
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=page_url,
-        final_url=page_url,
-        fetched_at=datetime(2026, 10, 20, tzinfo=UTC),
+    network = calls(bodies, method="GET", resource_type="fetch")
+    return capture(
+        html.encode(),
+        url=f"{SITE}/p/{SLUGS[n]}",
         method=method,
-        status_code=200,
-        block_class="ok",
-        headers=Headers(request=(), response=(("content-type", "text/html"),)),
-        timings_ms={},
-        html_sha256=sha256_hex(body),
-        network_bodies=entries,
-        fetch_policy={},
-        engine_version="test",
+        headers=(("content-type", "text/html"),),
+        network=network,
     )
-    return CaptureBundle(manifest=manifest, body=body, network=tuple(data for _, data in bodies))
 
 
 def _sampled(n: int, *, state: bool = True, call: bool = True) -> Sampled:

@@ -6,92 +6,37 @@ The rungs are stubs answering synthetic outcomes; no network.
 import asyncio
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import get_args
 
 from crawlerai.acquire.api import JsonRequest
 from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.rungs import BROWSER_MIN_S, Rungs, acquire
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import AdapterMatch, PageRefs, Shape
 from crawlerai.adapters.registry import Registry
 from crawlerai.core.capture import BlockClass, CaptureMethod
-from crawlerai.core.ids import uuid7
 from crawlerai.db.models import FetchMethod, PageKind
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+from tests.support.captures import ScriptedRung
 
 URL = "https://shop.example.test/item/1"
 SHELL = b"<html><body><div id='app'></div></body></html>"
 PAGE = b"<html><body><h1>Item</h1></body></html>"
-# A status for each outcome a rung can report.
-STATUS: dict[BlockClass, int] = {
-    "ok": 200,
-    "shell": 200,
-    "blocked": 403,
-    "not_found": 404,
-    "error": 500,
-    "auth_wall": 401,
-    "soft_404": 200,
-    "geo_redirect": 200,
-    "redirected_to_listing": 200,
-    "unsupported_media": 200,
-}
 BLOCK_CLASSES: tuple[BlockClass, ...] = ("ok", "blocked", "shell", "not_found", "error")
 POLICY = FetchPolicy()
 
 
-@dataclass
-class Rung:
-    """Answers every URL with `block_class` (and `status`, when given) in 1 ms, and records the calls it got."""
-
-    method: CaptureMethod
-    block_class: BlockClass
-    status: int | None = None
-    calls: list[tuple[str, FetchPolicy]] = field(default_factory=list)
-    body: bytes | None = None  # PAGE for `ok`, else SHELL, by default
-    headers: tuple[tuple[str, str], ...] = ()
-    retry_after: timedelta | None = None
-    error: str | None = None
-    challenge: str | None = None
-
-    async def __call__(self, url: str, policy: FetchPolicy) -> FetchResult:
-        self.calls.append((url, policy))
-        status = STATUS[self.block_class] if self.status is None else self.status
-        body = self.body if self.body is not None else PAGE if self.block_class == "ok" else SHELL
-        manifest = CaptureManifest(
-            capture_id=uuid7(),
-            url=url,
-            final_url=url,
-            fetched_at=datetime.now(UTC),
-            method=self.method,
-            status_code=status,
-            block_class=self.block_class,
-            headers=Headers(request=(), response=self.headers),
-            timings_ms={"total": 1},
-            html_sha256=sha256_hex(body),
-            network_bodies=(),
-            fetch_policy=policy.model_dump(mode="json"),
-            engine_version="test",
-        )
-        attempt = AttemptRecord(
-            method=self.method,
-            status=status,
-            block_class=self.block_class,
-            duration_ms=1,
-            retry_after=self.retry_after,
-            error=self.error,
-            challenge=self.challenge,
-        )
-        bundle = CaptureBundle(manifest=manifest, body=body, network=())
-        return FetchResult(bundle=bundle, duration_ms=1, attempts=(attempt,))
+def _rung(method: CaptureMethod, block_class: BlockClass = "ok", status: int | None = None) -> ScriptedRung:
+    """A rung answering `PAGE` for an `ok` outcome and `SHELL` for any other."""
+    return ScriptedRung(method, block_class, status, ok_body=PAGE, other_body=SHELL)
 
 
 @dataclass
 class Web:
-    http: Rung
-    browser: Rung
+    http: ScriptedRung
+    browser: ScriptedRung
 
-    recipe: Rung | None = None
+    recipe: ScriptedRung | None = None
 
     def acquire(self, policy: FetchPolicy | None = None, remembered: FetchMethod = "http") -> FetchResult:
         rungs = Rungs(http=self.http, browser=self.browser)
@@ -107,8 +52,8 @@ def web(
     recipe: BlockClass | None = None,
     recipe_status: int | None = None,
 ) -> Web:
-    api = None if recipe is None else Rung("api", recipe, recipe_status)
-    return Web(Rung("http", http, http_status), Rung("browser", browser), api)
+    api = None if recipe is None else _rung("api", recipe, recipe_status)
+    return Web(_rung("http", http, http_status), _rung("browser", browser), api)
 
 
 def _attempts(result: FetchResult) -> list[tuple[CaptureMethod, BlockClass]]:
@@ -237,7 +182,7 @@ def test_the_last_rungs_shell_no_challenge_names_is_the_page() -> None:
 
 def test_a_429_is_answered_once_in_the_browser_after_its_pause() -> None:
     stubs = web("blocked", "ok", http_status=429)
-    stubs.http.retry_after = timedelta(seconds=7)
+    stubs.http.headers = (("Retry-After", "7"),)
     pauses: list[timedelta] = []
 
     async def admit(*, after: timedelta = timedelta(0)) -> bool:
@@ -251,7 +196,7 @@ def test_a_429_is_answered_once_in_the_browser_after_its_pause() -> None:
     assert pauses == [timedelta(seconds=7)]
     # A pause longer than the caller waits sends nothing more: the 429 is kept.
     stubs = web("blocked", "ok", http_status=429)
-    stubs.http.retry_after = timedelta(minutes=5)
+    stubs.http.headers = (("Retry-After", "300"),)
     rungs = Rungs(http=stubs.http, browser=stubs.browser)
     result = asyncio.run(acquire(URL, POLICY, Remembered(), rungs, admit_next=admit))
     assert (_attempts(result), stubs.browser.calls) == ([("http", "blocked")], [])
@@ -266,7 +211,7 @@ PLATFORM = "https://jobs.example.test/board"
 class Referrer:
     """A referring adapter of the platform at `PLATFORM`, which a page refers to by linking to it."""
 
-    answer: Rung = field(default_factory=lambda: Rung("api", "ok"))
+    answer: ScriptedRung = field(default_factory=lambda: _rung("api", "ok"))
     name: str = "referrer"
 
     def detect(self, url: str) -> AdapterMatch | None:

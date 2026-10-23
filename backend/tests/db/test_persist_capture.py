@@ -10,10 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
-from crawlerai.core.ids import uuid7
 from crawlerai.db.models import Capture, Project, Site, SiteId
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, capture_key, decode, sha256_hex
+from crawlerai.storage.capture_bundle import capture_key, decode, sha256_hex
 from crawlerai.storage.fs import FsStore
+from tests.support.captures import capture
 
 pytestmark = pytest.mark.anyio
 
@@ -26,24 +26,17 @@ ATTEMPTS = (
 
 
 def _result() -> FetchResult:
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
+    bundle = capture(
+        BODY,
         url="https://shop.example.test/p/1",
         final_url="https://shop.example.test/p/1?ref=a",
-        fetched_at=FETCHED_AT,
         method="browser",
-        status_code=200,
-        block_class="ok",
-        headers=Headers(request=(("Accept", "text/html"),), response=(("Content-Type", "text/html"),)),
+        request_headers=(("Accept", "text/html"),),
+        policy=FetchPolicy(timeout_s=12.0),
+        fetched_at=FETCHED_AT,
         timings_ms={"total": 1950},
-        html_sha256=sha256_hex(BODY),
-        network_bodies=(),
-        fetch_policy=FetchPolicy(timeout_s=12.0).model_dump(mode="json"),
-        engine_version="0+cal.0",
     )
-    return FetchResult(
-        bundle=CaptureBundle(manifest=manifest, body=BODY, network=()), duration_ms=1950, attempts=ATTEMPTS
-    )
+    return FetchResult(bundle=bundle, duration_ms=1950, attempts=ATTEMPTS)
 
 
 async def _site(conn: AsyncConnection) -> SiteId:

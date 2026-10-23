@@ -6,7 +6,6 @@ The adapters are stubs that detect one synthetic host; no network.
 """
 
 import asyncio
-import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
@@ -14,44 +13,12 @@ from urllib.parse import urlsplit
 from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.outcome import Content, Exchange, as_error, fetch_result
-from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import NOT_PLATFORM, AdapterMatch, Shape
 from crawlerai.adapters.registry import DECLINE_FOR, Registry
-from crawlerai.core.capture import CaptureMethod
+from tests.support.captures import ScriptedRung
 
 BOARD = "https://board.example.test/tenant"
-
-
-def _result(url: str, method: CaptureMethod, status: int, block_class: BlockClass) -> FetchResult:
-    return fetch_result(
-        url=url,
-        method=method,
-        policy=FetchPolicy(),
-        engine_version="test",
-        fetched_at=datetime.now(UTC),
-        started=time.monotonic(),
-        exchange=Exchange(url=url, status=status, request_headers=(), response_headers=()),
-        content=Content(body=b"{}" if block_class == "ok" else b""),
-        block_class=block_class,
-        error=None,
-    )
-
-
-@dataclass
-class Rung:
-    """Answers every URL with `status` and `block_class` by `method`, and records the URLs it got."""
-
-    method: CaptureMethod
-    status: int = 200
-    block_class: BlockClass = "ok"
-    reason: str | None = None  # an adapter answer that does not serve the page (`as_error`)
-    calls: list[str] = field(default_factory=list)
-
-    async def __call__(self, url: str, policy: FetchPolicy) -> FetchResult:
-        self.calls.append(url)
-        result = _result(url, self.method, self.status, self.block_class)
-        return result if self.reason is None else as_error(result, self.reason)
 
 
 @dataclass
@@ -60,7 +27,7 @@ class StubAdapter:
 
     name: str
     host: str
-    rung: Rung = field(default_factory=lambda: Rung("api"))
+    rung: ScriptedRung = field(default_factory=lambda: ScriptedRung("api", ok_body=b"{}"))
 
     def detect(self, url: str) -> AdapterMatch | None:
         on_host = not self.host or urlsplit(url).hostname == self.host
@@ -113,7 +80,7 @@ def test_a_capture_is_read_by_the_adapter_that_detects_its_page_and_serves_its_e
 
 def test_a_host_answering_without_the_platform_signal_is_declined_for_the_window() -> None:
     # One request per host per window, and after the window the host is tried again.
-    adapter = StubAdapter("board", "board.example.test", Rung("api", status=404, reason=NOT_PLATFORM))
+    adapter = StubAdapter("board", "board.example.test", ScriptedRung("api", status=404, reason=NOT_PLATFORM))
     clock = Clock()
     registry = Registry([adapter], clock=clock)
 

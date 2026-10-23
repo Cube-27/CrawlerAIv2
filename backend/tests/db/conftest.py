@@ -20,12 +20,10 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.acquire import politeness
-from crawlerai.acquire.politeness import retry_after
 from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.progressive import StateKey
-from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import (
     Base,
@@ -44,8 +42,8 @@ from crawlerai.schemas import registry
 from crawlerai.schemas import types as schema_types
 from crawlerai.schemas.types import document_digest
 from crawlerai.services.fetching import Fetching
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers, sha256_hex
 from tests.db.support import PRICE, TITLE, Web, api, fetching_from, unpaced
+from tests.support.captures import fetched
 
 TEST_DATABASE_URL = "CRAWLERAI_TEST_DATABASE_URL"
 VOCABULARY = Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld"
@@ -162,49 +160,8 @@ def schema_name() -> str:
 
 @pytest.fixture
 def fetch_result() -> Callable[..., FetchResult]:
-    """A factory for the result of one fetch of `url` by one rung, as `fetch_http` reports it; `final_url` is where its
-    redirects ended (default: `url`)."""
-
-    def make(
-        url: str,
-        status: int = 200,
-        body: bytes = b"",
-        headers: HeaderList = (),
-        *,
-        block_class: BlockClass = "ok",
-        error: str | None = None,
-        method: CaptureMethod = "http",
-        policy: FetchPolicy | None = None,
-        final_url: str | None = None,
-    ) -> FetchResult:
-        manifest = CaptureManifest(
-            capture_id=uuid7(),
-            url=url,
-            final_url=final_url or url,
-            fetched_at=datetime.now(UTC),
-            method=method,
-            status_code=status,
-            block_class=block_class,
-            headers=Headers(request=(), response=headers),
-            timings_ms={"total": 1},
-            html_sha256=sha256_hex(body),
-            network_bodies=(),
-            fetch_policy=(policy or FetchPolicy()).model_dump(mode="json"),
-            engine_version="test",
-        )
-        attempt = AttemptRecord(
-            method=method,
-            status=status or None,
-            block_class=block_class,
-            duration_ms=1,
-            error=error,
-            retry_after=retry_after(headers, manifest.fetched_at),
-        )
-        return FetchResult(
-            bundle=CaptureBundle(manifest=manifest, body=body, network=()), duration_ms=1, attempts=(attempt,)
-        )
-
-    return make
+    """The result of one fetch of `url` by one rung, as the rung reports it (`tests.support.captures.fetched`)."""
+    return fetched
 
 
 @pytest.fixture
