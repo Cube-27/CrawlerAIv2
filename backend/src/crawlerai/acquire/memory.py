@@ -35,7 +35,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.acquire.fingerprint import platform_shown
 from crawlerai.acquire.politeness import SLOW_DOWN
 from crawlerai.acquire.session import ENGINE
-from crawlerai.acquire.types import AttemptRecord, FetchResult, fetched_as
+from crawlerai.acquire.stored_fetch import stored_fetch
+from crawlerai.acquire.types import AttemptRecord, FetchResult
 from crawlerai.db.models import (
     BrowserEngine,
     FetchMethod,
@@ -130,7 +131,7 @@ def lesson(result: FetchResult) -> Lesson | None:
     browser steps, and its cookies went on to HTTP (an attempt's `site_session`): then it was needed only to pass the
     block, `handoff`, and the pages stay on HTTP."""
     http = [attempt for attempt in result.attempts if attempt.method == "http"]
-    if result.bundle.manifest.fetch_policy.get("method_hint") != "auto" or result.block_class != "ok" or not http:
+    if stored_fetch(result.bundle.manifest).method_hint != "auto" or result.block_class != "ok" or not http:
         return None
     if result.method == "http":
         return Lesson("http")
@@ -159,7 +160,7 @@ async def _learn_fetch(conn: AsyncConnection, site_id: SiteId, result: FetchResu
     if learned is None:
         return
     values = {"method": learned.method, "engine": learned.engine, "handoff": learned.handoff}
-    kind = remembered_as(fetched_as(result.bundle.manifest.fetch_policy))
+    kind = remembered_as(stored_fetch(result.bundle.manifest).page_kind)
     insert = pg_insert(SiteContract).values(site_id=site_id, page_kind=kind, checked_at=func.now(), **values)
     changed = (
         SiteContract.method != "http"

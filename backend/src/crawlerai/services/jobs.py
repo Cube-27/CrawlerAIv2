@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 from sqlalchemy import RowMapping, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.acquire.types import AttemptRecord
+from crawlerai.acquire.stored_fetch import StoredFetch
 from crawlerai.collect.run import Adapters
 from crawlerai.config_ir.exporters.records import RecordFormat, clean_record, export_records
 from crawlerai.config_ir.progressive import StateKey, learning_failed
@@ -468,14 +468,14 @@ async def _page_outputs(
 def _fetch_of(row: _TaskRow, adapters: Adapters | None) -> FetchSummary | None:
     """The fetch of the task's page, from what its capture row kept: the method, status and class of the kept attempt,
     and every attempt made; None for a task with no capture, or one that kept no attempts."""
-    attempts = None if row.fetch_policy is None else row.fetch_policy.get("attempts")
+    attempts = None if row.fetch_policy is None else StoredFetch.model_validate(row.fetch_policy).attempts
     if not attempts or row.method is None or row.block_class is None or row.final_url is None:
         return None
     return fetch_summary(
         row.method,
         row.status_code or None,
         row.block_class,
-        [AttemptRecord.model_validate(attempt) for attempt in attempts],
+        attempts,
         adapters=adapters,
         url=row.capture_url or row.url,
         final_url=row.final_url,

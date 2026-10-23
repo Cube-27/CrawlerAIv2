@@ -36,13 +36,13 @@ from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.page_refs import canonical_link, page_refs
 from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, backoff
 from crawlerai.acquire.session import CookieExport, SiteSessions
+from crawlerai.acquire.stored_fetch import policy_with_attempts
 from crawlerai.acquire.types import (
     AttemptRecord,
     BlockClass,
     CallEndpoint,
     FetchPolicy,
     FetchResult,
-    policy_with_attempts,
 )
 from crawlerai.adapters.base import ADAPTER_CALL
 from crawlerai.adapters.platforms import ProductJson, product_json

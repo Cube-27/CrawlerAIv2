@@ -8,7 +8,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    JsonValue,
     PositiveFloat,
     PositiveInt,
     SecretStr,
@@ -33,10 +32,10 @@ __all__ = [
     "PageStep",
     "PagedFetch",
     "PagingHint",
+    "PolicyFields",
     "RequestContext",
     "StepOutcome",
     "StopReason",
-    "policy_with_attempts",
 ]
 
 
@@ -132,7 +131,10 @@ class CallEndpoint(_Frozen):
         )
 
 
-class FetchPolicy(_Frozen):
+class PolicyFields[ContextModel: BaseModel](_Frozen):
+    """What a fetch is asked to do, with its caller's request context as `ContextModel`: the `RequestContext` itself
+    for a fetch to make (`FetchPolicy`), or its serialized form for one a capture keeps (`stored_fetch.StoredFetch`)."""
+
     method_hint: Literal["auto", "http", "browser"] = "auto"
     proxy_pool: str | None = None
     # Obey robots.txt: off unless the request switches it on, and then no
@@ -148,19 +150,19 @@ class FetchPolicy(_Frozen):
     # The schema.org types the task reads the page for (`target_types` of `schemas.paths`) and their subtypes in the
     # pinned vocabulary, which a referring adapter weighs and
     # `classify` reads a document's structured data for; empty when no schema reads the page.
-    target_types: tuple[str, ...] = Field(default=(), exclude_if=lambda value: not value)
+    target_types: tuple[str, ...] = ()
     # The task reads the page for content formats only (`markdown`, `markdown_fit`, `chunks`) and no records: the
     # page's rendered text is what it reads, so `classify` judges a shell by it.
-    content_only: bool = Field(default=False, exclude_if=lambda value: not value)
+    content_only: bool = False
     # A soft row target for a list an adapter's API serves in pages: its walk ends once it has at least this many rows
     # (whole pages are kept); None asks for every page, up to the adapters' hard cap (`adapters.paging.MAX_ROWS`).
     max_rows: PositiveInt | None = None
     # The caller's headers and cookies, and the page steps the browser runs before it reads the page.
-    context: RequestContext | None = None
+    context: ContextModel | None = None
     steps: tuple[PageStep, ...] = ()
     # Browser only: the data call endpoints the site's located `call` field sources name; the page is ready once each
     # has answered, else once no data call is in flight.
-    ready_calls: tuple[CallEndpoint, ...] = Field(default=(), exclude_if=lambda value: not value)
+    ready_calls: tuple[CallEndpoint, ...] = ()
     # Files the browser makes of the rendered page, stored beside the capture (`storage.artifacts`): a PNG of the
     # viewport or of the whole page, and a PDF print. Either needs the browser rung (`method_hint` `browser`).
     screenshot: Literal["viewport", "full_page"] | None = None
@@ -170,6 +172,10 @@ class FetchPolicy(_Frozen):
     def captures_page(self) -> bool:
         """Whether the fetch must end on the rendered page itself, for a file the browser makes of it."""
         return self.screenshot is not None or self.pdf
+
+
+class FetchPolicy(PolicyFields[RequestContext]):
+    """What a fetch is asked to do, with the caller's own request context."""
 
 
 class AttemptRecord(_Frozen):
@@ -216,24 +222,6 @@ class FetchResult(_Frozen):
     @property
     def block_class(self) -> BlockClass:
         return self.bundle.manifest.block_class
-
-
-def policy_with_attempts(
-    fetch_policy: dict[str, JsonValue], attempts: tuple[AttemptRecord, ...]
-) -> dict[str, JsonValue]:
-    """`fetch_policy` with every rung tried as `attempts`, as the bundle manifest and the `capture` row keep it."""
-    return {**fetch_policy, "attempts": [attempt.model_dump(mode="json") for attempt in attempts]}
-
-
-def fetched_as(fetch_policy: dict[str, JsonValue]) -> PageKind | None:
-    """The page kind a capture was fetched as (the `page_kind` of its `FetchPolicy`, which its manifest keeps); None
-    for one fetched without a page kind, or before the manifest kept it."""
-    match fetch_policy.get("page_kind"):
-        case "detail":
-            return "detail"
-        case "listing":
-            return "listing"
-    return None
 
 
 # Owner #52: the paging mechanisms a caller may name for a listing scrape's browser actions.

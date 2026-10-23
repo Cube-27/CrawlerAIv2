@@ -6,7 +6,8 @@ from datetime import timedelta
 from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.acquire.types import FetchResult, policy_with_attempts
+from crawlerai.acquire.stored_fetch import policy_with_attempts
+from crawlerai.acquire.types import FetchResult
 from crawlerai.db.models import Capture, CaptureId, SiteId
 from crawlerai.storage.artifacts import artifact_key
 from crawlerai.storage.base import ObjectStore
