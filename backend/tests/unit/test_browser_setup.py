@@ -222,12 +222,9 @@ def test_inv42_inv43_chrome_in_a_profile_with_the_guards_webrtc_policy_in_each_m
 
     # `chrome` is Google Chrome stable (`patchright install chrome`), Patchright's recommended build, in the mode's
     # launch options; WebRTC's proxy policy, which the SSRF guard needs, is a profile preference.
-    assert {k: v for k, v in recorder.launch.items() if k != "proxy"} == {
-        "channel": "chrome",
-        "no_viewport": True,
-        "accept_downloads": False,
-        **_MODES[headless],
-    }
+    recorder_launch = {k: v for k, v in recorder.launch.items() if k != "proxy"}
+    launch_expected = {"channel": "chrome", "no_viewport": True, "accept_downloads": False, **_MODES[headless]}
+    assert recorder_launch == launch_expected
     # Headless, the browser's identity is set on its workers and its tab; headful, nothing is set, on a display.
     expected = (["workers", "tab"], 0) if headless else ([], 1)
     assert (recorder.overrides, recorder.displays) == expected
