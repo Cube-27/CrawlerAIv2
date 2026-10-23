@@ -21,6 +21,7 @@ page (`collect.xhr`), so its rows are read exactly as a recipe's are (C8).
 """
 
 import json
+import math
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -97,7 +98,7 @@ def read_xpath(path: str, page: ParsedPage) -> Scalar | None:
     if isinstance(found, bool):
         return None  # a test, not a value
     if isinstance(found, float):
-        return None if found != found else found  # NaN is no number a page states (XPath 1.0 §3.5)
+        return None if math.isnan(found) else found  # NaN is no number a page states (XPath 1.0 §3.5)
     text = str(found).strip()
     return text or None
 
