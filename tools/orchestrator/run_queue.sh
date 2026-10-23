@@ -20,6 +20,7 @@ usage() { echo "usage: run_queue.sh QUEUE [--escalate AGENT]" >&2; exit 2; }
 queue=$1; escalate=${3:-}; state=$queue.state
 [[ -f $queue ]] || usage
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+source "$here/lib.sh"
 report='^\s*(READY TO MERGE|BLOCKED) #'
 standing="builder-protocol.md HARD RULES apply; end with READY TO MERGE #<n> <sha7> or BLOCKED #<n>: <reason>."
 touch "$state"
@@ -72,6 +73,17 @@ ask() {
 
 merged() { [[ $(get "$1") == "$1 merged"* ]]; }
 
+# checking ID: true while a pr_ready.sh started in the id's worktree still runs. A builder ends its turn while that
+# check runs in the background and is woken when it exits, so such a turn end needs no ask.
+checking() {
+  local wt pid
+  wt=$(worktrees_root)/$1
+  for pid in $(ps -eo pid=,args= | awk '/pr_ready\.sh/ && !/awk/ { print $1 }'); do
+    [[ $(readlink "/proc/$pid/cwd" 2>/dev/null) == "$wt"* ]] && return 0
+  done
+  return 1
+}
+
 deps_merged() {
   local dep
   [[ $1 == - ]] && return 0
@@ -108,7 +120,9 @@ merge() {   # ID PR SHA7 OWNER
     return 0
   fi
   if [[ -n $owner ]]; then hold "$id" "$pr" "PR #$pr is ready and flagged for the owner's approval"; return 0; fi
-  gh pr merge "$pr" --squash --match-head-commit "$full" >/dev/null 2>&1 || { hold "$id" "$pr" "gh pr merge failed"; return 0; }
+  if ! out=$(gh pr merge "$pr" --squash --match-head-commit "$full" 2>&1 >/dev/null); then
+    hold "$id" "$pr" "gh pr merge failed: $(echo "$out" | tail -1)"; return 0
+  fi
   pane=$(herdr agent get "$id" 2>/dev/null | grep -o '"pane_id":"[^"]*"' | head -1 | cut -d'"' -f4)
   [[ -n $pane ]] && herdr pane close "$pane" >/dev/null 2>&1
   bash "$here/cleanup_worktree.sh" "$id" "change/$id" >/dev/null 2>&1 || log "$id: cleanup_worktree.sh failed; clean up by hand"
@@ -129,6 +143,7 @@ watch() {   # ID OWNER
   esac
   turn=$(turn_of "$id")
   [[ -n $turn && $turn == "${done_seq[$id]:-}" ]] && return 0   # this turn's end was handled already
+  checking "$id" && return 0   # its readiness check still runs; the turn is handled once that check wakes it
   done_seq[$id]=$turn
   line=$(report_of "$id")
   if [[ $line =~ ^READY\ TO\ MERGE\ \#([0-9]+)\ ([0-9a-f]{7}) ]]; then
@@ -144,7 +159,7 @@ log "queue $queue, state $state${escalate:+, escalating to $escalate}"
 # After a restart done_seq is empty, so each running builder's last ended turn is handled once more: a READY is
 # re-checked by pr_ready.sh, which is safe to repeat.
 while true; do
-  running=0; open=0
+  running=0; busy=0; open=0
   # The queue is read on fd 3: herdr, gh and the scripts read stdin and would swallow its lines.
   while read -r id deps brief owner <&3; do
     case $(get "$id") in
@@ -154,10 +169,11 @@ while true; do
   while read -r id deps brief owner <&3; do
     case $(get "$id") in
       "$id running"*) running=$((running + 1)); open=$((open + 1)) ;;
-      "$id held"*) open=$((open + 1)) ;;
+      # A held builder that is still alive keeps its slot, so holding one never starts a third.
+      "$id held"*) open=$((open + 1)); [[ -n $(status "$id") ]] && busy=$((busy + 1)) ;;
       "$id merged"*) ;;
       *) open=$((open + 1))
-         if deps_merged "$deps" && (( running < ${QUEUE_BUILDERS:-2} )); then
+         if deps_merged "$deps" && (( running + busy < ${QUEUE_BUILDERS:-2} )); then
            start "$id" "$brief"; running=$((running + 1))
          fi ;;
     esac

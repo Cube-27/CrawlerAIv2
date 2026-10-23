@@ -73,6 +73,8 @@ millions of tokens.
    Name yourself first (`herdr agent rename <your pane> orch`). The runner prompts you once per event that needs
    judgement (a builder's `BLOCKED`, a permission dialog, a builder gone, an owner-flagged PR ready, a builder that
    didn't reach an accepted READY after two asks, the queue done or stuck), and shows a herdr notification for each.
+   A builder whose `pr_ready.sh` still runs in its worktree is not asked (its check wakes it), and a held builder that
+   is still alive keeps its slot, so a hold never starts a third builder.
 4. **On an escalation**, read the runner's pane (`herdr pane read <pane> --source recent-unwrapped --lines 40`) and the
    builder's screen, clear the cause, record it in the queue's state file (`<id> running` to resume watching a builder,
    `<id> merged <pr>` after merging a held PR yourself), and restart the runner if it exited. Ask the owner before
