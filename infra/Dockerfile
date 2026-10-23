@@ -1,5 +1,5 @@
 # The single backend image. Build from the repo root, naming the commit for the engine version:
-#   docker build -f infra/Dockerfile --build-arg CRAWLERAI_GIT_SHA=$(git rev-parse HEAD) backend
+#   docker build --platform=linux/amd64 -f infra/Dockerfile --build-arg CRAWLERAI_GIT_SHA=$(git rev-parse HEAD) backend
 # The build stage installs the project into a virtual environment; the image keeps that environment and the
 # migrations only, so the engine's data is held once, inside the installed package.
 FROM python:3.12-slim AS build
@@ -32,6 +32,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM python:3.12-slim
 
+# Google Chrome stable has no linux/arm64 build, so the image is amd64 only; fail early with the reason.
+RUN arch=$(dpkg --print-architecture) && if [ "$arch" != "amd64" ]; then \
+    echo "Google Chrome has no linux/$arch build; build with --platform=linux/amd64 (emulation)" >&2; exit 1; fi
+
 ENV PATH=/app/.venv/bin:$PATH
 WORKDIR /app
 COPY --from=build /app/.venv ./.venv
@@ -40,8 +44,14 @@ COPY migrations ./migrations
 
 # The browser rung's Google Chrome stable, installed as the
 # Patchright README sets it up (its apt package, under /opt/google/chrome for every user), with the system libraries
-# and fonts the package depends on; then the service user.
-RUN patchright install --with-deps chrome && rm -rf /var/lib/apt/lists/* \
+# and fonts the package depends on; then the service user. A desktop's font set is added so that font enumeration
+# does not single the container out: metric-compatible core fonts (Liberation, Carlito, Caladea; SIL OFL / Apache-2.0),
+# DejaVu, Noto with CJK and colour emoji, and Roboto. The Microsoft core fonts are not redistributable, so Liberation
+# stands in for them.
+RUN patchright install --with-deps chrome \
+    && apt-get install -y --no-install-recommends fonts-liberation fonts-dejavu fonts-noto-core fonts-noto-cjk \
+        fonts-noto-color-emoji fonts-roboto fonts-crosextra-carlito fonts-crosextra-caladea \
+    && rm -rf /var/lib/apt/lists/* && fc-cache -f \
     && useradd --system --no-create-home crawlerai
 USER crawlerai
 
