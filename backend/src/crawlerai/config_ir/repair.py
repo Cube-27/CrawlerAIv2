@@ -112,7 +112,7 @@ def _main_call(main: ApiRecipe, learned: ApiRecipe, drifted: set[str], others: s
     if _request(main) == _request(learned):
         repaired = {name: learned.map[name] for name in drifted & set(learned.map)}
         return main.model_copy(update={"map": {**main.map, **repaired}})
-    # A call needs a field to read (`ApiRecipe.map`): one reading only what the kept sources give repairs nothing.
+    # A call needs a field to read (an `ApiRecipe` map): one reading only what the kept sources give repairs nothing.
     if not (read := {n: p for n, p in learned.map.items() if n not in others}):
         return None
     return learned.model_copy(update={"map": read})
