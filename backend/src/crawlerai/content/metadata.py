@@ -1,4 +1,4 @@
-"""The `metadata` content format (rest-api spec): what the page states about itself.
+"""The `metadata` content format: what the page states about itself.
 
 Each member is `None` (or empty) when the page does not state it; nothing is inferred from the URL or the host (C7).
 """
@@ -53,7 +53,7 @@ def metadata(page: ParsedPage, final_url: str) -> PageMetadata:
 
 
 def _title(page: ParsedPage) -> str | None:
-    # HTML Living Standard §3.1.3: `document.title` strips and collapses ASCII whitespace (§2.3.1).
+    # HTML Living Standard §3.1.3: `document.title` strips and collapses ASCII whitespace.
     node = page.tree.css_first("title")
     return (" ".join(tokens(node.text(deep=True))) or None) if node is not None else None
 
@@ -72,7 +72,7 @@ def html_lang(page: ParsedPage) -> str | None:
 
 
 def open_graph(page: ParsedPage) -> dict[str, str]:
-    # The Open Graph protocol: properties are `<meta property=… content=…>`; `name` is read too, as extraction spec's
+    # The Open Graph protocol: properties are `<meta property=… content=…>`; `name` is read too, as the
     # `meta:` locator does. "The first tag (from top to bottom) is given preference during conflicts."
     og: dict[str, str] = {}
     for node in page.tree.css("meta[content]"):

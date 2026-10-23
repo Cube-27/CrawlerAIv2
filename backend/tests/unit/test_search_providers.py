@@ -1,4 +1,4 @@
-"""Reading a search provider's answer, and asking SearXNG and a URL template (D-1442, D-1443). Hosts are RFC 2606."""
+"""Reading a search provider's answer, and asking SearXNG and a URL template. Hosts are RFC 2606."""
 
 import json
 from urllib.parse import parse_qs, urlsplit

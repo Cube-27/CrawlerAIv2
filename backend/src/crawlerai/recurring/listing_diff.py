@@ -1,12 +1,12 @@
-"""The listing diff (jobs spec): which URLs of a site's catalog a recurring crawl no longer
+"""The listing diff: which URLs of a site's catalog a recurring crawl no longer
 finds.
 
-A run is a records crawl that completed. A recurring crawl is the caller re-submitting the same request (§14), so the
+A run is a records crawl that completed. A recurring crawl is the caller re-submitting the same request, so the
 runs of one crawl are the records crawls with the same scope: start URL, globs, depth, limit, page-kind rules and
 schema. A run's listing is the URLs its frontier gave a page kind, on the host the start page is on
 (`job.start_location`): every URL of the catalog the crawl found, whether or not its page was then reached; and, for a
 listing schema, the row URLs of the records its pages stand for (`collect.schema_org_map.item_url_fields`), which no
-task fetches. The row URL fields are the schema's as the job pinned it at submit (INV-28, `job.pinned`), so an edit made
+task fetches. The row URL fields are the schema's as the job pinned it at submit (`job.pinned`), so an edit made
 while the job ran never changes which of its records' fields are read.
 
 `close_run` diffs a run as its job ends (the queue's `ending` hook), in that transaction and before the end event:
@@ -24,7 +24,7 @@ fetched) is never missing.
 The diffs of a site's runs take the site's row lock first, so two runs ending together never lock its `url_state` rows
 in opposite orders.
 
-New URLs are queued by the frontier, which takes every URL a run finds (jobs spec); nothing here adds tasks.
+New URLs are queued by the frontier, which takes every URL a run finds; nothing here adds tasks.
 """
 
 from collections.abc import Sequence
@@ -64,7 +64,7 @@ URL_GONE: Final = "url_gone"
 # The event of a crawl whose sitemap reading stopped at its time cap (`crawlerai.worker.handlers.crawl`).
 SITEMAPS_TIMED_OUT: Final = "sitemaps_timed_out"
 
-# The members of a crawl request that decide which URLs its runs can find (jobs spec). `formats`, `fetch`, `locale`
+# The members of a crawl request that decide which URLs its runs can find. `formats`, `fetch`, `locale`
 # and `webhook_url` change what is done with a page, not which pages are listed.
 _SCOPE: Final = ("url", "include", "exclude", "max_depth", "limit", "page_kind_rules")
 
@@ -104,7 +104,7 @@ async def close_run(conn: AsyncConnection, job_id: JobId, status: JobStatus) -> 
     job: _JobRow = (await conn.execute(select(*columns).where(Job.id == job_id))).one()
     if job.kind != "crawl" or job.schema_id is None:
         return
-    # The host the crawl's scope followed the start page to (D-1285), else the start URL's.
+    # The host the crawl's scope followed the start page to, else the start URL's.
     host = urlsplit(job.start_location or job.request["url"]).hostname
     site = select(Site.id).where(Site.host == host).with_for_update()
     site_id = (await conn.execute(site)).scalar_one_or_none()

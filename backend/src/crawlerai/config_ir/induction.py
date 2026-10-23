@@ -1,6 +1,6 @@
-"""Induction (learning-configs spec): selectors generalized from the locators of the values the engine
+"""Induction: selectors generalized from the locators of the values the engine
 published on the learning sample, without an LLM. What the engine published is the learning oracle: its own values and
-role C's grounded ones (a verbatim span of the cleaned text, INV-12, or a link's or image's element).
+role C's grounded ones (a verbatim span of the cleaned text, or a link's or image's element).
 
 For each field, every sample page's published locator proposes candidate steps:
 - `jsonld:<block>:<path>`: a `jsonld` step relative to each schema.org node the value is nested in (nearest first),
@@ -18,10 +18,10 @@ For each field, every sample page's published locator proposes candidate steps:
 A page's locators may differ in scheme from another's (a value role C found on one page, the DOM collector on another):
 a candidate is kept only if every sample page proposes it and, on every page, it selects exactly one node whose value
 the engine executor normalizes to the published value (`equal`). Of those, the one most pages propose, then the first,
-wins; a field without one goes to synthesis (§4.6). Site strings exist only in the steps produced, which are IR data
-(C3, INV-03). A listing's rows are induced from the item layer's blocks (`listing_induction`).
+wins; a field without one goes to synthesis. Site strings exist only in the steps produced, which are IR data
+(C3). A listing's rows are induced from the item layer's blocks (`listing_induction`).
 
-A locate run (learning-configs spec, "Locate run" step 3) induces a value in every source document of a page that
+A locate run induces a value in every source document of a page that
 holds it, whatever locator its candidate was published with (`source_steps`): a `jsonpath` step in each JSON document
 (JSON-LD, embedded state, JSON attributes, RSC rows, captured calls) where a member normalizes to the value, and the
 anchored paths of each element whose text or attribute does.
@@ -60,19 +60,19 @@ from crawlerai.normalize.strings import collapse
 from crawlerai.schemas.types import NEXT_PAGE_FIELD, FieldSpec, SchemaDef
 
 # A class token that reads as a word or kebab-case words is a stable anchor; tokens that build tools hash carry
-# uppercase letters, underscores or long digit runs. A structural property of the token (learning-configs spec, D-0031),
+# uppercase letters, underscores or long digit runs. A structural property of the token,
 # not a list of names.
 _STABLE_CLASS = re.compile(r"[a-z][a-z0-9]*(-[a-z0-9]+)*")
 _DIGIT_RUN = re.compile(r"\d{3}", re.ASCII)
 # RFC 9535 §2.3.3: an index segment.
 _INDEX = re.compile(r"\[\d+\]", re.ASCII)
-_STATUS: FieldStatus = "uncorroborated"  # until validation (§4.7) records corroboration
+_STATUS: FieldStatus = "uncorroborated"  # until validation records corroboration
 # The schemes whose values come from an adapter's or API recipe's mapping, which the config reuses.
 MAPPED: Final = frozenset({"adapter", "api"})
 # The schemes of values read from a JSON document or a meta element: one step reads a list as well as a value.
 STRUCTURED: Final = frozenset({"jsonld", "meta", "js_state", "attr", "rsc", "xhr"})
 # The schemes of values read from one element: structured markup, the DOM, a config's step, and role C's grounded
-# claims (a verbatim span of the cleaned text, INV-12, or a link's or image's element).
+# claims (a verbatim span of the cleaned text, or a link's or image's element).
 ELEMENTS: Final = frozenset({"microdata", "dom", "config", "text"})
 # The JSON documents a located value is searched in, and how many steps each source proposes at most.
 LOCATED_SOURCES: Final[tuple[JsonSource, ...]] = ("jsonld", "js_state", "attr", "rsc", "xhr")
@@ -92,7 +92,7 @@ class Published:
 @dataclass(frozen=True, slots=True)
 class SamplePage:
     """A learning sample page: the page entity's published values and, on a listing, each row's, in document order.
-    Induction reads the page's; synthesis (§4.6) reads both."""
+    Induction reads the page's; synthesis reads both."""
 
     page: ParsedPage
     ctx: Context
@@ -204,7 +204,7 @@ def _locators(f: _Field) -> list[Locator] | None:
 
 
 def _mapped(name: str, scheme: str, locators: Sequence[Locator], result: Induction) -> None:
-    # learning-configs spec: values an adapter or API recipe published come from its mapping, which the config reuses.
+    # values an adapter or API recipe published come from its mapping, which the config reuses.
     mappings = {locator.parts[0] for locator in locators}
     if len(mappings) == 1:
         result.mapped[name] = f"{scheme}:{mappings.pop()}"
@@ -408,7 +408,7 @@ def _normalizes_to(raw: str | int | float, value: JsonValue, spec: FieldSpec, ct
 
 def span_element(page: ParsedPage, start: int, end: int) -> HtmlElement | None:
     """The innermost element whose text holds the cleaned text's `[start, end)` (a role C value grounded as a verbatim
-    span, INV-12), when its node path resolves to one element of the lxml tree; None otherwise."""
+    span), when its node path resolves to one element of the lxml tree; None otherwise."""
     paths = [run.node_path for run in page.cleaned_text.offsets if run.start < end and start < run.end]
     if not paths:
         return None
@@ -445,7 +445,7 @@ def xpath_candidates(element: HtmlElement, spec: FieldSpec) -> Iterator[_Candida
 
 def anchored_paths(element: HtmlElement) -> Iterator[str]:
     """`//anchor-test[anchor]/child/.../element` for each anchor of `element` and its ancestors, nearest first, without
-    positional predicates (learning-configs spec)."""
+    positional predicates."""
     below = ""
     node: HtmlElement | None = element
     while node is not None and isinstance(node.tag, str):
@@ -457,7 +457,7 @@ def anchored_paths(element: HtmlElement) -> Iterator[str]:
 
 
 def anchors(node: HtmlElement) -> Iterator[str]:
-    """The node's stable anchors: `@id`, `@itemprop`, `@data-*` and stable class tokens (learning-configs spec)."""
+    """The node's stable anchors: `@id`, `@itemprop`, `@data-*` and stable class tokens."""
     for name in ("id", "itemprop"):
         if (value := node.get(name)) and (literal := _literal(value)) is not None:
             yield f"@{name}={literal}"
@@ -489,7 +489,7 @@ def readings(nodes: str, element: HtmlElement, spec: FieldSpec) -> Iterator[Step
 
 def reading(nodes: str, attribute: str | None, _spec: FieldSpec) -> Iterator[Step]:
     """The node's normalized text, or its `attribute` as the page writes it: a relative `href` or `src` stays as
-    written, the published form, and the url normalizer resolves it for comparison (normalization spec)."""
+    written, the published form, and the url normalizer resolves it for comparison."""
     xpath = f"normalize-space({nodes})" if attribute is None else f"{nodes}/@{attribute}"
     if (step := _xpath_step(xpath)) is not None:
         yield step

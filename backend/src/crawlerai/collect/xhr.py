@@ -1,4 +1,4 @@
-"""The captured network body collector (extraction spec): the bodies a browser capture
+"""The captured network body collector: the bodies a browser capture
 kept.
 
 Each body is one document, read as `network_json` reads it (RFC 8259 §8.1, a guard prefix stripped), or, labelled a

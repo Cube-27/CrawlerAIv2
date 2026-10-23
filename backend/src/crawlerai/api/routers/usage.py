@@ -1,4 +1,4 @@
-"""`GET /v1/usage/llm` and `GET /v1/usage/llm/jobs` (jobs spec): the LLM cost history, an estimate for
+"""`GET /v1/usage/llm` and `GET /v1/usage/llm/jobs`: the LLM cost history, an estimate for
 visibility, not billing."""
 
 from typing import Annotated

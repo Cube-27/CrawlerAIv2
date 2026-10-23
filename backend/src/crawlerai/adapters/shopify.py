@@ -1,4 +1,4 @@
-"""Shopify storefront collections through the Storefront API (adapters spec).
+"""Shopify storefront collections through the Storefront API.
 
 Endpoint, verified against the platform's Storefront API documentation (shopify.dev/docs/api/storefront, 2026-10-16):
 every shop answers `POST /api/{version}/graphql.json` on its own domain, and tokenless access serves products and
@@ -9,7 +9,7 @@ Shops live on their own domains, so a page URL alone does not say a page is a sh
 route for a collection (`/collections/{handle}`, also under a locale subfolder, `/{locale}/collections/{handle}`) is the
 candidate, and the answer's version header is the platform's signal. An answer without it is `NOT_PLATFORM`; one with
 it that holds no collection for the handle, or GraphQL `errors`, is `NOT_SERVED`. Either way the page falls back to the
-generic rungs (adapters spec).
+generic rungs.
 
 A collection page shows one page of the collection, of a size its theme chooses (the Liquid `paginate` tag's `by`),
 which no documented API states; the Storefront API pages by cursor only (no page number or offset). So the adapter is
@@ -20,19 +20,19 @@ subfolder), matched by `handle`, in the page's order; a page linking to none is 
 it. Any query (`?page=`, a sort, a filter) is the page's own: its links say which products it shows. The products come
 in pages of at most 250 (the Storefront API's `first` limit), joined by the connection's cursor (`pageInfo { hasNextPage
 endCursor }`, Relay cursor connections, the API's pagination documentation) until every product the page links to is
-read, up to the adapter row cap (`adapters.paging`, D-1385). The next page of the collection is the crawl's to follow,
+read, up to the adapter row cap (`adapters.paging`). The next page of the collection is the crawl's to follow,
 by the page's own link, not this one's.
 
 A locale subfolder names the language the page shows (the platform's international domains documentation:
 `/{language}` or `/{language}-{country}`): the query asks the collection in that language with
 `@inContext(language:)` and is served only when the answer's `localization` says it holds that language (a shop
 without the language answers in its default one). The subfolder's country is not used: prices are read only
-from a shop with one presentment currency (D-1114, D-1386). A shop with several is not served: the answer's amounts
+from a shop with one presentment currency. A shop with several is not served: the answer's amounts
 are its primary market's, while its page may show another market's amounts, so the page path publishes the price the
-page shows, with the currency the page states or, failing that, unknown (normalization spec, money). A stored answer
+page shows, with the currency the page states or, failing that, unknown (money). A stored answer
 of such a shop is still read without its prices: its amounts are not the page's, whatever their currency.
 
-Product pages are not served (D-1118): the page states fields the API's answer lacks (its default variant's sku,
+Product pages are not served: the page states fields the API's answer lacks (its default variant's sku,
 condition, rating, review count), so a product page takes the page path, which reads them with the variants the page
 states.
 """
@@ -66,7 +66,7 @@ SIGNAL: Final = "x-shopify-api-version"
 # (Liquid `handle` filter); a handle with other characters is percent-encoded in the URL and left to the generic path.
 _HANDLE: Final = re.compile(r"[\w-]+", re.ASCII)
 # A locale subfolder: a BCP 47 language subtag (RFC 5646 §2.2.1, ISO 639-1 or 639-2), optionally a region subtag
-# (§2.2.4, ISO 3166-1 alpha-2), as the platform writes them in a path segment.
+# (ISO 3166-1 alpha-2), as the platform writes them in a path segment.
 _LOCALE: Final = re.compile(r"([a-z]{2,3})(?:-[a-z]{2})?", re.ASCII | re.IGNORECASE)
 # The Online Store's product route (shopify.dev Liquid `product.url`: `/products/{handle}`, also under a collection,
 # `/collections/{handle}/products/{handle}`, and a locale subfolder), as a page links its products.
@@ -101,7 +101,7 @@ def _bound(at: Members) -> Shape:
 
 # A collection lists its products (schema.org ItemList). A listed product's two Offers are its price range's bounds:
 # equal bounds are the one price of every variant; different ones disagree, and the answer states no one price of the
-# product, so its price is a `conflict` `offers_disagree` (resolution spec, "Candidate score": no low bound is derived).
+# product, so its price is a `conflict` `offers_disagree` ("Candidate score": no low bound is derived).
 _LISTED: Final = Shape(
     type="Product",
     at=("nodes", ALL),
@@ -128,7 +128,7 @@ class Shopify:
         return AdapterMatch(tenant=parts.hostname, page_kind="listing", item=handle)
 
     def serves(self, match: AdapterMatch, endpoint: str) -> bool:
-        # adapters spec: the API path on the page's own host (the tenant), where `fetch` asks it.
+        # the API path on the page's own host (the tenant), where `fetch` asks it.
         parts = urlsplit(endpoint)
         return parts.hostname == match.tenant and _ENDPOINT_PATH.fullmatch(parts.path) is not None
 
@@ -300,7 +300,7 @@ def _one_currency(answer: JsonValue) -> bool:
 def _priced(answer: JsonValue) -> bool:
     """Whether every listed product has a price above zero (`priceRange.minVariantPrice.amount`, a `Decimal` string):
     a shop that hides its prices from the API (amounts of zero) may still show them on its page, and the answer must
-    not take the page path's prices away (adapters spec: an adapter answer never serves a page with less)."""
+    not take the page path's prices away (an adapter answer never serves a page with less)."""
     for node in _nodes(answer):
         amount = _member(_member(_member(node, "priceRange"), "minVariantPrice"), "amount")
         try:

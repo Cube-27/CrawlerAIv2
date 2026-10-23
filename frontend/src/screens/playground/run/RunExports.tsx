@@ -9,7 +9,7 @@ import { MoreExports } from "../../../components/MoreExports";
 const CSV = { extension: "csv", type: "text/csv" };
 
 /** A refused export, as a toast: it is the outcome of the button just pressed, and an alert in the run's header moved
- * the page under it (D-0979). */
+ * the page under it. */
 function notifyRefused(error: Error) {
   const problem = problemOf(error);
   toast.danger(problem?.title ?? "The export failed.", {
@@ -17,10 +17,10 @@ function notifyRefused(error: Error) {
   });
 }
 
-/** A run's downloads (frontend spec–4.4): JSON is every page's `json_values` item in task order, saved as one array, so
+/** A run's downloads (UI): JSON is every page's `json_values` item in task order, saved as one array, so
  * it equals the drawers' items; CSV is the server's `csv_records` export (RFC 4180), one file per page of it. With
  * `outputs` (a job without a schema), JSON is every page's outputs, as its drawers show them, and CSV is disabled:
- * there are no records to put in columns (jobs spec). */
+ * there are no records to put in columns. */
 export function RunExports({
   jobId,
   withMetadata,

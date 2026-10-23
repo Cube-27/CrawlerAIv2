@@ -16,8 +16,7 @@ function isSize(key: unknown): key is string {
   return typeof key === "string" && Object.hasOwn(SIZE_OPTIONS, key);
 }
 
-/** Previous and next under a table, with the page size when `sizing` is given. The API pages with a cursor (rest-api
- * spec), so there are no page numbers: a direction is enabled when the API returned a cursor for it. */
+/** Previous and next under a table, with the page size when `sizing` is given. The API pages with a cursor, so there are no page numbers: a direction is enabled when the API returned a cursor for it. */
 export function TablePagination({
   summary,
   sizing,

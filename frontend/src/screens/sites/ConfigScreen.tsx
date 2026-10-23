@@ -76,7 +76,7 @@ function ConfigTabs({ config }: Readonly<{ config: ConfigDetail }>) {
   );
 }
 
-/** Approves or rejects a learned config that waits for approval (D-1342, D-1391); shown only on such a config. */
+/** Approves or rejects a learned config that waits for approval; shown only on such a config. */
 function DecisionButtons({
   approve,
   reject,
@@ -131,7 +131,7 @@ function ConfigView({ config }: Readonly<{ config: ConfigDetail }>) {
         <Chip>v{config.version}</Chip>
         <Chip>{config.origin}</Chip>
         <ConfigStatusLabel status={config.status} />
-        {/* In the header's badge row, beside the button that started it: nothing below moves (D-0983). */}
+        {/* In the header's badge row, beside the button that started it: nothing below moves. */}
         {learning.jobId === null ? null : <LearnRun jobId={learning.jobId} />}
       </PageHeader>
       {learnProblem === null ? null : <ProblemAlert problem={learnProblem} />}
@@ -146,9 +146,9 @@ function ConfigView({ config }: Readonly<{ config: ConfigDetail }>) {
   );
 }
 
-/** One config version (frontend spec): its fields' steps, status, yield and validity, its validation report, the
+/** One config version: its fields' steps, status, yield and validity, its validation report, the
  * correction form, export with the release report, and the other versions; "Learn now" in the header, and "Reject" and "Approve"
- * on a learned config waiting for approval (D-1342, D-1391). */
+ * on a learned config waiting for approval. */
 export function ConfigScreen() {
   const { id = "" } = useParams();
   const config = useConfig(id);

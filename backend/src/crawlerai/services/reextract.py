@@ -1,4 +1,4 @@
-"""Offline re-extraction (jobs spec, "Job outcome summary"): the records the current engine makes again from the
+"""Offline re-extraction: the records the current engine makes again from the
 captures a job stored, with no network and no LLM (the replay of one capture, `services.captures.replay`, whose
 `extract_page` the worker and the evaluation harness run too). Nothing is stored: it reports the fields' statuses
 beside those the job stored, so a change to extraction or resolution is read on a job's own pages.

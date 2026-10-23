@@ -10,7 +10,7 @@ import { LocatorText } from "./LocatorText";
 import { StatusLabel } from "./StatusLabel";
 import { UncalibratedBadge } from "./UncalibratedBadge";
 
-/** Whether a record is complete, with its mode and confidence, and its one uncalibrated badge (D-1390). */
+/** Whether a record is complete, with its mode and confidence, and its one uncalibrated badge. */
 export function RecordSummary({ record }: Readonly<{ record: ExtractedRecord }>) {
   return (
     <>
@@ -26,8 +26,8 @@ export function RecordSummary({ record }: Readonly<{ record: ExtractedRecord }>)
   );
 }
 
-/** Fields by name, one row each, with every `field_meta` attribute the API returns (rest-api spec): a record's, or a
- * listing page's own (the answer's `page` member, D-1476). */
+/** Fields by name, one row each, with every `field_meta` attribute the API returns: a record's, or a
+ * listing page's own (the answer's `page` member). */
 export function FieldsTable({
   label,
   fields: named,

@@ -1,4 +1,4 @@
-"""A listing recipe's pagination (adapters spec, Appendix A #59): which kind a series of captured calls follows, and
+"""A listing recipe's pagination (Appendix A #59): which kind a series of captured calls follows, and
 the next request of each kind.
 
 Inference reads two or more calls of one listing's series (`network_match.row_series`: one endpoint, origin, path and
@@ -50,7 +50,7 @@ _Slot = tuple[PageWhere, str]
 _QUOTED: Final = r'"(?:[^"\\]|\\.)*"'
 _LINK_VALUE: Final = re.compile(r"<([^>]*)>((?:\s*;\s*[^;,\"]*(?:" + _QUOTED + r")?)*)")
 _LINK_PARAM: Final = re.compile(r';\s*([^\s=;,]+)\s*(?:=\s*(?:"((?:[^"\\]|\\.)*)"|([^\s;,]*)))?')
-# RFC 8288 §3.3: `rel` holds one or more relation types separated by whitespace, compared case-insensitively (§2.1.1).
+# RFC 8288 §3.3: `rel` holds one or more relation types separated by whitespace, compared case-insensitively.
 _NEXT: Final = "next"
 # ASCII digits only: a page number or offset as a URL or a JSON string writes it.
 _INTEGER: Final = re.compile(r"0|[1-9]\d*", re.ASCII)

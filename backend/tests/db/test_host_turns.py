@@ -1,4 +1,4 @@
-"""Host turns and holds shared by every process (acquisition spec, "Per-site rate and backoff"; `host_turn`): one turn
+"""Host turns and holds shared by every process (`host_turn`): one turn
 per spacing across holders, a held host refuses every other holder until released or its lease lapses, and only rows
 that say nothing are swept."""
 

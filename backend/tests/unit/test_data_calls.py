@@ -1,4 +1,4 @@
-"""Data calls (acquisition spec, "Data calls"): a platform's documented product JSON joins the page only when it states
+"""Data calls: a platform's documented product JSON joins the page only when it states
 the requested product, and is then read as structured evidence with its documented minor unit; another product's
 answer is refused, as a detail API recipe's is. The fetch path is grounded at runtime; this covers the identity check,
 the unit and the platform's declared currency on any product key and amount, and the variant rows."""

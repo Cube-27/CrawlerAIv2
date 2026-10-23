@@ -1,4 +1,4 @@
-"""How a fetch through a pool's endpoint counts toward its health (acquisition spec, "Proxy pools"): a cap, a decoding
+"""How a fetch through a pool's endpoint counts toward its health: a cap, a decoding
 error or an SSRF refusal counts neither way, whatever status the answer had."""
 
 import time

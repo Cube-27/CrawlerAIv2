@@ -1,4 +1,4 @@
-"""Role C on a detail page and a listing (llm spec, INV-12): a deterministic request, grounded
+"""Role C on a detail page and a listing: a deterministic request, grounded
 candidates, dropped ungrounded values, claims per block grounded in their block, and failures that leave fields missing
 with their reason. The client is scripted; no provider is called. Pages are synthetic (`example.test`)."""
 
@@ -163,7 +163,7 @@ def test_an_identifier_lies_within_one_text_run(claimed: str, start: int, kept: 
     assert [(c.raw, c.locator) for c in filled.candidates] == ([] if kept is None else [kept])
 
 
-# --- failures (§4.7) ---
+# --- failures ---
 
 
 @pytest.mark.parametrize(
@@ -255,10 +255,10 @@ def test_the_text_marks_the_links_and_images_the_fields_asked_can_claim() -> Non
 # --- a recorded runaway reply (F29) ---
 
 
-# --- a recorded reply (D-1021) ---
+# --- a recorded reply ---
 
 
-# --- listings: claims per block (llm spec, "Role C input, claims and candidates") ---
+# --- listings: claims per block ---
 
 ROW_SPECS = {
     "title": FieldSpec(type=FieldType.TEXT, description="Name of the item", required=True, scope="row"),

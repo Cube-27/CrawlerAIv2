@@ -1,4 +1,4 @@
-"""Ownership (extraction spec rule 3): a candidate belongs to the entity that holds it, and only
+"""Ownership: a candidate belongs to the entity that holds it, and only
 the target's own candidates, the page's, and those of an Offer of the target are the target's."""
 
 from pathlib import Path
@@ -57,7 +57,7 @@ def _candidate(entity: Entity | str) -> Candidate:
     [
         (PRODUCT, True),  # the target's own value
         (PAGE, True),  # page-level values describe the target (§4.6 step 4)
-        (OFFER, True),  # an Offer of the target (atomic offers, §4.8)
+        (OFFER, True),  # an Offer of the target (atomic offers)
         (AGGREGATE, True),  # AggregateOffer is an Offer (rdfs:subClassOf)
         (INNER_OFFER, True),  # an AggregateOffer's Offers offer the same item (schema.org `offers`)
         (ADD_ON, False),  # an Offer an Offer holds otherwise than as its `offers`

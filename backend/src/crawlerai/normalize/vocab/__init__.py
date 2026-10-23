@@ -1,4 +1,4 @@
-"""Vocabularies for the normalizers (normalization spec): the shipped data, its tokenizer and
+"""Vocabularies for the normalizers: the shipped data, its tokenizer and
 its matcher.
 
 Two kinds, each a directory with a `JUSTIFICATION.md` that names its source:
@@ -24,7 +24,7 @@ _JSON = ".json"
 
 
 def tokens(text: str) -> Tokens:
-    """`text` as a sequence of words (normalization spec): `strings.fold_words` without digits, so a word is a run of
+    """`text` as a sequence of words: `strings.fold_words` without digits, so a word is a run of
     Unicode letters and marks after NFKC and case folding."""
     return tuple(fold_words(text, digits=False))
 
@@ -49,7 +49,7 @@ class Entries:
         return cls(phrases)
 
     def find(self, words: Tokens) -> frozenset[str]:
-        """The codes whose phrase is a contiguous run of `words` (normalization spec: token sequences, never
+        """The codes whose phrase is a contiguous run of `words` (token sequences, never
         substrings).
 
         Where one match lies inside a longer one, the longer wins ("longest match"); matches at separate places all
@@ -88,7 +88,7 @@ def type_vocabularies_within(members: frozenset[str]) -> tuple[Mapping[str, Entr
 
 
 def stated_codes(text: str, entries: Iterable[Entries]) -> frozenset[str]:
-    """The codes `text` states (D-0782, INV-37): the code whose phrase is the text's whole first clause, with every
+    """The codes `text` states: the code whose phrase is the text's whole first clause, with every
     code a phrase names anywhere else in the text (`Entries.find`), so a different code later makes it ambiguous.
 
     A phrase with other words in its clause ("not in stock", "in stock soon") states nothing: a word before or after
@@ -106,7 +106,7 @@ def stated_codes(text: str, entries: Iterable[Entries]) -> frozenset[str]:
 def clause_codes(text: str, entries: Iterable[Entries]) -> frozenset[str]:
     """The codes whose phrase is the whole of one clause of `text` (clauses as `first_clause` ends them), for a text
     that lists several statements, such as the places of a location. A phrase with other words in its clause ("not
-    remote") states nothing, as in `stated_codes`; unlike it, a clause after the first counts (D-1272)."""
+    remote") states nothing, as in `stated_codes`; unlike it, a clause after the first counts."""
     entries = list(entries)
     clauses = {" ".join(tokens(clause)) for clause in _clauses(text)}
     return frozenset(e.phrases[c] for e in entries for c in clauses if c in e.phrases)

@@ -35,7 +35,7 @@ function newQueryClient(): QueryClient {
   });
 }
 
-/** Server state for the screens (frontend spec). */
+/** Server state for the screens. */
 export function ApiQueryProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [client] = useState(newQueryClient);
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;

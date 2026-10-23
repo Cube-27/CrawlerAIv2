@@ -1,5 +1,5 @@
 """What the services run with in one process: the database, the fetching rungs, the LLM client and the engine's data
-files. The API app and the MCP server's stdio process open one each from the settings (jobs spec)."""
+files. The API app and the MCP server's stdio process open one each from the settings."""
 
 import asyncio
 import logging
@@ -62,7 +62,7 @@ def load_engine_data(adapters: Adapters) -> EngineData | None:
 
 
 def load_drift_margins() -> DriftMargins | None:
-    """The dev-fitted drift margins (learning-configs spec); None when none are fitted, and then no field is
+    """The dev-fitted drift margins; None when none are fitted, and then no field is
     suspended."""
     data = engine_data_dir()
     return None if data is None else load_margins(data / MARGINS_FILE)
@@ -76,14 +76,14 @@ class Runtime:
     engine_data: EngineData | None  # None without the data files: no `records`
     drift_margins: DriftMargins | None
     llm_setup: LLMSetup  # checked in the background from when `open_runtime` opens (`crawlerai.llm.setup`)
-    search: SearchProvider | None = None  # None without a configured provider: search answers 503 (D-1442)
+    search: SearchProvider | None = None  # None without a configured provider: search answers 503
 
 
 @asynccontextmanager
 async def open_fetching(
     settings: Settings, connector: SafeConnector | None = None, database: AsyncEngine | None = None
 ) -> AsyncIterator[Fetching]:
-    """What a process fetches pages with (acquisition spec): HTTP, the process's one shared browser (launched when a
+    """What a process fetches pages with: HTTP, the process's one shared browser (launched when a
     render first needs it; the page rung's and the listing rung's alike), the adapters and the process's site sessions,
     all through one SSRF guard; the browser closes with the block. With a `database`, hosts' turns and holds are shared
     with every process through it (`acquire/host_turns.py`), and with a cookie key too, the site sessions keep the
@@ -95,7 +95,7 @@ async def open_fetching(
     if key is not None:
         configure_context_digest(key.get_secret_value())
     store = None if database is None or key is None else CookieStore(database, key.get_secret_value())
-    sessions = SiteSessions(store=store)  # this process's site sessions (INV-29's exception)
+    sessions = SiteSessions(store=store)  # this process's site sessions
 
     async def fetch_in(
         session: BrowserSession, url: str, policy: FetchPolicy, export: CookieExport | None
@@ -137,7 +137,7 @@ async def open_fetching(
     ) as browser:
 
         async def listing(url: str, policy: FetchPolicy, drive: Drive) -> PagedFetch:
-            # A listing with browser actions (owner #52) renders in the shared session too, holding one of its slots.
+            # A listing with browser actions renders in the shared session too, holding one of its slots.
             return await browser.render(
                 lambda session: fetch_listing(
                     url,

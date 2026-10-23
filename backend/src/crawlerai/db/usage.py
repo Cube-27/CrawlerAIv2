@@ -1,4 +1,4 @@
-"""Usage events and per-job budgets (persistence-storage spec): counted for visibility and to stop runaway
+"""Usage events and per-job budgets: counted for visibility and to stop runaway
 jobs, not for billing.
 
 `record_usage` writes the event and adds to `job.usage` in the caller's transaction, so both commit or neither does.
@@ -14,10 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.models import Job, JobId, Project, UrlTask, UsageEvent, UsageResource
 
-# `job.request.budget` keys (persistence-storage spec). `pages` is counted from the job's tasks, not from usage events.
+# `job.request.budget` keys. `pages` is counted from the job's tasks, not from usage events.
 BudgetResource = Literal["llm_calls", "browser_seconds", "pages"]
 
-# The `last_error` of a task that stopped because its job's budget ran out (§4.6). A handler returns
+# The `last_error` of a task that stopped because its job's budget ran out. A handler returns
 # `Failed(BUDGET_EXHAUSTED, transient=False)` rather than raising, so the usage it recorded commits with the failure.
 BUDGET_EXHAUSTED: Final = "budget_exhausted"
 

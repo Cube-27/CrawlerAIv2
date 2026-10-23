@@ -49,7 +49,7 @@ from tests.db.support import PRICE, TITLE, Web, api, fetching_from, unpaced
 
 TEST_DATABASE_URL = "CRAWLERAI_TEST_DATABASE_URL"
 VOCABULARY = Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld"
-# Every source kind ranked, so precedence types resolve (an unfitted order declines them, D-0486).
+# Every source kind ranked, so precedence types resolve (an unfitted order declines them).
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 

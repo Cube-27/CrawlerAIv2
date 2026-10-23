@@ -1,7 +1,7 @@
-"""Preference (resolution spec, "Candidate score"): which of a field's candidates publishes.
+"""Preference: which of a field's candidates publishes.
 
 A candidate is kept when it normalized (validity), belongs to the target (ownership, §4.6: scope match 0 otherwise) and
-is not a value taken from the request URL's query (INV-13); every other one is rejected with its reason. The kept
+is not a value taken from the request URL's query; every other one is rejected with its reason. The kept
 candidates are scored (`resolve.score`: source weight times scope match times agreement) and the value of the best score
 publishes; the candidates of every other value are rejected `outscored`. A field whose kept candidates state more than
 one value publishes with a reason, the disagreement flag (`disagree`, `offers_disagree`, `offer_split`). Where the best
@@ -10,7 +10,7 @@ member its values state instead (`_union`): two sources stating different member
 `conflict` too when amounts differ and no role explains it (`_price_winner`: the visible price, the shown variant);
 amounts that differ only in currency publish, the currency unknown (C7: an unclear currency never drops a price).
 
-Offers (INV-15, variants spec; `resolve.offers`): the anchor Offer is the one of the variant the target shows (its
+Offers (`resolve.offers`): the anchor Offer is the one of the variant the target shows (its
 own sku or gtin is that variant's), else the one holding values for the most offer fields; its values and the target's
 own have scope 1, another Offer's `OTHER_OFFER`. Availability and the other offer fields but money are a variant's:
 where the Offers disagree, the target takes only the shown variant's value, else the field is `offers_disagree`; a
@@ -97,7 +97,7 @@ Preference = Chosen | Unpublished
 @dataclass(frozen=True, slots=True)
 class PageFacts:
     """What the URL-parameter rule reads of the page: the request URL's query values, and whether a value is shown;
-    and the request URL, which may name the variant the page shows (variants spec)."""
+    and the request URL, which may name the variant the page shows."""
 
     query_values: frozenset[str]
     visible: Callable[[str], bool]
@@ -112,13 +112,13 @@ class PageFacts:
 
 @dataclass(frozen=True, slots=True)
 class Resolver:
-    """Preference for one entity, `target`: a detail page's target (§4.6), a listing's page or one of its rows (§4.7).
-    Its fields' candidates are screened, then scored. `page_values`: whether page-level candidates are the target's
-    (`EntityGraph.owned_by`). `owns` stands in for ownership where the owner is not one entity: a variant's rows
-    (variants spec). `detail`: a detail page's target, which reads the variant it shows and fills from its variants;
-    `variant`: one variant's row, whose candidates are all that variant's.
-    `confident`: whether a chosen value of the named field would publish at the request's `min_confidence`
-    (`resolve.evidence`); None: every one would."""
+    """Preference for one entity, `target`: a detail page's target, a listing's page or one of its rows.
+        Its fields' candidates are screened, then scored. `page_values`: whether page-level candidates are the target's
+        (`EntityGraph.owned_by`). `owns` stands in for ownership where the owner is not one entity: a variant's rows.
+    `detail`: a detail page's target, which reads the variant it shows and fills from its variants;
+        `variant`: one variant's row, whose candidates are all that variant's.
+        `confident`: whether a chosen value of the named field would publish at the request's `min_confidence`
+        (`resolve.evidence`); None: every one would."""
 
     graph: EntityGraph
     target: Entity
@@ -127,7 +127,7 @@ class Resolver:
     page_values: bool = True
     detail: bool = False
     owns: Callable[[Candidate], bool] | None = None
-    variant: bool = False  # one variant's row: every candidate it owns is that variant's (variants spec)
+    variant: bool = False  # one variant's row: every candidate it owns is that variant's
     confident: Callable[[str, FieldSpec, "Chosen"], bool] | None = None
     target_offers: TargetOffers = field(init=False)
 
@@ -141,7 +141,7 @@ class Resolver:
         self, fields: Mapping[str, FieldSpec], candidates: Sequence[Candidate], *, prefix: str = ""
     ) -> dict[str, Preference]:
         """Every field's preference; a candidate is a field's when its field is `prefix` and the name (a row-mapped
-        field's sub-fields are `<field>.<sub-field>`, variants spec)."""
+        field's sub-fields are `<field>.<sub-field>`)."""
         by_field = {name: [c for c in candidates if c.field == f"{prefix}{name}"] for name in fields}
         screened = {name: self.screen(by_field[name]) for name in fields}
         screened = {name: self._variants_yield(fields[name], *found) for name, found in screened.items()}
@@ -178,7 +178,7 @@ class Resolver:
             return "ambiguous"
         if not self._owned(candidate):
             return "not_owned"
-        # §8.2 rule 4 (INV-13): a value the request URL carries is not evidence about the page unless the page shows it.
+        # §8.2 rule 4: a value the request URL carries is not evidence about the page unless the page shows it.
         if any(text_form(s) in self.page.query_values and not self.page.visible(s) for s in _scalars(candidate.raw)):
             return "url_param"
         return None
@@ -241,7 +241,7 @@ class Resolver:
         rival prices, and each is explained by its role before the field is refused:
         - the visible price: the one amount a rendered `dom` value states beats the structured, meta or data-call
           amounts (stale markup is the common cause; HTML Standard: struck `s`/`del` text is already no value);
-        - the shown variant (INV-38): its Offer's amount beats the amounts of other Offers (other variants or sellers);
+        - the shown variant: its Offer's amount beats the amounts of other Offers (other variants or sellers);
         - a list or was price, a unit, member, installment or bundle price are not candidates of this field: the
           price path's predicates leave out struck, list, member and unit price specifications (`schemas.paths`), the
           DOM collectors skip struck text and amounts written per unit or per period (`normalize.units`), and an
@@ -255,9 +255,7 @@ class Resolver:
             return visible[0]
         if (shown := self.target_offers.shown_value(contenders, offers)) is not None:
             return shown  # the shown variant's Offer states its own price, however the others score
-        if offer_field and self.target_offers.split(
-            top, offers
-        ):  # only another Offer than the anchor states it (INV-15)
+        if offer_field and self.target_offers.split(top, offers):  # only another Offer than the anchor states it
             return OFFER_SPLIT
         if len(contenders) == 1:
             return top
@@ -339,7 +337,7 @@ class Resolver:
         offers: PageOffers,
     ) -> tuple[list[Candidate], list[Rejection]]:
         """The price's candidates with the amounts that are a stated range's bound (`_range_bounds`, `_stated_ranges`)
-        rejected `range_bound` (resolution spec, "Candidate score"): a visible one always ("From $80" beside
+        rejected `range_bound`: a visible one always ("From $80" beside
         `lowPrice` 80 states the range, not the price), a structured, meta or data-call one while another amount
         stands for the shown variant (`_shown_amount`), so that a variant that is the cheapest keeps its price. An
         amount in another currency than the range's is no bound; a currency either leaves unknown may be."""
@@ -369,7 +367,7 @@ class Resolver:
         offers = PageOffers(frozenset(() if anchor is None else (anchor,)))
         if not self.detail:
             return offers
-        # The target's own sku and gtin, as they publish, select the variant it shows (variants spec), and so does the
+        # The target's own sku and gtin, as they publish, select the variant it shows, and so does the
         # shown variant's that yielded to the product's own (`_variants_yield`): it still names that variant; so does
         # the request URL where it is one variant's own.
         ids = [name for name in variant_ids(fields) if name in fields]
@@ -396,12 +394,12 @@ class Resolver:
     def _variants_yield(
         self, spec: FieldSpec, kept: list[Candidate], rejected: list[Rejection]
     ) -> tuple[list[Candidate], list[Rejection]]:
-        """Variant fill (variants spec): a gtin or sku the target holds from inside the node of one of its Offers or
+        """Variant fill: a gtin or sku the target holds from inside the node of one of its Offers or
         variants (a platform answer stating the shown variant's identifiers as the product's, `adapters.platforms`) is
         that variant's, and stands for the product only where nothing else the target owns states the field: a value
         the product states itself is the product's (GS1 GTIN and a seller's SKU identify one variant), so the
         variant's other value is `outscored`, not its rival, and so is a page state value admitted only by equality
-        to it (§8.1)."""
+        to it."""
         if not self._fills(spec):
             return kept, rejected
         nodes = tuple(e.id for e in (*self.graph.offers(self.target), *self.graph.variants(self.target)))
@@ -418,7 +416,7 @@ class Resolver:
     def _fill(
         self, spec: FieldSpec, candidates: Sequence[Candidate], preference: Preference, offers: PageOffers
     ) -> Preference:
-        """Variant fill (variants spec): a gtin or sku field the target states nothing for (no candidate is the
+        """Variant fill: a gtin or sku field the target states nothing for (no candidate is the
         target's) takes its variants' candidates when every variant has one and all agree: the value is common to
         the variants; else those of the one variant the target shows (`offers.shown`), whose identifiers they are.
         A value the target states is never replaced, and no other field is filled."""
@@ -545,7 +543,7 @@ _WHOLE_ITEMS = frozenset({FieldType.LIST, FieldType.OBJECT, FieldType.URL, Field
 
 def _members(spec: FieldSpec) -> bool:
     """Whether the field is a list of facts of the item, each one a member (a job's places): two sources stating
-    different ones state more members of the item, not rival values (resolution spec, "Candidate score")."""
+    different ones state more members of the item, not rival values."""
     return spec.type is FieldType.LIST and spec.item is not None and spec.item.type not in _WHOLE_ITEMS
 
 

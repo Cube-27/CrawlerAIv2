@@ -1,4 +1,4 @@
-"""Role S's request and names (llm spec): one name per prompt, a deterministic request, and an output schema that
+"""Role S's request and names: one name per prompt, a deterministic request, and an output schema that
 accepts a schema document without its name."""
 
 import json

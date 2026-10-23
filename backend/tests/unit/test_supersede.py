@@ -1,5 +1,4 @@
-"""Fragments of a text, long_text or image list value that another candidate supersedes (resolution spec, source
-precedence)."""
+"""Fragments of a text, long_text or image list value that another candidate supersedes (source precedence)."""
 
 import pytest
 from pydantic import JsonValue

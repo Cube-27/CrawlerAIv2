@@ -1,4 +1,4 @@
-"""`POST /v1/extract` (jobs spec): the extract service over HTTP. The schema, a prompt's draft included, comes back
+"""`POST /v1/extract`: the extract service over HTTP. The schema, a prompt's draft included, comes back
 with the job; the job runs in the workers, its status is `GET /v1/jobs/{id}` and its records
 `GET /v1/jobs/{id}/results`."""
 

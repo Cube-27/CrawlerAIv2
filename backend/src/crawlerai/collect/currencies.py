@@ -1,4 +1,4 @@
-"""The currencies, the language and the number convention a page states for its prices (normalization spec, "money"),
+"""The currencies, the language and the number convention a page states for its prices,
 as evidence the normalizers weigh.
 
 - Stated in structured data: the ISO 4217 codes written as schema.org `priceCurrency` (on an Offer, AggregateOffer,
@@ -8,8 +8,8 @@ as evidence the normalizers weigh.
   the shop's currency (`adapters.platforms.CurrencyMember`: Shopify's `Shopify.currency.active`, Shopware's
   `window.currencyIsoCode`), its value read by the JS literal reader (`content.js_literal`).
 - Held in the page's decoded state documents (`collect.js_state`, analytics call arguments included): a member named
-  `currency`, `currencyCode` or `activeCurrency` (letter case and `_` aside) holding an ISO 4217 code (owner decision
-  of 2026-10-18: generic member names only); and the same members of an element's `dataset` (HTML Standard §3.2.6.6:
+  `currency`, `currencyCode` or `activeCurrency` (letter case and `_` aside) holding an ISO 4217 code (generic member
+  names only); and the same members of an element's `dataset` (HTML Standard §3.2.6.6:
   a custom data attribute, `data-currency` or `data-currency-code`, is the member its name past `data-` names). Such a
   member is anonymous: a third party's script config (a tag manager's account currency) or widget writes it as readily
   as the page, so it weighs below the page's own declarations; a page that writes several (a currency switcher's

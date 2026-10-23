@@ -39,7 +39,7 @@ function zonedOf(instant: string): ZonedDateTime | null {
   }
 }
 
-/** The start of the change feed: records stored from this instant on (jobs spec), as ISO 8601; "" for none. */
+/** The start of the change feed: records stored from this instant on, as ISO 8601; "" for none. */
 function ChangedSinceField({
   value,
   onChange,
@@ -81,7 +81,7 @@ function ChangedSinceField({
   );
 }
 
-/** The `GET /v1/records` filters (rest-api spec). The schema is required; the others narrow the list when given. */
+/** The `GET /v1/records` filters. The schema is required; the others narrow the list when given. */
 export function RecordFiltersForm({
   filters,
   onSubmit,
@@ -98,7 +98,7 @@ export function RecordFiltersForm({
         onSubmit(draft);
       }}
     >
-      {/* A list's filters (DESIGN.md, Filters): two columns from `md`, so the list starts higher on the page. */}
+      {/* A list's filters: two columns from `md`, so the list starts higher on the page. */}
       <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
         <SchemaSelect value={draft.schema_id} onChange={set("schema_id")} />
         <OptionalText

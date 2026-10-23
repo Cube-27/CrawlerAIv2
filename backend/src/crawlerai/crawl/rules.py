@@ -1,6 +1,6 @@
-"""URL rules of discovery requests (jobs spec): include and exclude globs, a crawl's page-kind
+"""URL rules of discovery requests: include and exclude globs, a crawl's page-kind
 rules, and the URL globs `extract` expands, `fnmatch`-style over the canonical URL. Patterns come from requests; this
-module names no host (INV-03).
+module names no host.
 """
 
 from collections.abc import Sequence
@@ -16,7 +16,7 @@ from crawlerai.normalize.url_key import canonicalize
 
 # The characters `fnmatch` gives a meaning (Python `fnmatch` docs: `*`, `?`, `[seq]`).
 _PATTERN_CHARACTERS: Final = frozenset("*?[")
-# The most globs an `include` or `exclude` list takes (D-0835). Every URL a map or crawl reads is matched against each,
+# The most globs an `include` or `exclude` list takes. Every URL a map or crawl reads is matched against each,
 # on the event loop: about 0.8 µs a match, so the two lists over a map's 50k sitemap URLs (`sitemaps.MAX_URLS`) take
 # at most about 1.6 s.
 MAX_PATTERNS: Final = 20
@@ -25,7 +25,7 @@ Patterns = Annotated[list[str], Field(max_length=MAX_PATTERNS)]
 
 
 class PageKindRule(BaseModel):
-    """A crawl's rule (§4.5): a URL `pattern` matches is extracted as a `page_kind` page."""
+    """A crawl's rule: a URL `pattern` matches is extracted as a `page_kind` page."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -42,9 +42,9 @@ def page_kind_for(url: str, rules: Sequence[PageKindRule]) -> PageKind | None:
 @dataclass(frozen=True)
 class Scope:
     """The URLs a request keeps: any that `exclude` matches is dropped; otherwise, with `include`, those it matches,
-    on any host; without it, those on the start URL's exact `host` (D-0037: a subdomain needs an `include`), or, with
+    on any host; without it, those on the start URL's exact `host` (a subdomain needs an `include`), or, with
     `subdomains`, on `host` or its subdomains. `external` lifts the start site's bound for a crawl (`Frontier`): the
-    globs and `subdomains` still say which of the other hosts' URLs are kept (D-1440)."""
+    globs and `subdomains` still say which of the other hosts' URLs are kept."""
 
     host: str
     include: tuple[str, ...] = ()
@@ -73,8 +73,8 @@ def on_site(url: str, host: str) -> bool:
 def located(start: str, capture: tuple[str, str] | None) -> str:
     """Where the start page of a map or crawl is, in canonical form, from its capture's (method, final URL): the URL
     the site's redirects of `start` ended at, which the request's scope follows (RFC 9110 §15.4: a redirect names the
-    resource's location; D-0991), when it is on the start URL's site: its host, a subdomain of it, or a domain it is
-    a subdomain of (`www.` and back). Otherwise `start` itself (D-0672: never a site the caller did not name), as
+    resource's location), when it is on the start URL's site: its host, a subdomain of it, or a domain it is
+    a subdomain of (`www.` and back). Otherwise `start` itself (never a site the caller did not name), as
     without a capture, or for an API recipe's (method `api`), whose final URL is its endpoint, not the page."""
     final = None if capture is None or capture[0] == "api" else canonicalize(capture[1])
     start_host = urlsplit(start).hostname or ""
@@ -90,15 +90,15 @@ def _any_match(url: str, patterns: tuple[str, ...]) -> bool:
 
 
 def is_glob(url: str) -> bool:
-    """Whether a requested URL is a glob to expand (§4.6): one with a `*`. `?` and `[` alone leave it a URL, since a
-    query starts with `?` (RFC 3986 §3.4) and an IPv6 host sits in `[]` (§3.2.2); in a glob, they match as in
+    """Whether a requested URL is a glob to expand: one with a `*`. `?` and `[` alone leave it a URL, since a
+    query starts with `?` (RFC 3986 §3.4) and an IPv6 host sits in `[]`; in a glob, they match as in
     `fnmatch`."""
     return "*" in url
 
 
 @dataclass(frozen=True)
 class UrlGlob:
-    """A glob of `extract` (§4.6) on its origin: `origin` is its scheme and authority in canonical form
+    """A glob of `extract` on its origin: `origin` is its scheme and authority in canonical form
     (`https://host/`), and `pattern` the glob with that origin, to match canonical URLs as a map's `include` does."""
 
     origin: str

@@ -1,9 +1,9 @@
-"""Active mode (learning-configs spec): the config a page of a site is extracted with, and the drift
+"""Active mode: the config a page of a site is extracted with, and the drift
 record of each page it ran on.
 
 A (site, schema, page kind) with an active config extracts its pages in `config` mode with that config. The config
-row is the authority: `extraction_config` holds at most one active config per site, schema and page kind
-; a schema edit suspends the schema's active configs, so its pages start cold again (§5.2). Each
+row is the authority: `extraction_config` holds at most one active config per site, schema and page kind;
+a schema edit suspends the schema's active configs, so its pages start cold again. Each
 page the config ran on, served and resolved, is added to its drift window (`drift.record_run`).
 """
 
@@ -47,15 +47,15 @@ async def active_config(
 
 async def config_by_id(conn: AsyncConnection, config_id: ExtractionConfigId, vocabulary: Vocabulary) -> ActiveConfig:
     """Config `config_id` bound to its executor, whatever its status now: the config a job pinned when it was
-    submitted (INV-28)."""
+    submitted."""
     configs = ExtractionConfig
     row = (await conn.execute(select(configs.version, configs.ir).where(configs.id == config_id))).one()
     return _bound(config_id, row.version, ExtractionConfigIR.model_validate(row.ir), vocabulary)
 
 
 def fetch_plan(config: ActiveConfig | None, render_mode: RenderMode) -> FetchPlan:
-    """The fetch plan of the config's field sources (acquisition spec, "Fetch plan"; learning-configs spec, "Locate
-    run" step 6): the browser when a running field's source is the browser's render or the surface renders every page
+    """The fetch plan of the config's field sources: the browser when a running field's source is the browser's render
+    or the surface renders every page
     (`always`); the companion call of each recipe a running `call` field names, and its endpoint for the browser's
     ready wait."""
     ir = config.executor.ir if config is not None and isinstance(config.executor, EngineExecutor) else None
@@ -98,13 +98,12 @@ def endpoint(recipe: ApiRecipe) -> CallEndpoint:
 
 
 def recipe_of(config: ActiveConfig) -> ApiRecipe | None:
-    """The API recipe of `config`, which serves its pages (adapters spec), as `_bound` parsed it; None without one."""
+    """The API recipe of `config`, which serves its pages, as `_bound` parsed it; None without one."""
     return config.api.recipe if isinstance(config.api, RecipeExecutor) else None
 
 
 def _bound(config_id: ExtractionConfigId, version: int, ir: ExtractionConfigIR, vocabulary: Vocabulary) -> ActiveConfig:
-    """The config bound to its executor, and to its recipe's when it has one: the recipe's locators name the config
-    (D-0600)."""
+    """The config bound to its executor, and to its recipe's when it has one: the recipe's locators name the config."""
     executor = EngineExecutor(ir, vocabulary)
     recipe = ir.api_recipe
     api = None if recipe is None else RecipeExecutor.of(recipe, str(config_id), executor.field_status)

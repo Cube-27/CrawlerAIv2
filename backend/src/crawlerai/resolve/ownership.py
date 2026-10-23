@@ -1,8 +1,8 @@
-"""Ownership (resolution spec rule 3, §10): a candidate belongs to the entity whose JSON object or
+"""Ownership: a candidate belongs to the entity whose JSON object or
 DOM subtree holds it, and the page's entities form a tree under their parents.
 
 A candidate is the target's when the target holds it, when the page holds it (page-level values describe what the
-page is about), or when an Offer of the target or of one of its variants holds it (atomic offers, §4.8). A state
+page is about), or when an Offer of the target or of one of its variants holds it (atomic offers). A state
 array row's value (`collect.admission`) is the target's where page values are, when the row and every row enclosing it
 names the target: one of its URLs is a page URL or the target's (Appendix A #55). An AggregateRating stated apart
 from the item (`collect.schema_org_map.RATING`) is the target's when the target is the page's one primary entity,
@@ -24,8 +24,8 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 # schema.org: an Offer is the offer of an item (`offers` / `itemOffered`), so its price and availability are the
 # item's (§4.5: Offer values are owned by the Offer whose parent is the Product).
 OFFER = "Offer"
-# schema.org: an AggregateOffer is "a summary of all the offers" of an item, not the offer of one variant (variants spec
-# §4.3), so it is never a variant holder.
+# schema.org: an AggregateOffer is "a summary of all the offers" of an item, not the offer of one variant, so it is
+# never a variant holder.
 AGGREGATE_OFFER = "AggregateOffer"
 _URL = FieldSpec(type=FieldType.URL)
 # schema.org `offers`: "An offer to provide this item".
@@ -144,7 +144,7 @@ class EntityGraph:
 
     def offers(self, target: Entity) -> tuple[Entity, ...]:
         """The Offers directly under the target, an AggregateOffer excepted: it summarizes several offers, not an offer
-        of one item (variants spec)."""
+        of one item."""
         return tuple(e for e in self.entities.values() if e.parent == target.id and self._single_offer(e))
 
     def variants(self, target: Entity) -> tuple[Entity, ...]:
@@ -156,7 +156,7 @@ class EntityGraph:
 
 
 def names_any(entity: Entity, urls: Sequence[str]) -> bool:
-    """Whether one of the entity's URLs is one of `urls`; URL equality is the url type's (schemas spec): equal after
+    """Whether one of the entity's URLs is one of `urls`; URL equality is the url type's: equal after
     canonicalization."""
     return any(equal(own, url, _URL) for own in entity.urls for url in urls)
 

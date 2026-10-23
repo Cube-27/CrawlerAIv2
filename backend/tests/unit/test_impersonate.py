@@ -1,4 +1,4 @@
-"""Which Chrome the HTTP and JSON rungs impersonate (acquisition spec, D-1325): the browser rung's Chrome, read once per
+"""Which Chrome the HTTP and JSON rungs impersonate: the browser rung's Chrome, read once per
 process, its headers sent in place of the nearest curl_cffi profile's own; an operator's explicit target is kept with
 its own headers; a process that renders does not start without them. The headers go out on the wire through the real
 curl transport to a local server."""

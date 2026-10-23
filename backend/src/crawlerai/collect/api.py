@@ -1,9 +1,9 @@
-"""The API recipe collector (adapters spec): the JSON an API recipe fetched, read through the
+"""The API recipe collector: the JSON an API recipe fetched, read through the
 recipe's `map`.
 
 An `api` capture's body is the JSON the recipe's endpoint answered for the page (`FetchResult(method='api')`). Each map
-entry is a query into that JSON (the `select` subset of `json_doc`), or for atomic money queries joined with `+`
-(§4.2); an entry reads a value only where each of its queries selects exactly one scalar. Values are `api` candidates
+entry is a query into that JSON (the `select` subset of `json_doc`), or for atomic money queries joined with `+`;
+an entry reads a value only where each of its queries selects exactly one scalar. Values are `api` candidates
 located as `api:<recipe id>:<normalized path>`; nothing here interprets them, the field's normalizer is the only
 filter (C7).
 
@@ -98,7 +98,7 @@ class ApiCollector:
             f"api:{self.recipe_id}:{name}: not a field of the schema" for name in self.map if name not in known
         )
         rows = self.rows if schema.page_kind == "listing" else None
-        # On a detail page every field describes the page's one entity (extraction spec: detail fields are row-scoped).
+        # On a detail page every field describes the page's one entity (detail fields are row-scoped).
         page_fields = {n: p for n, p in known.items() if rows is None or schema.fields[n].scope == "page"}
         candidates = reading.candidates(page_fields, document, json_doc.ROOT, PAGE)
         if rows is None:

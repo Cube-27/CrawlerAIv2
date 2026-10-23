@@ -1,4 +1,4 @@
-"""Adapter entities carry identity (extraction spec): the item URL and identifier values the adapter's shape maps are
+"""Adapter entities carry identity: the item URL and identifier values the adapter's shape maps are
 the entity's `item_urls` and `identity`, so resolution merges the platform's statement of an item with the page's own
 JSON-LD statement of it, and keeps two different items apart. Boards and answers are synthetic."""
 

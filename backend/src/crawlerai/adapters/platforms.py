@@ -1,4 +1,4 @@
-"""Commerce platform fingerprints (acquisition spec, "Platform fingerprints"): site data, which names platforms and so
+"""Commerce platform fingerprints: site data, which names platforms and so
 lives in the adapter package (C3).
 
 A platform is told from what every one of its sites serves: the paths of its own static assets and scripts, the
@@ -8,31 +8,31 @@ signal it shows is its platform, the storefront platforms before the Next.js fra
 
 Where a platform documents how a URL selects one variant of a product page (a query parameter on the product's own
 URL), `variant_params` names the parameters, so that resolution knows a link to the page's own resource with one of
-them for a variant of the page, not a link to a thing described elsewhere (variants spec, "Own variants").
+them for a variant of the page, not a link to a thing described elsewhere.
 
 Where a platform documents a public, tokenless product JSON endpoint on the shop's own host, `product_json` names the
 request for a product page and `answer_shape` the schema.org node its answer holds, as the platform documents its
-members (adapters spec `Shape`, C2), amounts in the minor unit the documentation states; a platform whose product API
+members (`Shape`, C2), amounts in the minor unit the documentation states; a platform whose product API
 needs a credential (SFCC's OCAPI client id, BigCommerce's storefront token, Magento's REST token) or that has none
 (Next.js) is recorded only.
 
 Where a platform documents a script global that states the page's currency (the presentment currency the shop shows
 prices in), `currency_members` names it; it is read only on a page that shows the platform's signal, as a page-level
-declaration (normalization spec, "money", `collect.currencies`).
+declaration (`collect.currencies`).
 
 Shopify's product answer states one Offer per variant, each with the variant's own identifiers and price, as a page's
-per-variant Offers do: resolution weighs them as it weighs those (resolution spec, price), and they fill the `variants`
-rows when the page states none (variants spec). Of them, the page shows one variant (Liquid
+per-variant Offers do: resolution weighs them as it weighs those (price), and they fill the `variants`
+rows when the page states none. Of them, the page shows one variant (Liquid
 `product.selected_or_first_available_variant`), whose `sku` and `barcode` are read as the product's own, so resolution
-reads its Offer as the variant the page shows (variants spec); held from the variant's node, they stay that variant's,
-and publish for the product only where the page states none of its own (variants spec, Variant fill). An image a variant
+reads its Offer as the variant the page shows; held from the variant's node, they stay that variant's,
+and publish for the product only where the page states none of its own (Variant fill). An image a variant
 features (its `featured_image`) is that variant's, so the page's images are the shown variant's, first, and those no
 variant features. Its `price_min` and `price_max` are the range its variants' prices span (an AggregateOffer's
 `lowPrice` and `highPrice`): a page amount equal to one of them is that bound, not the shown variant's price, where the
-page states another for it (resolution spec, price). WooCommerce's answer states one price for the product: a product
+page states another for it (price). WooCommerce's answer states one price for the product: a product
 whose variations are priced differently has none for the page, which shows the selected variation's, so its answer is
-read without its Offer and never stands against the price the page shows (INV-14; adapters spec "merge, don't
-override").
+read without its Offer and never stands against the price the page shows (merge, do not
+override).
 """
 
 import re
@@ -278,8 +278,8 @@ def _shown_images(answer: dict[str, JsonValue], shown: int, page_url: str | None
 
 def _file(src: JsonValue, page_url: str | None) -> tuple[str, str] | None:
     """The file an image URL of the answer names: its authority and path (RFC 3986 §3.3: the path identifies the
-    resource; the query, `?v=`, only versions it), its protocol-relative URL (`//cdn…`) resolved against the page's
-    (§5.2); None for no URL."""
+        resource; the query, `?v=`, only versions it), its protocol-relative URL (`//cdn…`) resolved against the page's;
+    None for no URL."""
     if not isinstance(src, str):
         return None
     try:

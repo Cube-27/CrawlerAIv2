@@ -1,9 +1,9 @@
-"""A job's outcomes (jobs spec, "Job outcome summary"): how many of its pages ended with each outcome, and how many
+"""A job's outcomes: how many of its pages ended with each outcome, and how many
 of the fields of its records have each status, with the reasons the unpublished ones give, and per field how many pages
 fetched over HTTP alone left it `missing/no_candidates`, with the next step when the job did not ask for rendering
 (`render.mode: locate`), also named when a listing page fetched over HTTP alone listed nothing, and per
 detect-and-report signal how many of its pages raised it (`content.signals`; names only, no URLs), and how many of its
-records are `new`, `changed` or `same` against their entities' previous records (jobs spec, "Page delta"). All are
+records are `new`, `changed` or `same` against their entities' previous records. All are
 counted
 from what the job stored (`url_task.outcome`, `record.field_meta`, `capture`, `extraction.diagnostics`): no table of
 its own. `GET /v1/jobs/{id}/outcomes` and
@@ -27,12 +27,12 @@ from crawlerai.resolve.page_state import NO_CANDIDATES
 from crawlerai.resolve.types import FieldStatus
 from crawlerai.services.jobs import OutcomeCounts, get_job
 
-# The next step for fields HTTP pages do not carry (rest-api spec, "Render mode"): fields and outcomes, no internals.
+# The next step for fields HTTP pages do not carry: fields and outcomes, no internals.
 LOCATE_HINT: Final = "render.mode: locate"
 
 
 class FieldCounts(BaseModel):
-    """How many fields of a job's records have each status (resolution spec)."""
+    """How many fields of a job's records have each status."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -73,7 +73,7 @@ class FieldTally(BaseModel):
 
 
 class DeltaCounts(BaseModel):
-    """How many of a job's records are each delta (jobs spec, "Page delta")."""
+    """How many of a job's records are each delta."""
 
     model_config = ConfigDict(frozen=True)
 

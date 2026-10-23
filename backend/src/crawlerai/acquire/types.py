@@ -1,4 +1,4 @@
-"""What a fetch is asked to do and what it returns (acquisition spec)."""
+"""What a fetch is asked to do and what it returns."""
 
 from datetime import timedelta
 from typing import Annotated, Literal
@@ -49,9 +49,9 @@ SecretPair = tuple[str, SecretStr]
 
 
 class RequestContext(_Frozen):
-    """The caller's own request context (D-1430): headers the HTTP and JSON rungs send to the fetched URL's host, and
-    cookies seeded as host-only cookies of that host (INV-29 amended). The values are secrets: every serialization
-    shows them redacted, so neither a capture's manifest nor a log line holds one (D-1432), beside their keyed digest
+    """The caller's own request context: headers the HTTP and JSON rungs send to the fetched URL's host, and
+    cookies seeded as host-only cookies of that host (). The values are secrets: every serialization
+    shows them redacted, so neither a capture's manifest nor a log line holds one, beside their keyed digest
     (`core.context_digest`), so that a stored capture stands only for a fetch with the same values."""
 
     headers: tuple[SecretPair, ...] = ()
@@ -79,7 +79,7 @@ class RequestContext(_Frozen):
         return frozenset(name.lower() for name, _ in self.headers)
 
 
-# What a page step does (D-1436): wait (milliseconds, an element, or no data call in flight), click (an element or
+# What a page step does: wait (milliseconds, an element, or no data call in flight), click (an element or
 # visible text), scroll (to the end, by pixels, or until the document stops growing), press a key, or type text.
 StepAction = Literal["wait", "click", "scroll", "press", "type"]
 ScrollMode = Literal["end", "by", "stable"]
@@ -102,7 +102,7 @@ class PageStep(_Frozen):
 
 
 # How a step ended: done; its element never appeared, or never became actionable, within its timeout; refused (a
-# credential field, D-1438); the browser failed it; or not run, after an earlier step that did not complete.
+# credential field); the browser failed it; or not run, after an earlier step that did not complete.
 StepResult = Literal["done", "not_found", "timeout", "refused", "error", "skipped"]
 
 
@@ -112,7 +112,7 @@ class StepOutcome(_Frozen):
 
 
 class CallEndpoint(_Frozen):
-    """A data call endpoint a located `call` field source names (acquisition spec, "HTTP and browser rungs"): its
+    """A data call endpoint a located `call` field source names: its
     request method, origin and path segments, None for a segment its recipe fills from the page. The browser's ready
     wait ends once each named endpoint has answered."""
 
@@ -135,7 +135,7 @@ class CallEndpoint(_Frozen):
 class FetchPolicy(_Frozen):
     method_hint: Literal["auto", "http", "browser"] = "auto"
     proxy_pool: str | None = None
-    # Obey robots.txt (acquisition spec): off unless the request switches it on (owner decision #75), and then no
+    # Obey robots.txt: off unless the request switches it on, and then no
     # robots.txt request is sent.
     respect_robots: bool = False
     timeout_s: PositiveFloat = 10.0
@@ -146,7 +146,7 @@ class FetchPolicy(_Frozen):
     locale_hint: str | None = None
     page_kind: PageKind | None = None  # the kind the task fetches the page as, which `classify` reads
     # The schema.org types the task reads the page for (`target_types` of `schemas.paths`) and their subtypes in the
-    # pinned vocabulary, which a referring adapter weighs (adapters spec, "Referral from a tenant's own host") and
+    # pinned vocabulary, which a referring adapter weighs and
     # `classify` reads a document's structured data for; empty when no schema reads the page.
     target_types: tuple[str, ...] = Field(default=(), exclude_if=lambda value: not value)
     # The task reads the page for content formats only (`markdown`, `markdown_fit`, `chunks`) and no records: the
@@ -155,11 +155,11 @@ class FetchPolicy(_Frozen):
     # A soft row target for a list an adapter's API serves in pages: its walk ends once it has at least this many rows
     # (whole pages are kept); None asks for every page, up to the adapters' hard cap (`adapters.paging.MAX_ROWS`).
     max_rows: PositiveInt | None = None
-    # The caller's headers and cookies (D-1430), and the page steps the browser runs before it reads the page (D-1436).
+    # The caller's headers and cookies, and the page steps the browser runs before it reads the page.
     context: RequestContext | None = None
     steps: tuple[PageStep, ...] = ()
     # Browser only: the data call endpoints the site's located `call` field sources name; the page is ready once each
-    # has answered (acquisition spec, "HTTP and browser rungs"), else once no data call is in flight.
+    # has answered, else once no data call is in flight.
     ready_calls: tuple[CallEndpoint, ...] = Field(default=(), exclude_if=lambda value: not value)
     # Files the browser makes of the rendered page, stored beside the capture (`storage.artifacts`): a PNG of the
     # viewport or of the whole page, and a PDF print. Either needs the browser rung (`method_hint` `browser`).
@@ -180,21 +180,21 @@ class AttemptRecord(_Frozen):
     block_class: BlockClass
     duration_ms: int
     error: str | None = None
-    # D-1326: the anti-bot challenge its response presents, when the fetch did not keep it as `ok`: a vendor named by
-    # the adapter package's signatures, or `structural` (`acquire.challenge`). Recorded only; INV-24 holds.
+    # the anti-bot challenge its response presents, when the fetch did not keep it as `ok`: a vendor named by
+    # the adapter package's signatures, or `structural` (`acquire.challenge`). Recorded only;.
     challenge: str | None = None
     # The pause its response's `Retry-After` asked for (RFC 9110 §10.2.3), from when the fetch began: an HTTP-date is
     # measured from `fetched_at`, so the pause is never shorter than asked. Read by the politeness step whichever
     # attempt's outcome is kept; not stored, as the response's other headers are not.
     retry_after: timedelta | None = Field(default=None, exclude=True)
-    # D-1353: this browser `ok` opened a site session with its cookies (`acquire.session`): when it was needed only to
+    # this browser `ok` opened a site session with its cookies (`acquire.session`): when it was needed only to
     # pass a block, the site's contract keeps its pages on HTTP (`acquire.memory`, handoff). In memory only, like
     # `retry_after`.
     site_session: bool = Field(default=False, exclude=True)
     # The bytes the attempt moved both ways (`outcome.Traffic`), which `proxy_bytes` usage counts for a fetch through a
-    # pool (D-1381). Not stored, as the attempt's other wire details are not.
+    # pool. Not stored, as the attempt's other wire details are not.
     transferred: int = Field(default=0, ge=0, exclude=True)
-    # D-1437: how each of the policy's page steps ended, in order, on the browser attempt that ran them.
+    # how each of the policy's page steps ended, in order, on the browser attempt that ran them.
     steps: tuple[StepOutcome, ...] = ()
     # An `api` attempt that was a detail page's data call (`acquire.identity`): the platform whose documented product
     # JSON it requested. Stored only on such an attempt.
@@ -221,8 +221,7 @@ class FetchResult(_Frozen):
 def policy_with_attempts(
     fetch_policy: dict[str, JsonValue], attempts: tuple[AttemptRecord, ...]
 ) -> dict[str, JsonValue]:
-    """`fetch_policy` with every rung tried as `attempts`, as the bundle manifest and the `capture` row keep it
-    (acquisition spec)."""
+    """`fetch_policy` with every rung tried as `attempts`, as the bundle manifest and the `capture` row keep it."""
     return {**fetch_policy, "attempts": [attempt.model_dump(mode="json") for attempt in attempts]}
 
 
@@ -248,7 +247,7 @@ StopReason = Literal[
 
 
 class BrowserActions(_Frozen):
-    """A single-URL listing scrape's browser actions (owner #52). `records` is a soft target: the run stops once it
+    """A single-URL listing scrape's browser actions. `records` is a soft target: the run stops once it
     has seen at least that many rows, so it may pass it by one page or batch. Without a `hint` the mechanism is
     detected."""
 

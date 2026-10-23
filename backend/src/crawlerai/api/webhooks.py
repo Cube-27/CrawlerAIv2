@@ -1,15 +1,15 @@
-"""Webhook deliveries (jobs spec): the events a job's webhook is owed (`crawlerai.db.webhook_outbox`), POSTed in
+"""Webhook deliveries: the events a job's webhook is owed (`crawlerai.db.webhook_outbox`), POSTed in
 the deliveries the scheduler grouped them into, signed with the webhook secret of the API key that submitted the job,
 in at most 5 attempts with backoff.
 
 The target passes the SSRF guard at every attempt, so a name that resolves to a private address by then is refused,
-and a redirect is not followed. A delivery that fails never changes the job (§4.8); its last error is kept on the row,
+and a redirect is not followed. A delivery that fails never changes the job; its last error is kept on the row,
 and never contains the URL. Deliveries of one job are independent: a failing one does not hold up the next, so a
 receiver orders events by their ids (UUIDv7, RFC 9562 §5.7: creation order).
 
 Body (JSON): `{"delivery_id", "job_id", "attempt", "events": [{"id", "type", "created_at", "data"}]}`; a job end
 event's `data` carries the job's summary at delivery as `job`, and a `record` or `record_changed` event's record
-values are served as the API serves them (normalization spec, "Served form"). Signature: `X-CrawlerAI-Signature:
+values are served as the API serves them. Signature: `X-CrawlerAI-Signature:
 sha256=<hex>`, the HMAC-SHA256 (RFC 2104, FIPS 180-4) of the request body, keyed with the UTF-8 bytes of the key's
 `webhook_secret`, which `crawlerai apikey create` prints with the key; `X-CrawlerAI-Delivery` repeats the delivery id,
 the same on every attempt, for a receiver to drop a delivery it already took.
@@ -74,7 +74,7 @@ class EventOut(BaseModel):
 
 
 class DeliveryBody(BaseModel):
-    """What a delivery POSTs (jobs spec)."""
+    """What a delivery POSTs."""
 
     delivery_id: WebhookDeliveryId
     job_id: JobId

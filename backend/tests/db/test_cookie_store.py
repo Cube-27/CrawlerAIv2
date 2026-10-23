@@ -1,5 +1,5 @@
-"""Stored cookie state (acquisition spec, "Stored cookie state"): kept per registrable domain and engine, encrypted,
-cleaned of empty, expired and duplicate cookies (challenge and clearance cookies kept, owner #76), rewritten only
+"""Stored cookie state: kept per registrable domain and engine, encrypted,
+cleaned of empty, expired and duplicate cookies (challenge and clearance cookies kept), rewritten only
 when it changes, and cleared whole."""
 
 import pytest

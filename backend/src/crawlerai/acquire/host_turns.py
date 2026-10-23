@@ -1,5 +1,5 @@
-"""Host turns and holds shared by every process that fetches (acquisition spec, "Per-site rate and backoff";
-`politeness.SharedTurns`): one `host_turn` row per host, written by single statements, so the database orders the
+"""Host turns and holds shared by every process that fetches (`politeness.SharedTurns`): one `host_turn` row per host,
+written by single statements, so the database orders the
 processes' turns. A turn is taken, and the host held, in one upsert whose condition (turn due, no other holder's lease
 running) PostgreSQL re-checks on the row's latest version under its lock (INSERT ... ON CONFLICT DO UPDATE), so two
 processes never both take it. Times are the database's clock (`clock_timestamp()`), the one clock every process

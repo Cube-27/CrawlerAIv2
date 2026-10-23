@@ -1,5 +1,5 @@
-"""The JSON documents a page carries in attributes its framework documents as JSON (extraction spec, "Source
-documents"): only the attributes named below count, never any attribute whose value happens to start with `{`.
+"""The JSON documents a page carries in attributes its framework documents as JSON: only the attributes named below
+count, never any attribute whose value happens to start with `{`.
 
 The value, HTML-unescaped by the parser, is a document when it starts with `{` or `[` and is RFC 8259 JSON (the JSON
 reader, `core.json_text`); otherwise (Inertia's `<script data-page="app">`, WooCommerce's `false` above its

@@ -1,11 +1,11 @@
-"""Derived values (resolution spec, INV-07): the only values core publishes without a candidate
+"""Derived values: the only values core publishes without a candidate
 stating them, each from a named function with its standard.
 
 A derivation fills a field only when preference left it missing: a published field keeps its value, and a conflict
 stays a conflict. Each value carries `derived_by`. Adding a derivation is a C2/C13 review item.
 
 A job page that holds its own application form (`collect.application`) is where a candidate applies: its final URL is
-the posting's apply link when the page states no other (owner decision 2026-10-22).
+the posting's apply link when the page states no other.
 
 The page-URL field's candidates are first held to the page: when it states one canonical link on its own site, a
 candidate naming another document is not the page's URL (`OTHER_DOCUMENT`), and preference decides among the rest.
@@ -51,8 +51,7 @@ def is_page_url_field(schema: SchemaDef, spec: FieldSpec, primary: frozenset[str
     """Whether the field is the URL of the page's entity: on a detail page, a url field whose path is `T.url` for a
     primary type T (schema.org Thing.url, "URL of the item"; the primary types of identity-and-intent's target
     selection) in every alternative. A field with any other alternative (an apply link,
-    `JobPosting.potentialAction.target`) names a link the page states, which the page's own URL never stands in for
-    (resolution spec, "Derived values")."""
+    `JobPosting.potentialAction.target`) names a link the page states, which the page's own URL never stands in for."""
     if schema.page_kind != "detail" or spec.type is not FieldType.URL or spec.schema_org is None:
         return False
     paths = parse_paths(spec.schema_org)
@@ -80,7 +79,7 @@ def fill(
     page_url_field: bool,
     application_url: str | None = None,
 ) -> Preference | Derived:
-    """The field's derived value when preference left it missing (INV-07), else `preference`, the page-URL field's
+    """The field's derived value when preference left it missing, else `preference`, the page-URL field's
     held to the page first (`_held_to_page`).
 
     A value from the field's own candidate comes first; the page URL only when the field is the page's
@@ -110,7 +109,7 @@ def _own_url(spec: FieldSpec, canonical_url: str | None, ctx: Context) -> str | 
     """The page's own URL: its one canonical link (RFC 6596 §3; `content.metadata.canonical_href` drops conflicting
     ones) when it names a URL on the site of the final URL (RFC 9110 §15.4; HTML Standard §7.1.1, the same registrable
     domain), else None. The canonical link is the page's statement of its preferred URL, so `og:url` or a structured
-    `url` naming another document does not name this page (resolution spec, "Derived values")."""
+    `url` naming another document does not name this page."""
     if canonical_url is None or ctx.page_url is None:
         return None
     own = normalize(canonical_url, spec, ctx)
@@ -185,7 +184,7 @@ def final_url(spec: FieldSpec, ctx: Context) -> Derived | None:
 
 def application_form(spec: FieldSpec, url: str, ctx: Context) -> Derived | None:
     """The final URL `url` (RFC 9110 §15.4) of a page that holds its posting's application form: the document a
-    candidate applies on (owner decision 2026-10-22). It names that document as fetched, with any query that selects
+    candidate applies on. It names that document as fetched, with any query that selects
     the posting (an embedded board's), never its canonical link."""
     return _page_url(spec, url, ctx, "application_form")
 

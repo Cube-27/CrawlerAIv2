@@ -1,4 +1,4 @@
-/** The job endpoints (jobs spec–4.5), in the generated shapes. */
+/** The job endpoints (API), in the generated shapes. */
 import type { ApiClient } from "./client";
 import type { RecordPage, StoredRecord } from "./records";
 import type { Opened } from "./events";
@@ -8,8 +8,7 @@ import type { FetchMember, SchemaRef } from "./scrape";
 
 type Schemas = components["schemas"];
 
-/** A job's schema: by id, inline (a SchemaDef the server validates), or field names to draft one from (frontend spec
- * §4.10). `BatchScrapeRequest` and `CrawlRequest` take no prompt. */
+/** A job's schema: by id, inline (a SchemaDef the server validates), or field names to draft one from (UI). `BatchScrapeRequest` and `CrawlRequest` take no prompt. */
 export type JobSchemaRef = Exclude<SchemaRef, { prompt: string }>;
 
 export type JobSummary = Schemas["JobSummary"];
@@ -29,10 +28,10 @@ export type JsonValuesPage = Schemas["JsonValuesPage"];
 export type JsonValuesItem = Schemas["JsonValuesItem"];
 export type PageKindRule = Schemas["PageKindRule"];
 export type MapResult = Schemas["MapResult"];
-/** A webhook delivery of a job and a page of them (D-1511). */
+/** A webhook delivery of a job and a page of them. */
 export type WebhookDelivery = Schemas["DeliveryOut"];
 export type WebhookDeliveryPage = Schemas["DeliveryPage"];
-/** A webhook event a queued request can ask for (jobs spec, D-1414). */
+/** A webhook event a queued request can ask for. */
 export type WebhookEvent = NonNullable<Schemas["BatchScrapeRequest"]["webhook_events"]>[number];
 
 /** The requests as the forms build them. The generated types mark every member with a default as required
@@ -87,7 +86,7 @@ export type ResultsPage =
   | { kind: "records"; page: RecordPage }
   | { kind: "pages"; page: PageOutputPage };
 
-/** The page sizes `GET /v1/jobs/{id}/results` allows (rest-api spec): an export reads the largest. */
+/** The page sizes `GET /v1/jobs/{id}/results` allows: an export reads the largest. */
 const EXPORT_LIMIT = 200;
 
 // The server's 200 answer is a union; its items tell which: a record has `fields`, a page output does not.
@@ -105,7 +104,7 @@ function resultsPage(page: RecordPage | ExportPage | PageOutputPage | JsonValues
   const items: (StoredRecord | PageOutput)[] = page.items;
   const { next_cursor, total } = page;
   const outputs = items.filter(isPageOutput);
-  // An empty page is a page of records: a job without a schema lists every task from its start (D-0630).
+  // An empty page is a page of records: a job without a schema lists every task from its start.
   return outputs.length === 0
     ? { kind: "records", page: { items: items.filter(isRecord), next_cursor, total } }
     : { kind: "pages", page: { items: outputs, next_cursor, total } };
@@ -119,7 +118,7 @@ function results(client: ApiClient, id: string, query: ResultsQuery) {
   return client.GET("/v1/jobs/{job_id}/results", { params: { path: { job_id: id }, query } });
 }
 
-// jobs spec: a completed or failed job can't be cancelled (409); a cancelled one is already.
+// a completed or failed job can't be cancelled (409); a cancelled one is already.
 const CANCELLABLE: ReadonlySet<JobStatus> = new Set<JobStatus>(["queued", "running"]);
 
 /** Where a job is with cancelling: it can be cancelled, a cancel was asked for (it ends once its claimed tasks end),
@@ -129,11 +128,11 @@ export function cancelState(job: JobSummary): "cancellable" | "requested" | "end
   return job.cancel_requested ? "requested" : "cancellable";
 }
 
-/** Which jobs a list shows: one kind and one status, or every one when null (jobs spec). */
+/** Which jobs a list shows: one kind and one status, or every one when null. */
 export interface JobFilters {
   kind: JobKind | null;
   status: JobStatus | null;
-  /** A schedule's jobs only (its history, D-1418); left out: every job. */
+  /** A schedule's jobs only (its history); left out: every job. */
   scheduleId?: string | null;
 }
 
@@ -206,7 +205,7 @@ export async function listJobResults(
 }
 
 /** What a `json_values` read asks of each page beyond its records: its metadata (`include=metadata`) and how it was
- * fetched (`include=fetch`, D-1392). */
+ * fetched (`include=fetch`). */
 export interface ValuesPage {
   cursor: string | null;
   limit: number;
@@ -214,7 +213,7 @@ export interface ValuesPage {
   withFetch: boolean;
 }
 
-/** One page of the job's tasks as `json_values` items (frontend spec) at `cursor` (the first page when null), `limit`
+/** One page of the job's tasks as `json_values` items at `cursor` (the first page when null), `limit`
  * at most. */
 export async function listJobValues(
   client: ApiClient,
@@ -246,7 +245,7 @@ async function allItems<T>(
   const items: T[] = [];
   let cursor: string | null = null;
   do {
-    // Sequential: each page's cursor comes from the page before it (rest-api spec).
+    // Sequential: each page's cursor comes from the page before it.
     const page = await read(cursor);
     if (page.kind === "failed") return page;
     items.push(...page.value.items);
@@ -266,7 +265,7 @@ export function exportJobValues(
   );
 }
 
-/** Every page output of a job without a schema (`format=json`, jobs spec): what its JSON export saves, as its
+/** Every page output of a job without a schema (`format=json`): what its JSON export saves, as its
  * drawers show them. */
 export function exportJobOutputs(client: ApiClient, id: string): Promise<ApiResult<PageOutput[]>> {
   return allItems(async (cursor) => {
@@ -289,7 +288,7 @@ export async function exportJobPage(
     format,
     limit: EXPORT_LIMIT,
     ...(cursor === null ? {} : { cursor }),
-    // An export is saved as a file for spreadsheets: quote formula-like cells (OWASP CSV Injection, D-0879).
+    // An export is saved as a file for spreadsheets: quote formula-like cells (OWASP CSV Injection).
     ...(format === "csv_records" ? { csv_safe: true } : {}),
   };
   const result = await apiResult(() => results(client, id, query), "Exporting the job's records");
@@ -361,7 +360,7 @@ export async function submitCrawl(
   return result.kind === "done" ? { kind: "done", value: result.value.job_id } : result;
 }
 
-/** Queues an extract; a prompt is drafted into a schema first (jobs spec). The answer is the new job's id. */
+/** Queues an extract; a prompt is drafted into a schema first. The answer is the new job's id. */
 export async function submitExtract(
   client: ApiClient,
   body: ExtractRequest,
@@ -383,7 +382,7 @@ export function mapUrls(client: ApiClient, body: MapRequest): Promise<ApiResult<
   );
 }
 
-/** Opens the job's event stream after `lastEventId` with the client's key (frontend spec: `EventSource` cannot send
+/** Opens the job's event stream after `lastEventId` with the client's key (`EventSource` cannot send
  * it). `followEvents` reads the response's body, or its status and parsed error body. */
 export async function openJobEvents(
   client: ApiClient,

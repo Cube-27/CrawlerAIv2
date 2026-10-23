@@ -2,7 +2,7 @@ import { NumberRow, OptionsPanel, SwitchRow } from "../OptionsPanel";
 import { MetadataRow } from "../rows";
 import { DEFAULT_SEARCH_OPTIONS, type SearchOptions as Options } from "./form";
 
-/** Search's options (D-1442): the result limit, and whether the results are scraped; the toolbar's Format and Schema
+/** Search's options: the result limit, and whether the results are scraped; the toolbar's Format and Schema
  * say how, and Metadata in JSON adds each page's metadata to the output. */
 export function SearchOptions({
   options,

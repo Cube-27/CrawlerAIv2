@@ -1,12 +1,12 @@
-"""Held-out pages from storage (learning-configs spec): the stored captures of a (site, schema) that a config is
+"""Held-out pages from storage: the stored captures of a (site, schema) that a config is
 validated on, each parsed with its context and with the facts the engine stored for it.
 
 The pages are a site's most recent captures with outcome `extracted` or `partial` that have records of the schema
-version (§4.4), each with its latest extraction. A locate run samples the surface's stored pages (`listed_nothing`):
+version, each with its latest extraction. A locate run samples the surface's stored pages (`listed_nothing`):
 those, and the listing pages of a job of the schema that listed nothing (no record, though a further page of its task
-may have kept some), whose rows a render may show (learning-configs spec, "Locate run"). A capture whose bundle is no
-longer stored (captures expire, §15) is skipped. What the engine published is the extraction's records (`record.data`
-holds published fields only, §6): a detail page's one, or a listing's one per row in the order they were stored, which
+may have kept some), whose rows a render may show. A capture whose bundle is no
+longer stored (captures expire) is skipped. What the engine published is the extraction's records (`record.data` holds
+published fields only): a detail page's one, or a listing's one per row in the order they were stored, which
 is the page's row order.
 
 The references corroboration compares with (§8.3 step 4) are the valid structured-data or adapter candidates owned by
@@ -14,10 +14,10 @@ an entity that published a field of the page. Records do not say which row entit
 listing's rows have no references, and their fields stay `uncorroborated`.
 
 `load_captures` reads named captures the same way: the pages a config was validated on (`provenance.validated_on`),
-which the release check runs on (§4.12).
+which the release check runs on.
 
-A learning run (§4.4) reads the same pages, both as held-out pages and as sample pages: the published values with the
-locator of each (`record.field_meta`), which induction generalizes and synthesis shows role A (§4.5, §4.6).
+A learning run reads the same pages, both as held-out pages and as sample pages: the published values with the
+locator of each (`record.field_meta`), which induction generalizes and synthesis shows role A.
 """
 
 import asyncio
@@ -141,7 +141,7 @@ def published_of(
 @dataclass(frozen=True, slots=True)
 class StoredPage:
     """A stored page as validation reads it (`held_out`) and as a learning sample (`sample`), and its capture, whose
-    network bodies API discovery reads (adapters spec). `stated`: the fields any source gave a valid value for,
+    network bodies API discovery reads. `stated`: the fields any source gave a valid value for,
     published or not; `asked_llm`: whether its extraction called the LLM (role C, on a detail page's gaps) outside
     config mode, where it is asked only for the fields the config does not cover. Learning reads both for the fields the
     site never states (`config_ir.absent`)."""
@@ -220,7 +220,7 @@ async def _pages(
 
 async def _llm_calls(conn: AsyncConnection, ids: Sequence[ExtractionId]) -> dict[ExtractionId, int]:
     """Each extraction's LLM calls, counted only where role C could be asked for every missing field: a config-mode
-    extraction asks it only for the fields its config does not cover (llm spec, "When role C is asked"), so its call
+    extraction asks it only for the fields its config does not cover, so its call
     says nothing of a covered one (`config_ir.absent`)."""
     query = select(Extraction.id, Extraction.llm_calls).where(Extraction.id.in_(ids), Extraction.mode != "config")
     return {row.id: row.llm_calls for row in await conn.execute(query)}

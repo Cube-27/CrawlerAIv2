@@ -1,5 +1,5 @@
-"""`GET /healthz` (rest-api spec): the API answers and its database does, and what the LLM setup check found.
-Unauthenticated (§18)."""
+"""`GET /healthz`: the API answers and its database does, and what the LLM setup check found.
+Unauthenticated."""
 
 import asyncio
 from typing import Annotated

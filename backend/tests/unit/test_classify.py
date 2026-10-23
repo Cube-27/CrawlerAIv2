@@ -1,4 +1,4 @@
-"""Block classification (acquisition spec, INV-24): HTTP status and structural body properties only."""
+"""Block classification: HTTP status and structural body properties only."""
 
 import pytest
 
@@ -52,7 +52,7 @@ def test_a_page_without_hyperlinks_is_a_stand_in_unless_it_renders_an_article() 
     assert classify(200, _HTML, _page(400, 0, concealed)) == "blocked"
 
 
-# --- D-1262: a refusal that stands in for the page until it navigates on ----------------------------------------------
+# --- a refusal that stands in for the page until it navigates on ----------------------------------------------
 
 _AT = "https://shop.example.test/item/1"
 _SCRIPT = "<script>void 0</script>"

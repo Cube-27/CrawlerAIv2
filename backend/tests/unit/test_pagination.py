@@ -1,4 +1,4 @@
-"""Pagination (extraction spec): `rel=next` first, then the structural numbered-link rule.
+"""Pagination: `rel=next` first, then the structural numbered-link rule.
 
 Pages are synthetic (`example.test`); parameter and segment names are generated, since the rule reads none (C4, C9).
 """

@@ -1,4 +1,4 @@
-"""The microdata collector (extraction spec): HTML Standard microdata items and RDFa Lite resources as entities, nested
+"""The microdata collector: HTML Standard microdata items and RDFa Lite resources as entities, nested
 scopes as nested entities, and a candidate for each `schema_org` path."""
 
 from datetime import UTC, datetime

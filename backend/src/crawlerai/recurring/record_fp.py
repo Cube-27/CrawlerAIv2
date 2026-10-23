@@ -1,4 +1,4 @@
-"""Record fingerprints and changed fields (jobs spec): what decides whether a
+"""Record fingerprints and changed fields: what decides whether a
 re-extracted entity is a new record version, and which of its fields changed. Both are pure functions of the records'
 published values (`record.data`).
 

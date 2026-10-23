@@ -1,4 +1,4 @@
-"""The item layer's bind step (listings spec, "Stated rows and blocks"; owner #67): a listing's stated rows (structured
+"""The item layer's bind step: a listing's stated rows (structured
 data's, the active config's, or else its captured calls'), its state and call array rows, and the blocks the align
 step read (`collect.items.align`) meet, so that each item is one row.
 
@@ -21,15 +21,15 @@ is a section, so none of its blocks is read.
 to one, else neither binds: C7). URLs are compared as the page's links name items: without the page's session
 parameters (`normalize.url_key.session_parameters`, from the blocks' links), by their document
 (`normalize.url_key.item_key`: one trailing slash of the path aside), and with one URL's query pairs all among the
-other's (a variant or tracking parameter one spelling adds,
-§3.4). A stated row naming no item URL binds by its visible text instead: the one unbound block whose shown text holds
+other's (a variant or tracking parameter one spelling adds). A stated row naming no item URL binds by its visible text
+instead: the one unbound block whose shown text holds
 the row's name. A state or call array row (`array_row`) binds by URL to a listing row the same way.
 
 **Values.** A bound entity's candidates join its row where the row holds no candidate of the field, or where they equal
-one of the row's (agreement, normalization spec); a value that disagrees with the row's own is dropped, so the row's
+one of the row's (agreement); a value that disagrees with the row's own is dropped, so the row's
 source stays authoritative. Money is the exception: the amount a card shows is what the page states, so a block bound
 by URL whose one visible amount of a money field differs from its stated row's (structured markup's or a platform
-adapter's) joins the row as a rival, and resolution weighs it (resolution spec, "the visible price": it publishes,
+adapter's) joins the row as a rival, and resolution weighs it (it publishes,
 flagged). The common causes are a stated price that is one variant's while the card shows the "from" price, and a
 theme showing a tax-inclusive amount the catalogue price excludes. A block's `ambiguous_in_block` value joins as its
 one option equal to the row's value; of a money field, when no option equals it, every option joins as a rival, so the
@@ -41,7 +41,7 @@ URL dropped.
 relative to the row) whose value equals the block's on `MIN_ITEMS` rows or more is that field's key on this page
 (`collect.induce`, the rule learning applies across pages): its value is the field's candidate in each bound array row
 whose block does not show the field, so that row still gets the value its data states. The value keeps its source kind
-and the resolution spec's evidence rules (a call's value is `network` evidence; a state value is `state` evidence).
+and the evidence rules of resolution (a call's value is `network` evidence; a state value is `state` evidence).
 """
 
 from collections import Counter, defaultdict

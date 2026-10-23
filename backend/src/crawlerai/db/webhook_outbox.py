@@ -1,4 +1,4 @@
-"""The webhook outbox (jobs spec): the events a job's webhook is owed, and their grouping into deliveries.
+"""The webhook outbox: the events a job's webhook is owed, and their grouping into deliveries.
 
 An event is written in the transaction that makes it happen (a task's end, a record stored, a URL found gone, the
 job's end), and only for a job whose request asked for it (`job.webhook_events`), so it is owed exactly when the

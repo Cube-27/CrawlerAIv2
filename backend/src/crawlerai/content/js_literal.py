@@ -1,4 +1,4 @@
-"""The JS literal reader (extraction spec, "Source documents"): the value a script writes as an ECMAScript literal,
+"""The JS literal reader: the value a script writes as an ECMAScript literal,
 read without evaluating anything.
 
 The grammar is the ECMAScript literal subset: object literals (identifier, string or numeric keys), array literals,

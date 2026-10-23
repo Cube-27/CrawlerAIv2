@@ -1,4 +1,4 @@
-"""Row identifiers (persistence-storage spec): UUIDv7 per RFC 9562 §5.7, generated in Python.
+"""Row identifiers: UUIDv7 per RFC 9562 §5.7, generated in Python.
 
 The standard library gains `uuid.uuid7` only in Python 3.14; this project runs on 3.12.
 """
@@ -16,9 +16,9 @@ _last = (0, 0)  # (unix_ms, rand_a) of the previous value
 def uuid7() -> uuid.UUID:
     """48-bit Unix time in milliseconds, then the version, 12 bits of `rand_a`, the variant and 62 random bits.
 
-    Values from one process strictly increase, so rows sort by id in creation order (jobs spec orders `job_event` by
+    Values from one process strictly increase, so rows sort by id in creation order (`job_event` is ordered by
     id). Within one millisecond `rand_a` is a counter (RFC 9562 §6.2, method 1) that starts at a random value in its
-    lower half; when it overflows, or the clock goes back, the timestamp advances past the previous one (§6.2).
+    lower half; when it overflows, or the clock goes back, the timestamp advances past the previous one.
     """
     global _last
     rand = int.from_bytes(os.urandom(10))

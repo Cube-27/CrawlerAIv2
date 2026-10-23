@@ -1,4 +1,4 @@
-"""A listing recipe's pagination (Appendix A #59, adapters spec): the kind a series of calls follows is inferred from
+"""A listing recipe's pagination (Appendix A #59): the kind a series of calls follows is inferred from
 the calls, and the next request of each kind is the one the series made next. Synthetic calls under RFC 2606 names
 (C9): a series is made by the same `next_request` serving uses, and inference must give back the pagination."""
 

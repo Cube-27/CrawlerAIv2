@@ -1,4 +1,4 @@
-"""What a page task stores the same way wherever it runs (`scrape`, rest-api spec; a worker's tasks, jobs spec): the
+"""What a page task stores the same way wherever it runs (`scrape`, a worker's tasks): the
 task's site, the usage its fetches count, a reached page's extraction and the records it keeps, a listing's further
 pages under the task, and what a page with a record teaches its surface (progressive state, render mode, locate run).
 
@@ -51,7 +51,7 @@ from crawlerai.services.scrape_request import RenderOptions
 from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.capture_bundle import CaptureBundle
 
-# The usage a fetch attempt counts (acquisition spec): a request per HTTP or API attempt, the seconds of a browser's.
+# The usage a fetch attempt counts: a request per HTTP or API attempt, the seconds of a browser's.
 _REQUEST_METHODS: Final[frozenset[CaptureMethod]] = frozenset({"http", "api"})
 # Jobs and sites belong to the project migrations create (single tenant).
 DEFAULT_PROJECT: Final = select(Project.id).where(Project.name == "default").scalar_subquery()
@@ -83,7 +83,7 @@ async def record_fetch_usage(
     conn: AsyncConnection, job_id: JobId, attempts: Iterable[AttemptRecord], proxy_pool: str | None
 ) -> None:
     """Count the fetch `attempts` as the job's usage: a request or the browser's seconds per attempt, and, for a fetch
-    through `proxy_pool`, the bytes each attempt moved through it (`proxy_bytes`, acquisition spec, "Proxy pools").
+    through `proxy_pool`, the bytes each attempt moved through it (`proxy_bytes`).
     Attempts, not fetch results, so that a caller keeps no page body only to count it."""
     for attempt in attempts:
         resource: UsageResource
@@ -123,17 +123,17 @@ async def store_page_record(
     render: RenderOptions | None = None,
 ) -> Stored:
     """Store the extraction of a page and what it keeps: a caller-supplied page keeps its records, complete or not
-    (`partial`), and a crawl-discovered one only complete records (else `no_match`, §23); none when resolution failed
-    (extraction spec). The outcome is `failed` then; a caller-supplied detail page that states no entity of the schema
-    is `no_match` (`resolve.records.states_entity`); a caller-supplied listing without rows is `partial` with none (its
-    page was read, and listed nothing). A page with a record, or a caller-supplied listing that listed nothing, counts
-    toward its progressive state (an `extracted` or `partial` page: a locate run renders it) and applies the job's
-    `render` (None: the job inherits the surface's) to its surface (`render_surface`): a listing's rows the HTTP page
-    does not carry are for a locate run to find, as any field's are. A page with a record freshens the site's contract
-    with its coverage; a caller-supplied page without one counts towards its staleness
-    (`acquire.memory.learn_extraction`, through `engine`, in a transaction of its own). A page `config` ran on joins
-    the config's drift window (learning-configs spec).
-    `page_url` is `store_extraction`'s."""
+        (`partial`), and a crawl-discovered one only complete records (else `no_match`); none when resolution failed.
+    The outcome is `failed` then; a caller-supplied detail page that states no entity of the schema
+        is `no_match` (`resolve.records.states_entity`); a caller-supplied listing without rows is `partial` with none (its
+        page was read, and listed nothing). A page with a record, or a caller-supplied listing that listed nothing, counts
+        toward its progressive state (an `extracted` or `partial` page: a locate run renders it) and applies the job's
+        `render` (None: the job inherits the surface's) to its surface (`render_surface`): a listing's rows the HTTP page
+        does not carry are for a locate run to find, as any field's are. A page with a record freshens the site's contract
+        with its coverage; a caller-supplied page without one counts towards its staleness
+        (`acquire.memory.learn_extraction`, through `engine`, in a transaction of its own). A page `config` ran on joins
+        the config's drift window.
+        `page_url` is `store_extraction`'s."""
     stored = await store_extraction(
         conn,
         task,
@@ -163,7 +163,7 @@ async def store_page_record(
             await _count_page(conn, site_id, schema)
             await render_surface(conn, task.job_id, site_id, schema, render, extraction)
             return Stored("partial", stored.extraction_id, stored.records, stored.result)
-        # A page that states no entity of the schema (resolution spec, "Incomplete pages") is `no_match`; one whose
+        # A page that states no entity of the schema is `no_match`; one whose
         # resolution failed, `failed`.
         return stored if stored.outcome == "no_match" else replace(stored, outcome="failed")
     return stored
@@ -250,7 +250,7 @@ def coverage(schema: SchemaDef, extraction: ExtractionResult) -> Coverage:
 
 
 def records_outcome(records: tuple[StoredRecord, ...]) -> Literal["extracted", "partial"]:
-    """A caller-supplied page's outcome: `extracted` when it kept records and every one is complete (§10)."""
+    """A caller-supplied page's outcome: `extracted` when it kept records and every one is complete."""
     return "extracted" if records and all(record.draft.complete for record in records) else "partial"
 
 
@@ -261,8 +261,8 @@ async def surface_plan(
     config: ActiveConfig | None,
     render: RenderOptions | None,
 ) -> FetchPlan:
-    """How a page of the surface is fetched (acquisition spec, "Fetch plan"): by its `config`'s field sources, in the
-    job's `render` mode, else the surface's (rest-api spec, "Render mode"). A page read for no schema has no plan."""
+    """How a page of the surface is fetched: by its `config`'s field sources, in the
+    job's `render` mode, else the surface's. A page read for no schema has no plan."""
     if schema is None:
         return NO_PLAN
     key = StateKey(site_id, schema.id, schema.page_kind)
@@ -277,7 +277,7 @@ async def render_surface(
     render: RenderOptions | None,
     extraction: ExtractionResult,
 ) -> RenderMode:
-    """Apply a job's `render` to its surface (rest-api spec, "Render mode"), and return the mode its pages are fetched
+    """Apply a job's `render` to its surface, and return the mode its pages are fetched
     by: the job's mode is stored as the surface's, and a job without one inherits it. In `locate` or `always` the
     surface's locate run is started once per job (`request_locate`), for the job's `render.fields`, else the fields
     `extraction` left unpublished (`always` locates even when none is: the sources of every field the config does not
@@ -293,7 +293,7 @@ async def render_surface(
 
 
 def learning_extract(data: EngineData, llm: LLMClient) -> Extract:
-    """A locate run's extraction of a render (learning-configs spec, "Locate run" step 2): the page's pipeline, cold,
+    """A locate run's extraction of a render: the page's pipeline, cold,
     with role C on `llm` charged to the run's job."""
 
     async def extract(bundle: CaptureBundle, schema: SchemaDef, job_id: JobId) -> ExtractionResult:
@@ -317,7 +317,7 @@ def unpublished(extraction: ExtractionResult, schema: SchemaDef) -> list[str]:
 
 async def _count_page(conn: AsyncConnection, site_id: SiteId, schema: SchemaDef) -> None:
     """An extracted or partial page counts toward the progressive state of its site, schema and page kind
-    (learning-configs spec reads it)."""
+    (config learning reads it)."""
     state = ProgressiveState
     await conn.execute(
         pg_insert(state)

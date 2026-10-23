@@ -1,6 +1,6 @@
-"""`batch_scrape` jobs (jobs spec): submitted through the batch service, run by worker loops through the real queue,
-and read back through the jobs service; with the settings pinned at submit (INV-28) and each task isolated from the
-others (INV-31)."""
+"""`batch_scrape` jobs: submitted through the batch service, run by worker loops through the real queue,
+and read back through the jobs service; with the settings pinned at submit and each task isolated from the
+others."""
 
 import asyncio
 import json
@@ -181,10 +181,10 @@ async def test_page_outputs_are_made_from_each_tasks_capture_and_paginate(
     assert (blue.html, blue.raw_html, blue.metadata) == (None, None, None)
 
 
-# INV-28: settings pinned at submit.
+# settings pinned at submit.
 
 
-# INV-31: one task's failure never fails another.
+# one task's failure never fails another.
 
 
 async def _last_attempt(engine: AsyncEngine, url: str) -> None:
@@ -250,4 +250,4 @@ async def test_tasks_of_one_site_hold_none_of_its_rows_across_their_transactions
     assert (timed_out, summary.status, summary.outcomes.extracted) == ([], "completed", 2)
 
 
-# The request context and cache modes per page (D-1432, D-1435, D-1439).
+# The request context and cache modes per page.

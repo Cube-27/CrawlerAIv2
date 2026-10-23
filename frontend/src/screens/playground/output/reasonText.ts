@@ -1,5 +1,4 @@
-/** Why a scrape that reached its page answered no rows (rest-api spec, "Scrape outcomes, not errors, for page
- * failures"): structured data, the config, the page's calls, its state and its repeated item blocks gave none, so the
+/** Why a scrape that reached its page answered no rows: structured data, the config, the page's calls, its state and its repeated item blocks gave none, so the
  * row reader (role C), which fills the rows of blocks, had none to read. */
 const NO_ROWS = "no_rows: no_blocks";
 

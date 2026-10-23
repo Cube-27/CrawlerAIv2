@@ -1,9 +1,9 @@
-"""The captures service (rest-api spec): replay a stored capture with the current engine,
+"""The captures service: replay a stored capture with the current engine,
 for debugging, and read a stored capture's markdown again. Nothing either makes is stored.
 
 A capture carries no schema of its own, so it replays against each schema its stored records follow, with the
-schema's current document (a schema is edited in place, §5.2). A schema the site has an active config for replays
-with that config (`config` mode, learning-configs spec), as a page fetched now would extract; nothing joins its drift
+schema's current document (a schema is edited in place). A schema the site has an active config for replays
+with that config (`config` mode), as a page fetched now would extract; nothing joins its drift
 window. No replay calls an LLM: `extract_page` gets no role C.
 """
 
@@ -37,7 +37,7 @@ _MARKDOWN: OrderedDict[CaptureId, str] = OrderedDict()
 
 
 class CaptureNotFound(Refusal, LookupError):
-    """No capture has the id, or its bundle is no longer stored (captures expire, §15)."""
+    """No capture has the id, or its bundle is no longer stored (captures expire)."""
 
 
 class NotReplayable(Exception):
@@ -49,7 +49,7 @@ async def replay(
 ) -> list[ExtractedRecord]:
     """The records the current engine makes from the capture, one schema after another (by id), against the schemas
     of the records stored from it, those of `job_id` when given. A page that resolves nothing (blocked, an error) adds
-    none; an incomplete one adds its record with `complete=false`, as for any caller-supplied URL (§10). It reads the
+    none; an incomplete one adds its record with `complete=false`, as for any caller-supplied URL. It reads the
     capture's stored bundle and the database, and reaches no network (`reextract_job` runs it for a job's captures)."""
     async with engine.connect() as conn:
         capture = await _capture(conn, capture_id)
@@ -75,7 +75,7 @@ async def replay(
 
 
 async def markdown_of(engine: AsyncEngine, store: ObjectStore, capture_id: CaptureId) -> str:
-    """The capture's markdown, made again from its bundle: a format is a function of the capture alone (INV-26), so it
+    """The capture's markdown, made again from its bundle: a format is a function of the capture alone, so it
     equals the markdown the capture's scrape answered with. The MCP `scrape` tool pages it, one call per page, so the
     last few captures' markdown is kept and a later page is not made again; the capture row is still read each time, so
     a capture that is gone is not found."""
@@ -129,7 +129,7 @@ async def _replay(
     result = await extract_page(bundle, schema, None if config is None else config.executor, None, data=data)
     if result.entity is None:
         return []
-    # The records a page task would store: a listing's rows are deduplicated by their URLs (§4.10). Their entity keys
+    # The records a page task would store: a listing's rows are deduplicated by their URLs. Their entity keys
     # are not returned, so the capture's URL stands in for the task's canonical one.
     _, drafts = page_records(
         schema,

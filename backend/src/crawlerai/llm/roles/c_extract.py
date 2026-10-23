@@ -1,9 +1,9 @@
-"""Role C: grounded values read from a page's cleaned text (llm spec, "Role C input, claims and candidates").
+"""Role C: grounded values read from a page's cleaned text.
 
 On a detail page the model reads the page's cleaned text, never its HTML, with each requested field's name, type and
 description, and replies, for each field, whether the page shows it and, when it does, one verbatim span of its value,
 or, for a url or image_url field, the id of the link or image the text marks (`llm.marked`). Each span is aligned to
-the text (`llm.grounding`, INV-12) and checked as the field's own fact (`llm.claim_checks`): a value the text does
+the text (`llm.grounding`) and checked as the field's own fact (`llm.claim_checks`): a value the text does
 not contain, or labels as another field's, is dropped, and an aligned one is normalized like
 any collector's raw value and proposed as a `source_kind='llm'` candidate with its `text:<start>-<end>` locator. A
 claimed id is kept only when it marks an element of the field's kind, and its candidate is that element's `href` or
@@ -47,7 +47,7 @@ SYSTEM: Final = _PROMPTS.joinpath("c_extract.txt").read_text(encoding="utf-8")
 LISTING_SYSTEM: Final = _PROMPTS.joinpath("c_extract_listing.txt").read_text(encoding="utf-8")
 
 # The cleaned text is cut to its first 40,000 characters on a detail page; a listing's calls read at most 80,000
-# characters of block lines each, and at most 200 blocks in all, as a listing keeps at most 200 rows (llm spec).
+# characters of block lines each, and at most 200 blocks in all, as a listing keeps at most 200 rows.
 DETAIL_MAX_CHARS: Final = 40_000
 DETAIL_MAX_ID_CHARS: Final = 10_000  # the ids of a detail page's links and images, together (`llm.marked`)
 LISTING_MAX_CHARS: Final = 80_000
@@ -62,7 +62,7 @@ BLOCK_CLAIM_TOKENS: Final = 80
 PROMPT_KIND: Final[PromptKind] = "c_extract_detail"
 LISTING_PROMPT_KIND: Final[PromptKind] = "c_extract_listing"
 
-# A reply holds one claim per requested field, its verbatim span (§4.3), with `shown` saying whether the page shows the
+# A reply holds one claim per requested field, its verbatim span, with `shown` saying whether the page shows the
 # field at all; a field it does not show is claimed `shown: false` with an empty span. A closed object of required
 # claims, rather than a list of claims or `span | null` per field, keeps the schema inside every provider's
 # structured-output subset (`tests.support.schema_subset`: no unions, no optional properties) and bounds the reply by
@@ -70,12 +70,12 @@ LISTING_PROMPT_KIND: Final[PromptKind] = "c_extract_listing"
 # `maxLength`, so a value's length is bounded only by the call's token cap.
 #
 # `shown` comes first, so the model states absence before it writes a span. Without it, the empty span was every
-# field's easiest valid claim, and a fast model gave it for fields the page shows, varying from run to run (D-1097:
-# 55 grounded values over 18 calls without `shown`, 68 with it, on six eval pages, three runs each).
+# field's easiest valid claim, and a fast model gave it for fields the page shows, varying from run to run (55 grounded
+# values over 18 calls without `shown`, 68 with it, on six eval pages, three runs each).
 _ABSENT: Final = ""
 # The claim form is written once, in `$defs` (JSON Schema 2020-12 §8.2.4), and every field refers to it: a provider
 # compiles the schema into a grammar whose size it caps, and the form written out under each field outgrew Anthropic's
-# from 18 fields on (D-1008).
+# from 18 fields on.
 #
 # `ref` names a link or an image the text marks, for a url or image_url field whose value is an element's `href` or
 # `src`, which the text never shows; it is empty for a span.
@@ -122,7 +122,7 @@ class FilledListing(Filled):
 
 def output_schema(fields: Sequence[str]) -> dict[str, JsonValue]:
     """`{fields: {<field>: {shown, ref, value, start, end}}}`: a claim per requested field, `shown: false` when the page
-    does not show it (§4.4)."""
+    does not show it."""
     return _with_claim(closed_object({"fields": _claims(fields)}))
 
 
@@ -144,12 +144,12 @@ def detail_request(
     kind: PromptKind = PROMPT_KIND,
 ) -> LLMRequest:
     """The role C request for `fields` in `text`, which the caller has cut to `DETAIL_MAX_CHARS`. Fields are listed by
-    name, so the same inputs give the same `request_hash` (INV-10). `job_id` is None only for a replay, which no job
+    name, so the same inputs give the same `request_hash`. `job_id` is None only for a replay, which no job
     pays for.
 
     The page text comes first and the fields asked after it, as Anthropic's long-context prompting guidance advises
     (long documents at the top, the query at the end): with the fields first, a fast model answered every field empty
-    on pages that show some of them once most of the fields asked were absent (D-1021)."""
+    on pages that show some of them once most of the fields asked were absent."""
     user = f"{_url_line(page_url)}{_page_text(text)}\n\nFields:\n{field_lines(fields)}"
     return LLMRequest(
         prompt_kind=kind,
@@ -277,7 +277,7 @@ def _read_claims(
     ctx: Context,
 ) -> "_Read":
     """Each claim's candidate, owned by its block's row: the first claim of a block and field its row does not publish,
-    grounded in that block's text (INV-12) and checked (`llm.claim_checks`, `_heading_place`). A claim of another
+    grounded in that block's text and checked (`llm.claim_checks`, `_heading_place`). A claim of another
     block, or of a field the row publishes, is not taken."""
     by_index = {block.index: block for block in blocks}
     candidates: list[Candidate] = []
@@ -337,7 +337,7 @@ def _with_remote_label(block: BlockText, at: GroundedSpan, spec: FieldSpec, ctx:
     """A place claimed for a row that starts its line, with the line before it when that line, outside the block's
     heading, speaks of remote work (`normalize.location.mentions_remote`): the label the page writes the place under
     ("Remote from" above "Spain, Portugal") is part of how it states the place, which the location normalizer keeps
-    as the place's text (normalization spec, "location as stated"), so the remote statement is not lost. Unchanged
+    as the place's text, so the remote statement is not lost. Unchanged
     otherwise."""
     item = spec.item if spec.type is FieldType.LIST else spec
     offset = at.start - block.start
@@ -467,7 +467,7 @@ class _Reader:
 
     def _ground(self, name: str, claim: Mapping[str, JsonValue]) -> tuple[str, str] | None:
         """The claim's raw value and locator: the element its `ref` names, else its checked span of the cleaned text
-        (`llm.claim_checks`), its offsets moved back past the ids before them; None when ungrounded (INV-12)."""
+        (`llm.claim_checks`), its offsets moved back past the ids before them; None when ungrounded."""
         spec = self.fields[name]
         ref = str(claim["ref"])
         if ref != _ABSENT:

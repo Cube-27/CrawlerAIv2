@@ -1,14 +1,14 @@
-"""JSON over HTTP, for adapters and API recipes (acquisition spec rung), over the HTTP
-rung's client (`curl_client`, D-1320): the same Chrome impersonation, SSRF guard, caps, cookie jar, proxy pools and
+"""JSON over HTTP, for adapters and API recipes (the acquisition rung), over the HTTP
+rung's client (`curl_client`): the same Chrome impersonation, SSRF guard, caps, cookie jar, proxy pools and
 reasons. The capture is recorded under the page the JSON stands for.
 
-The request is what that page's own script would send with `fetch()` (D-1322): the impersonation's headers, less the
+The request is what that page's own script would send with `fetch()`: the impersonation's headers, less the
 two only a navigation sends (Upgrade Insecure Requests §3.2; Fetch Metadata §2.4 `Sec-Fetch-User`), with the Fetch
 Metadata of a CORS request for no destination (W3C Fetch Metadata Request Headers §2: `Sec-Fetch-Mode: cors`,
 `Sec-Fetch-Dest: empty`, `Sec-Fetch-Site` from the page to the endpoint), the `Referer` the default referrer policy
 gives (W3C Referrer Policy §3, `strict-origin-when-cross-origin`) and an `Origin` where Fetch §3.1 sends one (a CORS
 request to another origin, or any request that is not a GET). A recipe's own headers come last and win. The page's
-site session, if any (`acquire.session`, INV-29's exception), lends its cookies to a request in the
+site session, if any (`acquire.session`), lends its cookies to a request in the
 site's registrable domain.
 """
 
@@ -47,7 +47,7 @@ SiteRelation = Literal["same-origin", "same-site", "cross-site"]
 # Fetch Metadata §2.1: across a redirect chain the value is the least related hop's.
 _RELATION_ORDER: Final[tuple[SiteRelation, ...]] = ("same-origin", "same-site", "cross-site")
 _DEFAULT_PORTS: Final = {"http": 80, "https": 443}  # RFC 9110 §4.2
-# D-1321: the order in which Chromium sends a script's `fetch()` headers, as the browser rung's Chromium sends them to a
+# the order in which Chromium sends a script's `fetch()` headers, as the browser rung's Chromium sends them to a
 # header echo service; the impersonation profile describes a navigation's. A header absent from a request is skipped.
 FETCH_HEADER_ORDER: Final = (
     "host",
@@ -102,7 +102,7 @@ async def fetch_json(
     in its registrable domain, and is dropped when it is `blocked`."""
     fetched_at = datetime.now(UTC)
     started = time.monotonic()
-    # A fetch with the caller's own context takes no site session (D-1432).
+    # A fetch with the caller's own context takes no site session.
     if policy.context is not None:
         sessions = None
     session = None if sessions is None else sessions.take(request.page_url, request.url, policy.proxy_pool)
@@ -163,7 +163,7 @@ def _outcome(status: int, body: bytes, raw: bool) -> tuple[BlockClass, str | Non
         except ValueError:
             return "error", "decode_error"
         return "ok", None
-    # The status rules of acquisition spec; the body is not HTML, so it is never a shell.
+    # The status rules of; the body is not HTML, so it is never a shell.
     block_class = classify(status, (), "")
     return ("error", "unexpected_status") if block_class == "ok" else (block_class, None)
 

@@ -1,4 +1,4 @@
-"""`crawl` jobs (jobs spec): submitted through the crawl service, run by a worker loop through
+"""`crawl` jobs: submitted through the crawl service, run by a worker loop through
 the real queue, and read back through the jobs service. The frontier's enqueueing is also tested on its own, against the
 `url_task` table."""
 
@@ -206,7 +206,7 @@ async def test_a_target_the_guard_refuses_is_never_fetched(
 
     found = await tasks(engine, submitted.job_id)
     moved = found[f"{own_origin}/moved"]
-    # The page's task fails at once (INV-16); a refused sitemap ends the reading of sitemaps, and the crawl goes on.
+    # The page's task fails at once; a refused sitemap ends the reading of sitemaps, and the crawl goes on.
     assert (moved.outcome, moved.attempts, moved.last_error) == ("failed", 1, "ssrf_rejected: private_address")
     assert sorted(found) == [f"{own_origin}/", f"{own_origin}/moved", f"{own_origin}/p/2"]
     assert (await summary(engine, submitted.job_id)).status == "completed"
@@ -231,7 +231,7 @@ async def test_a_product_absent_from_two_consecutive_crawls_is_gone(
     }
     request = records_crawl(f"{own_origin}/", kettle_schema, f"{own_origin}/p/*")
     runs = []
-    # jobs spec: the red kettle leaves the listing after the first run.
+    # the red kettle leaves the listing after the first run.
     for listed in (("/p/blue", "/p/red"), ("/p/blue",), ("/p/blue",)):
         web.pages[f"{own_origin}/"] = page(*listed)
         submitted = await submit_crawl(engine, fetching.connector, request, data=engine_data)
@@ -273,4 +273,4 @@ def frontier(*, limit: int = 10, max_depth: int = 3, rules: tuple[PageKindRule, 
     return Frontier(Scope("shop.example.test"), rules, max_depth, limit)
 
 
-# Strategies (D-1440).
+# Strategies.

@@ -1,10 +1,10 @@
-"""One polite fetch (acquisition spec): the way every caller sends a request to a site, whether its caller waits for the
+"""One polite fetch: the way every caller sends a request to a site, whether its caller waits for the
 answer (`scrape`, `map`, `extract`) or it runs in a worker (`batch_scrape`, `crawl`), for a page, an
 API endpoint an adapter or recipe asks, or a sitemap.
 
 The steps, in order: the host's rules (its interval setting and robots.txt, `ReadRules`; a robots.txt request takes a
 turn at the host's rate and holds the host as a page's does), a turn at the host's rate, the fetch, then the host's rate
-adapted to every answer of the fetch (acquisition spec, Per-site rate and backoff) and, when the fetch kept no `ok`
+adapted to every answer of the fetch (Per-site rate and backoff) and, when the fetch kept no `ok`
 answer after a 429 or 503, the host paused by the one back-off rule (`politeness.backoff`), the host held from the
 first turn until then (no other task's request goes to it meanwhile). A caller that waits for
 the answer waits in place for its turns, up to `IN_PLACE.bound`, and a turn further off is not taken (`Refused`,
@@ -90,7 +90,7 @@ class Waiting:
     bound: timedelta
 
 
-# D-1263: a caller waiting for the answer waits in place up to a minute for a turn.
+# a caller waiting for the answer waits in place up to a minute for a turn.
 IN_PLACE: Final = Waiting(postpone=False, bound=timedelta(minutes=1))
 # A third of the task's deadline leaves the rest for the requests themselves (each within its policy's timeout) and the
 # rest of the task; a longer wait would spend the deadline on turns and record the page as failed.
@@ -118,7 +118,7 @@ class NoTurn(Exception):
 
 
 # A page fetch through the polite step: given the URL, the `Admit` each request after its first waits for, and the
-# host's rules (D-1384: what it asks of the same host goes by them), the page.
+# host's rules (what it asks of the same host goes by them), the page.
 PageFetch = Callable[[str, Admit, HostRules], Awaitable[FetchResult]]
 
 
@@ -136,7 +136,7 @@ async def polite_fetch(
     tries: int = 1,
 ) -> FetchResult | Refused | Later:
     """`url` fetched with `fetch` politely (module docstring), or why nothing was sent. `by_adapter`: an active adapter
-    serves the URL first (adapters spec) from an API whose own robots.txt its requests go by, so a robots.txt disallow
+    serves the URL first from an API whose own robots.txt its requests go by, so a robots.txt disallow
     of the page admits no fallback to the page rungs, and a fetch that does not keep `ok` is `ROBOTS`. `turn_taken`:
     the caller already holds the host's turn for this request. `endpoint`: every request of the fetch goes to the URL's
     host (an API request); a page fetch's `api` attempts went to other hosts, which their own polite fetch observed.
@@ -221,7 +221,7 @@ def rules_of(engine: AsyncEngine, http: Rung, attempts: list[AttemptRecord], tur
 async def listed_sitemaps(rules: ReadRules, url: str, policy: FetchPolicy, known: HostRules) -> tuple[str, ...]:
     """The sitemaps the robots.txt of `url`'s origin lists (`Sitemap:`), for a reading of the site's sitemaps: those of
     `known`, the rules read with `policy`; read through `rules` for their `Sitemap:` lines alone when `policy` does not
-    obey robots.txt (owner decision #75). None when it is unreachable or its turn is further off than the caller
+    obey robots.txt. None when it is unreachable or its turn is further off than the caller
     waits."""
     if known.robots is None and not policy.respect_robots:
         try:
@@ -233,7 +233,7 @@ async def listed_sitemaps(rules: ReadRules, url: str, policy: FetchPolicy, known
 
 def page_first(page_host: str, known: HostRules, rules: ReadRules) -> ReadRules:
     """`rules`, except for a URL on `page_host`, whose rules the caller read before fetching its page (`known`) and
-    which are not read again (D-1384)."""
+    which are not read again."""
 
     async def first(url: str, policy: FetchPolicy) -> HostRules | None:
         return known if (urlsplit(url).hostname or "") == page_host else await rules(url, policy)
@@ -243,10 +243,10 @@ def page_first(page_host: str, known: HostRules, rules: ReadRules) -> ReadRules:
 
 def recording(rung: Rung, policy: FetchPolicy, attempts: list[AttemptRecord], turns: Turns, gap: timedelta) -> Fetch:
     """A fetch of robots.txt through `rung` with `policy` that adds the attempts of each fetch to `attempts`, sent as
-    politely as a page's request (acquisition spec): a turn at its host's rate (`gap`, the site's interval: its
+    politely as a page's request: a turn at its host's rate (`gap`, the site's interval: its
     `Crawl-delay` is what it reads) taken as `turns` waits, or `NoTurn`; the host held until its answers are
     observed, and a slow-down has paused the host. The caller's request context and page steps are the page's, not
-    robots.txt's (D-1432): it goes without them."""
+    robots.txt's: it goes without them."""
     policy = policy.model_copy(update={"context": None, "steps": ()})
     limiter = turns.limiter
 

@@ -1,4 +1,4 @@
-"""Record versions (jobs spec), against a real Postgres: a re-extracted entity equal to its latest version adds no
+"""Record versions, against a real Postgres: a re-extracted entity equal to its latest version adds no
 record row, and one with any other value adds the next version, pointing at the one it supersedes and naming its changed
 fields."""
 
@@ -170,7 +170,7 @@ async def test_each_jobs_record_carries_its_delta_against_the_previous_record(si
         await site.run(site.draft(data))
 
     deltas = [(await list_records(site.conn, RecordFilter(job_id=job))).items[0].delta for job in site.jobs]
-    # Served as JSON numbers (normalization spec, "Served form").
+    # Served as JSON numbers.
     price = FieldChange(
         field="price", previous={"amount": 19.9, "currency": "EUR"}, value={"amount": 17.5, "currency": "EUR"}
     )

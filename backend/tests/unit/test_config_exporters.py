@@ -1,4 +1,4 @@
-"""Config exports (learning-configs spec): `json` is the IR as stored; `platform_draft` carries each field's
+"""Config exports: `json` is the IR as stored; `platform_draft` carries each field's
 steps in order as XPath, regex or JSONPath, marked `draft`, with the fields the release check fails marked `manual`."""
 
 from datetime import UTC, datetime

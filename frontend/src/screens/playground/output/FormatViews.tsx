@@ -39,7 +39,7 @@ export function NameValueTable({
   );
 }
 
-/** The page's links (rest-api spec), as text: they lead to other sites and are not followed from here. */
+/** The page's links, as text: they lead to other sites and are not followed from here. */
 export function LinksTable({ links }: Readonly<{ links: readonly string[] }>) {
   return (
     <Table>
@@ -90,7 +90,7 @@ export function FetchView({ fetch }: Readonly<{ fetch: NonNullable<ScrapeRespons
           ["Method", fetch.method],
           ["HTTP status", fetch.status_code === null ? "—" : String(fetch.status_code)],
           ["Block class", fetch.block_class],
-          // The platform adapter that read the page's API capture (D-1393); other fetches have none.
+          // The platform adapter that read the page's API capture; other fetches have none.
           ...(fetch.adapter === null ? [] : [["Adapter", fetch.adapter] as const]),
         ]}
       />
@@ -114,7 +114,7 @@ export function UsageTable({ usage }: Readonly<{ usage: ScrapeResponse["usage"] 
   );
 }
 
-/** A page's screenshot, shown as the API serves it: the UI's server attaches the API key to `/v1` (frontend spec), so the
+/** A page's screenshot, shown as the API serves it: the UI's server attaches the API key to `/v1`, so the
  * image loads from the artifact's URL. */
 export function ScreenshotView({ artifact }: Readonly<{ artifact: Artifact }>) {
   return (

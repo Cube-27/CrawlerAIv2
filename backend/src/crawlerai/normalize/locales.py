@@ -1,4 +1,4 @@
-"""The page's languages and locales, and the ISO 3166-1 country codes (normalization spec, "Page languages"): the one
+"""The page's languages and locales, and the ISO 3166-1 country codes: the one
 reading every normalizer that depends on a language (vocab, date, numbers, money, range) shares.
 
 Precedence: the page's own declarations count together: `<html lang>` (HTML Standard, the `lang` attribute),

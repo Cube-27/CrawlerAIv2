@@ -1,4 +1,4 @@
-"""The `POST /v1/crawl` body (jobs spec): what it accepts, and what it refuses."""
+"""The `POST /v1/crawl` body: what it accepts, and what it refuses."""
 
 import uuid
 from typing import Any

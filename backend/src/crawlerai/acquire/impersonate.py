@@ -1,5 +1,5 @@
-"""Which Chrome the HTTP and JSON rungs impersonate (acquisition spec, D-1325): the browser rung's own Google Chrome, so
-a site that sees both rungs, and the cookies one hands the other (owner #76), sees one browser on one platform.
+"""Which Chrome the HTTP and JSON rungs impersonate: the browser rung's own Google Chrome, so
+a site that sees both rungs, and the cookies one hands the other, sees one browser on one platform.
 
 At startup the browser rung's Chrome is started once, loading no site, to read the headers that name it on a navigation
 (`browser_session.browser_identity`: its user agent as its profiles send it, its client hints, `Accept` and

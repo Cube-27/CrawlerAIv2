@@ -1,18 +1,17 @@
-"""Drift (learning-configs spec): each page an active config runs on adds, per field, whether a step
+"""Drift: each page an active config runs on adds, per field, whether a step
 matched and whether the value was valid to a rolling window of the config's last `WINDOW_PAGES` pages. A field whose
 windowed yield or validity falls below its validated one (the IR's `yield`/`validity`, the held-out values of the
-validation report, §4.7) less the dev-fitted margin is `suspended`: the executor no longer runs it, so its pages fall
+validation report) less the dev-fitted margin is `suspended`: the executor no longer runs it, so its pages fall
 back to cold-mode resolution, and the site re-learns.
 
 `record_run` does this for one page in the database, under a row lock on the config: it stores the window
 (`extraction_config.drift_window`), suspends the fields that drifted in both the IR and `field_status`, logs a
 `drift_suspended` job event per field and starts a forced learning run (`progressive.request_learning`). On a surface
 whose render mode still locates (`locate`, `always`), a suspended field a locate run placed (its `needs` is not `http`,
-or its config's origin is `located`) makes that run a locate run for it too (`relocated`; learning-configs spec,
-"Locate run").
+or its config's origin is `located`) makes that run a locate run for it too (`relocated`).
 
 The margins are `backend/data/drift_margins.json`, stamped `source_split: dev` and with how they were
-obtained: until labels exist, learning-configs spec's values, stamped "spec default, unfitted" (D-0576). Without the
+obtained: until labels exist, the values of config learning, stamped "spec default, unfitted". Without the
 file nothing is suspended (C7: no default margin); windows are still recorded.
 """
 
@@ -32,26 +31,26 @@ from crawlerai.db.jobs import record_event
 from crawlerai.db.models import ExtractionConfig, ExtractionConfigId, JobId, RenderMode
 from crawlerai.normalize.base import Ok
 
-# learning-configs spec: the window is the config's last 50 pages.
+# the window is the config's last 50 pages.
 WINDOW_PAGES: Final = 50
 # The validated yield and validity are measured on at least 3 held-out pages; a window is compared
 # with them once it is as large.
 MIN_WINDOW_PAGES: Final = 3
 MARGINS_FILE: Final = "drift_margins.json"
 DRIFT_SUSPENDED: Final = "drift_suspended"
-# A config page published a field its config lists as absent (D-1341).
+# A config page published a field its config lists as absent.
 ABSENT_STATED: Final = "absent_stated"
 
 
 class DriftMargins(BaseModel):
-    """How far below its validated yield and validity a field's windowed ones may fall (§4.9), fitted on dev."""
+    """How far below its validated yield and validity a field's windowed ones may fall, fitted on dev."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", validate_by_name=True)
 
     yield_: Annotated[float, Field(ge=0, le=1, alias="yield")]
     validity: Annotated[float, Field(ge=0, le=1)]
     source_split: Literal["dev"]
-    # How the margins were obtained, so spec defaults are never taken for values fitted on labels (D-0576).
+    # How the margins were obtained, so spec defaults are never taken for values fitted on labels.
     fit: Annotated[str, Field(min_length=1)]
 
 
@@ -188,7 +187,7 @@ async def record_run(
 ) -> list[Drifted]:
     """Add one page's run of the active config `config_id`, the `config` candidates it proposed, to its window,
     suspend the fields that drifted, and return them. A field the config lists as absent that the page `published`
-    leaves the list (D-1341): the site states it after all. Either starts a forced learning run. A config that is no
+    leaves the list: the site states it after all. Either starts a forced learning run. A config that is no
     longer active records nothing."""
     config = await _locked_active(conn, config_id)
     if config is None:

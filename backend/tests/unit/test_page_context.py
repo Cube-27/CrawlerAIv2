@@ -1,4 +1,4 @@
-"""The normalization context of a page (schemas spec): what the page states, and nothing else (C7)."""
+"""The normalization context of a page: what the page states, and nothing else (C7)."""
 
 from datetime import UTC, datetime
 

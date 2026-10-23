@@ -1,9 +1,9 @@
-"""Recipe learning (adapters spec "integration into learning-configs spec learning"): the API recipe a learning run
+"""Recipe learning (integration into config learning): the API recipe a learning run
 gives its config, from the run's sample and held-out pages.
 
-Discovery (§4.3) reads the sample pages' browser captures; the best endpoint candidate is the one a recipe is bound
-from (one endpoint per config, D-0035). Its request is bound deterministically (§4.4), or by role D when that is
-ambiguous (§4.5), its headers are proven by replay (§4.6), and it is validated on the held-out pages whose captures
+Discovery reads the sample pages' browser captures; the best endpoint candidate is the one a recipe is bound
+from (one endpoint per config). Its request is bound deterministically, or by role D when that is
+ambiguous, its headers are proven by replay, and it is validated on the held-out pages whose captures
 hold an answer of the same endpoint (§4.7: held-out browser captures with network bodies). A page's values are what
 the engine published from it (`record.data`), as everywhere in learning.
 
@@ -11,14 +11,14 @@ A listing's recipe (Appendix A #59) is learned the same way from the series of c
 (`listing.py`): the endpoint and row map, the pagination its calls follow, binding and header minimization, then
 validation on the held-out pages whose calls of the endpoint it reproduces for the first two pages.
 
-Network bodies come with browser captures only (acquisition spec). With `render`, a page whose capture holds none (for a
+Network bodies come with browser captures only. With `render`, a page whose capture holds none (for a
 listing: whose calls show no pagination) is rendered in the browser with network capture, a listing with its browser
 actions, at most `MAX_RENDERS` pages per run, sample pages first; its published values stay those of its capture.
 
-A run always ends with a recipe or the reason it has none, so that the config's validation report says which
-(D-0583): no endpoint carrying a required field on every sample page (with whether the sample had network bodies at
+A run always ends with a recipe or the reason it has none, so that the config's validation report says which:
+no endpoint carrying a required field on every sample page (with whether the sample had network bodies at
 all), a listing whose calls show no pagination or come from one listing URL only, or the step a recipe failed. Replays
-go through `replay`, which sends them through the SSRF guard (INV-16).
+go through `replay`, which sends them through the SSRF guard.
 """
 
 import asyncio
@@ -188,7 +188,7 @@ async def _listing_endpoint(
     pagination = await asyncio.to_thread(listing_pagination, with_calls, endpoint.key)
     if pagination is None:
         # The captures show one call each: the listing's browser actions show how it asks for the next page.
-        # The two passes share the sample's renders (adapters spec, "Recipe discovery and binding"): the rest are the
+        # The two passes share the sample's renders: the rest are the
         # held-out pages'.
         unpaged = await renders.listing(
             with_calls,
@@ -218,7 +218,7 @@ def _discover(sample: Sequence[StoredPage], schema: SchemaDef) -> tuple[Endpoint
 
 def _no_endpoint(sample: Sequence[StoredPage]) -> str:
     if not any(page.bundle.network for page in sample):
-        # Network bodies come with browser captures only (acquisition spec); an HTTP capture has none to discover from.
+        # Network bodies come with browser captures only; an HTTP capture has none to discover from.
         return "no_network_bodies: no sample page has network responses to discover an endpoint from"
     return "no_endpoint: no JSON response carries a required field's published value on every sample page"
 
@@ -232,7 +232,7 @@ def _held_out(held_out: Sequence[StoredPage], endpoint: EndpointCandidate) -> li
 
 
 def _replay_page(page: StoredPage, request: CapturedRequest) -> ReplayPage:
-    # The page URL is the one the page was requested at, which serving binds from (§4.8).
+    # The page URL is the one the page was requested at, which serving binds from.
     sample = Sample(page.bundle.manifest.url, request, page_data(page.held_out.page))
     return ReplayPage(sample, page.held_out.facts.published, page.held_out.ctx)
 

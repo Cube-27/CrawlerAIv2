@@ -1,6 +1,6 @@
-"""Proxy pools (acquisition spec, OPEN_QUESTIONS #10): datacenter or ISP proxies configured by hand in
+"""Proxy pools (OPEN_QUESTIONS #10): datacenter or ISP proxies configured by hand in
 `CRAWLERAI_PROXY_POOLS`, and used for a fetch whose `proxy_pool` names its pool. A pool is one proxy URL, or
-`{"endpoints": [url, ...], "mode": "rotate" | "sticky"}` (D-1323): `rotate` takes its endpoints in turn, `sticky` keeps
+`{"endpoints": [url, ...], "mode": "rotate" | "sticky"}`: `rotate` takes its endpoints in turn, `sticky` keeps
 each site on one endpoint (rendezvous hashing, Thaler and Ravishankar 1998: a site moves only when its endpoint leaves
 the choice). A pool may declare the `country` its endpoints go out from (ISO 3166-1 alpha-2: one pool, one country),
 which records state as their egress (`core/egress.py`). An endpoint in quarantine (`proxy_health`) is chosen only

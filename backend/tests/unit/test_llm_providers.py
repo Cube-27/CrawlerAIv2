@@ -1,5 +1,5 @@
-"""The Anthropic and Gemini providers (llm spec) against a fake HTTP transport: no provider is called in CI
-(§6). Each test checks what a provider sends (the model for the class, the JSON-schema output mode, the token cap and
+"""The Anthropic and Gemini providers against a fake HTTP transport: no provider is called in CI.
+Each test checks what a provider sends (the model for the class, the JSON-schema output mode, the token cap and
 the timeout) or how it reads a synthetic reply, and that a rate limit, a server error or a timeout becomes a
 `ProviderError` after one request, so the client can fail over."""
 
@@ -140,7 +140,7 @@ def test_a_refusal_never_carries_the_api_key(vendor: Vendor) -> None:
     assert "key [redacted] is not valid" in str(refused.value)
 
 
-# --- failover between the two (§4.2) ---
+# --- failover between the two ---
 
 
 @pytest.mark.parametrize(("first", "second"), [(ANTHROPIC, GEMINI), (GEMINI, ANTHROPIC)], ids=["a-g", "g-a"])

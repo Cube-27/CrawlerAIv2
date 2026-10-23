@@ -4,7 +4,7 @@
 @import "@heroui/styles";
 
 /*
- * The theme layer (DESIGN.md, Theming): every visual value the app sets lives here, so a visual change is an edit
+ * The theme layer: every visual value the app sets lives here, so a visual change is an edit
  * to this file only. HeroUI's own variables are overridden under `:root` and `[data-theme="dark"]`. Layout sizes
  * outside Tailwind's default scale are Tailwind theme variables, used through the utilities they generate
  * (`max-w-content`, `h-table-page`).
@@ -16,36 +16,36 @@
     "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
     Arial, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  /* The content column's maximum width (DESIGN.md, Layout). */
+  /* The content column's maximum width. */
   --container-content: 80rem;
   /* The sidebar's width at tablet width and up. */
   --width-sidebar: 15rem;
   /* A paged table's box: a full page of rows, so a short page, a loading page or an empty one moves nothing below it
    * (no layout shift on paging). */
   --height-table-page: 72rem;
-  /* The playground's command bar column (frontend spec): narrower than the content, centred under the mode switch. */
+  /* The playground's command bar column: narrower than the content, centred under the mode switch. */
   --container-playground: 48rem;
   /* The command bar's input box: a URL and its error line, so switching between the single-URL modes moves neither the
-   * toolbar nor the run button. Batch's ten-line list is taller (D-1213). */
+   * toolbar nor the run button. Batch's ten-line list is taller. */
   --height-playground-input: 5rem;
   /* The options popover: the command bar's width, less 1rem each side at phone width. */
   --width-options: min(var(--container-playground), 100vw - 2rem);
-  /* The playground's output area (frontend spec): a run's pending, failed and done states fill at least this box, so
+  /* The playground's output area: a run's pending, failed and done states fill at least this box, so
    * a run moves nothing around it. */
   --height-playground-output: 36rem;
-  /* A JSON view's box: long output scrolls inside it (frontend spec). */
+  /* A JSON view's box: long output scrolls inside it. */
   --height-json-view: 32rem;
-  /* Get code's code block (frontend spec): each language's code, or the note in its place, scrolls inside this box, so
+  /* Get code's code block: each language's code, or the note in its place, scrolls inside this box, so
    * switching tabs moves nothing. */
   --height-code-view: 28rem;
-  /* The live activity feed's box: new lines scroll inside it (frontend spec). */
+  /* The live activity feed's box: new lines scroll inside it. */
   --height-activity-feed: 24rem;
-  /* A side drawer's width (DESIGN.md, Side drawer): wide enough for a code block or a page's JSON without clipping. */
+  /* A side drawer's width: wide enough for a code block or a page's JSON without clipping. */
   --width-drawer: 44rem;
 
-  /* Spacing (DESIGN.md, Spacing): the few distances the screens repeat, so padding is set once here. Each is a
+  /* Spacing: the few distances the screens repeat, so padding is set once here. Each is a
    * Tailwind spacing variable, used through the utilities it generates (`gap-stack`, `p-panel`). */
-  /* The content area's gutters from `sm` (at phone width they stay 16px, DESIGN.md Layout). */
+  /* The content area's gutters from `sm` (at phone width they stay 16px). */
   --spacing-gutter-x: 2.5rem;
   --spacing-gutter-y: 2.25rem;
   /* Between a screen's parts: header, command bar, sections. */
@@ -59,7 +59,7 @@
   --spacing-empty: 2.5rem;
 }
 
-/* A neutral palette with one indigo accent, borders over shadows (DESIGN.md, Reference). */
+/* A neutral palette with one indigo accent, borders over shadows. */
 :root,
 [data-theme="light"] {
   --radius: 0.5rem;
@@ -83,7 +83,7 @@
   --accent-foreground: oklch(0.99 0 0);
   --link: var(--accent);
 
-  /* JSON view tokens (frontend spec): one color per RFC 8259 value kind, plus object member names, in the code editor
+  /* JSON view tokens: one color per RFC 8259 value kind, plus object member names, in the code editor
    * palette readers know (VS Code's Light+ and Dark+ themes), with its editor background, line numbers and guides. */
   --json-background: #ffffff;
   --json-foreground: #1f1f1f;
@@ -132,7 +132,7 @@
 }
 
 @layer components {
-  /* An application type scale: compact headings and 14px body text (DESIGN.md, Reference: a dense UI). */
+  /* An application type scale: compact headings and 14px body text. */
   .typography--h1 {
     @apply text-xl leading-7 font-semibold tracking-tight;
   }
@@ -154,7 +154,7 @@
     @apply text-[0.8125rem] leading-5;
   }
 
-  /* Field groups (DESIGN.md, Forms): HeroUI stacks a checkbox group's options in a column, and lets a horizontal radio
+  /* Field groups: HeroUI stacks a checkbox group's options in a column, and lets a horizontal radio
    * group's label wrap inline with its options. Both become the label on its own line, the options in a wrapping row
    * under it, then the description and any error. */
   .checkbox-group,
@@ -179,7 +179,7 @@
   }
 
   /* A form's sections (HeroUI Fieldset): fields inside a section sit closer than the sections do, and a hairline
-   * above a heading-weight legend opens each section, so the groups read without boxes (DESIGN.md, Field groups). A
+   * above a heading-weight legend opens each section, so the groups read without boxes. A
    * floated legend is an ordinary box rather than one drawn into the top border (HTML, the fieldset and legend
    * elements), so the fieldset's gap spaces it from the first field. */
   .fieldset {
@@ -192,13 +192,13 @@
     @apply mt-2 border-t border-separator pt-5;
   }
 
-  /* Surfaces are outlined, not raised, with room inside (DESIGN.md, Spacing). */
+  /* Surfaces are outlined, not raised, with room inside. */
   .card {
     @apply border border-border p-panel shadow-none;
     border-radius: calc(var(--radius) * 1.5);
   }
 
-  /* Table cells keep clear of the table's edges and of each other (DESIGN.md, Spacing); at phone width the columns
+  /* Table cells keep clear of the table's edges and of each other; at phone width the columns
    * need the room more than the cells do. */
   .table__column {
     @apply px-3 sm:px-cell-x;
@@ -207,13 +207,13 @@
     @apply px-3 py-cell-y sm:px-cell-x;
   }
 
-  /* A table of fixed column widths (DESIGN.md, Data tables) keeps a minimum width, so at phone width it scrolls inside
+  /* A table of fixed column widths keeps a minimum width, so at phone width it scrolls inside
    * its own container instead of squeezing its columns until a button or a status is cut off. */
   table.table-fixed {
     @apply min-w-xl;
   }
 
-  /* A side drawer (DESIGN.md, Side drawer): wide enough for its content, with the panel's padding. At phone width it
+  /* A side drawer: wide enough for its content, with the panel's padding. At phone width it
    * takes the whole width. */
   .drawer__dialog {
     @apply p-panel;
@@ -228,7 +228,7 @@
     @apply mt-6;
   }
 
-  /* An empty state (DESIGN.md, Empty state): centred in a dashed box, so "nothing here" reads as a state, not as a
+  /* An empty state: centred in a dashed box, so "nothing here" reads as a state, not as a
    * missing part of the page. */
   .empty-state {
     @apply flex flex-col items-center gap-1 rounded-xl border border-dashed border-border p-empty text-center;
@@ -266,7 +266,7 @@
     }
   }
 
-  /* The playground's options popover (DESIGN.md, Playground options): the panel's padding. */
+  /* The playground's options popover: the panel's padding. */
   .options-panel {
     @apply p-panel;
   }
@@ -276,7 +276,7 @@
     border-inline-end-width: 0;
   }
 
-  /* A JSON view (frontend spec) and Get code's code block (§4.7): monospaced text in an outlined box that scrolls. */
+  /* A JSON view and Get code's code block: monospaced text in an outlined box that scrolls. */
   .json-view,
   .code-view {
     @apply m-0 overflow-auto rounded-lg border border-border bg-surface-secondary p-4 font-mono text-[0.8125rem] leading-5;
@@ -324,7 +324,7 @@
     content: counter(code-line);
   }
 
-  /* A headline number (DESIGN.md, Headline numbers): large, tabular, so tiles line up. */
+  /* A headline number: large, tabular, so tiles line up. */
   .stat-value {
     @apply text-2xl leading-8 font-semibold tracking-tight tabular-nums;
   }

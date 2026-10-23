@@ -349,8 +349,8 @@ export interface paths {
         };
         /**
          * Get Job Outcomes
-         * @description The job's pages by outcome, and the fields of its records by status with the reasons the unpublished ones give
-         *     (resolution spec): counted from what the job stored.
+         * @description The job's pages by outcome, and the fields of its records by status with the reasons the unpublished ones give:
+         *     counted from what the job stored.
          */
         get: operations["get_job_outcomes_v1_jobs__job_id__outcomes_get"];
         put?: never;
@@ -655,7 +655,7 @@ export interface paths {
          * Draft Schema
          * @description The schema role S drafts from `fields` for `page_kind` pages, with exactly those top-level fields, as a run's
          *     `schema.fields` uses it: the stored draft when these names were drafted for this page kind before, else a new
-         *     one, stored. A client shows it for editing before the run (frontend spec). A draft the LLM could not give is a
+         *     one, stored. A client shows it for editing before the run. A draft the LLM could not give is a
          *     problem typed with the LLM failure (502, 503), or a 429 once the key has made the project's `draft_call_cap` of
          *     them; a retired draft is a 422.
          */
@@ -981,12 +981,12 @@ export interface components {
         };
         /**
          * BatchScrapeRequest
-         * @description The body of `POST /v1/batch/scrape` (§4.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a
-         *     scrape's (rest-api spec), for every URL. A batch's results are either records or page outputs, so `records` is
+         * @description The body of `POST /v1/batch/scrape`. The formats, `schema`, `page_kind`, `fetch` and `locale` are a
+         *     scrape's, for every URL. A batch's results are either records or page outputs, so `records` is
          *     asked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),
-         *     and `schema.fields` is drafted while the caller waits (frontend spec). Role C fills a page's gaps as in a scrape;
+         *     and `schema.fields` is drafted while the caller waits. Role C fills a page's gaps as in a scrape;
          *     `budget.llm_calls` bounds the job's calls, and without a `budget` the project's cap does, as for every job
-         *     kind (D-1006, D-1121). The webhook options are `WebhookOptions` (§4.2).
+         *     kind. The webhook options are `WebhookOptions`.
          */
         BatchScrapeRequest: {
             budget?: components["schemas"]["Budget"] | null;
@@ -1043,7 +1043,7 @@ export interface components {
         };
         /**
          * BrowserActions
-         * @description A single-URL listing scrape's browser actions (owner #52). `records` is a soft target: the run stops once it
+         * @description A single-URL listing scrape's browser actions. `records` is a soft target: the run stops once it
          *     has seen at least that many rows, so it may pass it by one page or batch. Without a `hint` the mechanism is
          *     detected.
          */
@@ -1229,7 +1229,7 @@ export interface components {
         };
         /**
          * ContextHeader
-         * @description A header the recipe sends with the value the caller's request context holds for `name` (D-1430): the recipe
+         * @description A header the recipe sends with the value the caller's request context holds for `name`: the recipe
          *     stores the name alone, never a value.
          */
         ContextHeader: {
@@ -1293,15 +1293,15 @@ export interface components {
         };
         /**
          * CrawlRequest
-         * @description The body of `POST /v1/crawl` (§4.5). The formats, `schema`, `fetch` and `locale` are a batch's (§4.3), for every
-         *     page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted
-         *     while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does
-         *     (D-1286). `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which
-         *     pages are extracted. The webhook options are `WebhookOptions` (§4.2).
+         * @description The body of `POST /v1/crawl`. The formats, `schema`, `fetch` and `locale` are a batch's, for every
+         *         page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted
+         *         while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does.
+         *     `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which
+         *         pages are extracted. The webhook options are `WebhookOptions`.
          *
-         *     `strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the
-         *     links that best match `query` and `keywords` first (`crawl.scoring`). `allow_subdomains`
-         *     keeps the start host's subdomains without an `include`, and `allow_external` any host (D-1440, D-1441).
+         *         `strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the
+         *         links that best match `query` and `keywords` first (`crawl.scoring`). `allow_subdomains`
+         *         keeps the start host's subdomains without an `include`, and `allow_external` any host.
          */
         CrawlRequest: {
             /**
@@ -1507,7 +1507,7 @@ export interface components {
         };
         /**
          * Delta
-         * @description What a job's record is against the entity's previous record under the same schema (jobs spec, "Page delta"):
+         * @description What a job's record is against the entity's previous record under the same schema:
          *     `new`, `changed` with its changed fields in schema order, or `same`.
          */
         Delta: {
@@ -1517,7 +1517,7 @@ export interface components {
         };
         /**
          * DeltaCounts
-         * @description How many of a job's records are each delta (jobs spec, "Page delta").
+         * @description How many of a job's records are each delta.
          */
         DeltaCounts: {
             /** Changed */
@@ -1551,7 +1551,7 @@ export interface components {
         };
         /**
          * DroppedRowMeta
-         * @description A row that did not publish: its row entities' locators and the reason (variants spec).
+         * @description A row that did not publish: its row entities' locators and the reason.
          */
         DroppedRowMeta: {
             /** Locators */
@@ -1561,7 +1561,7 @@ export interface components {
         };
         /**
          * ExportPage
-         * @description One page of a job's records in an export format (learning-configs spec); `next_cursor` as in `RecordPage`.
+         * @description One page of a job's records in an export format; `next_cursor` as in `RecordPage`.
          */
         ExportPage: {
             /** Content */
@@ -1584,11 +1584,11 @@ export interface components {
         };
         /**
          * ExtractRequest
-         * @description The body of `POST /v1/extract` (§4.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it
-         *     inline, or asks for a draft from a `prompt` or from field names (`fields`, frontend spec), and its page kind must
+         * @description The body of `POST /v1/extract`. `urls` are URLs and URL globs; `schema` names a schema by id, gives it
+         *     inline, or asks for a draft from a `prompt` or from field names (`fields`), and its page kind must
          *     be `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` (else the project's cap) bounds a prompt's
-         *     draft. The `fetch` and `locale` are a scrape's (rest-api spec), for every URL. The webhook options are
-         *     `WebhookOptions` (§4.2).
+         *     draft. The `fetch` and `locale` are a scrape's, for every URL. The webhook options are
+         *     `WebhookOptions`.
          */
         ExtractRequest: {
             budget?: components["schemas"]["Budget"] | null;
@@ -1645,7 +1645,7 @@ export interface components {
         };
         /**
          * ExtractedRecord
-         * @description A record's content (§6 `record`): `complete` when every required field and group published (§10), and its
+         * @description A record's content (§6 `record`): `complete` when every required field and group published, and its
          *     confidence, the minimum over the required fields, `None` when any of them is uncalibrated. A replay answers with
          *     these: they are not stored, so they have no id.
          */
@@ -1704,9 +1704,9 @@ export interface components {
         };
         /**
          * FetchOptions
-         * @description How a request's pages are fetched. `headers` go over HTTP to the page's own host only, never in the browser
-         *     (INV-44), and `cookies` to that host in either; `wait_for` and `actions` run in the browser, so they make the fetch
-         *     a browser one and refuse `method_hint` `http`, and a browser fetch takes no `headers`.
+         * @description How a request's pages are fetched. `headers` go over HTTP to the page's own host only, never in the browser,
+         *     and `cookies` to that host in either; `wait_for` and `actions` run in the browser, so they make the fetch
+         *         a browser one and refuse `method_hint` `http`, and a browser fetch takes no `headers`.
          */
         FetchOptions: {
             /**
@@ -1761,7 +1761,7 @@ export interface components {
         /**
          * FetchSummary
          * @description The fetch of the page: the method, status and class of the kept attempt, the platform adapter that read an `api`
-         *     capture (INV-39; null for any other), and every attempt made.
+         *     capture (null for any other), and every attempt made.
          */
         FetchSummary: {
             /** Adapter */
@@ -1784,7 +1784,7 @@ export interface components {
         /**
          * FieldChange
          * @description A field whose published value differs from the entity's previous record: both values as published, None for a
-         *     side that published none (INV-27).
+         *     side that published none.
          */
         FieldChange: {
             /** Field */
@@ -1794,7 +1794,7 @@ export interface components {
         };
         /**
          * FieldCounts
-         * @description How many fields of a job's records have each status (resolution spec).
+         * @description How many fields of a job's records have each status.
          */
         FieldCounts: {
             /** Abstained */
@@ -1851,8 +1851,7 @@ export interface components {
          * @description One field of a schema, or the item of a list.
          *
          *     The parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,
-         *     `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants spec
-         *     §4.2): the path names the row entities, and `key` names the sub-fields that identify a row.
+         *     `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants): the path names the row entities, and `key` names the sub-fields that identify a row.
          */
         "FieldSpec-Input": {
             /** Description */
@@ -1888,8 +1887,7 @@ export interface components {
          * @description One field of a schema, or the item of a list.
          *
          *     The parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,
-         *     `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants spec
-         *     §4.2): the path names the row entities, and `key` names the sub-fields that identify a row.
+         *     `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants): the path names the row entities, and `key` names the sub-fields that identify a row.
          */
         "FieldSpec-Output": {
             /** Description */
@@ -1922,8 +1920,8 @@ export interface components {
         };
         /**
          * FieldSteps
-         * @description A field's steps in order (the first valid value wins, §12.1), its status, and its held-out yield and validity
-         *     (learning-configs spec) once validated.
+         * @description A field's steps in order (the first valid value wins), its status, and its held-out yield and validity
+         *     once validated.
          */
         FieldSteps: {
             /** Call */
@@ -2188,7 +2186,7 @@ export interface components {
         JsonValue: unknown;
         /**
          * JsonValuesItem
-         * @description A task of a job in `json_values` (frontend spec): its URL, its outcome (null until it ends), the clean records
+         * @description A task of a job in `json_values`: its URL, its outcome (null until it ends), the clean records
          *     its page stands for, and, when asked for, its page's metadata and fetch. `records` is empty for a task with no
          *     record (failed, blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or
          *     partial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts;
@@ -2300,8 +2298,7 @@ export interface components {
         /**
          * ListingSpec
          * @description Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` locates the next
-         *     page's URL. A `jsonpath` row step selects the rows' JSON objects in its source's documents (listings spec, "Rows
-         *     from page state"), and its fields' steps are `jsonpath` steps of the same source read from each row (`$`).
+         *     page's URL. A `jsonpath` row step selects the rows' JSON objects in its source's documents, and its fields' steps are `jsonpath` steps of the same source read from each row (`$`).
          */
         ListingSpec: {
             /** Fields */
@@ -2315,7 +2312,7 @@ export interface components {
         };
         /**
          * MapRequest
-         * @description The body of `POST /v1/map` (§4.4).
+         * @description The body of `POST /v1/map`.
          */
         MapRequest: {
             /**
@@ -2378,7 +2375,7 @@ export interface components {
         };
         /**
          * ModelRoleUsage
-         * @description The calls to one model for one role (`prompt_kind`, llm spec).
+         * @description The calls to one model for one role (`prompt_kind`).
          */
         ModelRoleUsage: {
             /** Calls */
@@ -2535,7 +2532,7 @@ export interface components {
         };
         /**
          * NormalizeOp
-         * @description `{"<field type>": {}}`: the type's normalizer (schemas spec) runs on the value.
+         * @description `{"<field type>": {}}`: the type's normalizer runs on the value.
          */
         "NormalizeOp-Input": {
             type: components["schemas"]["FieldType"];
@@ -2583,7 +2580,7 @@ export interface components {
         };
         /**
          * PageKindRule
-         * @description A crawl's rule (§4.5): a URL `pattern` matches is extracted as a `page_kind` page.
+         * @description A crawl's rule: a URL `pattern` matches is extracted as a `page_kind` page.
          */
         PageKindRule: {
             /**
@@ -2619,7 +2616,7 @@ export interface components {
          * @description A task of a job without a schema, with the content formats the job asked for. The formats
          *     are members only when the task reached its page and its capture is still kept. `last_error` is why the task
          *     failed, or why it ended with its outcome when the outcome alone does not say (a `blocked` task's `robots`), as the
-         *     worker recorded it: URLs redacted under `CRAWLERAI_LOG_REDACT_URLS` (persistence-storage spec).
+         *     worker recorded it: URLs redacted under `CRAWLERAI_LOG_REDACT_URLS`.
          */
         PageOutput: {
             /** Capture Id */
@@ -2759,8 +2756,8 @@ export interface components {
         };
         /**
          * Problem
-         * @description RFC 9457 problem details (rest-api spec). `type` is one of the API's problem types, or `about:blank` when the
-         *     HTTP status says all there is to say (RFC 9457 §4.2.1); `instance` is the request's path (§3.1.5).
+         * @description RFC 9457 problem details. `type` is one of the API's problem types, or `about:blank` when the
+         *     HTTP status says all there is to say (RFC 9457 §4.2.1); `instance` is the request's path.
          */
         Problem: {
             /** Detail */
@@ -2796,7 +2793,7 @@ export interface components {
         };
         /**
          * Proof
-         * @description How the recipe was accepted: the held-out captures it reproduced (§4.7), the headers replay tried (§4.6) and
+         * @description How the recipe was accepted: the held-out captures it reproduced, the headers replay tried and
          *     what bound it.
          */
         Proof: {
@@ -2829,7 +2826,7 @@ export interface components {
         };
         /**
          * RecipeFieldReport
-         * @description One field of an API recipe's map (adapters spec). `published`: held-out pages where the engine published the
+         * @description One field of an API recipe's map. `published`: held-out pages where the engine published the
          *     field; `reproduced`: those where the replayed response gave that value.
          */
         RecipeFieldReport: {
@@ -2840,7 +2837,7 @@ export interface components {
         };
         /**
          * RecipeReport
-         * @description The API recipe's held-out validation (adapters spec). `refused` says why the recipe did not enter the config.
+         * @description The API recipe's held-out validation. `refused` says why the recipe did not enter the config.
          */
         RecipeReport: {
             /** Fields */
@@ -2971,8 +2968,8 @@ export interface components {
         };
         /**
          * RenderOptions
-         * @description The `render` member (rest-api spec, "Render mode"): its mode, and the schema fields `locate` looks for (else the
-         *     fields the HTTP extraction left missing). Pinned with the request (INV-28).
+         * @description The `render` member: its mode, and the schema fields `locate` looks for (else the
+         *     fields the HTTP extraction left missing). Pinned with the request.
          */
         RenderOptions: {
             /** Fields */
@@ -3007,7 +3004,7 @@ export interface components {
         };
         /**
          * RowMeta
-         * @description A published row's sub-field outcomes, aligned with the field's value by index (variants spec).
+         * @description A published row's sub-field outcomes, aligned with the field's value by index.
          */
         RowMeta: {
             /** Fields */
@@ -3139,7 +3136,7 @@ export interface components {
          * @description A `schema_def` row: a document plus where it came from and whether it is in use. One row per
          *     name, edited in place.
          *
-         *     `labels` are the synonyms role S drafted for its fields' labels, by field (extraction spec, "Label vocabulary"),
+         *     `labels` are the synonyms role S drafted for its fields' labels, by field,
          *     editable; None until drafted, and again after an edit of the document. They are no part of the document, so
          *     they change neither its digest nor what was learned for it.
          */
@@ -3184,7 +3181,7 @@ export interface components {
         };
         /**
          * SchemaFields
-         * @description Field names, drafted into a schema with exactly those top-level fields by role S (frontend spec, D-0810).
+         * @description Field names, drafted into a schema with exactly those top-level fields by role S.
          */
         SchemaFields: {
             /** Fields */
@@ -3217,7 +3214,7 @@ export interface components {
         /**
          * SchemaRef
          * @description The schema a config is for: its name, and the digest of its document at learning (`document_digest`). A schema
-         *     is edited in place (D-0950), so only the digest says which document the config was learned for.
+         *     is edited in place, so only the digest says which document the config was learned for.
          */
         SchemaRef: {
             /** Digest */
@@ -3227,12 +3224,11 @@ export interface components {
         };
         /**
          * ScrapeRequest
-         * @description The body of `POST /v1/scrape` (§4.4). `records` needs a schema and a `page_kind`, and the schema's page kind
+         * @description The body of `POST /v1/scrape`. `records` needs a schema and a `page_kind`, and the schema's page kind
          *     must be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds
          *     its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched
-         *     within that many seconds. `browser_actions` collects more of a listing's rows in the browser (owner #52); a listing
-         *     scrape for `records` in `auto` without it takes the default actions where its page is rendered (master plan
-         *     2026-10-18 decision 11).
+         *     within that many seconds. `browser_actions` collects more of a listing's rows in the browser; a listing
+         *     scrape for `records` in `auto` without it takes the default actions where its page is rendered.
          */
         ScrapeRequest: {
             browser_actions?: components["schemas"]["BrowserActions"] | null;
@@ -3287,12 +3283,12 @@ export interface components {
         };
         /**
          * ScrapeResult
-         * @description The answer to a scrape (§4.4). A page that robots.txt kept from being fetched has no capture, so
+         * @description The answer to a scrape. A page that robots.txt kept from being fetched has no capture, so
          *     `capture_id`, `final_url`, `fetched_at` and `fetch` are None, and `reason` says why, as the task's `last_error`
-         *     does (acquisition spec): `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC
+         *     does: `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC
          *     9309 §2.3.1.4), `slow_down` for a host whose turn at its rate was more than a minute off; for a fetched page a
          *     vendor's challenge kept out, `challenge: <vendor>`; for a fetched listing whose extraction gave no rows,
-         *     `no_rows: <cause>` (`no_rows` in `resolve.pipeline`; rest-api spec, "Scrape outcomes, not errors, for page
+         *     `no_rows: <cause>` (`no_rows` in `resolve.pipeline`, "Scrape outcomes, not errors, for page
          *     failures"); None for any other page that was fetched. `schema` is the draft of a `schema.prompt`.
          */
         ScrapeResult: {
@@ -3486,9 +3482,9 @@ export interface components {
          * StoredRecord
          * @description A `record` row, with the capture it was extracted from (`None` once the capture expired),
          *     the schema its fields follow, its own version and the fields whose published value differs from the
-         *     version it supersedes, empty for an entity's first (§14, jobs spec). `egress_country` is the ISO 3166-1 country the
+         *     version it supersedes, empty for an entity's first. `egress_country` is the ISO 3166-1 country the
          *     page was fetched from (null: unknown) and `egress_basis` how that is known: `pool` (the proxy pool's declared
-         *     country), `machine` (a direct fetch from the machine's declared country) or `unknown` (acquisition spec).
+         *     country), `machine` (a direct fetch from the machine's declared country) or `unknown`.
          */
         StoredRecord: {
             /** Capture Id */
@@ -3531,7 +3527,7 @@ export interface components {
         };
         /**
          * SubFieldMeta
-         * @description A row sub-field's outcome without its candidates (variants spec, INV-34).
+         * @description A row sub-field's outcome without its candidates.
          */
         SubFieldMeta: {
             /** Basis */
@@ -3556,7 +3552,7 @@ export interface components {
         };
         /**
          * TaskCounts
-         * @description How many of the job's tasks are in each status (persistence-storage spec).
+         * @description How many of the job's tasks are in each status.
          */
         TaskCounts: {
             /** Cancelled */
@@ -3576,7 +3572,7 @@ export interface components {
         };
         /**
          * TypeAction
-         * @description Type `text` into an element; refused in the browser for a password or credential field (D-1438).
+         * @description Type `text` into an element; refused in the browser for a password or credential field.
          */
         TypeAction: {
             /** Selector */
@@ -3629,8 +3625,8 @@ export interface components {
         };
         /**
          * ValidationReport
-         * @description The `extraction_config.validation_report` (learning-configs spec). `refused` says why nothing can activate;
-         *     `api_recipe` is the recipe's validation when the site has one (adapters spec).
+         * @description The `extraction_config.validation_report`. `refused` says why nothing can activate;
+         *     `api_recipe` is the recipe's validation when the site has one.
          */
         ValidationReport: {
             api_recipe?: components["schemas"]["RecipeReport"] | null;

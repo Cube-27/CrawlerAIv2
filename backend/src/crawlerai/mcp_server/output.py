@@ -1,4 +1,4 @@
-"""How the MCP tools answer (jobs spec): markdown in pages with a cursor, and records with a
+"""How the MCP tools answer: markdown in pages with a cursor, and records with a
 human-readable summary in which a field without a published value reads "unknown", never as a value.
 
 Every answer carries its structured content and, for clients that read only text, the same content as JSON (MCP
@@ -16,7 +16,7 @@ from mcp.types import CallToolResult, ContentBlock, ImageContent, TextContent
 from crawlerai.db.models import CaptureId
 from crawlerai.services.records import ExtractedRecord
 
-MARKDOWN_PAGE_CHARS: Final = 20_000  # D-0038
+MARKDOWN_PAGE_CHARS: Final = 20_000
 UNKNOWN: Final = "unknown"
 # A screenshot larger than this is named by its URL only: an image block is carried as base64 text in the answer.
 MAX_IMAGE_BYTES: Final = 1_500_000
@@ -60,7 +60,7 @@ def _confidence(value: float | None) -> str:
 
 def records_summary(records: Sequence[ExtractedRecord]) -> str:
     """One block per record: each field's published value, or "unknown" when it has none, with its status and
-    confidence, so that an abstention is never read as a value (§13.3)."""
+    confidence, so that an abstention is never read as a value."""
     blocks = []
     for n, record in enumerate(records, start=1):
         completeness = "complete" if record.complete else "incomplete"

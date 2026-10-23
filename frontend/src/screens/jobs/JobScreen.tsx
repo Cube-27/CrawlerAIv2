@@ -32,7 +32,7 @@ function JobTimes({ job }: Readonly<{ job: JobSummary }>) {
 }
 
 function JobView({ job }: Readonly<{ job: JobSummary }>) {
-  // A cancel asked for ends the job once its claimed tasks end (jobs spec), which a dead worker's lease delays.
+  // A cancel asked for ends the job once its claimed tasks end, which a dead worker's lease delays.
   const cancel = cancelState(job);
   return (
     <section className="flex flex-col gap-stack">
@@ -66,8 +66,8 @@ function JobView({ job }: Readonly<{ job: JobSummary }>) {
   );
 }
 
-/** One job. A job a playground mode runs redirects to its run there (frontend spec); a `learn` job keeps this page
- * (frontend spec): its status and progress, usage, live events, results with exports, and a cancel. */
+/** One job. A job a playground mode runs redirects to its run there; a `learn` job keeps this page:
+ * its status and progress, usage, live events, results with exports, and a cancel. */
 export function JobScreen() {
   const { id = "" } = useParams();
   const job = useJob(id);

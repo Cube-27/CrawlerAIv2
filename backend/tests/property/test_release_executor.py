@@ -1,4 +1,4 @@
-"""The release executor (learning-configs spec, INV-20): it parses the body itself, runs each field's steps in order,
+"""The release executor: it parses the body itself, runs each field's steps in order,
 and gives the first value that passes the post ops and the field's rule; it needs nothing of the engine but the IR
 model. The two executors agree: on generated pages and IRs, every field value the engine executor proposes as valid is
 the value the release executor gives, and the release executor gives none where the engine has no valid value. Their

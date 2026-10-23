@@ -2,7 +2,7 @@ import type { JobKind } from "../../api/jobs";
 import type { NewSchedule, Schedule, ScheduleChange, ScheduleKind } from "../../api/schedules";
 import type { ModeId } from "../playground/modes";
 
-/** The schedule kind of each mode a schedule can run (D-1418): a scrape runs as the batch of its URL on the server;
+/** The schedule kind of each mode a schedule can run: a scrape runs as the batch of its URL on the server;
  * Map has no queued job to repeat. */
 export const SCHEDULE_KINDS: Readonly<Partial<Record<ModeId, ScheduleKind>>> = {
   scrape: "scrape",
@@ -68,7 +68,7 @@ export function cadenceText({
   return `Every ${String(seconds)} s`;
 }
 
-/** The schedule kind a stored run of each job kind is repeated as (D-1514); `map` and `learn` have none. */
+/** The schedule kind a stored run of each job kind is repeated as; `map` and `learn` have none. */
 export const RUN_SCHEDULE_KINDS: Readonly<Partial<Record<JobKind, ScheduleKind>>> = {
   scrape: "scrape",
   batch_scrape: "batch_scrape",

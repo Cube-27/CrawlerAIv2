@@ -1,11 +1,11 @@
-"""The schema.org map (extraction spec), shared by the structured-data collectors (JSON-LD, microdata): a schema
+"""The schema.org map, shared by the structured-data collectors (JSON-LD, microdata): a schema
 field's `schema_org` path read against a node, with the type hierarchy of `collect.vocabulary`.
 
-A path `T.p[.q][+r]` (schemas spec, grammar in `schemas.paths`) applies to every entity of type `T` or a subtype of it
+A path `T.p[.q][+r]` (grammar in `schemas.paths`) applies to every entity of type `T` or a subtype of it
 (`rdfs:subClassOf`). It follows `p`, then `q`, through the nodes the values name, keeping at each step only the nodes
 its filter predicates match; each `+r` joins the last node's `r` to the value as one object.
-A path of alternatives `A|B` (variants spec) reaches what each alternative reaches. A row-mapped field's sub-fields are
-read as fields of their own, named `<field>.<sub-field>` (variants spec).
+A path of alternatives `A|B` reaches what each alternative reaches. A row-mapped field's sub-fields are
+read as fields of their own, named `<field>.<sub-field>`.
 """
 
 import html
@@ -49,7 +49,7 @@ _LOW_PRICE, _HIGH_PRICE, _CURRENCY = "lowPrice", "highPrice", "priceCurrency"
 _BLANK = "_:"
 # schema.org `aggregateRating`: "The overall rating, based on a collection of reviews or ratings, of the item", whose
 # range is AggregateRating. A page can state that node apart from the item it rates (a sibling JSON-LD node, a review
-# widget's own microdata item); resolution decides whether it is the page's item's (resolution spec, rule 3).
+# widget's own microdata item); resolution decides whether it is the page's item's.
 RATING = "aggregateRating"
 AGGREGATE_RATING = "AggregateRating"
 
@@ -116,7 +116,7 @@ def _step(holders: Iterable[Node], path: MappedPath, i: int, named: list[Selecte
 
 
 def matches(node: Node, filters: Filters) -> bool:
-    """Whether the node meets every predicate (schemas spec, "schema.org paths"): `{name}` it states `name`, `{!name}`
+    """Whether the node meets every predicate: `{name}` it states `name`, `{!name}`
     it does not, `{name=Value}` one of its `name` values is `Value`, as a term or as an IRI in either schema.org
     namespace, written as text or as a node's `@id` (JSON-LD 1.1 §4.1.1: an IRI value may be a node reference)."""
     return all(_meets(node.values(p.name), p) for p in filters)
@@ -185,9 +185,9 @@ class Typed:
     node: Node
 
 
-# A URL is not prose: the text types (schemas spec `text`, `long_text`) take no value a source gives as a URL.
+# A URL is not prose: the text types (schema `text`, `long_text`) take no value a source gives as a URL.
 _TEXT_TYPES = frozenset({FieldType.TEXT, FieldType.LONG_TEXT})
-# The types whose values are URLs (schemas spec `url`, `image_url`).
+# The types whose values are URLs (schema `url`, `image_url`).
 _URL_TYPES = frozenset({FieldType.URL, FieldType.IMAGE_URL})
 # RFC 9110 §4.2: the http and https URI schemes name resources on the Web.
 _WEB_SCHEMES = frozenset({"http", "https"})
@@ -209,7 +209,7 @@ def field_candidates(
     diagnostics: list[str],
 ) -> Iterator[Candidate]:
     """A candidate per value each field's path reaches on each entity of its type. A row-mapped field's path names its
-    rows, which resolution finds (variants spec); each of its sub-fields is read as a field of its own. A listing row's
+    rows, which resolution finds; each of its sub-fields is read as a field of its own. A listing row's
     item URL field reads, last, an entity's own IRI (`_item_iri`)."""
     for name, spec, mapped in mapped_fields(schema):
         entries = schema.page_kind == "listing" and spec.scope == "row"
@@ -288,7 +288,7 @@ def _ratings_apart(
 def _member_read(raw: JsonValue, spec: FieldSpec, vocabulary: Vocabulary) -> str | None:
     """What a text field reads of a value that is the IRI of a schema.org enumeration member (a property whose range
     is an enumeration or Text, `suggestedGender`: `https://schema.org/Male`): the member's name, as an enum field
-    publishes it (normalization spec, enum). The IRI names the member; it is not text the page states. `None` for any
+    publishes it (enum). The IRI names the member; it is not text the page states. `None` for any
     other value."""
     if spec.type not in _TEXT_TYPES or not isinstance(raw, str):
         return None
@@ -352,7 +352,7 @@ def fragment_read(raw: JsonValue, spec: FieldSpec) -> str | None:
 def mapped_fields(schema: SchemaDef) -> Iterator[tuple[str, FieldSpec, tuple[MappedPath, ...]]]:
     """The fields whose values a `schema_org` path reaches, by candidate field name, with the path's alternatives: each
     field with a path, except a row-mapped one, whose path reaches rows, not values; in its place, its sub-fields with
-    a path, as `<field>.<sub-field>` (variants spec; `Name` allows no `.`, so these never clash with a field's name)."""
+    a path, as `<field>.<sub-field>` (`Name` allows no `.`, so these never clash with a field's name)."""
     for name, spec in schema.fields.items():
         if spec.row_mapped and spec.item is not None:
             for sub_name, sub in (spec.item.fields or {}).items():
@@ -370,7 +370,7 @@ def _with_sub_properties(
     identifier field reads them: an identifier's sub-properties name its schemes (GTIN-13 of GTIN), while others
     narrow what the value is (`logo` of `image`), which the field's own property does not mean. A path ending in
     `identifier` itself names no scheme, so it widens only to the field's own scheme: the schema.org property of that
-    name (`gtin` for scheme `gtin`) and its sub-properties, never the other schemes (D-1273)."""
+    name (`gtin` for scheme `gtin`) and its sub-properties, never the other schemes."""
     return tuple(
         widened
         for path in paths
@@ -446,7 +446,7 @@ def _selections(
 ) -> Iterator[tuple[str, Selected]]:
     """What each alternative reaches on each entity of its root type, by entity id, and with `entries` (a listing's
     row field) on each list entry without an item (`ENTRY`). The same value of one entity that two alternatives reach
-    is one selection (variants spec): its locator names it. One alternative's selections are all kept, as a path's
+    is one selection: its locator names it. One alternative's selections are all kept, as a path's
     are. An alternative of a higher rank (after a `>`) reads no entity on which a lower rank reached a stated value
     (a string or a number: a node reaching the end of a path states none the field can read)."""
     earlier: set[tuple[str, str]] = set()
@@ -498,7 +498,7 @@ def candidate(
 ) -> Candidate | None:
     """The independent candidate of one value a collector read from a source's own structure, normalized as `spec`
     (from `read` when given: what the field reads of `raw`). A value the candidate model refuses (nested deeper than
-    its validator recurses) is skipped with a diagnostic: a collector never raises on page content (extraction spec)."""
+    its validator recurses) is skipped with a diagnostic: a collector never raises on page content."""
     try:
         return Candidate(
             field=field,
@@ -515,7 +515,7 @@ def candidate(
 
 
 def entity_urls(node: Node, ctx: Context) -> tuple[str, ...]:
-    """The canonical URLs that name the page an entity is on (extraction spec): its own (`item_urls`) and its offers'
+    """The canonical URLs that name the page an entity is on: its own (`item_urls`) and its offers'
     (`offer_urls`)."""
     return tuple(dict.fromkeys((*item_urls(node, ctx), *offer_urls(node, ctx))))
 

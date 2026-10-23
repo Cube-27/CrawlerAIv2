@@ -1,4 +1,4 @@
-"""Label-value pairs of structured data (extraction spec, "Label vocabulary"): a schema.org `PropertyValue` names a
+"""Label-value pairs of structured data: a schema.org `PropertyValue` names a
 value by a label, its `name` or its `propertyID`, and states it as its `value`. Under an entity's
 `additionalProperty` ("a property-value pair representing an additional characteristic of the entity") or its
 `identifier`, a pair whose label is one of a field's labels (`collect.labels`) gives that field the pair's value, owned

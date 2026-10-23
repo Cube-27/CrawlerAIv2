@@ -1,4 +1,4 @@
-"""The worker's learner (learning-configs spec, D-0624): run queued `learn` jobs, one at a time, beside the task loop.
+"""The worker's learner: run queued `learn` jobs, one at a time, beside the task loop.
 
 A `learn` job has no `url_task`, so the task loop never claims one. The learner takes the oldest queued job
 (`next_learn_job`) and runs it to its end (`run_learn_job`), which takes and commits its own transactions. Several
@@ -6,7 +6,7 @@ workers may poll at once: `run_learn_job` starts a job in one process only. An e
 gone) is logged, and the learner polls again.
 
 A run makes role A calls of minutes each, so a stopping worker does not wait for it: the run is cancelled, and ends
-as a failed run (`learning.SHUTDOWN`); the state learns again as after any failed run (learning-configs spec).
+as a failed run (`learning.SHUTDOWN`); the state learns again as after any failed run.
 """
 
 import asyncio
@@ -44,8 +44,8 @@ async def run_learner(
     extract: Extract | None = None,
 ) -> None:
     """Run queued `learn` jobs until `stop` is set, which cancels the run in progress. `max_chars` is role A's HTML
-    limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`); `replay` sends the runs' recipe replays (adapters spec), `render`
-    their browser renders (Appendix A #59), and `extract` extracts a locate run's renders (learning-configs spec)."""
+    limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`); `replay` sends the runs' recipe replays, `render`
+    their browser renders (Appendix A #59), and `extract` extracts a locate run's renders."""
     while not stop.is_set():
         try:
             async with engine.connect() as conn:

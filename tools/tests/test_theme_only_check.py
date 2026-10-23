@@ -1,4 +1,4 @@
-"""Behaviour of `tools/theme_only_check.py` (DESIGN.md, Theming and Stack): visual values live only in theme.css, and
+"""Behaviour of `tools/theme_only_check.py`: visual values live only in theme.css, and
 UI comes only from @heroui/react."""
 
 import shutil

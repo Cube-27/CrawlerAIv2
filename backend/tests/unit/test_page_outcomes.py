@@ -1,5 +1,5 @@
-"""One outcome model for a page (resolution spec, "Render-bound fields" and "Out of stock without a price"; acquisition
-spec, "Error outcomes and reasons"): a fetch that got no answer in time is `timeout`, a price missing from a page that
+"""One outcome model for a page ("Render-bound fields" and "Out of stock without a price"): a fetch that got no answer
+in time is `timeout`, a price missing from a page that
 states its item is not for sale is `out_of_stock`, and `interaction_required` is left to a field whose source in the
 site's config is the browser, on a page no render ran for. Pages are synthetic (`example.test`, C3, C9).
 """

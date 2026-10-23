@@ -10,7 +10,7 @@ import { StatusLabel, type StatusTone } from "./StatusLabel";
 import { Timestamp } from "./Timestamp";
 import { TruncatedText } from "./TruncatedText";
 
-// One tone per `webhook_delivery.status` (jobs spec): still owed, accepted by the receiver, or given up on.
+// One tone per `webhook_delivery.status`: still owed, accepted by the receiver, or given up on.
 const DELIVERY_TONES: Record<WebhookDelivery["status"], StatusTone> = {
   pending: "warning",
   delivered: "success",
@@ -91,7 +91,7 @@ function DeliveryPages({ jobId }: Readonly<{ jobId: string }>) {
 
 /** What the job's webhook has been sent (`GET /v1/jobs/{id}/webhook-deliveries`): each delivery's status, attempts,
  * the receiver's HTTP status and the last error, newest first, collapsed. Shown only for a job that has a webhook
- * (`webhook_url`), so a receiver can be debugged from the job's page (D-1511). */
+ * (`webhook_url`), so a receiver can be debugged from the job's page. */
 export function WebhookDeliveries({
   jobId,
   webhookUrl,

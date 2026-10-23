@@ -1,14 +1,13 @@
-"""Fail when `backend/data/` holds a file that the manifest does not pin (INV-05, C4).
+"""Fail when `backend/data/` holds a file that the manifest does not pin (C4).
 
 Vocabularies come from versioned external data. Each file under `backend/data/` must be listed in
 `backend/data/manifest.json` with its source URL, version, sha256, license and justification, and its bytes must
-match the pinned hash. An entry marked `"fetched": true` is downloaded by `crawlerai data fetch` and not committed
-(schemas spec): its file may be absent, and when present it must match its hash. Prints one line per problem and
+match the pinned hash. An entry marked `"fetched": true` is downloaded by `crawlerai data fetch` and not committed:
+its file may be absent, and when present it must match its hash. Prints one line per problem and
 exits 1, or prints one summary line and exits 0.
 
-Three files are fitted on dev rather than fetched (extraction spec, learning-configs spec; D-0444 and D-0576, owner
-answers 2026-10-14 and 2026-10-16): `source_precedence.yaml`, `calibration.json` and `drift_margins.json`. They are
-frozen as fitted on 2026-10-18 (evaluation spec) and not listed in the manifest; each must instead carry the stamp
+Three files are fitted on dev rather than fetched (owner answers 2026-10-14 and 2026-10-16): `source_precedence.yaml`, `calibration.json` and `drift_margins.json`. They are
+frozen as fitted on 2026-10-18 and not listed in the manifest; each must instead carry the stamp
 `source_split: dev` (the split they were fitted on).
 """
 
@@ -23,7 +22,7 @@ DATA_DIR = PurePosixPath("backend/data")
 MANIFEST = DATA_DIR / "manifest.json"
 REQUIRED_FIELDS = ("path", "url", "version", "sha256", "license", "justification")
 # YAML 1.2.2 §8.2.2 (block mapping) and §7.3 (plain, single- and double-quoted scalars): the key `source_split` at
-# indentation 0, so a key of the document itself, with the value `dev`, and an optional trailing comment (§6.6).
+# indentation 0, so a key of the document itself, with the value `dev`, and an optional trailing comment.
 _YAML_DEV_STAMP = re.compile(r"""^source_split:[ \t]+(dev|'dev'|"dev")[ \t]*(#.*)?$""", re.MULTILINE)
 
 

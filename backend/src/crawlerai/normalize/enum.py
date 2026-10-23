@@ -1,4 +1,4 @@
-"""Enum normalizer (normalization spec): a member code of the field's vocabulary.
+"""Enum normalizer: a member code of the field's vocabulary.
 
 - `schema:<Enumeration>`: the input is a string or a JSON-LD node reference (`{"@id": …}`) naming a member by IRI
   (`https://schema.org/InStock`, `http://schema.org/InStock`), compact IRI (`schema:InStock`) or name (`InStock`).
@@ -10,7 +10,7 @@
   case also counts (`instock`), so a page that states "In stock (5 available)" gives `InStock`.
 - `type:<name>`: the input is a string; it states a code when the tokens of its first clause are exactly one of the
   code's phrases (`crawlerai.normalize.vocab`), and no other code's phrase appears later in it. "Not in stock" states
-  nothing (D-0782).
+  nothing.
 
 No match is `Invalid`; two members in one input are `Ambiguous`.
 """
@@ -36,8 +36,8 @@ _IRI = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:\S*")
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
-    """Normalize an enum field against its vocabulary (normalization spec). An unknown vocabulary declines, as an
-    unknown type does (§4.7), so a schema that names one cannot crash a job."""
+    """Normalize an enum field against its vocabulary. An unknown vocabulary declines, as an
+    unknown type does, so a schema that names one cannot crash a job."""
     if spec.type is not FieldType.ENUM or spec.vocab is None:
         raise TypeError(f"the enum normalizer does not handle type {spec.type} without a vocab")
     kind, name = spec.vocab.split(":", 1)
@@ -71,7 +71,7 @@ def _schema_member(raw: Raw, enumeration: str, ctx: Context) -> NormalizeResult:
 
 def _schema_term(name: str) -> str | None:
     """The term a schema.org IRI or compact IRI names; None for other text. The scheme and host of a URI compare in
-    any case (RFC 3986 §3.1, §3.2.2), and a network-path reference resolves on the page's scheme, http or https
+    any case (RFC 3986 §3.1), and a network-path reference resolves on the page's scheme, http or https
     (RFC 3986 §5.2), so `//schema.org/InStock` names the term as `https://schema.org/InStock` does."""
     if name.startswith(_COMPACT):
         return name.removeprefix(_COMPACT)
@@ -132,5 +132,5 @@ def _one_code(codes: frozenset[str], none: str) -> NormalizeResult:
 
 
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
-    """Equality as a key (normalization spec): exact. A normalized value has one form (one code per member)."""
+    """Equality as a key: exact. A normalized value has one form (one code per member)."""
     return raw_key(value)

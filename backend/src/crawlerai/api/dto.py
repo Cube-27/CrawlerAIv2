@@ -1,4 +1,4 @@
-"""Request and response models shared by the routers: the API's OpenAPI contract (rest-api spec)."""
+"""Request and response models shared by the routers: the API's OpenAPI contract."""
 
 from typing import Literal
 
@@ -21,8 +21,8 @@ class FieldErrorOut(Model):
 
 
 class Problem(Model):
-    """RFC 9457 problem details (rest-api spec). `type` is one of the API's problem types, or `about:blank` when the
-    HTTP status says all there is to say (RFC 9457 §4.2.1); `instance` is the request's path (§3.1.5)."""
+    """RFC 9457 problem details. `type` is one of the API's problem types, or `about:blank` when the
+    HTTP status says all there is to say (RFC 9457 §4.2.1); `instance` is the request's path."""
 
     type: str
     title: str
@@ -51,7 +51,7 @@ class SchemaList(Model):
 
 
 class ReplayRequest(Model):
-    # rest-api spec: a replay calls an LLM only when asked. None does yet: role C is bound with llm spec PR 4.
+    # a replay calls an LLM only when asked. None does yet: role C is bound by the LLM layer.
     allow_llm: bool = False
 
 

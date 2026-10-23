@@ -1,5 +1,5 @@
-"""Jobs (jobs spec): a job's summary, its cancel and its results, including the clean `json_values` items (frontend spec
-§4.4), through the jobs service and then over HTTP (`GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}`,
+"""Jobs: a job's summary, its cancel and its results, including the clean `json_values` items (the UI), through the jobs
+service and then over HTTP (`GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}`,
 `GET /v1/jobs/{id}/results`)."""
 
 import csv
@@ -80,7 +80,7 @@ def _document(name: str) -> SchemaDocument:
 
 
 def meta(status: str) -> dict[str, Any]:
-    """A `field_meta` entry; only a published field has a source (INV-22)."""
+    """A `field_meta` entry; only a published field has a source."""
     published = status == "published"
     return {
         "status": status,

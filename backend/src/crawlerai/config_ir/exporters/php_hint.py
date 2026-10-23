@@ -1,6 +1,6 @@
-"""The PHP code hint of an API recipe (adapters spec, OPEN_QUESTIONS #12): the recipe's request as
+"""The PHP code hint of an API recipe (OPEN_QUESTIONS #12): the recipe's request as
 curl calls, rendered from `templates/api_recipe.php.j2`. It is a rendering of the data for a reader, never a program we
-run (§18, INV-17).
+run.
 
 The hint builds the request as `fetch_json` sends it (`replay.request_for`): each `{name}` placeholder filled with its
 parameter, percent-encoded for the path or the query (`binding.render_url`) or escaped as JSON string content in a body

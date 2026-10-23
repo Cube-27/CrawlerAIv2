@@ -1,16 +1,16 @@
-"""The LLM cost history (llm spec, jobs spec): the LLM calls jobs made, with their tokens and an estimated
+"""The LLM cost history: the LLM calls jobs made, with their tokens and an estimated
 cost, by day, by provider, model and prompt kind, and by job. `GET /v1/usage/llm`, `GET /v1/usage/llm/jobs` and the
 job summary's `llm_cost_usd` answer with these. The cost is an estimate for visibility, not billing.
 
 The client records each answered call as three `usage_event` rows (`llm_calls`, `llm_tokens_in`, `llm_tokens_out`)
-that share its metadata (llm spec). A row's tokens are priced at the price that applied to its call
+that share its metadata. A row's tokens are priced at the price that applied to its call
 (`crawlerai.llm.pricing`): its provider and model, its date, and, for a model priced by prompt length, the call's
 input tokens (`metadata.tokens_in` on the output row). Tokens no price applies to are counted as unpriced, and any sum
 that includes them has no estimate (`estimated_usd` null) rather than a partial one (C7).
 
 `usage_event` has no time column; an event's time is its id's, a UUIDv7 whose leading 48 bits are its creation time
 in Unix milliseconds (RFC 9562 §5.7). A range of UTC days is therefore a range of ids, which the primary key serves.
-Calls made without a job (a schema drafted before its job, a replay) write no usage event (llm spec), so they are
+Calls made without a job (a schema drafted before its job, a replay) write no usage event, so they are
 not in this history.
 """
 
@@ -104,7 +104,7 @@ class DayUsage(LLMUsage):
 
 
 class ModelRoleUsage(LLMUsage):
-    """The calls to one model for one role (`prompt_kind`, llm spec)."""
+    """The calls to one model for one role (`prompt_kind`)."""
 
     provider: str | None
     model: str | None

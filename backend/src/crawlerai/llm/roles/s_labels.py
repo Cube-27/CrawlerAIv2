@@ -1,4 +1,4 @@
-"""Role S's label synonyms (extraction spec, "Label vocabulary"; llm spec, "Role S label synonyms"): the labels pages
+"""Role S's label synonyms: the labels pages
 write next to each field's value, drafted once per schema and stored with it (`SchemaDef.labels`), never per page.
 
 A request names some of the schema's labelled fields (`collect.labels.labelled`), each with its type, schema.org path

@@ -1,6 +1,6 @@
-"""A listing scrape of a site whose active config has a listing recipe (Appendix A #59, adapters spec): the recipe
+"""A listing scrape of a site whose active config has a listing recipe (Appendix A #59): the recipe
 serves the listing's pages over HTTP, one capture each, until the request's `records` target, with no browser; when it
-does not serve the first page, the browser actions run as before (§4.10). The worker's batch and crawl tasks serve
+does not serve the first page, the browser actions run as before. The worker's batch and crawl tasks serve
 every page of the listing the same way, up to the job's page bound."""
 
 import asyncio
@@ -313,7 +313,7 @@ async def test_a_batch_task_whose_further_recipe_page_the_guard_refuses_fails(
     recipe_config: None,
     engine_data: EngineData,
 ) -> None:
-    web.refused = "3"  # INV-16: a refused request fails the task, never truncates its listing silently
+    web.refused = "3"  # a refused request fails the task, never truncates its listing silently
     url = f"{own_origin}/kettles"
 
     job_id = await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)

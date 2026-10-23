@@ -19,7 +19,7 @@ export const METHOD_HINTS: readonly (readonly [MethodHint, string])[] = [
   ["browser", "Browser"],
 ];
 
-/** The webhook events (jobs spec, D-1414), in the order the server names them. */
+/** The webhook events, in the order the server names them. */
 export const WEBHOOK_EVENTS: readonly (readonly [WebhookEvent, string])[] = [
   ["page", "Page done"],
   ["record", "Record stored"],

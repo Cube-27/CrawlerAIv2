@@ -1,4 +1,4 @@
-"""The url and image_url normalizer (normalization spec): WHATWG-style parsing, absolutization against
+"""The url and image_url normalizer: WHATWG-style parsing, absolutization against
 the document base, RFC 3986 canonicalization, and declines on empty, relative-without-base and non-http(s) input."""
 
 from datetime import UTC, datetime
@@ -55,7 +55,7 @@ def test_output_is_absolute_http_without_a_fragment_and_normalizes_to_itself(spe
         ("data:image/png;base64,iVBORw0KGgo=", "not_http"),
         ("ftp://a.test/p", "not_http"),
         ("http:///path", "no_host"),
-        ("https:////cdn.example.test/i.png", "no_host"),  # D-1022: an empty authority is declined, not repaired (C7)
+        ("https:////cdn.example.test/i.png", "no_host"),  # an empty authority is declined, not repaired (C7)
         ("http://example.test:99999/", "unparsable"),
         ("http://a%FFb.example.test/", "unparsable"),
         ("http://a%20b.example.test/", "forbidden_host_code_point"),

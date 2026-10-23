@@ -1,4 +1,4 @@
-"""The LLM client (llm spec): one request shape for every role, JSON-schema output, budgets
+"""The LLM client: one request shape for every role, JSON-schema output, budgets
 and usage.
 
 `MeteredClient` asks its first `Provider` for JSON, fails over to the next one once if the first does not answer
@@ -6,12 +6,12 @@ and usage.
 retries once with the validation error appended. A reply cut at the request's output token cap is not retried: the
 retry would ask the same with the same cap. A provider's refusal is logged once per provider, model and status. Before
 every provider call it checks the job's `llm_calls` budget; after every call that answered, it records `llm_calls`,
-`llm_tokens_in` and `llm_tokens_out` (INV-23), and a failure carries the calls that answered before it. Usage is
+`llm_tokens_in` and `llm_tokens_out`, and a failure carries the calls that answered before it. Usage is
 committed in a transaction of its own, never the caller's: a task that fails afterwards rolls its transaction back,
-and the calls it made must still count against the job's budget (D-0151). So a caller must not hold an uncommitted
+and the calls it made must still count against the job's budget. So a caller must not hold an uncommitted
 write to the job's row when it calls the client: the client's own `UPDATE job` would wait on that lock.
 
-Model output is data: it is parsed as JSON and validated, never executed (INV-17, §18).
+Model output is data: it is parsed as JSON and validated, never executed.
 """
 
 import json
@@ -33,15 +33,15 @@ from crawlerai.storage.capture_bundle import sha256_hex
 
 log = logging.getLogger(__name__)
 
-# The role of each call (llm spec); `usage_event.metadata.prompt_kind` and the replay key carry it.
+# The role of each call; `usage_event.metadata.prompt_kind` and the replay key carry it.
 PromptKind = Literal["c_extract_detail", "c_extract_listing", "a_synth", "a_repair", "d_bind", "s_draft", "s_labels"]
-# `fast` for role C, `strong` for A, D and S (§2); settings map each class to a model per provider.
+# `fast` for role C, `strong` for A, D and S; settings map each class to a model per provider.
 ModelClass = Literal["fast", "strong"]
 
-# Per-call timeouts (§4.7).
+# Per-call timeouts.
 TIMEOUT_S: Final[dict[ModelClass, int]] = {"fast": 60, "strong": 120}
 
-# Appended to the prompt for the one retry after an invalid reply (§4.2).
+# Appended to the prompt for the one retry after an invalid reply.
 RETRY_NOTE: Final = "Your previous reply was rejected: {error}. Reply with one JSON object that matches the schema."
 
 
@@ -77,14 +77,13 @@ class LLMRequest(_Model):
 
 
 def closed_object(properties: dict[str, JsonValue]) -> dict[str, JsonValue]:
-    """An object schema with exactly `properties`, each required: the closed object `LLMRequest` requires at its root
-    (§4.6), which roles also use for the objects inside it."""
+    """An object schema with exactly `properties`, each required: the closed object `LLMRequest` requires at its root,
+    which roles also use for the objects inside it."""
     return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
 
 
 class AnsweredCall(_Model):
-    """One provider call that answered, charged to the request's job (INV-23), as `extraction.llm_calls` records it
-    (§4.2)."""
+    """One provider call that answered, charged to the request's job, as `extraction.llm_calls` records it."""
 
     provider: str
     model: str
@@ -105,7 +104,7 @@ class LLMResponse(_Model):
     request_hash: str
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
-    # The answered call whose invalid reply was retried (§4.2), if any: charged like the one that gave `data`.
+    # The answered call whose invalid reply was retried, if any: charged like the one that gave `data`.
     retried: tuple[AnsweredCall, ...] = ()
 
     @property
@@ -136,7 +135,7 @@ class LLMClient(Protocol):
 
 def request_hash(req: LLMRequest) -> str:
     """sha256 of (prompt kind, model class, system, user, output schema, and the cached parts when there are any) as a
-    canonical JSON array (INV-10): an array keeps the parts apart, and sorted keys make the schema's key order
+    canonical JSON array: an array keeps the parts apart, and sorted keys make the schema's key order
     irrelevant. The model is the requested class; the provider picks the concrete model after the request exists
     (failover), so the hash can't depend on it."""
     parts: list[JsonValue] = [req.prompt_kind, req.model_class, req.system, req.user, req.output_schema]
@@ -188,7 +187,7 @@ def redacted(message: str, secret: str) -> str:
 
 
 class LLMFailure(Refusal):
-    """A call that gave no valid reply (§4.7); `code` names why, as a task's `last_error` and a problem type, and
+    """A call that gave no valid reply; `code` names why, as a task's `last_error` and a problem type, and
     `field_reason` as the reason of the fields the call was for, which stay `missing`. `answered` holds the calls that
     answered before it failed, which are charged all the same (an invalid reply, then its retry)."""
 
@@ -205,14 +204,14 @@ class LLMFailure(Refusal):
 
 
 class BudgetExhausted(LLMFailure):
-    """The job has no `llm_calls` budget left; the call was not made (§4.7)."""
+    """The job has no `llm_calls` budget left; the call was not made."""
 
     code = BUDGET_EXHAUSTED
     field_reason = "llm_budget"
 
 
 class ProviderUnavailable(LLMFailure):
-    """No provider answered (§4.7)."""
+    """No provider answered."""
 
     code = field_reason = "llm_unavailable"
 
@@ -223,7 +222,7 @@ class ProviderUnavailable(LLMFailure):
 class ProviderRefused(LLMFailure):
     """A provider refused the request: an HTTP error status that `is_transient` does not cover. The call gave no reply,
     so the fields stay `missing`, with `llm_refused` rather than `llm_unavailable`: the request is at fault, not the
-    provider's availability (§4.7, D-1009). The message keeps the provider's reason. A retry or another provider would
+    provider's availability. The message keeps the provider's reason. A retry or another provider would
     not fix the request, so it is neither."""
 
     code = field_reason = "llm_refused"
@@ -239,14 +238,14 @@ class ProviderRefused(LLMFailure):
 
 
 class OutputInvalid(LLMFailure):
-    """The reply did not match the output schema, after the one retry (§4.7)."""
+    """The reply did not match the output schema, after the one retry."""
 
     code = field_reason = "llm_output_invalid"
 
 
 class OutputCut(OutputInvalid):
     """The reply stopped at the request's `max_output_tokens` before it was valid. It is not retried: the retry would
-    ask the same with the same cap (§4.7)."""
+    ask the same with the same cap."""
 
     def __init__(self, max_output_tokens: int, *, answered: tuple[AnsweredCall, ...]) -> None:
         super().__init__(f"the reply stopped at its cap of {max_output_tokens} output tokens", answered=answered)
@@ -296,7 +295,7 @@ class _Answer:
 
 class MeteredClient:
     def __init__(self, providers: Sequence[Provider], engine: AsyncEngine) -> None:
-        """`providers` in order of preference (`CRAWLERAI_LLM_PROVIDERS`). A call fails over at most once (§4.2), so
+        """`providers` in order of preference (`CRAWLERAI_LLM_PROVIDERS`). A call fails over at most once, so
         there are one or two."""
         if not 1 <= len(providers) <= 2:
             raise ValueError("an LLM client needs one or two providers")
@@ -344,7 +343,7 @@ class MeteredClient:
 
     async def _call(self, req: LLMRequest, user: str, key: str) -> _Answer:
         """One answered call, charged to the request's job: budget first, usage after. The first provider is asked;
-        if it does not answer, the next one is asked once. A call that did not answer is not charged (D-0347)."""
+        if it does not answer, the next one is asked once. A call that did not answer is not charged."""
         if req.job_id is not None:
             await self._check_budget(req.job_id)
         call = ProviderCall(
@@ -395,7 +394,7 @@ class MeteredClient:
             "model": reply.model,
             "request_hash": key,
             "latency_ms": answer.latency_ms,
-            # On every row of the call, so its output tokens can be priced by its prompt length too (§4.8). The
+            # On every row of the call, so its output tokens can be priced by its prompt length too. The
             # prompt's length is its input tokens plus its cache tokens; `tokens_in` is the uncached ones.
             "tokens_in": reply.tokens_in + reply.cache_read_tokens + reply.cache_write_tokens,
             "cache_read_tokens": reply.cache_read_tokens,

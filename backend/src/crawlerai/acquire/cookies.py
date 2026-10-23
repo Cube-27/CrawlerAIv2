@@ -1,9 +1,9 @@
-"""The cookies of one fetch (INV-29), for the HTTP and JSON rungs: a cookie one hop's response sets goes with a later
+"""The cookies of one fetch, for the HTTP and JSON rungs: a cookie one hop's response sets goes with a later
 hop whose host name and path it matches (RFC 6265 §5.4), and never to another fetch.
 
 Each request connects to the address the SSRF guard checked, so cookies are matched here, by the URL's host name,
 never by the client's own jar against the address. A cookie for a public suffix is ignored (§5.3 step 5,
-`public_suffix`). A site session's cookies (`acquire.session`, INV-29's one exception) are seeded into the jar before
+`public_suffix`). A site session's cookies (`acquire.session`) are seeded into the jar before
 the first hop and matched by the same rules.
 """
 

@@ -8,7 +8,7 @@ import { ProblemAlert } from "../../components/ProblemAlert";
 import { ConfigVersionsTable, useSchemaLabel } from "./ConfigTables";
 import { SiteLearnForm } from "./LearnAction";
 
-/** One site's config versions (frontend spec): status and field status counts per version; a row opens one. "Learn a
+/** One site's config versions: status and field status counts per version; a row opens one. "Learn a
  * config" starts learning for a schema chosen here, so a site without a config can get its first. */
 export function SiteScreen() {
   const { host = "" } = useParams();

@@ -1,4 +1,4 @@
-"""A job's crawl location (jobs spec, "Crawl location pinned per job"): the one proxy pool every fetch of the job goes
+"""A job's crawl location: the one proxy pool every fetch of the job goes
 through, and the egress country that gives records (`core.egress`).
 
 A site may price by the visitor's country, so a job's pages must all be fetched from one place: the request's

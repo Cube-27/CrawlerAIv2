@@ -1,4 +1,4 @@
-"""HTTP fetch (acquisition spec): manual redirects through the SSRF guard, caps, timeouts and the manifest.
+"""HTTP fetch: manual redirects through the SSRF guard, caps, timeouts and the manifest.
 
 A local server on 127.0.0.1 serves synthetic pages under `.test` hosts; no live network. `LoopbackConnector`
 admits only those hosts, at the server's port, and sends every other URL through the real guard with a stub
@@ -79,15 +79,15 @@ def test_a_page_is_fetched_into_a_bundle_through_the_pinned_address(server: Serv
             transferred=attempt.transferred,
         ),
     )
-    assert attempt.transferred > len(_PAGE)  # the body and both header blocks (D-1381)
+    assert attempt.transferred > len(_PAGE)  # the body and both header blocks
     assert manifest.engine_version == "test"
     assert manifest.fetch_policy == FetchPolicy().model_dump(mode="json")
     assert decode(encode(result.bundle)) == result.bundle
 
 
 def test_a_refusal_standing_in_for_the_page_is_labelled_a_challenge_and_stays_blocked(server: Server) -> None:
-    # D-1326: the generic structural signal (a 403 document that can navigate on and is no page of the site); the label
-    # changes no class (INV-24). An `ok` page carries none.
+    # the generic structural signal (a 403 document that can navigate on and is no page of the site); the label
+    # changes no class. An `ok` page carries none.
     server.route("/p", html(b"<html><body><script>location.reload()</script></body></html>", 403))
     server.route("/ok", html(_PAGE))
 
@@ -120,10 +120,10 @@ def test_a_redirect_hop_that_fails_the_guard_is_an_error(server: Server, locatio
 # --- cookies -----------------------------------------------------------------------------------------------------
 
 
-# --- INV-29: cookies stay inside one fetch -----------------------------------------------------------------------
+# --- cookies stay inside one fetch -----------------------------------------------------------------------
 
 
-# --- INV-30: untrusted bodies are bounded --------------------------------------------------------------------------
+# --- untrusted bodies are bounded --------------------------------------------------------------------------
 
 
 def test_inv30_a_body_over_the_cap_is_an_error_without_a_body(server: Server) -> None:

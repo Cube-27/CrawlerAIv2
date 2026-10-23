@@ -1,4 +1,4 @@
-"""The HTML structure pre-passes (extraction spec, "Source documents"): a declarative shadow root's content under its
+"""The HTML structure pre-passes: a declarative shadow root's content under its
 host, a streamed Suspense segment in the boundary a `$RC` call completed, and an eager Turbo frame's answer in the
 frame, fetched by the HTTP rung as a same-site companion call. Pages are synthetic (`example.test`, C3, C9); nothing
 goes to the network and no script runs."""

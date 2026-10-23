@@ -1,4 +1,4 @@
-"""The item layer's align step (listings spec, "Rows from blocks"; owner #67): a listing's rows from the blocks of one
+"""The item layer's align step: a listing's rows from the blocks of one
 group of repeated items (`ParsedPage.item_groups`, the segment step), each field read at a place the blocks share,
 declining rather than guessing (DEPTA's partial alignment, Zhai and Liu 2005: only what aligns with certainty is
 committed).
@@ -47,7 +47,7 @@ C4):
   checks: an ISO 4217 or CLDR amount, an ISO 8601 or CLDR date, a check digit), and, for an element holding others,
   each of its own text nodes; a line where two text nodes run digits together (`ParsedPage.digit_joins`) is two
   numbers, not one. Of an element and one inside it reading the same value, the inner one. Text the HTML Standard
-  marks as no longer accurate (`s`, §4.5.4) or removed (`del`, §4.7.2), the obsolete `strike` and text an inline
+  marks as no longer accurate (`s`) or removed (`del`), the obsolete `strike` and text an inline
   `line-through` decoration strikes (`collect.dom.struck`) is no current value: a struck-through former price, which
   only a list price field reads; nor is an option of a drop-down `select` that is not selected (HTML Standard
   §4.10.7: a box of one row shows only its selected option, an add-on's other prices); a money field reads by its price
@@ -543,7 +543,7 @@ def _candidate(
 
 
 def _distinct(spots: Iterable[Spot], spec: FieldSpec) -> list[Spot]:
-    """The spots with one of each normalized value (the type's equality, normalization spec), in order."""
+    """The spots with one of each normalized value (the type's equality), in order."""
     seen: dict[object, Spot] = {}
     for spot in spots:
         seen.setdefault(_key(spot, spec), spot)
@@ -887,8 +887,8 @@ class _View:
 def _undisplayed(element: HtmlElement) -> set[HtmlElement]:
     """The options of a `select` that it does not display: a select without `multiple` whose display size is 1 renders
     as a drop-down box showing only its selected option, the last one marked `selected`, else its first option that is
-    not disabled, by itself or its `optgroup` (HTML Standard §4.10.7, the selectedness setting algorithm; §4.10.10,
-    disabled options; Rendering §15.5.15); the others are a form control's choices (an add-on plan, a gift box), not
+    not disabled, by itself or its `optgroup` (HTML Standard §4.10.7, the selectedness setting algorithm, disabled
+    options, Rendering §15.5.15); the others are a form control's choices (an add-on plan, a gift box), not
     what the block shows. None for any other element."""
     if element.tag != "select" or element.get("multiple") is not None or _display_size(element) != 1:
         return set()

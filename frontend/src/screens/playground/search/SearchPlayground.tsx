@@ -10,7 +10,7 @@ import { buildSearch, DEFAULT_SEARCH_OPTIONS, INITIAL_SEARCH, searchErrors } fro
 import { SearchOptions } from "./SearchOptions";
 import { SearchOutput } from "./SearchOutput";
 
-/** The Search playground at `/search` (D-1442): a query and the result limit (`POST /v1/search`, answered at once),
+/** The Search playground at `/search`: a query and the result limit (`POST /v1/search`, answered at once),
  * then the results as a list; with Scrape results, the toolbar's Format and Schema say how the batch job it queues
  * scrapes them. A search keeps nothing on the server, so the results stay in the page until the next search. */
 export function SearchPlayground() {

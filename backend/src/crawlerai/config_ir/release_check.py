@@ -1,12 +1,12 @@
-"""The release check (learning-configs spec, INV-20): before a config is exported, the independent release
+"""The release check: before a config is exported, the independent release
 executor runs it on the held-out pages, and each field is compared with what the engine published there.
 
 A field passes when it reproduces the engine's value on every held-out page with one while there are fewer than 10
 such pages, and on at least 95% of them from 10 on; otherwise the export marks it `manual`. A field the engine
 published on no held-out page cannot be shown to match and is `manual` too, as is a suspended field (the release
-executor does not run it) and one the schema lacks. Values are compared as validation compares them (§4.7): the
+executor does not run it) and one the schema lacks. Values are compared as validation compares them: the
 release executor's value normalized as the engine normalizes it, then `equal`. Row fields are compared row by row in
-document order, the engine's rows aligned with the release executor's as validation aligns them (D-1500), and only
+document order, the engine's rows aligned with the release executor's as validation aligns them, and only
 when the release executor reads at least as many rows as the engine published.
 """
 

@@ -8,7 +8,7 @@ import { RecordFieldsTable, RecordSummary } from "../../components/RecordFields"
 import { changedFieldsText } from "../../components/RecordTable";
 import { ReplayView } from "./ReplayView";
 
-/** The capture the record came from, and a replay of it with the current engine and config (rest-api spec). */
+/** The capture the record came from, and a replay of it with the current engine and config. */
 function ReplaySection({
   record,
   captureId,
@@ -40,7 +40,7 @@ function ReplaySection({
   );
 }
 
-/** What changed from the version this one supersedes, which is the version before it (jobs spec). */
+/** What changed from the version this one supersedes, which is the version before it. */
 function changeText(record: StoredRecord): string {
   if (record.version === 1) return "The first version of this record.";
   const previous = String(record.version - 1);
@@ -50,7 +50,7 @@ function changeText(record: StoredRecord): string {
     : `Changed from version ${previous}: ${changed}`;
 }
 
-/** Every `field_meta` attribute of one record, and its capture with a replay (frontend spec), in a drawer over the
+/** Every `field_meta` attribute of one record, and its capture with a replay, in a drawer over the
  * table. The record is not editable here; `onClose` closes the drawer. */
 export function RecordInspector({
   record,

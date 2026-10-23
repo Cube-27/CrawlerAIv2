@@ -1,4 +1,4 @@
-"""Usage events and per-job budgets (persistence-storage spec)."""
+"""Usage events and per-job budgets."""
 
 import asyncio
 from typing import Any

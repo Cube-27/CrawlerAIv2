@@ -1,19 +1,19 @@
-"""URL canonicalization (jobs spec): the form `map` and the crawl frontier dedup URLs by, and the form every job
-kind keys its `url_task` by, so a page's entity key (extraction spec) does not depend on the job that fetched it.
+"""URL canonicalization: the form `map` and the crawl frontier dedup URLs by, and the form every job
+kind keys its `url_task` by, so a page's entity key does not depend on the job that fetched it.
 
-The url type's canonical form (normalization spec: WHATWG parsing, the RFC 3986 §6.2 normalizations, the fragment
+The url type's canonical form (WHATWG parsing, the RFC 3986 §6.2 normalizations, the fragment
 removed), with the query's name-value pairs in the order WHATWG `URLSearchParams.sort()` gives them. No parameter is
 dropped or rewritten by name: there is no list of parameter names (C4).
 
 The row keys of one listing page drop its session parameters (`session_parameters`): a parameter that every row link
-carries with one same value, and that the page's own URLs do not carry, names the visit, not the item (owner #67). It
+carries with one same value, and that the page's own URLs do not carry, names the visit, not the item. It
 is read from the page, never from a list, and only dropped, never invented (C7).
 
 Whether two URLs name one document or one item is read by one pair of keys, used for comparison only and never
 published (a URL publishes as the page writes it): `document_key` is the canonical form's scheme, authority and path,
 one trailing slash of the path aside (RFC 3986 §3 names the resource by them; §6.2.4: `/a/` and `/a` may name one
 resource, while `/a//` is another path), so a query (§3.4: it selects within the resource, a variant or a view) and a
-fragment (§3.5) name no other document. `item_key` adds the query as a multiset of its decoded name-value pairs, in
+fragment name no other document. `item_key` adds the query as a multiset of its decoded name-value pairs, in
 any order (a repeated pair counts twice): two URLs name one item when their pairs are the same.
 """
 

@@ -1,6 +1,6 @@
-"""The adapter registry and the adapter rung (acquisition spec; adapters spec): only active adapters answer
-(C6), a URL an active adapter detects is fetched by it first, a page it does not serve falls back to the page rungs
-(INV-40), and a host whose answer lacks the platform's signal is declined for a while.
+"""The adapter registry and the adapter rung: only active adapters answer
+(C6), a URL an active adapter detects is fetched by it first, a page it does not serve falls back to the page rungs,
+and a host whose answer lacks the platform's signal is declined for a while.
 
 The adapters are stubs that detect one synthetic host; no network.
 """
@@ -100,7 +100,6 @@ def test_an_active_adapter_answers_for_the_urls_it_detects() -> None:
 
 
 def test_a_capture_is_read_by_the_adapter_that_detects_its_page_and_serves_its_endpoint() -> None:
-    # INV-39.
     board = StubAdapter("board", "board.example.test")
     registry = Registry([board])
 
@@ -113,7 +112,7 @@ def test_a_capture_is_read_by_the_adapter_that_detects_its_page_and_serves_its_e
 
 
 def test_a_host_answering_without_the_platform_signal_is_declined_for_the_window() -> None:
-    # INV-40: one request per host per window, and after the window the host is tried again.
+    # one request per host per window, and after the window the host is tried again.
     adapter = StubAdapter("board", "board.example.test", Rung("api", status=404, reason=NOT_PLATFORM))
     clock = Clock()
     registry = Registry([adapter], clock=clock)

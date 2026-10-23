@@ -1,4 +1,4 @@
-"""Evidence, calibration and the request's minimum confidence (resolution spec, "Evidence and confidence"): what a
+"""Evidence, calibration and the request's minimum confidence: what a
 field's choice becomes.
 
 Preference chose a value, or declined (`resolve.preference`). Here a chosen value gets its evidence bucket, the
@@ -25,14 +25,14 @@ from crawlerai.schemas.types import FieldType, SchemaDef
 
 # The reason of a field a calibrated bucket kept from publishing under the request's `min_confidence`.
 BELOW_MIN_CONFIDENCE: Final = "below_min_confidence"
-# Owner decisions 2026-10-18 and 2026-10-19 (resolution spec): a money value whose currency only the page's locale or
+# Owner decisions 2026-10-18 and 2026-10-19: a money value whose currency only the page's locale or
 # its URL or its sign's primary currency settles, or that nothing settles, publishes with lower confidence: its bucket
 # is measured apart, `<type>|<evidence>|<basis>`.
 _APART: frozenset[Basis] = frozenset({"locale", "url", "symbol", "unknown"})
 # A bucket with fewer than 20 dev labels reports `calibrated=false` (the `resolution` spec's floor).
 MIN_CALIBRATED_N: Final = 20
 # Buckets by source kind: an adapter or an API recipe; one structured-data standard (schema.org
-# JSON-LD and microdata, the Open Graph protocol); a structural DOM value (§8.1), which follows no structured-data
+# JSON-LD and microdata, the Open Graph protocol); a structural DOM value, which follows no structured-data
 # standard; a value of the page's captured calls, the network data-source layer (Appendix A #59); role C's grounded
 # values; a value read from the page's state JSON, which only a key the item layer proved on the page's blocks
 # yields alone (`collect.items.bind`). A config value's bucket is its field status.
@@ -58,8 +58,8 @@ class Bucket(_Model):
 
 
 class Calibration(_Model):
-    """`backend/data/calibration.json`: per `"field_type|evidence"` bucket, its fitted confidence (frozen
-    engine data, evaluation spec); a bucket the fit lacked is not in it, so uncalibrated."""
+    """`backend/data/calibration.json`: per `"field_type|evidence"` bucket, its fitted confidence (frozen engine data);
+    a bucket the fit lacked is not in it, so uncalibrated."""
 
     calibration_version: Literal[1] = 1
     source_split: Literal["dev"] = "dev"
@@ -70,7 +70,7 @@ class Calibration(_Model):
         self, type_: FieldType, evidence: Evidence, *, row: bool = False, basis: Basis | None = None
     ) -> tuple[float | None, bool]:
         """The bucket's confidence and whether it is calibrated: measured on at least `MIN_CALIBRATED_N` fields. A row
-        sub-field's bucket is `list.<type>|<evidence>` (variants spec): a row value can be wrong in a way a page value
+        sub-field's bucket is `list.<type>|<evidence>`: a row value can be wrong in a way a page value
         cannot (a wrong row match), so it is measured apart."""
         bucket = self.buckets.get(bucket_key(f"{'list.' if row else ''}{type_.value}", evidence, basis))
         if bucket is None:
@@ -94,12 +94,12 @@ def load_calibration(path: Path) -> Calibration | None:
 
 
 def evidence_of(chosen: Candidate, agreeing: tuple[Candidate, ...], *, corroborated: bool) -> Evidence | None:
-    """The §10 bucket of a published value, `adapter` > `agreed` > the chosen kind's bucket (D-0021). `corroborated`
-    is the config's field status (learning-configs spec); `None` when no bucket holds the value."""
+    """The §10 bucket of a published value, `adapter` > `agreed` > the chosen kind's bucket. `corroborated`
+    is the config's field status; `None` when no bucket holds the value."""
     if chosen.source_kind in _ADAPTER:
         return "adapter"
     # §8.1, §10: only independent candidates count, so a state value admitted by equality never agrees with itself; a
-    # fallback (`Candidate.fallback`) is no agreement either (resolution spec, "Candidate score").
+    # fallback (`Candidate.fallback`) is no agreement either.
     if len({c.source_kind for c in (chosen, *agreeing) if c.independent and not c.fallback}) >= 2:
         return "agreed"
     if chosen.source_kind == "config":
@@ -144,7 +144,7 @@ def assess(
 ) -> FieldOutcome:
     """One field's outcome: a chosen or derived value publishes with its bucket's measurement, unless the request
     gave a `min_confidence` and the bucket is calibrated below it; a declined field keeps its status and reason.
-    `row`: a row sub-field (variants spec)."""
+    `row`: a row sub-field."""
     if isinstance(decision, Derived) and decision.source is None:
         published = _page_url(decision)
     else:
@@ -191,7 +191,7 @@ def _basis(chosen: Candidate | None) -> Basis | None:
 
 @dataclass(frozen=True, slots=True)
 class _Published:
-    """A value about to publish, with its provenance (INV-22); its bucket is measured, then held to `min_confidence`."""
+    """A value about to publish, with its provenance; its bucket is measured, then held to `min_confidence`."""
 
     value: JsonValue
     evidence: Evidence
@@ -206,7 +206,7 @@ class _Published:
 
 
 def _page_url(decision: Derived) -> _Published:
-    # D-0355: no candidate states a page-URL derivation, so it carries the `derived` source kind and bucket and a
+    # no candidate states a page-URL derivation, so it carries the `derived` source kind and bucket and a
     # `derived:` locator naming the derivation.
     locator = format_locator("derived", decision.derived_by)
     return _Published(
@@ -300,7 +300,7 @@ def _unpublished(
 
 
 def _value(chosen: Candidate) -> JsonValue:
-    # Preference chooses only candidates that normalized (validity, §10).
+    # Preference chooses only candidates that normalized (validity).
     if not isinstance(chosen.normalized, Ok):
         raise TypeError("only a normalized candidate publishes")
     return chosen.normalized.value

@@ -1,4 +1,4 @@
-"""The `schema_org` path grammar (schemas spec, "schema.org paths"): a field's path parsed into its alternatives, and
+"""The `schema_org` path grammar: a field's path parsed into its alternatives, and
 the price role a money field's path gives it.
 
 A path `T.p{…}[.q{…}][+r[+s]]` starts at type `T` and follows the properties `p`, `q`; each `+` joins another property
@@ -120,7 +120,7 @@ _MEMBER_TIER = "validForMemberTier"
 
 
 def price_role(spec: FieldSpec) -> PriceRole | None:
-    """The price role a money field's path gives it (schemas spec, "Price roles"): every alternative reaches schema.org
+    """The price role a money field's path gives it: every alternative reaches schema.org
     `price`, through a node its predicates require to be a unit price (`{referenceQuantity}`), a list or struck price
     (`{priceType=StrikethroughPrice}`, `ListPrice`) or a member price (`{validForMemberTier}`), else the active price
     when it requires nothing but a sale price (`{priceType=SalePrice}`). `None` for any other field, and for

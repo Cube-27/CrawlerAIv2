@@ -1,4 +1,4 @@
-"""The embedded JSON state collector (extraction spec): the state a page carries in its inline scripts.
+"""The embedded JSON state collector: the state a page carries in its inline scripts.
 
 The documents are each script's state (`content.state.script_state`), each decoded by its documented shape
 (`content.state_decoders.decode`: devalue flat arrays, normalized caches): read by structure only, no variable name
@@ -40,7 +40,7 @@ class _ScriptDocuments:
 
 def script_documents(page: ParsedPage, diagnostics: list[str]) -> list[Document]:
     """The page's inline scripts' state documents, decoded, each addressed by its script's XPath, then its Flight
-    stream's (`flight_document`). They are read once per parse (INV-26): a later caller gets the same documents, and
+    stream's (`flight_document`). They are read once per parse: a later caller gets the same documents, and
     the diagnostics reading them gave."""
     derived = page.derived.get(_ScriptDocuments)
     if derived is None:
@@ -67,7 +67,7 @@ class _AttributeDocuments:
 
 
 def attribute_documents(page: ParsedPage) -> list[Document]:
-    """The page's documented JSON attributes' documents, in document order, decoded once per parse (INV-26)."""
+    """The page's documented JSON attributes' documents, in document order, decoded once per parse."""
     derived = page.derived.get(_AttributeDocuments)
     if derived is None:
         documents = [

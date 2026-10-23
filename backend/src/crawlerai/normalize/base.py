@@ -1,4 +1,4 @@
-"""What every type normalizer shares (normalization spec): the result union, the context and the
+"""What every type normalizer shares: the result union, the context and the
 normalizer signature.
 
 The type modules import this module and nothing else from `crawlerai.normalize`; the dispatcher
@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue
 
 from crawlerai.schemas.types import FieldSpec
 
-# normalization spec, money: where a value's currency came from when the value itself does not state it. `page` is a
+# Money: where a value's currency came from when the value itself does not state it. `page` is a
 # page-level declaration, `locale` the page's language and region narrowing a shared sign, `url` the territory its URL
 # names (a locale path segment, a country subdomain or the ccTLD), `unknown` none (the currency is null). Weakest last.
 Basis = Literal["page", "locale", "url", "symbol", "unknown"]
@@ -27,13 +27,13 @@ BASES: tuple[Basis, ...] = ("page", "locale", "url", "symbol", "unknown")
 class Ok:
     """The normalized value, in the type's JSON form (the form labels and records store).
 
-    `reasons` reports the parts of a list or object that declined and were dropped (normalization spec), each as
+    `reasons` reports the parts of a list or object that declined and were dropped, each as
     `<path>: <reason>` (`[2]: empty`, `address.locality: no_match`); a scalar has none. `basis` is the weaker evidence
     a part of the value rests on (`Basis`), `None` when the raw value states it all. `checked` is whether the raw value
-    shows the type's checked syntax, so that its normalizing is evidence of the type (extraction spec): money text
+    shows the type's checked syntax, so that its normalizing is evidence of the type: money text
     without a currency sign is only a number. `stated` is the value as the page states it, when that differs from
-    `value` (a URL as written, relative or not in canonical form): the published form (normalization spec, "Stated
-    form"), while `value` is what equality, identity and resolution read; `None` when `value` is as stated.
+    `value` (a URL as written, relative or not in canonical form): the published form, while `value` is what equality,
+    identity and resolution read; `None` when `value` is as stated.
     """
 
     value: JsonValue
@@ -96,7 +96,7 @@ def decoded_references(s: str) -> str:
 
 
 class Context(BaseModel):
-    """Evidence from the page and the request, and nothing else (§9, C7): never a host table, never a default.
+    """Evidence from the page and the request, and nothing else (C7): never a host table, never a default.
 
     `base_url` and `page_url` resolve and check URLs: the document base URL (`<base href>` resolved against the final
     URL, else the final URL; HTML Standard, "document base URL") and the final URL itself. Either is `None` when the
@@ -130,20 +130,20 @@ class Context(BaseModel):
 
 class Normalizer(Protocol):
     """One field type's normalizer: a pure function of its arguments (no I/O, no clock). It never raises on bad
-    input; a `spec` of a type it does not handle is a programming error and raises `TypeError` (§4.7)."""
+    input; a `spec` of a type it does not handle is a programming error and raises `TypeError`."""
 
     def __call__(self, raw: Raw, spec: FieldSpec, ctx: Context, /) -> NormalizeResult: ...
 
 
 class Equality(Protocol):
-    """One field type's equality of two normalized values (normalization spec), used by the resolver's agreement rule.
+    """One field type's equality of two normalized values, used by the resolver's agreement rule.
     It is reflexive and symmetric for every JSON value, and never raises on values of another shape."""
 
     def __call__(self, a: JsonValue, b: JsonValue, spec: FieldSpec, /) -> bool: ...
 
 
 class EqualityKey(Protocol):
-    """One field type's equality as a key (normalization spec): `equal(a, b)` exactly when the keys of `a` and `b` are
+    """One field type's equality as a key: `equal(a, b)` exactly when the keys of `a` and `b` are
     equal, so values group by hashing instead of comparing every pair. Only a type whose equality is an equivalence
     relation has one (location's is not transitive)."""
 

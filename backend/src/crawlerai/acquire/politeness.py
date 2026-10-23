@@ -1,7 +1,7 @@
-"""Politeness per site (acquisition spec): a request rate, adapted to how the host answers, and the pause a server asks
+"""Politeness per site: a request rate, adapted to how the host answers, and the pause a server asks
 for.
 
-The rate adapts per host (D-1327), as TCP's congestion control does (RFC 5681 §3.1: back off multiplicatively on a
+The rate adapts per host, as TCP's congestion control does (RFC 5681 §3.1: back off multiplicatively on a
 congestion signal, grow back slowly): a 429 or 503 (`SLOW_DOWN`), or a challenge (`AttemptRecord.challenge`), doubles
 the host's spacing, up to `BACKOFF_MAX`; after `RECOVERY_RUN` `ok` answers in a row it shrinks by `RECOVERY_FACTOR`,
 never below the site's configured interval and its robots.txt `Crawl-delay` (`interval`).
@@ -35,12 +35,12 @@ from crawlerai.acquire.types import AttemptRecord
 from crawlerai.core.retry import backoff_delay
 from crawlerai.storage.capture_bundle import HeaderList
 
-DEFAULT_INTERVAL: Final = timedelta(seconds=1)  # acquisition spec: 1 request/s
-BACKOFF_MAX: Final = timedelta(minutes=15)  # acquisition spec: the longest backoff
+DEFAULT_INTERVAL: Final = timedelta(seconds=1)  # 1 request/s
+BACKOFF_MAX: Final = timedelta(minutes=15)  # the longest backoff
 # RFC 6585 §4 (429 Too Many Requests) and RFC 9110 §15.6.4 (503 Service Unavailable): the statuses that ask a
 # client to slow down, optionally with a Retry-After.
 SLOW_DOWN: Final = frozenset({429, 503})
-# D-1327: the adaptive spacing's recovery, unmeasured starting points: 20 `ok` answers in a row shrink it by 10%.
+# the adaptive spacing's recovery, unmeasured starting points: 20 `ok` answers in a row shrink it by 10%.
 RECOVERY_RUN: Final = 20
 RECOVERY_FACTOR: Final = 0.9
 # A hold in the shared store lapses this long after its process last renewed it: a process that dies, or work left
@@ -76,20 +76,20 @@ class SharedTurns(Protocol):
 
 class Admit(Protocol):
     """Waits until the site's rate admits one more request, records it and answers True; answers False, recording
-    nothing, when that turn is too far off to wait for in place. `after` is a pause the site asked for (D-1263: a 503's
+    nothing, when that turn is too far off to wait for in place. `after` is a pause the site asked for (a 503's
     `backoff`): the site is paused for it first, and the turn comes no sooner."""
 
     def __call__(self, *, after: timedelta = ...) -> Awaitable[bool]: ...
 
 
 async def refuse(*, after: timedelta = timedelta(0)) -> bool:
-    """The `Admit` of a fetch that may send no further request: robots.txt disallows the page (adapters spec)."""
+    """The `Admit` of a fetch that may send no further request: robots.txt disallows the page."""
     return False
 
 
 def backoff(attempt: AttemptRecord, tries: int = 1) -> timedelta | None:
-    """The one back-off of a host that answered `attempt` with a 429 or 503 on try `tries` of the work (acquisition spec
-    §4.6): the pause its `Retry-After` asks for, else the queue's backoff for that try (`backoff_delay`), at most
+    """The one back-off of a host that answered `attempt` with a 429 or 503 on try `tries` of the work: the pause its
+    `Retry-After` asks for, else the queue's backoff for that try (`backoff_delay`), at most
     `BACKOFF_MAX`. None when the server asks for more than `BACKOFF_MAX`: retrying before it allows breaks its
     request, and waiting longer holds the work open without bound, so the work ends instead."""
     if attempt.retry_after is not None:
@@ -104,7 +104,7 @@ def slowed_down(attempts: Iterable[AttemptRecord]) -> AttemptRecord | None:
 
 def page_requests(attempts: Iterable[AttemptRecord]) -> tuple[AttemptRecord, ...]:
     """The attempts of a page fetch that went to the page's host: an adapter's or recipe's API request (method `api`)
-    goes to its endpoint, whose host's rate it is admitted at and adapts (D-1327)."""
+    goes to its endpoint, whose host's rate it is admitted at and adapts."""
     return tuple(attempt for attempt in attempts if attempt.method != "api")
 
 

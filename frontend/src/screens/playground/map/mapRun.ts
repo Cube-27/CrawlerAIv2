@@ -4,9 +4,8 @@ import type { MapResult } from "../../../api/jobs";
 import { isJsonObject } from "../../../api/json";
 import type { MapFormState } from "./form";
 
-/** A map's form and what it found. `POST /v1/map` answers at once and the server keeps no URLs (jobs spec "Map, scope
- * and sitemaps"), so the run is kept in its browser history entry (HTML §7.4 session history, `history.state`): back,
- * forward and reload show it again, and nothing leaves the browser (D-1215). */
+/** A map's form and what it found. `POST /v1/map` answers at once and the server keeps no URLs, so the run is kept in its browser history entry (HTML §7.4 session history, `history.state`): back,
+ * forward and reload show it again, and nothing leaves the browser. */
 export interface MapRun {
   form: MapFormState;
   result: MapResult;

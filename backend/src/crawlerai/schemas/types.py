@@ -1,4 +1,4 @@
-"""The schema document (schemas spec): field types, field specs and the schema itself.
+"""The schema document: field types, field specs and the schema itself.
 
 A schema is data, so these models are the boundary every schema crosses, whether it comes from a preset file, the
 API or a role S draft: a document that validates here is one the normalizers and the resolver can run.
@@ -13,8 +13,8 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 from crawlerai.db.models import PageKind, SchemaId, SchemaOrigin, SchemaStatus
 
-# The listing presets' page-level next-page field, which pagination (extraction spec) and a
-# config's `next` step (§12.1) fill.
+# The listing presets' page-level next-page field, which pagination and a
+# config's `next` step fill.
 NEXT_PAGE_FIELD = "next_page_url"
 
 
@@ -49,7 +49,7 @@ Name = Annotated[str, StringConstraints(pattern=rf"^{NAME_PATTERN}$")]
 # (`Offer.price+priceCurrency`, `AggregateOffer.lowPrice+highPrice+priceCurrency`). A step's filter predicates keep the
 # nodes whose property `{name=Value}` equals a term, `{name}` is stated, `{!name}` is not
 # (`Offer.priceSpecification{priceType=StrikethroughPrice}.price`; `schemas.paths`). `|` separates up to four
-# alternatives, whose candidates are pooled (variants spec): `Product.sku|Offer.sku`; `>` ranks them: the alternatives
+# alternatives, whose candidates are pooled: `Product.sku|Offer.sku`; `>` ranks them: the alternatives
 # after it are read on an entity only when those before it reach no value there (`Product.gtin13>Product.gtin`).
 _PROPERTY = r"[a-z][A-Za-z0-9]*"
 _FILTER = rf"\{{(!?{_PROPERTY}|{_PROPERTY}=[A-Za-z][A-Za-z0-9]*)\}}"
@@ -69,7 +69,7 @@ MAX_LABELS = 32
 FieldLabels = dict[Name, Annotated[list[Label], Field(max_length=MAX_LABELS)]]
 
 MAX_DEPTH = 3
-"""Nesting depth (§5.1): a top-level field is depth 1, and each `list.item` or `object.fields` level adds one."""
+"""Nesting depth: a top-level field is depth 1, and each `list.item` or `object.fields` level adds one."""
 
 
 class _Model(BaseModel):
@@ -80,8 +80,8 @@ class FieldSpec(_Model):
     """One field of a schema, or the item of a list.
 
     The parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,
-    `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants spec
-    §4.2): the path names the row entities, and `key` names the sub-fields that identify a row.
+    `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants):
+    the path names the row entities, and `key` names the sub-fields that identify a row.
     """
 
     type: FieldType
@@ -97,7 +97,7 @@ class FieldSpec(_Model):
 
     @property
     def row_mapped(self) -> bool:
-        """A `list` of `object` whose rows a `schema_org` path finds (variants spec)."""
+        """A `list` of `object` whose rows a `schema_org` path finds."""
         return self.schema_org is not None and self.item is not None and self.item.type is FieldType.OBJECT
 
     @model_validator(mode="after")
@@ -126,8 +126,7 @@ MAX_KEY = 3
 def _check_row_mapping(row_path: str, item: FieldSpec, key: list[str]) -> None:
     """The row path names nodes, so it joins no value (`+`); its alternatives are pooled, as row discovery reaches rows
     along each of them, so it ranks none (`>`) and filters none (predicates); the item's sub-fields are leaf values,
-    each with its own path; `key` names one to three distinct identifier or url sub-fields (schemas spec, "Row-mapped
-    lists and key")."""
+    each with its own path; `key` names one to three distinct identifier or url sub-fields."""
     fields = item.fields or {}
     if "+" in row_path:
         raise ValueError("a row path names the row entities, not a value: no `+`")
@@ -178,7 +177,7 @@ class SchemaDocument(SchemaContent):
         for name, spec in self.fields.items():
             _check_field(name, spec, depth=1, described=True)
             if self.page_kind == "detail" and spec.scope == "page":
-                raise ValueError(f"{name}: a detail page has one entity, so every field is `row` (§5.2)")
+                raise ValueError(f"{name}: a detail page has one entity, so every field is `row`")
         for group in self.required_groups:
             if not group:
                 raise ValueError("a required group names at least one field")
@@ -189,9 +188,9 @@ class SchemaDocument(SchemaContent):
 
 def _check_field(path: str, spec: FieldSpec, *, depth: int, described: bool) -> None:
     if depth > MAX_DEPTH:
-        raise ValueError(f"{path}: nested deeper than {MAX_DEPTH} levels (§5.1)")
+        raise ValueError(f"{path}: nested deeper than {MAX_DEPTH} levels")
     if described and spec.description is None:
-        raise ValueError(f"{path}: every field needs a description (§5.2)")
+        raise ValueError(f"{path}: every field needs a description")
     if spec.item is not None:
         _check_field(f"{path}.item", spec.item, depth=depth + 1, described=False)
     for name, sub in (spec.fields or {}).items():
@@ -202,7 +201,7 @@ class SchemaDef(SchemaDocument):
     """A `schema_def` row: a document plus where it came from and whether it is in use. One row per
     name, edited in place.
 
-    `labels` are the synonyms role S drafted for its fields' labels, by field (extraction spec, "Label vocabulary"),
+    `labels` are the synonyms role S drafted for its fields' labels, by field,
     editable; None until drafted, and again after an edit of the document. They are no part of the document, so
     they change neither its digest nor what was learned for it.
     """
@@ -212,7 +211,7 @@ class SchemaDef(SchemaDocument):
     status: SchemaStatus
     labels: FieldLabels | None = None
     # The names of `fields` in the order the document gave them, which a stored schema's JSONB `fields` loses: the
-    # order a table's columns follow (frontend spec). Empty for a schema stored without one.
+    # order a table's columns follow. Empty for a schema stored without one.
     field_order: list[str] = Field(default_factory=list)
 
 

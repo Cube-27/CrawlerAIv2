@@ -1,4 +1,4 @@
-"""robots.txt rules and fetch outcomes (acquisition spec, RFC 9309). Synthetic files on RFC 2606 hosts."""
+"""robots.txt rules and fetch outcomes (RFC 9309). Synthetic files on RFC 2606 hosts."""
 
 import uuid
 from datetime import UTC, datetime

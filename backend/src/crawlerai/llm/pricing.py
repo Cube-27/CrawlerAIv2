@@ -1,4 +1,4 @@
-"""LLM prices (llm spec): what a provider charges per million input and output tokens of a model, for the
+"""LLM prices: what a provider charges per million input and output tokens of a model, for the
 estimated LLM cost shown for visibility. It is not billing.
 
 Prices are versioned external data (C4): one file per provider under `backend/data/llm/`, pinned in the data

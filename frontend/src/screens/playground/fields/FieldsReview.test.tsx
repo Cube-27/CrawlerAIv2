@@ -7,8 +7,8 @@ import { closeOptions, fill, openOptions, openPlayground, pick } from "../../../
 import { schemaList } from "../../../test/runs";
 import { curlBody } from "../../../test/shell";
 
-// Additional fields (frontend spec): names typed as chips become `schema.fields`; the run first shows the schema
-// `POST /v1/schemas/draft` drafts from them, for review. `fetch` answers with the shapes rest-api spec and jobs spec define.
+// Additional fields: names typed as chips become `schema.fields`; the run first shows the schema
+// `POST /v1/schemas/draft` drafts from them, for review. `fetch` answers with the shapes the API defines.
 
 const DRAFT: SchemaDef = {
   id: "0192a000-0000-7000-8000-0000000000d1",

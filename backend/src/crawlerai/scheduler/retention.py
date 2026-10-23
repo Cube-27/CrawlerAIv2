@@ -1,4 +1,4 @@
-"""Retention (persistence-storage spec): the scheduler's `expire_captures`, `expire_candidates` and
+"""Retention: the scheduler's `expire_captures`, `expire_candidates` and
 `expire_webhooks`.
 
 Only production captures expire: a row is deleted only when its `object_key` is under `captures/`, so a bundle
@@ -18,7 +18,7 @@ from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.capture_bundle import CAPTURES_PREFIX
 
 CANDIDATE_TTL: Final = timedelta(days=30)  # Candidates are kept 30 days
-# An ended webhook delivery and its events are kept 30 days, for `GET /v1/jobs/{id}/webhook-deliveries` (D-1511).
+# An ended webhook delivery and its events are kept 30 days, for `GET /v1/jobs/{id}/webhook-deliveries`.
 WEBHOOK_TTL: Final = timedelta(days=30)
 # Rows per transaction. It bounds how long a run holds row locks, and how many bundles one failed run leaves deleted
 # under rows that stay; the scheduler runs a full batch again at once, so a backlog still drains in one turn.

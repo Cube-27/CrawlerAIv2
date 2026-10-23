@@ -1,5 +1,5 @@
-"""A listing's rows in the page's JSON documents, as config steps (listings spec, "Rows from page state";
-learning-configs spec, "Locate run"): the paths `collect.items.state_rows` reads at run time, written into the config
+"""A listing's rows in the page's JSON documents, as config steps: the paths `collect.items.state_rows` reads at run
+time, written into the config
 for the rows a render published.
 
 Each published row's item URL (`collect.schema_org_map.item_url_fields`) is searched in every JSON document the HTML

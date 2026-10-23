@@ -1,4 +1,4 @@
-"""The content formats of a page a task reached (rest-api spec), each a function of its capture alone (§15), and the
+"""The content formats of a page a task reached, each a function of its capture alone, and the
 summary of the fetch that reached it.
 """
 
@@ -24,7 +24,7 @@ from crawlerai.storage.capture_bundle import CaptureManifest
 
 class FetchSummary(BaseModel):
     """The fetch of the page: the method, status and class of the kept attempt, the platform adapter that read an `api`
-    capture (INV-39; null for any other), and every attempt made."""
+    capture (null for any other), and every attempt made."""
 
     method: CaptureMethod
     status_code: int | None  # None when no response arrived
@@ -120,8 +120,8 @@ def page_formats(
     options: FormatOptions | None = None,
     artifacts: Collection[str] = (),
 ) -> Formats:
-    """The requested content formats of a reached page, from its one parse (INV-26) and its
-    capture's manifest: a format is a function of the capture alone (§15), the page kind it was fetched as included.
+    """The requested content formats of a reached page, from its one parse and its
+    capture's manifest: a format is a function of the capture alone, the page kind it was fetched as included.
     `artifacts` names the files stored for the capture; a screenshot or PDF is a member only when it was made."""
     formats = _markdown_formats(page, manifest, requested, options or FormatOptions())
     if "screenshot" in requested and SCREENSHOT in artifacts:

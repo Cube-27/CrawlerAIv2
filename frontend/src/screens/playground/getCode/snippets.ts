@@ -1,10 +1,10 @@
 import type { Endpoint } from "./endpoints";
 
-/** Get code's snippets (frontend spec): the current request as cURL, Python (`httpx`) and an MCP tool call. Each is
+/** Get code's snippets: the current request as cURL, Python (`httpx`) and an MCP tool call. Each is
  * generated from the request object, never by pasting user input into code: values are JSON-encoded, and shell words
  * are quoted per POSIX sh. */
 
-/** The environment variable every snippet reads the API key from (frontend spec; the UI holds no key, §4.1). */
+/** The environment variable every snippet reads the API key from (the UI holds no key). */
 export const KEY_VARIABLE = "CRAWLERAI_API_KEY";
 
 /** The request's body as the primary action sends it: JSON with a two-space indent. */
@@ -31,7 +31,7 @@ export function curlSnippet(origin: string, endpoint: Endpoint, body: object): s
 
 const INDENT = "    ";
 
-/** A JSON value as a Python literal (Python Language Reference §2.4, §6.2): every JSON string escape is a Python
+/** A JSON value as a Python literal (Python Language Reference §2.4): every JSON string escape is a Python
  * string escape too, so strings, numbers and member names stay JSON-encoded; only `true`, `false` and `null` are
  * spelled `True`, `False` and `None`. Nested values are indented four spaces per level (PEP 8). */
 export function pythonLiteral(value: unknown, depth = 0): string {
@@ -86,7 +86,7 @@ export function pythonSnippet(origin: string, endpoint: Endpoint, body: object):
 }
 
 /** The MCP `tools/call` request (MCP 2025-06-18, Tools; JSON-RPC 2.0) calling `tool` with the request as its `request`
- * argument, the shape every request tool of jobs spec takes. */
+ * argument, the shape every request tool of the API takes. */
 export function mcpSnippet(tool: string, body: object): string {
   return json({
     jsonrpc: "2.0",

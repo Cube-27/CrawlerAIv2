@@ -1,8 +1,8 @@
-"""Browser fetch with Patchright headless Google Chrome (acquisition spec, "HTTP and browser rungs"): one navigation,
+"""Browser fetch with Patchright headless Google Chrome: one navigation,
 the one bounded wait (`acquire.browser_wait`), and what the render captures besides its document
 (`acquire.browser_capture`), in a tab of the site's profile (`acquire.browser_session`).
 
-As in `fetch_http`, every failure becomes an `error` outcome with a short reason that never contains the URL (D-0128).
+As in `fetch_http`, every failure becomes an `error` outcome with a short reason that never contains the URL.
 A page is read once it is ready (`settle`); every request the page makes loads, as in a user's browser (no request
 interception). The caller's page steps run after that wait and before the read (`run_steps`), within the browser's
 time cap plus their own timeouts. Both browser rungs, the page (`fetch_browser`) and the listing with browser actions
@@ -11,7 +11,7 @@ classified with the redirect rules, a `blocked` or `shell` one labelled with the
 (`acquire.challenge`), the pool endpoint it went through told how it went (`core.proxy_health`), a `blocked` profile
 deleted, and the outcome recorded with the process's site sessions (`acquire.session`, browser to HTTP only). Asked to
 export (`CookieExport`), the fetch reads the context's cookies before the context closes, without changing them, for a
-site session (INV-29's exception).
+site session.
 """
 
 import asyncio
@@ -133,7 +133,7 @@ class Render:
             content=self.content,
             block_class=self.block_class,
             error=self.error,
-            # `context` is the browser context's wall time, which `browser_seconds` usage counts (§4.8).
+            # `context` is the browser context's wall time, which `browser_seconds` usage counts.
             timings=self.timings,
             challenge=self.challenge,
             transferred=self.traffic.bytes,
@@ -170,7 +170,7 @@ async def fetch_browser(
     when given, receives the context's cookies and the endpoint, whatever the outcome; the caller decides whether a
     session opens. `sessions` are this process's site sessions: a temporary profile starts with the site's cookies
     (`SiteSessions.for_browser`), and the outcome is recorded with them (`SiteSessions.after_browser`); a fetch with the
-    caller's own context neither reads nor writes them (D-1432)."""
+    caller's own context neither reads nor writes them."""
     if policy.context is not None:
         sessions = None
     run = Render(url, policy, engine_version)
@@ -371,7 +371,7 @@ async def read_state(
         request_headers=recorded(header_list(sent)),
         response_headers=recorded(header_list(received)),
     )
-    # D-1265: the size the body arrived with is read before any body, so a body over `max_body_bytes` never enters
+    # the size the body arrived with is read before any body, so a body over `max_body_bytes` never enters
     # this process. The browser hands over bodies after content decoding, in full (Playwright has no streaming read):
     # the decompressed cap is checked once they are read, and bounds what is stored.
     if await _wire_size(response, exchange) > policy.max_body_bytes:

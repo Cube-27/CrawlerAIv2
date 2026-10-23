@@ -1,9 +1,9 @@
-"""The extraction step of a page task (resolution spec, INV-27): a fetched capture is extracted with
+"""The extraction step of a page task: a fetched capture is extracted with
 `extract_page`, and the result is stored as one `extraction` row, its `candidate` rows and the page's `record` (a
 listing's: one per row).
 
-A scrape task runs it after its fetch (rest-api spec, inline or in a worker: one function), and so will batch, extract
-and crawl tasks (jobs spec). Storing only serializes what resolution decided (INV-27): each candidate keeps whether it
+A scrape task runs it after its fetch (inline or in a worker: one function), and so will batch, extract
+and crawl tasks. Storing only serializes what resolution decided: each candidate keeps whether it
 was chosen or why it was rejected, and the record holds the published values.
 """
 
@@ -51,15 +51,15 @@ class ActiveConfig:
     id: ExtractionConfigId
     version: int
     executor: ConfigExecutor
-    # The executor of the `api` captures the config's API recipe fetched (adapters spec); None without a recipe.
+    # The executor of the `api` captures the config's API recipe fetched; None without a recipe.
     api: ConfigExecutor | None = None
-    # Whether a page `executor` ran on joins the config's drift window (learning-configs spec), which measures its page
+    # Whether a page `executor` ran on joins the config's drift window, which measures its page
     # steps.
     drifts: bool = True
 
     def for_capture(self, manifest: CaptureManifest, adapters: Adapters | None) -> "ActiveConfig | None":
         """The config as it runs on the capture `manifest` describes; None when it does not run on it. An `api`
-        capture no active adapter reads (INV-39) holds the JSON an API recipe fetched: the config's recipe executor
+        capture no active adapter reads holds the JSON an API recipe fetched: the config's recipe executor
         reads it, and as the page steps did not run, the page joins no drift window. A config
         without a recipe does not run on it: an earlier config's recipe fetched it (a replay), and page steps read a
         page, not JSON."""
@@ -91,7 +91,7 @@ class RecordSource:
 
 class RecordWriter(Protocol):
     """Stores a page's records and returns them in the drafts' order (`store_records` in `recurring.versions`, which
-    versions them, jobs spec). A record can be one stored before, so its id need not be new."""
+    versions them). A record can be one stored before, so its id need not be new."""
 
     async def __call__(
         self, conn: AsyncConnection, schema: SchemaDef, drafts: Sequence[RecordDraft], source: RecordSource
@@ -124,10 +124,10 @@ async def store_extraction(
 ) -> Stored:
     """Store `result`, `extract_page`'s for the task's capture, in `conn`'s transaction. `caller_supplied` is true for
     `scrape`, `batch_scrape` and `extract` URLs: an incomplete page then keeps its record (`partial`), where a
-    crawl-discovered one gets `no_match` and none (§4.10). The caller settles the task with the returned outcome.
+    crawl-discovered one gets `no_match` and none. The caller settles the task with the returned outcome.
     `scrape` extracts before it opens the transaction, so it holds no connection while the page resolves. `config` is
     the config a `config`-mode result ran; `page_url` the canonical URL of the document it read, when that is not the
-    task's (a listing's further page, owner #52)."""
+    task's (a listing's further page)."""
     page_url = page_url or task.canonical_url
     extraction_id: ExtractionId = (
         await conn.execute(
@@ -174,7 +174,7 @@ def page_records(
     caller_supplied: bool,
     diagnostics: Sequence[str],
 ) -> tuple[FinishedOutcome, tuple[RecordDraft, ...]]:
-    """The page's outcome and the records it keeps: a detail page's one, or a listing's one per row (§4.10).
+    """The page's outcome and the records it keeps: a detail page's one, or a listing's one per row.
     `diagnostics` are the extraction's; an unreadable-content signal among them keeps a detail page's record
     (`content.signals.unreadable`)."""
     if schema.page_kind == "listing":
@@ -255,7 +255,7 @@ def _marks(result: ExtractionResult) -> tuple[set[_CandidateKey], dict[_Candidat
 
 
 def _with_sub_fields(outcomes: Iterable[FieldOutcome]) -> Iterator[FieldOutcome]:
-    """Each outcome, and the sub-field outcomes of a row-mapped field's published rows (variants spec)."""
+    """Each outcome, and the sub-field outcomes of a row-mapped field's published rows."""
     for outcome in outcomes:
         yield outcome
         for item in outcome.items or ():

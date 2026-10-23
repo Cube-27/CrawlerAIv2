@@ -1,9 +1,9 @@
-"""Rows of a row-mapped `list<object>` field (variants spec, INV-33 to INV-35): which entities are the
+"""Rows of a row-mapped `list<object>` field: which entities are the
 field's rows, which sub-field candidates belong to which row, which rows are one variant, and what each publishes.
 
 The rows are found in the entity graph, not by the collectors: the row path's alternatives that start at the target's
 type are followed through `Entity.via`. A row's scope is its entity and those below it, as far as the next row or a
-thing the page only relates to (resolution spec exclusions). Rows are matched by key, never by position: rows that share
+thing the page only relates to (exclusions). Rows are matched by key, never by position: rows that share
 a key value are one variant, and a variant whose key sub-fields disagree is dropped (C7: decline rather than guess).
 Each variant resolves its sub-fields with the resolver's own rules, its scope standing in for ownership.
 """
@@ -36,7 +36,7 @@ NOT_IN_ROW: Final = "not_in_row"
 SINGLE_ROW: Final = "single_row"
 # Why a row-mapped field publishes nothing, from the earliest stage to the furthest; the furthest reached is the reason.
 _NO_ROWS = ("no_rows", "no_row_key", "row_key_conflict", "key_unpublished", "url_only", "other_page")
-# variants spec, own variants: a row that states nothing of itself but a URL is a link (schema.org: a Product node with
+# Own variants: a row that states nothing of itself but a URL is a link (schema.org: a Product node with
 # only `url` names a thing described elsewhere), and a row whose URL names another resource than the page (RFC 3986
 # §3.2, §3.3: authority and path identify the resource; the query may select a variant of it) is another product. A
 # `hasVariant` member's Offer URL is not such a URL: schema.org `hasVariant` makes the member the group's variant, and
@@ -45,7 +45,7 @@ URL_ONLY: Final = "url_only"
 OTHER_PAGE: Final = "other_page"
 _URL = FieldSpec(type=FieldType.URL)
 # Owner, 2026-10-16 (Appendix A #48): a product without variants has no variant list; the list is published only for
-# two or more variants, and one row's values publish at the top level by the common-value rule (INV-38).
+# two or more variants, and one row's values publish at the top level by the common-value rule.
 _MIN_ROWS = 2
 
 
@@ -83,7 +83,7 @@ class _Variant:
 
 
 def resolve_rows(row_field: RowField, candidates: Sequence[Candidate]) -> FieldOutcome:
-    """The field's outcome: the published rows as its value, with `items` and `dropped` (§4.5)."""
+    """The field's outcome: the published rows as its value, with `items` and `dropped`."""
     mine = [c for c in candidates if c.field.startswith(f"{row_field.name}.")]
     rows = row_entities(row_field.graph, row_field.target, row_field.spec)
     row_of = _row_of(row_field.graph, rows)
@@ -118,7 +118,7 @@ def resolve_rows(row_field: RowField, candidates: Sequence[Candidate]) -> FieldO
 
 def _single_row(resolved: "_Resolved", candidates: Sequence[Candidate]) -> FieldOutcome:
     """The field's outcome when one row publishes: `missing` (`single_row`), its candidates rejected with that
-    reason (§4.5, owner #48)."""
+    reason."""
     rejected = {id(c) for c, _ in resolved.rejected}
     single = [(c, SINGLE_ROW) for c in candidates if id(c) not in rejected]
     return FieldOutcome(
@@ -285,8 +285,8 @@ def _lone_rows(
     row_field: RowField, rows: Sequence[Entity], keys: Mapping[str, _Keys], groups: list[list[Entity]]
 ) -> list[list[Entity]]:
     """The keyed rows as one variant when every source (`source_of`) states one row of the target, keyed or not, and
-    their keys do not conflict: a source's one offer of the item is the item's one offer (resolution spec, atomic
-    offers), whatever key each source happens to state it by (one a URL, another a SKU); else `groups`."""
+    their keys do not conflict: a source's one offer of the item is the item's one offer (atomic offers), whatever key
+    each source happens to state it by (one a URL, another a SKU); else `groups`."""
     if len(groups) < 2 or len({source_of(row.id) for row in rows}) != len(rows):
         return groups
     keyed = [row for group in groups for row in group]
@@ -297,7 +297,7 @@ def _lone_rows(
 def _key_values(
     row_field: RowField, candidates: Sequence[Candidate], row_of: RowOf
 ) -> dict[str, dict[str, list[JsonValue]]]:
-    """Each row's key values by key sub-field (§4.4): `Ok` values that pass screening (INV-13), without a URL that
+    """Each row's key values by key sub-field: `Ok` values that pass screening, without a URL that
     names the page or the target rather than one variant."""
     screen = Resolver(row_field.graph, row_field.target, row_field.page, row_field.orders, owns=lambda _: True)
     excluded, shared = _not_keys(row_field)
@@ -314,17 +314,17 @@ def _key_values(
 
 
 def _key_value(candidate: Candidate, excluded: frozenset[str]) -> JsonValue:
-    """The candidate's normalized value, unless it is a URL in `excluded` (only url keys are screened, §4.4)."""
+    """The candidate's normalized value, unless it is a URL in `excluded` (only url keys are screened)."""
     value = candidate.normalized.value if isinstance(candidate.normalized, Ok) else None
     return None if isinstance(value, str) and value in excluded else value
 
 
 def _not_keys(row_field: RowField) -> tuple[frozenset[str], frozenset[str]]:
-    """URLs that name the page or the target, not one variant (§4.4): the page URLs and the target's own URLs; and
+    """URLs that name the page or the target, not one variant: the page URLs and the target's own URLs; and
     the target's URLs that one of its Offers repeats. `Entity.urls` includes the Offers' URLs, so a URL both declare
     is either the target's or an Offer's: `_without_group_urls` decides by how many rows carry it."""
     graph, target = row_field.graph, row_field.target
-    # An AggregateOffer is no offer of one item (§4.3): a URL it repeats is not one row's.
+    # An AggregateOffer is no offer of one item: a URL it repeats is not one row's.
     offers = {u for e in graph.offers(target) for u in e.urls}
     own = [u for u in target.urls if u not in offers]
     return frozenset((*row_field.page_urls, *own)), frozenset(u for u in target.urls if u in offers)
@@ -334,7 +334,7 @@ def _without_group_urls(
     values: dict[str, dict[str, list[JsonValue]]], shared: frozenset[str], url_subs: frozenset[str]
 ) -> dict[str, _Keys]:
     """Drops a URL the target and its Offers both carry from the url key sub-fields when more than one row carries
-    it (§4.4): one row's URL is that variant's key (the one-Offer-per-variant shape); a URL many rows repeat names the
+    it: one row's URL is that variant's key (the one-Offer-per-variant shape); a URL many rows repeat names the
     group, and as a key it would join every row into one variant. Only url sub-fields are screened (`_key_value`)."""
     carriers: dict[str, set[str]] = {}
     for row, keys in values.items():
@@ -361,7 +361,7 @@ def linked(
     key_fields: Mapping[str, FieldSpec], rows: Sequence[Entity], keys: Mapping[str, Mapping[str, list[JsonValue]]]
 ) -> list[list[Entity]]:
     """Connected components of rows that share a value of a key sub-field and state no different value of a key
-    sub-field listed before it (§4.4, INV-33): `key_fields` runs from the most specific key to the least (the preset's
+    sub-field listed before it: `key_fields` runs from the most specific key to the least (the preset's
     `key`: a GTIN names one trade item, a seller's SKU may name its sizes together, a URL its colours). Two rows one
     document lists side by side (`_siblings`) are told apart by any key sub-field: one list names each of its items
     once, so two entries with other SKUs are two variants, whatever barcode they repeat; two documents may write one
@@ -423,14 +423,14 @@ def _merged_keys(rows: Sequence[Entity], keys: Mapping[str, _Keys]) -> _Keys:
 
 
 def _conflicting(row_field: RowField, variant: _Variant) -> bool:
-    """INV-33: a key sub-field with two different values means two variants were joined, or one source is wrong."""
+    """a key sub-field with two different values means two variants were joined, or one source is wrong."""
     spec = row_field.sub_fields
     return any(not equal(values[0], other, spec[sub]) for sub, values in variant.keys.items() for other in values[1:])
 
 
 def _resolve_variant(row_field: RowField, candidates: Sequence[Candidate], ids: set[str], row_of: RowOf) -> RowOutcome:
-    """§4.5: the variant's sub-fields, chosen by the resolver with the variant's scope as owner (atomic offers per row,
-    INV-35) and assessed in the `list.<type>` buckets."""
+    """The variant's sub-fields, chosen by the resolver with the variant's scope as owner (atomic offers per row) and
+    assessed in the `list.<type>` buckets."""
     resolver = Resolver(
         row_field.graph,
         row_field.target,
@@ -465,7 +465,7 @@ def _published(
     rows: Sequence[tuple[str, RowOutcome]], dropped: tuple[DroppedRow, ...], rejected: tuple[tuple[Candidate, str], ...]
 ) -> FieldOutcome:
     """§4.5 "The field's outcome": the published rows' published sub-fields as the value; `agreed` when every published
-    sub-field is, `adapter` when every one is an adapter's (adapters spec), else `structured`; the least confidence,
+    sub-field is, `adapter` when every one is an adapter's, else `structured`; the least confidence,
     calibrated only when all are; the first row's source kind and its entity's locator."""
     published = [o for _, row in rows for o in row.fields.values() if o.status == "published"]
     confidences = [o.confidence for o in published]

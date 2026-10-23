@@ -1,6 +1,6 @@
-"""Record exporters (learning-configs spec, PR 12): every published value and status comes back out of the CSV and JSON
+"""Record exporters (PR 12): every published value and status comes back out of the CSV and JSON
 exports, and the CSV header depends on the schema alone ("CSV columns stable", PR plan row 12). `json_records`,
-`csv_records` and `markdown` run over a page of records. A clean record (frontend spec, `json_values`) has the schema's
+`csv_records` and `markdown` run over a page of records. A clean record (`json_values`) has the schema's
 published fields, in the columns' name order, and no status column."""
 
 import csv
@@ -57,7 +57,7 @@ def _page(draw: st.DrawFn) -> tuple[SchemaDocument, list[RecordContent]]:
     records = []
     for _ in range(draw(st.integers(0, 3))):
         statuses = {name: draw(_statuses) for name in names}
-        # A published value is never null (INV-22); a field that did not publish has no value.
+        # A published value is never null; a field that did not publish has no value.
         data = {
             name: draw(_json_values.filter(lambda v: v is not None)) for name, s in statuses.items() if s == "published"
         }

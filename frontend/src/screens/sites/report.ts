@@ -6,7 +6,7 @@ export function ofPages(count: number, total: number): string {
 }
 
 /** A listing's row fields with its next-page step as one more row, when it has one. A field name is
- * `[a-z][a-z0-9_]*` (schemas spec), so "next page" never hides one. */
+ * `[a-z][a-z0-9_]*`, so "next page" never hides one. */
 export function withNextPage<T>(
   fields: Readonly<Record<string, T>>,
   next: T | null | undefined,

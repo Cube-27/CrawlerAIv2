@@ -1,7 +1,7 @@
 import { Tooltip } from "@heroui/react";
 import { useCallback, useState } from "react";
 
-/** Text cut to its cell's fixed width (DESIGN.md: data tables). Only text that is cut off gets a tooltip with the full
+/** Text cut to its cell's fixed width. Only text that is cut off gets a tooltip with the full
  * text, on hover or focus, and only it is a tab stop: a cell whose text shows in full is not interactive, and WAI-ARIA
  * APG (Developing a Keyboard Interface) keeps non-interactive content out of the tab order. The tooltip overlays the
  * table, so it moves nothing. */

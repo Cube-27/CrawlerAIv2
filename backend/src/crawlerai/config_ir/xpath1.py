@@ -1,4 +1,4 @@
-"""The XPath 1.0 check for config steps (learning-configs spec, D-0034).
+"""The XPath 1.0 check for config steps.
 
 Exported configs run in PHP 8.4 `Dom\\XPath` and in lxml, which both evaluate W3C XPath 1.0 with libxml2's XPath
 engine, on the HTML Standard parse of the page (`exporters.platform_draft`, `release_executor`). libxml2 compiles calls

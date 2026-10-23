@@ -1,4 +1,4 @@
-"""Progressive mode (learning-configs spec): the state of a (site, schema, page kind)
+"""Progressive mode: the state of a (site, schema, page kind)
 on its way to an active config, the scheduler's `trigger_learning`, and the `learn` job a learning run is.
 
 A state is `cold`, `learning` or `active` (`mode`), and a learning run is in flight while `learning_started_at` is
@@ -8,16 +8,16 @@ that also checks the in-flight flag, so two callers racing on one state cannot b
 A `cold` state with 8 extracted pages starts learning, and pages keep being served cold meanwhile. A run that
 activates a config makes the state `active`; one that fails leaves it `cold` until 8 more pages are extracted. An
 `active` state re-learns only when forced (`POST /v1/sites/{host}/learn` with `force`, drift), and keeps serving its
-config until the new run activates another. When the project requires approval (D-1342), a run's validated config
+config until the new run activates another. When the project requires approval, a run's validated config
 waits as `pending_approval` and the run ends as a failed one does, without the retry: no run starts while a config
 waits, and an approved config activates in any mode.
 
 The `learn` job is created `queued` with its state in `request`; running it is the learning pipeline's (§4.5 to §4.7),
 which ends the run with `learning_activated`, `learning_awaits_approval` or `learning_failed`.
 
-A state is also a surface's render setting (`render_mode`, rest-api spec "Render mode"): the last `render.mode` a job
+A state is also a surface's render setting (`render_mode`): the last `render.mode` a job
 set for it, which a job submitted without one inherits. A job whose mode is `locate` or `always` starts the surface's
-locate run (learning-configs spec, "Locate run") once, as a forced `learn` job whose request names the job and the
+locate run once, as a forced `learn` job whose request names the job and the
 fields it asked for (`request_locate`).
 """
 
@@ -47,7 +47,7 @@ from crawlerai.db.models import (
     SiteId,
 )
 
-# Learning runs once 8 pages are extracted; a failed run is retried after 8 more (D-0030).
+# Learning runs once 8 pages are extracted; a failed run is retried after 8 more.
 LEARN_AFTER_PAGES: Final = 8
 # States per run of `trigger_learning`; the scheduler runs a full batch again at once, so a backlog drains in one turn.
 TRIGGER_BATCH: Final = 100
@@ -59,20 +59,20 @@ LearnEvent = Literal[
 TRANSITIONS: Final[Mapping[LearnEvent, Mapping[ProgressiveMode, ProgressiveMode]]] = {
     # Pages keep being served cold while a site learns.
     "start": {"cold": "learning"},
-    # A forced or drift re-learn keeps the active config serving until a new one activates (learning-configs spec).
+    # A forced or drift re-learn keeps the active config serving until a new one activates.
     "start_forced": {"cold": "learning", "active": "active"},
     "activate": {"learning": "active", "active": "active"},
-    # A failed run leaves a cold site cold (§4.8) and an active one on its config.
+    # A failed run leaves a cold site cold and an active one on its config.
     "fail": {"learning": "cold", "active": "active"},
-    # An operator's validated config activates in any mode (§4.10); a learning run in flight goes on, and may replace
+    # An operator's validated config activates in any mode; a learning run in flight goes on, and may replace
     # it with the config it validates.
     "operator": {"cold": "active", "learning": "active", "active": "active"},
-    # A run whose validated config waits for approval (D-1342) ends as a failed one does, the site serving what it
+    # A run whose validated config waits for approval ends as a failed one does, the site serving what it
     # served; `trigger_learning` starts no run while a config waits.
     "await_approval": {"learning": "cold", "active": "active"},
     # An approved config activates in any mode, as an operator's does: a person decided.
     "approve": {"cold": "active", "learning": "active", "active": "active"},
-    # A refused config leaves the state's mode as it is: the site serves what it served before (D-1391).
+    # A refused config leaves the state's mode as it is: the site serves what it served before.
     "reject": {"cold": "cold", "learning": "learning", "active": "active"},
     # An edited schema's states start over: what was learned is for its old document, and a run in
     # flight is dropped, so that it can neither activate nor fail the state.
@@ -99,12 +99,12 @@ class NotLearning(Exception):
         super().__init__(f"progressive_state {key}: {event} with no learning run in flight")
 
 
-# The stored pages of a surface a locate run renders: one to induce on, the others to hold out (learning-configs spec).
+# The stored pages of a surface a locate run renders: one to induce on, the others to hold out.
 LOCATE_SAMPLES: Final = 3
 
 
 class LocateRequest(BaseModel):
-    """What a locate run is asked for (learning-configs spec, "Locate run"): the job whose `render` started it (whose
+    """What a locate run is asked for: the job whose `render` started it (whose
     request context a recipe's referenced headers are replayed with; none for a schema edit's), and the fields it
     named (none: the fields the surface's config does not read)."""
 
@@ -113,7 +113,7 @@ class LocateRequest(BaseModel):
 
 
 class _LearnRequest(BaseModel):
-    """The `request` of a `learn` job, as `request_learning` writes it (D-0549)."""
+    """The `request` of a `learn` job, as `request_learning` writes it."""
 
     site_id: UUID
     schema_id: UUID
@@ -137,7 +137,7 @@ class StateKey:
 
     @classmethod
     def from_request(cls, request: Mapping[str, Any]) -> "StateKey":
-        """The state a `learn` job's `request` names (`request_learning`, D-0549). Raises pydantic's
+        """The state a `learn` job's `request` names (`request_learning`). Raises pydantic's
         `ValidationError` for a request that names none."""
         named = _LearnRequest.model_validate(request)
         return cls(SiteId(named.site_id), SchemaId(named.schema_id), named.page_kind)
@@ -157,7 +157,7 @@ class StateKey:
 
 async def trigger_learning(conn: AsyncConnection, *, batch: int) -> int:
     """Start learning for up to `batch` cold states with enough extracted pages, and return how many. A state whose
-    learned config waits for approval (D-1342) is not learned again until it is approved or a run is forced. A listing
+    learned config waits for approval is not learned again until it is approved or a run is forced. A listing
     surface none of whose pages kept a record (each listed nothing) is learned only as a locate run (`render_mode` not
     `off`): a learning run reads pages with records alone, so it would have nothing to learn from."""
     state, configs = ProgressiveState, ExtractionConfig
@@ -257,7 +257,7 @@ async def request_locate(conn: AsyncConnection, key: StateKey, locate: LocateReq
 
 async def locate_added(conn: AsyncConnection, schema_id: SchemaId, fields: list[str]) -> None:
     """Start the locate run of every surface of `schema_id` whose render mode locates (`locate`, `always`) and whose
-    pages were extracted, for `fields`, which an edit added to the schema (learning-configs spec, "Locate run")."""
+    pages were extracted, for `fields`, which an edit added to the schema."""
     state = ProgressiveState
     surfaces = await conn.execute(
         select(state.site_id, state.page_kind).where(
@@ -271,7 +271,7 @@ async def locate_added(conn: AsyncConnection, schema_id: SchemaId, fields: list[
 
 
 async def learning_activated(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:
-    """End `key`'s learning run with `config_id` activated (§4.8). Raises `NotLearning` when no run is in flight."""
+    """End `key`'s learning run with `config_id` activated. Raises `NotLearning` when no run is in flight."""
     moved = await _move(
         conn,
         key.where(),
@@ -285,7 +285,7 @@ async def learning_activated(conn: AsyncConnection, key: StateKey, config_id: Ex
 
 
 async def learning_awaits_approval(conn: AsyncConnection, key: StateKey) -> None:
-    """End `key`'s learning run with its config stored `pending_approval` (D-1342): the state serves what it served
+    """End `key`'s learning run with its config stored `pending_approval`: the state serves what it served
     before the run. Raises `NotLearning` when no run is in flight."""
     if not await _move(conn, key.where(), "await_approval", learning_started_at=None):
         raise NotLearning(key, "await_approval")
@@ -299,7 +299,7 @@ async def config_approved(conn: AsyncConnection, key: StateKey, config_id: Extra
 
 
 async def config_rejected(conn: AsyncConnection, key: StateKey) -> None:
-    """Record that a person refused the learned config waiting for `key` (D-1391): a cold state learns again only after
+    """Record that a person refused the learned config waiting for `key`: a cold state learns again only after
     `LEARN_AFTER_PAGES` more pages, as after a failed run, so the refused document is not learned at once. The state
     must exist."""
     state = ProgressiveState
@@ -316,7 +316,7 @@ async def lock_state(conn: AsyncConnection, key: StateKey) -> None:
 
 
 async def operator_activated(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:
-    """Make `config_id`, an operator's validated config, `key`'s active config (§4.10), with or without a learning
+    """Make `config_id`, an operator's validated config, `key`'s active config, with or without a learning
     run in flight. The state must exist."""
     if not await _move(conn, key.where(), "operator", active_config_id=config_id):
         raise LookupError(f"no progressive_state {key}")
@@ -324,7 +324,7 @@ async def operator_activated(conn: AsyncConnection, key: StateKey, config_id: Ex
 
 async def learning_failed(conn: AsyncConnection, key: StateKey) -> None:
     """End `key`'s learning run with nothing activated: a state that was learning goes cold, to try again after
-    `LEARN_AFTER_PAGES` more pages (§4.8). Raises `NotLearning` when no run is in flight."""
+    `LEARN_AFTER_PAGES` more pages. Raises `NotLearning` when no run is in flight."""
     state = ProgressiveState
     retry = case((state.mode == "learning", state.pages_extracted + LEARN_AFTER_PAGES), else_=state.retry_at_pages)
     if not await _move(conn, key.where(), "fail", learning_started_at=None, retry_at_pages=retry):
@@ -332,13 +332,13 @@ async def learning_failed(conn: AsyncConnection, key: StateKey) -> None:
 
 
 async def relearn_schema(conn: AsyncConnection, schema_id: SchemaId) -> None:
-    """Send what was learned for an edited schema back to learning (schemas spec): its active configs are `suspended`,
+    """Send what was learned for an edited schema back to learning: its active configs are `suspended`,
     so pages are served cold, and its states go `cold` (`schema_edit`) with no run in flight and their configs cleared.
     The next run starts once enough pages are extracted (`trigger_learning`); `pages_extracted` is kept."""
     configs = ExtractionConfig
     await conn.execute(
         update(configs)
-        # A config waiting for approval was learned for the old document too (D-1342).
+        # A config waiting for approval was learned for the old document too.
         .where(configs.schema_id == schema_id, configs.status.in_(("active", "pending_approval")))
         .values(status="suspended")
     )

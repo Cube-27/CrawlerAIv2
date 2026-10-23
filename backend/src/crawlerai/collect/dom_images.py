@@ -1,12 +1,12 @@
-"""The structural DOM collector's image pass (`collect.dom`, extraction spec), and the rules it
+"""The structural DOM collector's image pass (`collect.dom`), and the rules it
 shares with the other DOM passes: the elements set apart from the main region (`content.regions`) and where its
 hyperlinks lead.
 
 - **The main image.** The first image of the page's main region (the `main` element, else the one `role="main"`
-  landmark, WAI-ARIA 1.2; else the document's one `article`, §4.3.2), outside the region's tangential content
-  (`nav`, `header`, `footer`, `aside`, §4.3), its dialogs (`dialog`, roles `dialog` and `alertdialog`) and the
-  fallback content of media elements (§4.8), shown by the cleaned text's rules, whose source is not inline `data:`
-  (RFC 2397). A decorative image (an empty `alt`, §4.8.4.4; roles `none` and `presentation`, WAI-ARIA 1.2) is not
+landmark, WAI-ARIA 1.2, else the document's one `article`), outside the region's tangential content
+  (`nav`, `header`, `footer`, `aside`), its dialogs (`dialog`, roles `dialog` and `alertdialog`) and the
+  fallback content of media elements, shown by the cleaned text's rules, whose source is not inline `data:`
+  (RFC 2397). A decorative image (an empty `alt`, roles `none` and `presentation`, WAI-ARIA 1.2) is not
   it, and neither is a link card's: an image whose nearest block holding a hyperlink holds no other image, and whose
   hyperlinks lead to one other document, illustrates that document (a teaser of another product, a promotion). It
   fills an `image_url` field whose path names schema.org `image`. Before it, the first such image (in the main
@@ -62,7 +62,7 @@ _INLINE = "data:"
 # page lays out, and stays clear of `int`'s digit limit.
 _WIDTH_DESCRIPTOR = re.compile(r"\d{1,9}w")
 _DENSITY_DESCRIPTOR = re.compile(r"\d{0,9}(?:\.\d{1,9})?x")
-# HTML Standard §4.8.3 `srcset` and `src`, and the custom data attributes (§3.2.6.6) a lazy loader keeps them in.
+# HTML Standard §4.8.3 `srcset` and `src`, and the custom data attributes a lazy loader keeps them in.
 _SRCSET, _SRC = "srcset", "src"
 _LAZY = "data-"
 # A hyperlink (HTML Standard §4.6.1: an `a` element with an `href` attribute).

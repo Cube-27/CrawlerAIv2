@@ -1,4 +1,4 @@
-"""What every interface may tell a caller about a failed request (rest-api spec, jobs spec).
+"""What every interface may tell a caller about a failed request.
 
 A `Refusal` is a request the engine refuses or cannot answer, with a message written for the caller: it carries no
 internals. REST answers each kind with its own problem; MCP passes the message on. Any other exception may carry

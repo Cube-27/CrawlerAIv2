@@ -1,4 +1,4 @@
-"""The client address of a request (rest-api spec, INV-32). `Forwarded` (RFC 7239) and `X-Forwarded-For` are written by
+"""The client address of a request. `Forwarded` (RFC 7239) and `X-Forwarded-For` are written by
 whoever sends them (RFC 7239 §8.1), so they are read only when the peer is a configured trusted proxy, and then from
 the right, through trusted hops only: the first hop that is not a trusted proxy is the client. Hops further left were
 written by that client and are ignored."""
@@ -17,7 +17,7 @@ def _forwarded_for(value: str) -> Iterator[str]:
         node = ""
         for pair in element.split(";"):
             name, _, parameter = pair.partition("=")
-            if name.strip().lower() == "for":  # parameter names are case-insensitive (§4)
+            if name.strip().lower() == "for":  # parameter names are case-insensitive
                 node = parameter.strip().strip('"')
         yield node
 

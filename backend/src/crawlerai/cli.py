@@ -87,7 +87,7 @@ async def _work() -> None:
             data, margins = load_engine_data(adapters), load_drift_margins()
             handlers = task_handlers(fetching, data, margins, llm=llm)
             stop = _stop_on_signals()
-            # A records crawl that completes is diffed against its earlier runs (jobs spec).
+            # A records crawl that completes is diffed against its earlier runs.
             work = [run_worker(settings, handlers, stop, ending=close_run), setup.verify()]
             if data is not None:  # learning reads the vocabulary from the data files
                 learner = run_learner(
@@ -126,7 +126,7 @@ async def _fetch(
     url: str, out: Path, connector: SafeConnector | None = None, options: FetchOptions | None = None
 ) -> None:
     """Fetch `url` into a bundle at `out`: over HTTP, or in the browser when `options` ask for it or for page steps,
-    with the caller's request context and proxy pool (D-1430, D-1434)."""
+    with the caller's request context and proxy pool."""
     settings = AcquireSettings()
     options = options or FetchOptions()
     policy = fetch_policy(options, None)
@@ -185,8 +185,8 @@ async def _sync_presets() -> None:
 async def _apikey_create(label: str) -> None:
     async with _transaction() as conn:
         created = await create_key(conn, label)
-    # The key is printed this once; only its hash is stored (rest-api spec). The webhook secret, which verifies the
-    # signature of the key's webhooks (jobs spec), is printed with it.
+    # The key is printed this once; only its hash is stored. The webhook secret, which verifies the
+    # signature of the key's webhooks, is printed with it.
     print(
         json.dumps(
             {
@@ -267,7 +267,7 @@ def _parser() -> argparse.ArgumentParser:
     data.add_parser("fetch", help="download the fetched entries (schema.org) and check their sha256").set_defaults(
         handler=_run_data
     )
-    apikey = commands.add_parser("apikey", help="API keys; the API never creates one (INV-32)").add_subparsers(
+    apikey = commands.add_parser("apikey", help="API keys; the API never creates one").add_subparsers(
         dest="apikey_command", required=True
     )
     create = apikey.add_parser("create", help="create a key and print it, once, with its id")
@@ -340,7 +340,7 @@ def _run_fetch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> Non
 
 
 def _add_fetch_options(fetch: argparse.ArgumentParser) -> None:
-    """The request's `fetch` members as flags (D-1430, D-1436): the same names and checks as the API's."""
+    """The request's `fetch` members as flags: the same names and checks as the API's."""
     fetch.add_argument("--browser", action="store_true", help="fetch in the browser rather than over HTTP")
     fetch.add_argument("--proxy-pool", help="a configured proxy pool (CRAWLERAI_PROXY_POOLS) to send through")
     fetch.add_argument(

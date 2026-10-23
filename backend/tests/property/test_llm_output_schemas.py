@@ -1,4 +1,4 @@
-"""Every role's output schema stays inside every provider's structured-output subset (llm spec), for any
+"""Every role's output schema stays inside every provider's structured-output subset, for any
 fields a schema can ask for: a provider refuses a schema outside it with a 400, and the role then extracts nothing."""
 
 import json
@@ -46,7 +46,7 @@ def test_a_role_c_detail_reply_holds_one_claim_per_field_asked_in_every_subset(f
     assert (_arrays(schema), sorted(claims["properties"]), claims["required"]) == (0, sorted(fields), sorted(fields))
     assert claims["additionalProperties"] is False
     # One claim form, referenced by every field: a provider compiles the schema into a grammar whose size it caps, and
-    # the claim written out under each field outgrew it from 18 fields on Anthropic (D-1008).
+    # the claim written out under each field outgrew it from 18 fields on Anthropic.
     assert json.dumps(schema).count('"start"') == 2
     assert {provider: violations(schema, subset) for provider, subset in SUBSETS.items()} == {p: [] for p in SUBSETS}
 

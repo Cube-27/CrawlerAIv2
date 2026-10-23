@@ -1,4 +1,4 @@
-"""The regex subset of config steps and `regex_replace` (learning-configs spec, D-0034).
+"""The regex subset of config steps and `regex_replace`.
 
 Exported configs run their regexes in PHP (PCRE2, `preg_*`) and the engine runs them in Python `re`. A pattern passes
 when Python compiles it and every construct in it is one both engines read the same way; anything else is refused,

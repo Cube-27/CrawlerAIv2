@@ -1,10 +1,10 @@
-"""The batch scrape service (jobs spec): many URLs scraped asynchronously, as one job of kind
+"""The batch scrape service: many URLs scraped asynchronously, as one job of kind
 `batch_scrape` with a `url_task` per URL. Workers run the tasks with the steps a scrape takes
 (`crawlerai.worker.handlers.scrape`), and `GET /v1/jobs/{id}/results` returns what they made.
 
-Submitting checks every target with the SSRF guard (INV-16), each URL by its form alone (`check_targets`: one refused
+Submitting checks every target with the SSRF guard, each URL by its form alone (`check_targets`: one refused
 only once its host is resolved fails its own task), and resolves the schema, then stores the job and its tasks in one
-transaction. The job pins what its pages run with (INV-28): for `records`, the schema's document as it is
+transaction. The job pins what its pages run with: for `records`, the schema's document as it is
 at submit, the precedence orders and calibration of this process's engine data, and the active config each URL's site
 has for the schema and page kind (`job.pinned`, `JobPins`). A URL given twice
 (the same once canonicalized) is one task. URLs are caller-supplied: a page whose required fields don't all publish
@@ -65,16 +65,16 @@ from crawlerai.services.scrape_request import (
 )
 from crawlerai.services.webhook_options import WebhookOptions
 
-MAX_URLS: Final = 1000  # jobs spec
+MAX_URLS: Final = 1000
 
 
 class BatchScrapeRequest(WebhookOptions):
-    """The body of `POST /v1/batch/scrape` (§4.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a
-    scrape's (rest-api spec), for every URL. A batch's results are either records or page outputs, so `records` is
+    """The body of `POST /v1/batch/scrape`. The formats, `schema`, `page_kind`, `fetch` and `locale` are a
+    scrape's, for every URL. A batch's results are either records or page outputs, so `records` is
     asked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),
-    and `schema.fields` is drafted while the caller waits (frontend spec). Role C fills a page's gaps as in a scrape;
+    and `schema.fields` is drafted while the caller waits. Role C fills a page's gaps as in a scrape;
     `budget.llm_calls` bounds the job's calls, and without a `budget` the project's cap does, as for every job
-    kind (D-1006, D-1121). The webhook options are `WebhookOptions` (§4.2)."""
+    kind. The webhook options are `WebhookOptions`."""
 
     urls: list[str] = Field(min_length=1, max_length=MAX_URLS)
     formats: list[PageFormat] = Field(min_length=1)
@@ -128,7 +128,7 @@ OWN_TRANSACTION: Final = Placement()
 
 
 class JobPins(BaseModel):
-    """What a records job pins when it is submitted (INV-28): the job's schema as it is then, so an edit made while
+    """What a records job pins when it is submitted: the job's schema as it is then, so an edit made while
     the job runs applies to later jobs only; the engine data's precedence orders and calibration; and per host the
     config that was active for the schema and page kind. A host without one has its pages extracted cold (`adhoc`) for
     the whole job, even if a config activates while it runs."""
@@ -158,15 +158,15 @@ async def submit_batch(
     placement: Placement = OWN_TRANSACTION,
 ) -> BatchSubmitted:
     """Store `request` as a queued job with its tasks, where `placement` says; `api_key_id`, the key that submitted
-    it, signs its webhook (jobs spec); `egresses`, the configured pools, one of which `fetch.proxy_pool` must name
-    (D-1434), and the countries they go out from. The job's egress is its pool's (`job_egress`). Raises, storing
-    nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a URL refused by its form or a refused
-    `webhook_url` (`check_targets`), `RecordsUnavailable` for `records` without `data`, and `named_schema`'s errors for
-    a schema `records` cannot use (or field names `llm` could not draft)."""
+        it, signs its webhook; `egresses`, the configured pools, one of which `fetch.proxy_pool` must name,
+    and the countries they go out from. The job's egress is its pool's (`job_egress`). Raises, storing
+        nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a URL refused by its form or a refused
+        `webhook_url` (`check_targets`), `RecordsUnavailable` for `records` without `data`, and `named_schema`'s errors for
+        a schema `records` cannot use (or field names `llm` could not draft)."""
     if egresses is not None:
         check_proxy_pool(request.fetch, egresses.pools)
     targets = [(f"urls[{index}]", url) for index, url in enumerate(request.urls)]
-    # A schedule's run checks its targets in full: a refused run stores no job (jobs spec, schedules).
+    # A schedule's run checks its targets in full: a refused run stores no job (schedules).
     queued = {member for member, _ in targets} if placement.schedule_id is None else set()
     await check_targets(connector, targets, webhook_url=request.webhook_url, queued=queued)
     # A format batch that names a schema is a format job.
@@ -212,9 +212,9 @@ async def records_schema(
     llm: LLMClient,
     render: RenderOptions,
 ) -> SchemaDef | None:
-    """The schema a job's `records` are extracted with; None without `records`, the only format that reads a schema
-    (rest-api spec). Raises `RecordsUnavailable` without `data`, `named_schema`'s errors, and `check_render`'s for
-    `render.fields` the schema does not have."""
+    """The schema a job's `records` are extracted with; None without `records`, the only format that reads a schema.
+    Raises `RecordsUnavailable` without `data`, `named_schema`'s errors, and `check_render`'s for
+        `render.fields` the schema does not have."""
     if "records" not in formats:
         return None
     if data is None:
@@ -238,14 +238,14 @@ async def insert_job(
 ) -> JobId:
     """Insert `request` as a queued job of `kind`, with its webhook options; `schedule_id` names the schedule that
     submitted it, `egress` the country its fetches go out from (`job_egress`). A records job (`schema`) pins its
-    engine data and the configs active for the hosts of `urls` (INV-28, `JobPins`)."""
+    engine data and the configs active for the hosts of `urls` (`JobPins`)."""
     pinned = None if schema is None or data is None else await job_pins(conn, data, urls, schema)
     statement = (
         insert(Job)
         .values(
             project_id=DEFAULT_PROJECT,
             kind=kind,
-            # The caller's secrets stay in the stored request, which the job's workers read (D-1432).
+            # The caller's secrets stay in the stored request, which the job's workers read.
             request=stored_request(request, context={KEEP_SECRETS: True}),
             schema_id=None if schema is None else schema.id,
             webhook_url=request.webhook_url,
@@ -265,7 +265,7 @@ async def insert_job(
 
 
 async def job_pins(conn: AsyncConnection, data: EngineData, urls: list[str], schema: SchemaDef) -> dict[str, Any]:
-    """What a records job of `schema` over `urls` pins (INV-28, `JobPins`), as `job.pinned` stores it."""
+    """What a records job of `schema` over `urls` pins (`JobPins`), as `job.pinned` stores it."""
     pins = JobPins(schema_=schema, engine_data=data.pin(), configs=await active_configs(conn, urls, schema))
     return pins.model_dump(mode="json")
 

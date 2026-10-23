@@ -1,7 +1,7 @@
-"""The config API (learning-configs spec): a site's configs and one config over HTTP; an operator's
+"""The config API: a site's configs and one config over HTTP; an operator's
 correction becomes the next version, validated on the site's held-out pages, active when validation keeps it and a
 `draft` with its report when not; forced learning starts a `learn` job. Also the held-out loader the correction
-validates with (§4.4, §4.7)."""
+validates with."""
 
 import json
 from collections.abc import AsyncIterator, Callable
@@ -55,7 +55,7 @@ def _page(name: str) -> bytes:
     return f"<html><head>{script}</head><body>{body}</body></html>".encode()
 
 
-# The field sources a stored config states (learning-configs spec, "Locate run").
+# The field sources a stored config states.
 SOURCED: Final = {"needs": "http", "call": None}
 
 
@@ -253,7 +253,7 @@ async def test_the_config_api_needs_a_key(client: httpx.AsyncClient, world: Worl
     assert [r.status_code for r in responses] == [401, 401, 401, 401, 401, 401]
 
 
-# Approval (D-1342).
+# Approval.
 
 
 async def test_approving_a_pending_config_makes_it_the_active_one(client: httpx.AsyncClient, world: World) -> None:
@@ -341,4 +341,4 @@ async def test_learn_is_refused_while_a_run_is_in_flight(client: httpx.AsyncClie
 # The held-out loader.
 
 
-# Refusal (D-1391).
+# Refusal.

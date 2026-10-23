@@ -1,4 +1,4 @@
-"""The schema registry (schemas spec): `schema_def` rows read and written as validated documents.
+"""The schema registry: `schema_def` rows read and written as validated documents.
 
 One row per schema name, edited in place. An edit's callers send the site configs learned for the
 old document back to learning (`config_ir.progressive.relearn_schema`).
@@ -156,7 +156,7 @@ async def _write_if_changed(conn: AsyncConnection, current: SchemaDef, document:
 
 
 def load_presets() -> list[SchemaDocument]:
-    """The preset documents shipped in `crawlerai/schemas/presets/` (§5.3), by name. A file is named after its
+    """The preset documents shipped in `crawlerai/schemas/presets/`, by name. A file is named after its
     schema."""
     presets = []
     for entry in sorted(files("crawlerai.schemas").joinpath("presets").iterdir(), key=lambda e: e.name):
@@ -170,7 +170,7 @@ def load_presets() -> list[SchemaDocument]:
 
 
 async def sync_presets(conn: AsyncConnection, presets: Sequence[SchemaDocument] | None = None) -> list[SchemaDef]:
-    """Upsert each preset file's document (§4.2), and return the rows inserted or changed. A changed preset is edited
+    """Upsert each preset file's document, and return the rows inserted or changed. A changed preset is edited
     in place like any schema (`update_schema`), and is the caller's to relearn. A preset name a caller's schema holds
     is `PresetConflict`, and nothing is written."""
     presets = load_presets() if presets is None else presets

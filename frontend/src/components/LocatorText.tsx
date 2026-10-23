@@ -11,7 +11,7 @@ async function copyLocator(locator: string): Promise<void> {
   }
 }
 
-/** Where a value came from (extraction spec locator), in monospace with a copy button. */
+/** Where a value came from (locator), in monospace with a copy button. */
 export function LocatorText({ locator }: Readonly<{ locator: string | null }>) {
   if (locator === null) return <span>—</span>;
   return (

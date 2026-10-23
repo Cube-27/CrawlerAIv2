@@ -1,4 +1,4 @@
-"""The schema.org map (extraction spec): the type hierarchy from the pinned vocabulary file, and `schema_org` paths
+"""The schema.org map: the type hierarchy from the pinned vocabulary file, and `schema_org` paths
 read against a node's properties."""
 
 from collections.abc import Mapping, Sequence
@@ -181,7 +181,7 @@ def test_the_preset_price_reads_a_sale_price_specification_and_never_a_price_com
 
 
 def test_target_types_count_a_required_group_as_required() -> None:
-    """A schema requiring its row data only through a group still names the type a page is read for (§4.4)."""
+    """A schema requiring its row data only through a group still names the type a page is read for."""
     gtin = FieldSpec(type=FieldType.IDENTIFIER, scheme="gtin", description="d", schema_org="Product.gtin")
     schema = SchemaContent(page_kind="detail", required_groups=[["sku", "gtin"]], fields={"sku": SKU, "gtin": gtin})
     assert target_types(schema) == ("Offer", "Product")

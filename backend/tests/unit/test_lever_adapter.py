@@ -1,4 +1,4 @@
-"""The Lever adapter (acquisition spec): detect job site URLs, fetch the Postings API's JSON, name its endpoints.
+"""The Lever adapter: detect job site URLs, fetch the Postings API's JSON, name its endpoints.
 
 Lever is a multi-tenant platform, not a site (C6, C9). Its hosts come from the adapter module, so no hostname is
 written here (C3). Sites and the recorded API responses under `tests/fixtures/lever/` are synthetic.

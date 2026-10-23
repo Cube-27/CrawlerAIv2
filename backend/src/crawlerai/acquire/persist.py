@@ -1,4 +1,4 @@
-"""Persist a fetched page (acquisition spec): its bundle to the object store, and a `capture` row describing it."""
+"""Persist a fetched page: its bundle to the object store, and a `capture` row describing it."""
 
 import asyncio
 from datetime import timedelta
@@ -12,7 +12,7 @@ from crawlerai.storage.artifacts import artifact_key
 from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.capture_bundle import capture_key, encode
 
-CAPTURE_TTL = timedelta(days=30)  # production captures (persistence-storage spec)
+CAPTURE_TTL = timedelta(days=30)  # production captures
 
 
 async def store_capture(
@@ -48,7 +48,7 @@ async def store_capture(
             expires_at=None if expires_in is None else manifest.fetched_at + expires_in,
             size_bytes=len(blob),
             duration_ms=result.duration_ms,
-            # acquisition spec: the row keeps every rung tried, beside the policy they ran under.
+            # the row keeps every rung tried, beside the policy they ran under.
             fetch_policy=policy_with_attempts(manifest.fetch_policy, result.attempts),
         )
     )

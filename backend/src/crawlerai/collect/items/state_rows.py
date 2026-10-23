@@ -1,4 +1,4 @@
-"""Rows from the page's state JSON (listings spec, "Rows from page state"): a listing whose items the page holds in
+"""Rows from the page's state JSON: a listing whose items the page holds in
 embedded state (`collect.js_state`) but whose blocks give no rows still gets one row per item.
 
 A row source is a JSON array of `MIN_ITEMS` or more objects. Each row field is read at one path relative to a row,
@@ -12,7 +12,7 @@ induced across the array's rows (`collect.induce`, quorum `MIN_ITEMS`): a path a
   normalizes as the field's type and is shown in the page text (`content.text.VisibleIndex`); for another URL field,
   is a rendered hyperlink's target; for an image, which the text never shows, normalizes as an image URL.
 Key names are the schema's own words, never a list kept for a site (C2, C4); the page's shown text and links ground
-every value, so a state value is one the page renders (INV-12's rule for role C, applied to state).
+every value, so a state value is one the page renders (the rule for role C, applied to state).
 
 A row is kept only when it is grounded: its item URL is the target of a rendered hyperlink, or its name is shown. An
 array whose grounded rows are fewer than `MIN_ITEMS`, or that has no item URL path, gives none; nor does the site's
@@ -26,7 +26,7 @@ query parameters aside). With several arrays read, the rows
 are those of the array or arrays whose items the page's first item group links to most (`_grid_sources`): a recently
 viewed or recommended array is not the page's list. Each row is an `array_row` entity
 `js_state:<script xpath>@<document position>:<row path>`, and each value a
-`js_state` candidate, whose evidence bucket is `state` (resolution spec).
+`js_state` candidate, whose evidence bucket is `state`.
 """
 
 import re

@@ -3,7 +3,7 @@ import type { OutcomeCounts as Outcomes, TaskCounts, TaskOutcome, TaskStatus } f
 import { plural } from "./activityText";
 import { OutcomeLabel } from "./OutcomeLabel";
 
-// In the order a task goes through them, and the outcomes as the persistence-storage spec lists them.
+// In the order a task goes through them, and the outcomes as the API lists them.
 const STATUSES: readonly TaskStatus[] = ["queued", "claimed", "done", "failed", "cancelled"];
 const OUTCOMES: readonly TaskOutcome[] = [
   "extracted",
@@ -28,7 +28,7 @@ export function taskTotal(counts: TaskCounts): number {
   return STATUSES.reduce((sum, status) => sum + counts[status], 0);
 }
 
-/** How many of the job's tasks have ended: done, failed or cancelled (persistence-storage spec). */
+/** How many of the job's tasks have ended: done, failed or cancelled. */
 export function endedTasks(counts: TaskCounts): number {
   return counts.done + counts.failed + counts.cancelled;
 }
@@ -42,7 +42,7 @@ export function TaskCountsText({ counts }: Readonly<{ counts: TaskCounts }>) {
   return <>{parts.length === 0 ? tasks : `${tasks}: ${parts.join(", ")}`}</>;
 }
 
-/** A job's outcomes on one line, each outcome some task reached with its count (the run header's summary, D-0975), or
+/** A job's outcomes on one line, each outcome some task reached with its count (the run header's summary), or
  * a muted line while none has. */
 export function OutcomeSummary({ outcomes }: Readonly<{ outcomes: Outcomes }>) {
   const reached = OUTCOMES.filter((outcome) => outcomes[outcome] > 0);

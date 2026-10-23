@@ -1,4 +1,4 @@
-"""HTML fragments a page fetched (acquisition spec, "Network body capture"; extraction spec, "Source documents"): the
+"""HTML fragments a page fetched: the
 browser keeps a same-site fetch's or XMLHttpRequest's HTML answer, and a partial whose text the page does not show is
 appended to the page, so its values and rows are read as the page's.
 

@@ -80,7 +80,7 @@ function ScheduleRows({ schedules }: Readonly<{ schedules: readonly Schedule[] }
   );
 }
 
-/** The recurring schedules (D-1418), newest first, a page at a time: how often each runs, when next, its last run,
+/** The recurring schedules, newest first, a page at a time: how often each runs, when next, its last run,
  * and its actions. A schedule is made from a playground request with Schedule this. */
 export function SchedulesScreen() {
   const { cursor, page, previous, nextTo } = useCursorPages();

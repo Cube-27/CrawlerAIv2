@@ -1,4 +1,4 @@
-"""The admission rule for embedded JSON state and network bodies (extraction spec), for any document,
+"""The admission rule for embedded JSON state and network bodies, for any document,
 page text and set of other candidates: a value is admitted exactly when it equals another source kind's candidate of
 the field (then owned by that candidate's entity, not independent) or, for a field with no such candidate whose type
 has a checkable syntax, when it is visible (then owned by the page, independent). The field here is text, which has

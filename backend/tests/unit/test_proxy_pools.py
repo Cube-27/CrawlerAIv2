@@ -1,4 +1,4 @@
-"""Proxy pools (acquisition spec, D-1323, D-1324): a fetch whose policy names a configured pool goes
+"""Proxy pools: a fetch whose policy names a configured pool goes
 through one of that pool's proxies, in every fetcher, picked in turn or kept per site, an endpoint that keeps failing
 left out for a while; and the SSRF guard still checks every host before it is requested, whichever endpoint carries it.
 
@@ -243,7 +243,7 @@ def test_pools_are_read_from_json_with_credentials_percent_decoded(monkeypatch: 
         '"http://user:secret-pw@proxy.example.com:99999"',
         '"proxy.example.com:3128"',
         '{"url": "http://user:secret-pw@proxy.example.com:3128"}',
-        # D-1323: a pool of several endpoints names its mode, lists at least one endpoint, and none twice.
+        # a pool of several endpoints names its mode, lists at least one endpoint, and none twice.
         '{"endpoints": ["http://user:secret-pw@proxy.example.com:3128"]}',
         '{"endpoints": ["http://user:secret-pw@proxy.example.com:3128"], "mode": "random"}',
         '{"endpoints": [], "mode": "rotate"}',
@@ -293,7 +293,7 @@ def test_the_pools_credentials_reach_the_proxy_and_never_the_capture(origin: Ori
     assert all(name.lower() != "proxy-authorization" for name, _ in recorded)
 
 
-# --- pools of several endpoints (D-1323, D-1324) --------------------------------------------------------------------
+# --- pools of several endpoints --------------------------------------------------------------------
 
 
 def _session_through(endpoint: ProxyEndpoint) -> SiteSessions:
@@ -338,7 +338,7 @@ def test_inv16_every_endpoint_of_a_pool_reaches_only_checked_hosts(
     assert set(tunnels) == {"shop.example.test:80"}
 
 
-# --- JSON fetch (D-1264) ------------------------------------------------------------------------------------------
+# --- JSON fetch ------------------------------------------------------------------------------------------
 
 
 def _fetch_json(url: str, pools: dict[str, ProxyPool], pool: str | None = "dc") -> FetchResult:

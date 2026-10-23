@@ -1,4 +1,4 @@
-"""The schema document as role S writes it (llm spec): a form inside every provider's structured-output subset.
+"""The schema document as role S writes it: a form inside every provider's structured-output subset.
 
 `SchemaDocument`'s own JSON Schema can't be a provider's output schema: its field specs nest recursively
 (`FieldSpec -> FieldSpec`), its fields are an object keyed by name (`patternProperties`, so not a closed object), and
@@ -88,7 +88,7 @@ def _fields(entries: list[JsonValue], path: str) -> dict[str, JsonValue]:
 def _spec(entry: Mapping[str, JsonValue], path: str) -> dict[str, JsonValue]:
     spec: dict[str, JsonValue] = {"type": entry["type"], "required": entry["required"], "scope": entry["scope"]}
     spec |= {key: entry[key] for key in _OPTIONAL_STRINGS if entry[key] != _NONE}
-    # A reply written before `key` existed has none (variants spec).
+    # A reply written before `key` existed has none.
     if row_key := entry.get("key"):
         spec["key"] = row_key
     items = cast(list[JsonValue], entry.get("item", []))

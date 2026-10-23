@@ -1,10 +1,10 @@
-"""A stored capture read again instead of fetching (rest-api spec `max_age`, `fetch.cache`, D-1435), for the scrape
+"""A stored capture read again instead of fetching (`max_age`, `fetch.cache`), for the scrape
 service and the workers alike.
 
 A capture stands for a fetch only when it reached its page, has not expired, and was made the way the fetch would be:
-with the same page steps, the same request context (the names of the caller's headers and cookies, in a canonical
-order and case, and the keyed digest of their values, `core.context_digest`; the values are never stored, acquisition
-spec, "Caller request context"), so a capture fetched with other values, or with none, never stands for the fetch,
+with the same page steps, the same request context (the names of the caller's headers and cookies, in a canonical order
+and case, and the keyed digest of their values, `core.context_digest`, the values are never stored), so a capture
+fetched with other values, or with none, never stands for the fetch,
 and, for a screenshot, the same area. A capture of a page with a click revealing content is not the page without it.
 """
 
@@ -59,7 +59,7 @@ async def recent_capture(
     max_age: int | None,
     api: bool = False,
 ) -> CaptureRow | None:
-    """The latest capture of `canonical` that reached its page (§4.8), within `max_age` seconds (None: any age), has
+    """The latest capture of `canonical` that reached its page, within `max_age` seconds (None: any age), has
     not expired and was made with `policy`'s page steps and context, names and value digest (and its screenshot area,
     when it asks for a screenshot; for a content-only read, one judged by that rule or rendered, `content_only`); one
     an API recipe fetched only with `api` (it holds JSON, not the page). Captures are found through the tasks that
@@ -100,7 +100,7 @@ def _jsonb(value: object) -> ColumnElement[Any]:
 
 
 async def reread(store: ObjectStore, row: CaptureRow, formats: Collection[str] = ()) -> Recent | None:
-    """The capture's bundle, with the attempts its row keeps (acquisition spec) and the names of the files stored beside
+    """The capture's bundle, with the attempts its row keeps and the names of the files stored beside
     it; None when its bundle is gone, or a screenshot or PDF among `formats` was not stored with it."""
     capture_id, object_key, duration_ms, fetch_policy = row
     try:

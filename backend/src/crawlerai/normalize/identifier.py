@@ -1,4 +1,4 @@
-"""Identifier normalizer (normalization spec): the identifier as a string. The scheme is the field's declared
+"""Identifier normalizer: the identifier as a string. The scheme is the field's declared
 one, so the value does not repeat it.
 
 Accepts a string, or a non-negative JSON integer read as its decimal digits (JSON-LD publishers write schema.org Text
@@ -25,12 +25,12 @@ _ISBN_PREFIX = re.compile(r"\AISBN\s+")
 _ISBN_BODY = re.compile(r"\d(?:[- ]?\d)*(?:[- ]?[Xx])?", re.ASCII)
 # ISO 2108: an ISBN-13 is an EAN-13 (a GTIN-13) under the GS1 prefixes 978 and 979.
 _ISBN13_PREFIXES = ("978", "979")
-# normalization spec: the length bound of an opaque identifier, in characters.
+# the length bound of an opaque identifier, in characters.
 _MAX_OPAQUE_LEN = 64
 
 
 def normalize(raw: Raw, spec: FieldSpec, _ctx: Context) -> NormalizeResult:
-    """Normalize an identifier field (normalization spec). Identifiers need no page evidence, so the context is
+    """Normalize an identifier field. Identifiers need no page evidence, so the context is
     unused."""
     if spec.type is not FieldType.IDENTIFIER or spec.scheme is None:
         raise TypeError(f"the identifier normalizer does not handle type {spec.type} without a scheme")
@@ -90,7 +90,7 @@ def _isbn(s: str) -> str | Invalid:
 
 
 def _opaque(s: str) -> str | Invalid:
-    # normalization spec: an mpn, sku or custom identifier is the publisher's own string; only its length is bounded.
+    # an mpn, sku or custom identifier is the publisher's own string; only its length is bounded.
     if len(s) > _MAX_OPAQUE_LEN:
         return Invalid("too_long")
     return s
@@ -110,7 +110,7 @@ def _isbn10_check_passes(value: str) -> bool:
 
 
 def key(value: JsonValue, spec: FieldSpec) -> Hashable:
-    """Equality as a key (normalization spec): exact, except that GTINs compare in the GS1 14-digit form (D-0287)."""
+    """Equality as a key: exact, except that GTINs compare in the GS1 14-digit form."""
     gtin = _gtin14(value) if spec.scheme == "gtin" else None
     return raw_key(value) if gtin is None else ("gtin", gtin)
 

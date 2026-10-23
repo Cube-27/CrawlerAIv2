@@ -10,7 +10,7 @@ export function requestUrl(text: string): string {
   return url === "" || HAS_SCHEME.test(url) ? url : `https://${url}`;
 }
 
-/** The command bar's URL (frontend spec), as a plain input. Its name is the request member a server error
+/** The command bar's URL, as a plain input. Its name is the request member a server error
  * names. */
 export function UrlInput({
   value,

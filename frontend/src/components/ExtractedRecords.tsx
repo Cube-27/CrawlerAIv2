@@ -8,7 +8,7 @@ import { PagedTable } from "./PagedTable";
 import { RecordFieldsTable, RecordSummary } from "./RecordFields";
 import { RecordTable } from "./RecordTable";
 
-/** One record's every field attribute (rest-api spec) in a drawer over the table. */
+/** One record's every field attribute in a drawer over the table. */
 function RecordDrawer({
   record,
   fieldTypes,

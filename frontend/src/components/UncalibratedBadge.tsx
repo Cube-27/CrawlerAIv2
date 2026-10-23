@@ -2,7 +2,7 @@ import type { RecordField } from "../api/scrape";
 import { StatusLabel } from "./StatusLabel";
 
 /** Whether a published field of `records` is uncalibrated: its confidence is a score, not a measured precision
- * (INV-22, DESIGN.md "Showing extraction results"). A field that did not publish has no confidence to qualify. */
+ *. A field that did not publish has no confidence to qualify. */
 export function hasUncalibrated(
   records: readonly {
     fields: Readonly<Record<string, Pick<RecordField, "status" | "calibrated">>>;
@@ -13,7 +13,7 @@ export function hasUncalibrated(
   );
 }
 
-/** The one "uncalibrated" badge of a record, or of the records of a page (D-1390): shown when a published field is
+/** The one "uncalibrated" badge of a record, or of the records of a page: shown when a published field is
  * uncalibrated, never once per field. */
 export function UncalibratedBadge({
   records,

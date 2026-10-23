@@ -1,9 +1,9 @@
-"""Cold listings (resolution spec "Listings"): which of a listing page's entities are its rows.
+"""Cold listings (resolution): which of a listing page's entities are its rows.
 
 Rows come from structured data. The entities of the schema's primary types that an `ItemList` lists (directly or through
 a `ListItem`) are the rows; an entity inside another primary entity (a row's related item, an item it offers) is part of
 that entity, not a row. A page with no listed entity takes its top-level primary entities as rows when there are at
-least three and the page URLs single none of them out as the page's own (§4.6): fewer, or one the page names, is what a
+least three and the page URLs single none of them out as the page's own: fewer, or one the page names, is what a
 detail page looks like. When the page singles none out, a top-level primary entity that no list holds is a row beside
 the listed ones too: a list that grew after its script was written (a load-more, a scroll) states its later items in the
 grown document only, as microdata, while the script keeps the first batch. Each row resolves its row-scoped fields like
@@ -29,7 +29,7 @@ from crawlerai.collect.scope import LISTS
 from crawlerai.resolve.intent import AmbiguousTarget, is_primary
 from crawlerai.resolve.ownership import EntityGraph
 
-# resolution spec: without an ItemList, at least this many top-level primary entities make a listing's rows; the same
+# without an ItemList, at least this many top-level primary entities make a listing's rows; the same
 # count of repeated items makes a page show a listing's grid (`acquire.items`).
 MIN_TOP_LEVEL_ROWS: Final = MIN_ITEMS
 # schema.org BreadcrumbList: "an ItemList consisting of a chain of linked Web pages ... typically ending with the
@@ -46,7 +46,7 @@ def listing_rows(
     target: Entity | AmbiguousTarget,
     holders: frozenset[str] = frozenset(),
 ) -> tuple[Entity, ...]:
-    """The rows (module docstring), in collector order. `target` is intent's answer for the page (§4.6); `holders` are
+    """The rows (module docstring), in collector order. `target` is intent's answer for the page; `holders` are
     the entities holding a candidate of a row field."""
     primaries = [entity for entity in graph.entities.values() if is_primary(graph, entity, primary)]
     rows = _main_list(graph, [entity for entity in primaries if _listed(graph, entity, primary)])

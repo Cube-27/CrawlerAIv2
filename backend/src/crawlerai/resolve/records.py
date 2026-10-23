@@ -1,4 +1,4 @@
-"""Records (resolution spec, INV-22, INV-27): what an entity's
+"""Records: what an entity's
 field outcomes become.
 
 `data` holds the published values and nothing else; `field_meta` says, for every schema field, how it resolved. A
@@ -8,7 +8,7 @@ record. Either way a record needs the page to state its entity: a page none of w
 has a candidate read from it, beyond the page's own address, is `no_match` with no record (`states_entity`), unless
 its content is unreadable to the engine (`content.signals.UNREADABLE`): an extraction miss is `partial`, never
 `no_match`. A listing's rows are records each, judged the same way (`assemble_listing`). Records only serialize what
-resolution published (INV-27).
+resolution published.
 """
 
 from collections.abc import Mapping, Sequence
@@ -43,7 +43,7 @@ def _absent(value: object) -> bool:
 
 
 class SubFieldMeta(_Model):
-    """A row sub-field's outcome without its candidates (variants spec, INV-34)."""
+    """A row sub-field's outcome without its candidates."""
 
     status: FieldStatus
     reason: str | None
@@ -52,7 +52,7 @@ class SubFieldMeta(_Model):
     calibrated: bool
     source_kind: SourceKind | None
     locator: LocatorText | None
-    # A published money value's weaker currency evidence (`page`, `locale`, `unknown`: resolution spec); left out
+    # A published money value's weaker currency evidence (`page`, `locale`, `unknown`); left out
     # when the value states its currency.
     basis: Basis | None = Field(default=None, exclude_if=_absent)
 
@@ -62,21 +62,21 @@ class SubFieldMeta(_Model):
 
 
 class RowMeta(_Model):
-    """A published row's sub-field outcomes, aligned with the field's value by index (variants spec)."""
+    """A published row's sub-field outcomes, aligned with the field's value by index."""
 
     fields: dict[str, SubFieldMeta]
 
 
 class DroppedRowMeta(_Model):
-    """A row that did not publish: its row entities' locators and the reason (variants spec)."""
+    """A row that did not publish: its row entities' locators and the reason."""
 
     locators: list[LocatorText]
     reason: str
 
 
 class FieldMeta(SubFieldMeta):
-    """`record.field_meta[field]` (§6): the field's outcome without its candidates. A row-mapped field adds `items` and
-    `dropped` (variants spec); other fields have neither key, so the shape is additive."""
+    """`record.field_meta[field]`: the field's outcome without its candidates. A row-mapped field adds `items` and
+    `dropped`; other fields have neither key, so the shape is additive."""
 
     derived_by: Derivation | None
     items: list[RowMeta] | None = Field(default=None, exclude_if=_absent)
@@ -95,7 +95,7 @@ class FieldMeta(SubFieldMeta):
 
 class FieldChange(_Model):
     """A field whose published value differs from the entity's previous record: both values as published, None for a
-    side that published none (INV-27)."""
+    side that published none."""
 
     field: str
     previous: JsonValue
@@ -107,7 +107,7 @@ type DeltaKind = RecordDelta
 
 
 class Delta(_Model):
-    """What a job's record is against the entity's previous record under the same schema (jobs spec, "Page delta"):
+    """What a job's record is against the entity's previous record under the same schema:
     `new`, `changed` with its changed fields in schema order, or `same`."""
 
     kind: DeltaKind
@@ -140,7 +140,7 @@ class RecordDraft(RecordContent):
 
 
 def entity_key(site_id: SiteId, canonical_url: str) -> str:
-    """`sha256(site_id + canonical url)` (§4.10), hex: the entity's identity across runs of one site. A UUID has one
+    """`sha256(site_id + canonical url)`, hex: the entity's identity across runs of one site. A UUID has one
     length, so the concatenation is unambiguous."""
     return sha256_hex(f"{site_id}{canonical_url}".encode())
 
@@ -182,7 +182,7 @@ def assemble(
     caller_supplied: bool,
     unreadable: bool,
 ) -> tuple[PageOutcome, RecordDraft | None]:
-    """The page's outcome and its record, if it gets one (§4.10). `canonical_url` is the target's canonicalized URL;
+    """The page's outcome and its record, if it gets one. `canonical_url` is the target's canonicalized URL;
     `caller_supplied` is true for `scrape`, `batch_scrape` and `extract` URLs, false for crawl-discovered ones;
     `unreadable` is true for a page whose content the engine cannot read (`content.signals.unreadable`), which states
     its entity where the engine sees nothing of it."""
@@ -224,7 +224,7 @@ def assemble_listing(
     page_url: str,
     caller_supplied: bool,
 ) -> tuple[PageOutcome, tuple[RecordDraft, ...]]:
-    """A listing's outcome and its records (§4.10): one per row, holding the row's fields and the page's, keyed by
+    """A listing's outcome and its records: one per row, holding the row's fields and the page's, keyed by
     the row's URL (`_row_key`); a URL listed twice is one record, the first. Each row keeps or loses its record as a
     detail page does. `extracted` when every row is complete, `no_match` when no record is kept (or there is no row),
     else `partial`."""

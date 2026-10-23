@@ -1,4 +1,4 @@
-"""The number normalizer (normalization spec): a decimal number as the page states it, such as a rating value, from a
+"""The number normalizer: a decimal number as the page states it, such as a rating value, from a
 JSON number or the one number a text holds, read by the CLDR number symbols of the page's locales. The value is the
 decimal in fixed-point notation with its digits as written. A text with no number, two numbers or a sign that may be
 a dash declines (C7)."""

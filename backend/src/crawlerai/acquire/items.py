@@ -1,4 +1,4 @@
-"""The repeated item structure of a page, as the document's structure shows it (C2, C4; item layer, owner #67): the
+"""The repeated item structure of a page, as the document's structure shows it (C2, C4, item layer): the
 groups of sibling blocks a listing shows its items in. This is the structural walk only; which group is the page's
 items is the segment step's (`content.segment`). Acquisition reads the walk before any page is parsed: its shell rule
 (`acquire.classify`) and the browser rung's item geometry (`acquire.browser_capture`).
@@ -6,7 +6,7 @@ items is the segment step's (`content.segment`). Acquisition reads the walk befo
 Items are at least `MIN_ITEMS` sibling elements of one shape that each are or hold a hyperlink (HTML Standard §4.6).
 One template renders them all, so siblings of one tag share the class tokens the template writes; a template may add a
 token of an item's own (its position, a state), so a shape is the tag and the tokens most of those siblings carry, not
-the whole class list. They are looked for in the page's content: its main landmark (§4.4.14), else its body, without
+the whole class list. They are looked for in the page's content: its main landmark, else its body, without
 the site's chrome.
 
 A list split into sections (a job board's teams, a grid's rows: each section a label and then its items) renders each
@@ -35,10 +35,10 @@ from selectolax import lexbor
 # A listing shows at least this many items; resolution takes as many top-level entities for a listing's rows
 # (`resolve.listing.MIN_TOP_LEVEL_ROWS`): fewer is what a detail page's related items look like.
 MIN_ITEMS: Final = 3
-# A site's chrome, not its content: the HTML Standard's navigation, header, footer and aside elements (§4.3, §4.4)
-# and its `search` element, the WAI-ARIA 1.2 landmark roles they map to (§5.3.4; `search` is "a collection of items
-# and objects that, as a whole, combine to create a search facility": its filters and facets, not its results), and
-# its `menubar` and `menu` roles (§5.3.2, composite widgets "offering a list of choices to the user"): a menu is the
+# A site's chrome, not its content: the HTML Standard's navigation, header, footer and aside elements
+# and its `search` element, the WAI-ARIA 1.2 landmark roles they map to (`search` is "a collection of items and objects
+# that, as a whole, combine to create a search facility": its filters and facets, not its results), and
+# its `menubar` and `menu` roles (composite widgets "offering a list of choices to the user"): a menu is the
 # site's navigation, not a list of the page's items.
 _CHROME_TAGS: Final = frozenset({"nav", "header", "footer", "aside", "search"})
 _CHROME_ROLES: Final = frozenset({"navigation", "banner", "contentinfo", "complementary", "search", "menubar", "menu"})
@@ -63,11 +63,11 @@ def lxml_root(text: str) -> HtmlElement:
 
 
 def lxml_of(tree: lexbor.LexborHTMLParser) -> HtmlElement:
-    """The lxml copy of a document's HTML Standard parse (§13.2, lexbor's tree): the same elements, attributes, text
+    """The lxml copy of a document's HTML Standard parse (lexbor's tree): the same elements, attributes, text
     and comments, in the same places. libxml2's own HTML parser repairs malformed markup by other rules (a hyperlink
     inside a hyperlink, a `p` around a `div`), so its tree and the cleaned text's (`content.text`), keyed by the
     lexbor tree's paths, would locate the same element at different paths. A template's contents are a separate
-    document fragment (§4.12.3), not its children. Characters XML refuses (NUL, C0 controls) are left out of the
+    document fragment, not its children. Characters XML refuses (NUL, C0 controls) are left out of the
     copy's strings; a name lxml refuses (none the tokenizer produces but white space) leaves its element or attribute
     out."""
     root = tree.root

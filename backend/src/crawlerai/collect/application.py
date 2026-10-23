@@ -1,4 +1,4 @@
-"""Whether a job page holds its own application (resolution spec, "Derived values"; owner decision 2026-10-22): where a
+"""Whether a job page holds its own application: where a
 candidate applies on the page itself, the page is the posting's apply link.
 
 The page says so in its markup only: an HTML form that asks for an applicant's documents and contact
@@ -34,10 +34,9 @@ def holds_application(page: ParsedPage, final_url: str) -> bool:
 
 
 def _application_form(page: ParsedPage, form: LexborNode) -> bool:
-    """A form (HTML Standard §4.10.3) one of whose controls uploads a file (§4.10.5.1.18, the File Upload state: the
-    applicant's documents) and another asks for the person's name or contact (`_CONTACT_AUTOFILL`, `_CONTACT_TYPES`).
-    A form's controls are its descendants and the controls naming it by their `form` attribute (§4.10.17.3, form
-    owner)."""
+    """A form (HTML Standard §4.10.3) one of whose controls uploads a file (the File Upload state: the applicant's
+    documents) and another asks for the person's name or contact (`_CONTACT_AUTOFILL`, `_CONTACT_TYPES`).
+    A form's controls are its descendants and the controls naming it by their `form` attribute (form owner)."""
     form_id = form.attributes.get("id")
     # A descendant naming another form by its `form` attribute is that form's.
     controls = [c for c in form.css(_CONTROLS) if c.attributes.get("form") in (None, form_id)]
@@ -45,8 +44,8 @@ def _application_form(page: ParsedPage, form: LexborNode) -> bool:
         controls += [
             c for c in page.tree.css(_CONTROLS) if c.attributes.get("form") == form_id
         ]  # a descendant twice is one control
-    # The `type` attribute is an enumerated attribute (ASCII case-insensitive, §2.3.3); `autocomplete`, a list of
-    # tokens whose last names the field (§4.10.18.7.1).
+    # The `type` attribute is an enumerated attribute (ASCII case-insensitive); `autocomplete`, a list of
+    # tokens whose last names the field.
     types = {(c.attributes.get("type") or "").strip().lower() for c in controls if c.tag == "input"}
     autofill = {((c.attributes.get("autocomplete") or "").lower().split() or [""])[-1] for c in controls}
     return "file" in types and bool(types & _CONTACT_TYPES or autofill & _CONTACT_AUTOFILL)

@@ -1,10 +1,10 @@
 """What the handlers of page tasks (`batch_scrape`, `extract`, `crawl`) do the same way before the page's run
-(`page_run`): the task's job, and the records the task extracts with as the job pinned them (INV-28); fetching
+(`page_run`): the task's job, and the records the task extracts with as the job pinned them; fetching
 its page politely, or reading its stored capture (`fetch.cache`, as a scrape does); and counting its fetches as the
 job's usage.
 
-A listing whose records the job reads, on a site whose pinned config has a listing recipe (one with pagination,
-Appendix A #59), is served by the recipe page after page (`RecipeRung.pages`) up to the job's page bound
+A listing whose records the job reads, on a site whose pinned config has a listing recipe (one with pagination), is
+served by the recipe page after page (`RecipeRung.pages`) up to the job's page bound
 (`listing_pages`); the first page is the task's capture and record, and each further page is stored under the task as a
 listing's further kept state is (`store_further`). When the recipe does not serve the first page, the page
 is fetched by the rungs as any page is.
@@ -13,7 +13,7 @@ The task's page is fetched before the worker's transaction for the task opens (`
 robots.txt, its adapter declines and what the fetch taught its memory (`acquire.memory`) are each read or written in a
 short transaction of their own, so no task holds a site's rows while it fetches or extracts, and the tasks of one site
 run side by side. The page's run (`page_run`: its capture, extraction and records) writes in the worker's transaction
-for the task, so a task that raises rolls back alone (INV-31); site memory only is learned beside it. The task's fetch
+for the task, so a task that raises rolls back alone; site memory only is learned beside it. The task's fetch
 attempts are counted as the job's usage at its end (`count_fetch`): that write locks the job's row until the task
 commits.
 """
@@ -79,11 +79,10 @@ log = logging.getLogger(__name__)
 # turn at most `QUEUED.bound` (half the lease), so the last one ends inside the lease, its timeout and the extraction
 # after it included, and no other worker claims the task and sends its requests again.
 RECIPE_PAGES_SHARE: Final = LEASE / 4
-# The `last_error` of a records task in a worker that has not loaded the engine's data files (D-0492).
+# The `last_error` of a records task in a worker that has not loaded the engine's data files.
 RECORDS_UNAVAILABLE: Final = "records_unavailable"
 # A page a 429 kept out (RFC 6585 §4) is fetched at most this many times: one retry after the back-off, from the
-# pool's next address, then `blocked`; once its fetch went on to the browser (owner decision 2026-10-23,
-# `acquire.rungs`), at once.
+# pool's next address, then `blocked`; once its fetch went on to the browser (`acquire.rungs`), at once.
 _TOO_MANY_TRIES: Final = 2
 
 # The request's `min_confidence`, as the job row stores it.
@@ -95,7 +94,7 @@ async def load_job(
     conn: AsyncConnection, task: ClaimedTask, data: EngineData | None, margins: DriftMargins | None
 ) -> tuple[dict[str, object], Records | None] | Failed:
     """The task's job request, and what the task extracts records with from the job's schema and pins (`JobPins`):
-    None for a job without records. The pinned config is read and bound once, whatever its status now (INV-28). A
+    None for a job without records. The pinned config is read and bound once, whatever its status now. A
     records task fails in a worker without the engine's data (`data` None)."""
     job: _JobRow = (
         await conn.execute(select(Job.request, Job.schema_id, Job.pinned).where(Job.id == task.job_id))
@@ -119,8 +118,8 @@ async def load_job(
 
 async def _with_drafted_labels(conn: AsyncConnection, schema_id: SchemaId, pinned: SchemaDef) -> SchemaDef:
     """The pinned schema, with the label synonyms stored since the job was submitted when it was pinned without: they
-    are drafted off the request path (`s_labels.with_labels`), and are no part of the document the job pins (schemas
-    spec, "Label synonyms"), so they apply while the row still holds that document."""
+    are drafted off the request path (`s_labels.with_labels`), and are no part of the document the job pins, so they
+    apply while the row still holds that document."""
     if pinned.labels is not None:
         return pinned
     stored = await registry.get_by_id(conn, schema_id)
@@ -154,11 +153,11 @@ async def fetch_page(
     """Fetch the task's page politely (`fetch_queued`: robots.txt over HTTP, the page through `acquire`), outside any
     transaction of the task, each read and write through `engine` in a short transaction of its own (module
     docstring), or the result the task ends this run with. Neither writes the job's usage. A request the SSRF
-    guard refused fails the task at once (INV-16): the task's URL is checked before anything, as the services that
+    guard refused fails the task at once: the task's URL is checked before anything, as the services that
     fetch while the caller waits check theirs (`check_target`), since a crawl's URLs were never checked at submit.
 
     With `served`, the records the task extracts with when they are all it reads of the page, the config they name
-    serves the page through its API recipe when it has one (adapters spec, `recipe_rung`). A listing's recipe with
+    serves the page through its API recipe when it has one (`recipe_rung`). A listing's recipe with
     pagination serves up to
     `listing_pages` pages of it (module docstring).
 
@@ -231,7 +230,7 @@ def _plan(served: Records | None, listing_pages: int, plan: PagePlan) -> PagePla
 
 async def _learned(engine: AsyncEngine, plan: PagePlan, fetched: FetchResult | TaskResult) -> Page | Ended:
     """The fetched page, with what its fetch taught remembered on its site (`acquire.memory.learn_fetch`), or how the
-    task ends: a refused request, a listing recipe's further page's too, fails it (INV-16)."""
+    task ends: a refused request, a listing recipe's further page's too, fails it."""
     site, attempts, pool = plan.site, tuple(plan.attempts), plan.policy.proxy_pool
     if isinstance(fetched, FetchResult):
         further_refused = None if plan.pages is None else plan.pages.refused
@@ -254,14 +253,14 @@ async def fetch_queued(
 ) -> FetchResult | TaskResult:
     """The task's page through the polite fetch (`polite_fetch`, `QUEUED`), or the result the task ends this run with:
     - a robots.txt disallow: `blocked`, reason `robots`, without fetching the page; or, `by_adapter` (an active adapter
-      serves the URL first, adapters spec, from an API whose own robots.txt its requests go by), its answer when it is
+      serves the URL first, from an API whose own robots.txt its requests go by), its answer when it is
       `ok`, else `blocked`, reason `robots`, with no fallback to the page rungs admitted;
     - robots.txt unreachable: a transient failure, `blocked` once attempts run out (RFC 9309 §2.3.1.4: unreachable
       allows nothing);
     - the site not admitted yet, or the host's turn for a further request further off than the worker waits:
       postponed until it is, or `blocked`;
     - a 429 or 503 to any request of the fetch, unless the outcome kept is `ok` (the page an adapter's endpoint fell
-      back to, adapters spec): a transient failure, retried after the back-off (`politeness.backoff`), `blocked` once
+      back to): a transient failure, retried after the back-off (`politeness.backoff`), `blocked` once
       attempts run out (a 429's after one retry, or as soon as the fetch tried it in the browser), and at once when
       the server asks for more than the longest backoff.
     The task is logged as running once the site admits its fetch: a postponed task did not run."""
@@ -314,5 +313,5 @@ def _rendered_after(slowed: AttemptRecord, attempts: tuple[AttemptRecord, ...]) 
 async def count_fetch(conn: AsyncConnection, task: ClaimedTask, page: Page | Ended) -> None:
     """Count the task's fetch attempts as the job's usage. A handler counts them at the task's end, as its last write
     but the frontier's: the job's row stays locked from this write until the task commits, and role C's client, which
-    updates the job's usage on a connection of its own, would wait on it (D-0346), as would a cancel."""
+    updates the job's usage on a connection of its own, would wait on it, as would a cancel."""
     await record_fetch_usage(conn, task.job_id, page.attempts, page.proxy_pool)

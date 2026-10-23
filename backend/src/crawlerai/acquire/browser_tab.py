@@ -1,9 +1,9 @@
-"""A listing's browser actions on the browser rung (owner #52): the rendered page as a `Tab` that a
+"""A listing's browser actions on the browser rung: the rendered page as a `Tab` that a
 paging driver reads and acts on, and the document states it keeps, each a fetch result of its own.
 
 The page is opened, navigated, settled and read exactly as `fetch_browser` does it (`browser.rendered`,
 `browser.Render`), in the process's shared browser session, so the launch, the profile and the identity the page sees
-are the same (INV-42 to INV-44), and the render ends as a page's does (`Render.finish`). Everything the tab reads or
+are the same, and the render ends as a page's does (`Render.finish`). Everything the tab reads or
 does runs in Patchright's isolated world, which shares the document but not the page's globals, and it writes nothing
 into the page's DOM: elements are named by element-index XPath paths into the serialized document (`/*[1]/*[2]`), which
 the driver computes from its own parse. Nothing is typed and no form is filled; a click is a pointer click on an element
@@ -279,7 +279,7 @@ class _PatchrightTab:
         return tuple(body for body in found if body is not None)
 
     def _within_cap(self, body: tuple[NetworkBody, bytes] | None) -> tuple[NetworkBody, bytes] | None:
-        """`body`, unless the bodies held with it would pass the page's cap (INV-30, `JSON_PAGE_MAX_BYTES`), which
+        """`body`, unless the bodies held with it would pass the page's cap (`JSON_PAGE_MAX_BYTES`), which
         `json_bodies` applies within one read only: each response is read on its own here."""
         if body is None:
             return None
@@ -356,7 +356,7 @@ async def _listing(
             async with asyncio.timeout(policy.browser_timeout_s + steps_budget_s(policy.steps)):
                 page = await stack.enter_async_context(rendered(url, policy, session, connector, run, sessions))
                 landed = page.page.url
-                await run.read(page)  # the caller's steps first (D-1513), then the paging driver reads the page
+                await run.read(page)  # the caller's steps first, then the paging driver reads the page
             if run.block_class != "ok":
                 return None
             tab = _PatchrightTab(

@@ -1,4 +1,4 @@
-"""Role C value checks (llm spec, "Role C value checks"): whether a grounded span is the field's own fact.
+"""Role C value checks: whether a grounded span is the field's own fact.
 
 Grounding (`llm.grounding`) finds where the page states a claimed value; these checks read what the page says that
 text is, from the page's own structure, never from words listed in code (C4):

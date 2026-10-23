@@ -1,5 +1,5 @@
-"""What a fetch teaches the acquisition contract (`acquire.memory.lesson`, acquisition spec "Acquisition contract and
-block history"), over every combination of the HTTP evidence, the challenge it named and whether the browser's cookies
+"""What a fetch teaches the acquisition contract (`acquire.memory.lesson`), over every combination of the HTTP evidence,
+the challenge it named and whether the browser's cookies
 went on to HTTP; and what the contract holds (`site_contract`). The rows themselves are grounded at runtime.
 """
 
@@ -70,7 +70,6 @@ def test_a_contract_is_taught_only_by_an_auto_fetch_that_tried_http_and_a_handof
 
 
 def test_the_contract_is_method_engine_handoff_and_coverage() -> None:
-    # Its key and bookkeeping aside; the platform is the site's, `site.platform` (acquisition spec, "Acquisition
-    # contract and block history").
+    # Its key and bookkeeping aside; the platform is the site's, `site.platform`.
     bookkeeping = {"site_id", "page_kind", "failures", "checked_at"}
     assert set(SiteContract.__table__.columns.keys()) - bookkeeping == {"method", "engine", "handoff", "coverage"}

@@ -1,10 +1,10 @@
-"""The normalization context of a captured page (schemas spec): what the page states about its
+"""The normalization context of a captured page: what the page states about its
 language and URLs, and when it was fetched.
 
 Only evidence the page or the request states is read (C7): `<html lang>`, `og:locale`, the `hreflang` of the alternate
 links to the page itself, the Content-Language the response and the page declare, the document base URL and the final
 URL. `cctld_territory` is left empty, so a number or date that needs it declines rather than guesses; the money rules
-alone read the ccTLD, to narrow a shared currency sign (normalization spec). `page_currencies`, `declared_currencies`
+alone read the ccTLD, to narrow a shared currency sign. `page_currencies`, `declared_currencies`
 and `state_currencies` come from the page, which `collect.currencies` reads (this module sits below the collectors).
 """
 
@@ -46,7 +46,7 @@ def hreflang(page: ParsedPage, final_url: str) -> tuple[str, ...]:
     """The languages the page itself states it is in through `hreflang`: HTML Living Standard §4.6.2 and §4.6.7.1, the
     `hreflang` of a `link` whose `rel` has `alternate` names the language of the document that link points to. Only a
     link to the page itself (its final URL or its canonical link, RFC 6596), resolved against the document base URL,
-    states this page's language; the others name the languages of other pages (D-1482). Each once, in document order."""
+    states this page's language; the others name the languages of other pages. Each once, in document order."""
     own = {url for url in (canonical_url(final_url, None), canonical_link(page, final_url)) if url is not None}
     return tuple(dict.fromkeys(language for language, url in language_alternates(page, final_url) if url in own))
 

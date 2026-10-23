@@ -1,4 +1,4 @@
-"""A job page that holds its own application (resolution spec, "Derived values"): an application form in its markup or a
+"""A job page that holds its own application: an application form in its markup or a
 platform's documented embed of one, never words on the page. The embed's names come from the adapter module (C3)."""
 
 import pytest

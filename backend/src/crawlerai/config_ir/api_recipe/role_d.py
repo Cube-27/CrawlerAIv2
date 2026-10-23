@@ -1,16 +1,16 @@
-"""Role D: API-recipe binding (adapters spec), when deterministic binding is ambiguous.
+"""Role D: API-recipe binding, when deterministic binding is ambiguous.
 
 The model reads, per sample page, the page URL, the endpoint request the browser made for it (method, URL, header names
 only, body) and the key paths of the page's JSON documents, never their values or the page text. It replies with the
 request half of a recipe (method, URL template, parameter binders, body template), never code and never values; the
-recipe model parses it. The rest of the recipe is not the model's: header minimization (§4.6) proves the headers by
+recipe model parses it. The rest of the recipe is not the model's: header minimization proves the headers by
 replay, the map is discovery's, and the reply has no pagination, which deterministic binding does not write either.
 
 A spec is accepted only by replay. It must first reproduce the captured endpoint request of every sample page exactly
 (`binding.mismatch`); so nothing is fetched for a URL the browser did not request, and every fetch goes through
-`fetch_json`'s SSRF guard (INV-16). Then header minimization replays it, and its answers must reproduce the published
+`fetch_json`'s SSRF guard. Then header minimization replays it, and its answers must reproduce the published
 values. A spec that does not reproduce the requests gets one repair round with the diagnostics; after that the site has
-no recipe and stays on the browser rung. Model output is data, never executed (INV-17). An LLM failure
+no recipe and stays on the browser rung. Model output is data, never executed. An LLM failure
 (`LLMFailure`: budget, unavailable, refused or invalid output) propagates to the learning job, as role A's does.
 """
 
@@ -35,7 +35,7 @@ from crawlerai.schemas.types import SchemaDef
 _PROMPTS = files("crawlerai.llm").joinpath("prompts")
 SYSTEM: Final = _PROMPTS.joinpath("d_bind.txt").read_text(encoding="utf-8")
 REPAIR_SYSTEM: Final = SYSTEM + _PROMPTS.joinpath("d_repair.txt").read_text(encoding="utf-8")
-# llm spec names one prompt kind for role D; the repair round is the same role and is told apart by its prompt.
+# One prompt kind serves role D; the repair round is the same role and is told apart by its prompt.
 KIND: Final[PromptKind] = "d_bind"
 
 # §4.5: one repair round after the first reply.
@@ -75,7 +75,7 @@ async def bind_by_role_d(
     pagination: Pagination | None = None,
 ) -> Proven | NotLearnable | Rejected:
     """The request spec role D writes for the sample `pages` that deterministic binding left `ambiguous`, with the
-    headers its replay proved (§4.6) to reproduce the `fields` map; `NotLearnable` when the replay fails with every
+    headers its replay proved to reproduce the `fields` map; `NotLearnable` when the replay fails with every
     header a recipe may keep, `Rejected` when no spec reproduced the captured requests. A listing's `pagination`, which
     learning inferred, joins the spec: the model is told where it sets the page, and writes that value as captured."""
     samples = [page.sample for page in pages]
@@ -172,7 +172,7 @@ def _sample_block(n: int, sample: Sample) -> str:
 
 
 def _key_lines(sample: Sample) -> Iterator[str]:
-    """One line per JSON document of the page with the paths of its scalars, never their values (§4.5)."""
+    """One line per JSON document of the page with the paths of its scalars, never their values."""
     if not sample.page_data:
         yield "(none)"
     for kind, document in sample.page_data.items():

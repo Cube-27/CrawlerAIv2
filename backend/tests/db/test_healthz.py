@@ -1,4 +1,4 @@
-"""`GET /healthz` pings the database and reports the LLM setup check (rest-api spec). The unreachable case is in
+"""`GET /healthz` pings the database and reports the LLM setup check. The unreachable case is in
 `tests/unit/test_api_problems.py`."""
 
 import httpx

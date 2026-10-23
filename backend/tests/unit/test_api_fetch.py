@@ -1,4 +1,4 @@
-"""JSON fetch (acquisition spec; D-1320, D-1322): the HTTP rung's client, manual redirects through the SSRF
+"""JSON fetch: the HTTP rung's client, manual redirects through the SSRF
 guard, the request a page's own `fetch()` would send, caps, the outcome and the manifest.
 
 The guard, redirect and cookie rules run against a stand-in network (`tests.stand_in`) with a stub resolver; no DNS.
@@ -101,13 +101,13 @@ def test_a_private_first_url_is_rejected_before_any_request() -> None:
     assert seen == []
 
 
-# --- the request a page's `fetch()` sends (D-1322) -------------------------------------------------------------------
+# --- the request a page's `fetch()` sends -------------------------------------------------------------------
 
 
-# --- challenge labels (D-1326) ---------------------------------------------------------------------------------------
+# --- challenge labels ---------------------------------------------------------------------------------------
 
 
-# --- INV-29: cookies stay inside one fetch -----------------------------------------------------------------------
+# --- cookies stay inside one fetch -----------------------------------------------------------------------
 
 
 # --- the network: a local server ---------------------------------------------------------------------------------

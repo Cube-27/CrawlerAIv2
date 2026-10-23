@@ -1,4 +1,4 @@
-"""`store_capture` (acquisition spec): the bundle goes to the object store under the production key, and a `capture`
+"""`store_capture`: the bundle goes to the object store under the production key, and a `capture`
 row describes it."""
 
 from datetime import UTC, datetime

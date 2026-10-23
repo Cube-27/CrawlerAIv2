@@ -1,11 +1,11 @@
-"""Block classification from HTTP status and document structure only (acquisition spec, INV-24).
+"""Block classification from HTTP status and document structure only.
 
 Every rule reads the body as text, decoded once at acquisition by HTML encoding sniffing
 (`storage.capture_bundle.decode_html`): a parser handed the raw bytes of a page in a legacy encoding would read its
 attributes as UTF-8 and fail on them.
 
 This module compares no body text with a string: vendor strings are site data (C3/C4), so a vendor's stand-in marker on
-a 200 page is read in `acquire.challenge` from the adapter package's signature data, the one exception to INV-24's
+a 200 page is read in `acquire.challenge` from the adapter package's signature data, the one exception to the
 structure-only rule. Other challenge pages served with 200 mostly present as shells and get a browser retry. An error or
 challenge page served with 200 that has text enough not to be a shell is told by its shape instead: it links nowhere. A
 site's pages are connected by hyperlinks (HTML Standard §4.6), so a page without one, whatever scripts, images or forms
@@ -88,7 +88,7 @@ _INVISIBLE = ["script", "style", "noscript", "template"]
 # HTML media types (HTML Standard §16.1 text/html; RFC 3236 application/xhtml+xml). A response without a declared
 # type is treated as HTML, as browsers sniff it (WHATWG MIME Sniffing §7).
 _HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
-# Shell thresholds: unmeasured starting points, to be confirmed on dev (acquisition spec, D-0008).
+# Shell thresholds: unmeasured starting points, to be confirmed on dev.
 _SHELL_MAX_TEXT_CHARS = 200
 _SHELL_MAX_LINKS = 5
 # A document carries its content unrendered when its scripts and concealed subtrees hold at least an order of magnitude
@@ -102,7 +102,7 @@ _DISPLAY_NONE = re.compile(r"(?:^|;)\s*display\s*:\s*none\s*(?:!\s*important\s*)
 _CONCEALED = "[hidden], [style]"
 # HTML Standard §4.6.1: `a` and `area` elements with an `href` are hyperlinks.
 _HYPERLINKS = "a[href], area[href]"
-# Structured data a listing's rows are read from without its grid (extraction spec): as many microdata items (HTML
+# Structured data a listing's rows are read from without its grid: as many microdata items (HTML
 # Standard §5.2) as a grid's items (`MIN_ITEMS`), or a schema.org ItemList in a JSON-LD script data block (W3C JSON-LD
 # 1.1 §7.3) whose media type, before parameters and in any case (RFC 9110 §8.3.1), is `_JSON_LD`.
 # Top-level microdata items (HTML Standard §5.2.2): an item that is no property of another (a breadcrumb's entries,
@@ -133,7 +133,7 @@ class Redirect(NamedTuple):
 
 
 _TYPE = "@type"  # JSON-LD 1.1 §3.5: a node's type, a string or an array of them
-# D-1206: a refusal a page's own script may lift: 403 (RFC 9110 §15.5.4), 429 (RFC 6585 §4), 503 (RFC 9110 §15.6.4);
+# a refusal a page's own script may lift: 403 (RFC 9110 §15.5.4), 429 (RFC 6585 §4), 503 (RFC 9110 §15.6.4);
 # not 401/407, which ask for credentials (RFC 9110 §11.6), nor 451, a legal refusal (RFC 7725).
 INTERSTITIAL_STATUS = frozenset({403, 429, 503})
 # HTML Standard §4.2.5.3: the `refresh` pragma (`meta http-equiv`, an ASCII case-insensitive keyword), and §7.11.1:
@@ -142,7 +142,7 @@ _REFRESH = "refresh"
 # RFC 9110 §4.2: the URI schemes of resources served over HTTP, which a site's pages are.
 _WEB_SCHEMES = ("http", "https")
 # HTML Standard §4.12.1: `script` elements; script is the only other way a document navigates itself (the `Location`
-# interface, §7.2.4, or a form it submits, §4.10.21).
+# interface, or a form it submits).
 _SCRIPT = "script"
 
 
@@ -344,7 +344,7 @@ def _moved(redirect: Redirect, *, described: bool, lists: Callable[[], bool]) ->
 
 def _returns_to(asked: SplitResult, answered: SplitResult) -> bool:
     """Whether the page a redirect led to carries the asked page's path in its query (RFC 3986 §3.4), as given or
-    base64-encoded (RFC 4648 §4, §5): an interstitial, a check or a sign-in, that sends the client back once passed."""
+    base64-encoded (RFC 4648 §4): an interstitial, a check or a sign-in, that sends the client back once passed."""
     path = asked.path.rstrip("/")
     if not path:
         return False
@@ -385,7 +385,7 @@ def _rest(url: SplitResult) -> str:
 
 
 def interstitial(status: int, headers: HeaderList, text: str, url: str, *, rendered: bool = False) -> bool:
-    """Whether a document at `url` stands in for the page until it navigates on (D-1206, D-1262): it can navigate
+    """Whether a document at `url` stands in for the page until it navigates on: it can navigate
     itself (a refresh, or a script), and either its status is a refusal a page's own script may lift
     (`INTERSTITIAL_STATUS`) and it is no page of the site by structure (it declares a refresh, it is a shell or links
     nowhere, the rules `classify` applies to a 2xx page, or no hyperlink leads to another page of its own host), or,
@@ -412,7 +412,7 @@ def _refreshes(tree: LexborHTMLParser, headers: HeaderList) -> bool:
 
 def _links_to_web(tree: LexborHTMLParser) -> bool:
     """Whether a hyperlink leads to a web page: a relative reference, or an absolute one whose scheme is http or https
-    (RFC 3986 §4.2, §3.1, the scheme compared case-insensitively). A `mailto:` or `tel:` link starts a message or a
+    (RFC 3986 §4.2, the scheme compared case-insensitively). A `mailto:` or `tel:` link starts a message or a
     call, not a page of any site."""
     for link in tree.css(_HYPERLINKS):
         try:
@@ -432,7 +432,7 @@ def _offers_no_web_page(tree: LexborHTMLParser) -> bool:
 
 def _links_within(tree: LexborHTMLParser, url: str) -> bool:
     """Whether a hyperlink leads to another page of `url`'s host (RFC 3986 §5 reference resolution, the host compared
-    case-insensitively, §6.2.2.1): a site's pages link to each other (HTML Standard §4.6), a page standing in for one
+    case-insensitively): a site's pages link to each other (HTML Standard §4.6), a page standing in for one
     links nowhere on the site, or only to itself."""
     here = urlsplit(url)
     for link in tree.css(_HYPERLINKS):
@@ -560,6 +560,6 @@ def lists_items(text: str, base: str | None) -> bool:
 
 def _documents(anchor: HtmlElement, base: str | None) -> list[str]:
     """The document a hyperlink leads to, resolved against `base`, the URL that served the page (RFC 3986 §5), without
-    its fragment, which names a part of the document (§3.5); none for a reference that `base` cannot resolve."""
+    its fragment, which names a part of the document; none for a reference that `base` cannot resolve."""
     url = urldefrag(urljoin(base or "", (anchor.get("href") or "").strip())).url
     return [url] if urlsplit(url).scheme in _WEB_SCHEMES else []

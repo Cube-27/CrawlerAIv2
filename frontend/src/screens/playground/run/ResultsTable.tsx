@@ -118,7 +118,7 @@ function PagesTable({
   );
 }
 
-/** The page output at `offset` in a read of `format=json`, once it holds page outputs (jobs spec); undefined
+/** The page output at `offset` in a read of `format=json`, once it holds page outputs; undefined
  * until then, so the drawer keeps showing the item. */
 function pageOutput(
   results: ReturnType<typeof useJobResults>["data"],
@@ -129,8 +129,8 @@ function pageOutput(
 
 /** The drawer of one page, mounted only while it is open, so that what it reads is read only then. A job without a
  * schema (`outputs`) shows the page's outputs, read from `format=json` at the same cursor as the table's page, whose
- * pages hold the same tasks in the same order (jobs spec); any other shows the item's records. How the page was
- * fetched is on the page output, or on `json_values` asked for it (D-1392). `offset` is the row's index in the page. */
+ * pages hold the same tasks in the same order; any other shows the item's records. How the page was
+ * fetched is on the page output, or on `json_values` asked for it. `offset` is the row's index in the page. */
 function PageDrawer({
   jobId,
   page,
@@ -167,10 +167,10 @@ function PageDrawer({
   );
 }
 
-/** A batch's or crawl's pages (frontend spec), one row each in task order, from `results?format=json_values`; each
+/** A batch's or crawl's pages, one row each in task order, from `results?format=json_values`; each
  * row's JSON and fetch open in a drawer (`PageDrawer`). The job's events read the page shown again as tasks end. With
  * `selectable` (a crawl's pages), rows are selected by URL across pages, and the selected URLs open as a batch
- * (frontend spec). */
+ */
 export function ResultsTable({
   jobId,
   withMetadata,

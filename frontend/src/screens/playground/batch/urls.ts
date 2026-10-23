@@ -1,6 +1,6 @@
 import { lines } from "../pageRequest";
 
-/** The URL list of the Batch command bar (frontend spec): one URL per line, filled by hand or from a CSV file. */
+/** The URL list of the Batch command bar: one URL per line, filled by hand or from a CSV file. */
 
 /** The first line of `list` that is not an absolute `http` or `https` URL (WHATWG URL Standard: it parses, with one
  * of the schemes the fetcher takes), with its line number from 1; null when every line is one. */
@@ -64,7 +64,7 @@ function readQuoted(reader: CsvReader, char: string, next: string): number {
   return 1;
 }
 
-/** One step outside quotes: a comma ends a field, a line break a record (RFC 4180 §2.1, §2.4). CRLF, LF and CR all
+/** One step outside quotes: a comma ends a field, a line break a record (RFC 4180 §2.1). CRLF, LF and CR all
  * end a record, as files saved on any system have them. */
 function readPlain(reader: CsvReader, char: string, next: string): number {
   if (char === '"') {

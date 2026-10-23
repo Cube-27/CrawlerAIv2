@@ -41,7 +41,7 @@ function api_recipe_request(string $page_url, array $params, array $context = []
     $query = [];
     $json = [];
     foreach ($params as $name => $value) {
-        // Percent-encoded as RFC 3986 allows in a path segment (§3.3) and a query value (§3.4).
+        // Percent-encoded as RFC 3986 allows in a path segment and a query value.
         $path['{' . $name . '}'] = strtr(rawurlencode($value), [{% for code, char in path_decode.items() %}{{ code|php_literal }} => {{ char|php_literal }}{% if not loop.last %}, {% endif %}{% endfor %}]);
         $query['{' . $name . '}'] = strtr(rawurlencode($value), [{% for code, char in query_decode.items() %}{{ code|php_literal }} => {{ char|php_literal }}{% if not loop.last %}, {% endif %}{% endfor %}]);
         // JSON string content (RFC 8259 §7).

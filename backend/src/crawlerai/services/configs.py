@@ -1,11 +1,11 @@
-"""The configs service (learning-configs spec): a site's configs, operator corrections, forced
+"""The configs service: a site's configs, operator corrections, forced
 learning and exports, over a connection.
 
 A correction is applied to the latest version of its (site, schema, page kind), so an edit never silently
 drops a version someone else added, and the result is always stored as the next version: validated on the site's
-held-out pages (§4.7) and active when validation keeps it, else a `draft` whose report says why not.
+held-out pages and active when validation keeps it, else a `draft` whose report says why not.
 
-An export (§4.11) carries the release check (§12.3) run on the pages the config was validated on
+An export carries the release check run on the pages the config was validated on
 (`provenance.validated_on`) that are still stored; a field with no engine value left on any of them is `manual`.
 """
 
@@ -143,7 +143,7 @@ async def correct(
     schema = await registry.get_by_id(conn, key.schema_id)
     ir = ExtractionConfigIR.model_validate(row["ir"])
     if ir.schema_.digest != document_digest(schema):
-        # A schema is edited in place (D-0950): this config's steps were learned for the document before the edit.
+        # A schema is edited in place: this config's steps were learned for the document before the edit.
         raise ConfigConflict(f"config {config_id} was learned for an earlier document of schema {schema.name}")
     corrected = corrections.correct(ir, schema, correction, engine_version=ENGINE_VERSION, at=datetime.now(UTC))
     # §4.4: the site's 8 most recent extracted pages; the operator wrote the steps from none of them.
@@ -154,13 +154,13 @@ async def correct(
 
 
 async def approve_config(conn: AsyncConnection, config_id: ExtractionConfigId) -> ConfigDetail:
-    """Approve the config `config_id`, waiting as `pending_approval` (D-1342): it becomes its site's active config for
+    """Approve the config `config_id`, waiting as `pending_approval`: it becomes its site's active config for
     its schema and page kind; the version active before is `suspended`."""
     return await _decide(conn, config_id, approve)
 
 
 async def reject_config(conn: AsyncConnection, config_id: ExtractionConfigId) -> ConfigDetail:
-    """Refuse the config `config_id`, waiting as `pending_approval` (D-1391): it is `suspended` and what served before
+    """Refuse the config `config_id`, waiting as `pending_approval`: it is `suspended` and what served before
     goes on serving."""
     return await _decide(conn, config_id, reject)
 

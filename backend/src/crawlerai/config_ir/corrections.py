@@ -1,10 +1,10 @@
-"""Operator corrections (learning-configs spec, C5): a site is fixed with data, through `PUT /v1/configs/{id}`, not with
+"""Operator corrections (C5): a site is fixed with data, through `PUT /v1/configs/{id}`, not with
 code.
 
 A correction replaces a field's steps, removes a field (`null`), or confirms a field's steps as they are. Every field
 it touches becomes `operator`; the others keep their steps and status. The result is a new `operator` config that has
 not been validated yet: the yields and validities of the version it came from are cleared, and the caller validates it
-on held-out pages (§4.7) before anything activates.
+on held-out pages before anything activates.
 """
 
 from collections.abc import Mapping
@@ -63,7 +63,7 @@ def correct(
     provenance = ir.provenance.model_copy(
         update={"origin": "operator", "validated_on": [], "learned_at": at, "engine_version": engine_version}
     )
-    # A field given steps is no longer absent (D-1341): the operator found where the site states it.
+    # A field given steps is no longer absent: the operator found where the site states it.
     absent = [name for name in ir.absent if correction.fields.get(name) is None]
     update = {"fields": _unmeasured(page), "listing": listing, "provenance": provenance, "absent": absent}
     corrected_ir = ir.model_copy(update=update)
@@ -73,7 +73,7 @@ def correct(
 
 
 def _is_row_field(schema: SchemaDef, name: str) -> bool:
-    """A row field of a listing schema (schemas spec `scope`)."""
+    """A row field of a listing schema (schema `scope`)."""
     return schema.page_kind == "listing" and schema.fields[name].scope == "row"
 
 

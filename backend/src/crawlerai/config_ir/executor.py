@@ -1,12 +1,12 @@
-"""The engine executor (learning-configs spec): runs an extraction config IR over a `ParsedPage` and
+"""The engine executor: runs an extraction config IR over a `ParsedPage` and
 proposes `source_kind='config'` candidates (`crawlerai.collect.config`).
 
 For each field the steps run in order, and the first value that passes its post ops and the field's normalizer is
 the candidate, with the locator `config:<field>:<step>:<selector>`. When no step gives a valid value, the first value
 that matched is still proposed with its decline, so resolution and drift see a match that is not valid. Steps read
-the page's parsed trees and script blocks (INV-26): `xpath`, `css` and `attr` the lxml tree, `regex` the body text,
+the page's parsed trees and script blocks: `xpath`, `css` and `attr` the lxml tree, `regex` the body text,
 `jsonld` the schema.org nodes of the JSON-LD blocks, `jsonpath` the JSON documents of its source. Selectors are data
-interpreted by lxml and our JSONPath reader, never code (INV-17).
+interpreted by lxml and our JSONPath reader, never code.
 """
 
 import math
@@ -136,7 +136,7 @@ def field_candidate(
     page: ParsedPage, schema: SchemaDef, ctx: Context, vocabulary: Vocabulary, name: str, steps: Sequence[Step]
 ) -> Candidate | None:
     """The candidate `EngineExecutor` proposes for the page-level field `name` when it has `steps`: how induction
-    (learning-configs spec) checks a selector by the very rules it will run under."""
+    checks a selector by the very rules it will run under."""
     run = _Run(page, schema, ctx, vocabulary)
     return run.first_value(name, steps, schema.fields[name], _Scope(page.lxml_tree, in_row=False), PAGE)
 
@@ -257,8 +257,7 @@ class _Run:
         return [_Scope(node, in_row=True) for node in found if isinstance(node, HtmlElement)]
 
     def json_rows(self, step: JsonPathStep) -> list[_Scope]:
-        """One row per JSON object the step selects in its source's documents (listings spec, "Rows from page
-        state")."""
+        """One row per JSON object the step selects in its source's documents."""
         try:
             found = [value for document in self.documents(step.source) for _, value in select(step.jsonpath, document)]
         except (ValueError, _Refused) as error:
@@ -318,7 +317,7 @@ def _evaluate(xpath: str, node: HtmlElement) -> _XPathResult:
 
 
 def _xpath_values(xpath: str, node: HtmlElement) -> list[Raw]:
-    """XPath 1.0 §1: a result is a node-set, a string, a number or a boolean. A node's value is its string-value (§5);
+    """XPath 1.0 §1: a result is a node-set, a string, a number or a boolean. A node's value is its string-value;
     an empty string or NaN is no match; a boolean is no value of any field type."""
     result = _evaluate(xpath, node)
     if isinstance(result, bool):
@@ -372,7 +371,7 @@ def documents(source: JsonSource, page: ParsedPage) -> list[JsonValue]:
         case "xhr":
             return [document.data for document in xhr.network_documents(page, [])]
         case "api":
-            raise _Refused("an api source is read through adapters spec's api recipe executor")
+            raise _Refused("an api source is read through the api recipe executor")
 
 
 def _select_all(query: str, documents: Sequence[JsonValue]) -> list[Raw]:
@@ -384,7 +383,7 @@ def _select_all(query: str, documents: Sequence[JsonValue]) -> list[Raw]:
 
 def _post(value: Raw, ops: Sequence[PostOp], spec: FieldSpec, ctx: Context) -> Raw | Invalid:
     """`value` through `ops` in order. A normalizer op checks that the value is valid for its type and passes it on
-    unchanged: the field's normalizer makes the candidate's value (schemas spec, C8)."""
+    unchanged: the field's normalizer makes the candidate's value (C8)."""
     for op in ops:
         result = _apply(op, value, spec, ctx)
         if isinstance(result, Invalid):

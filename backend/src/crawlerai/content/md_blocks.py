@@ -1,8 +1,8 @@
 """Markdown as blocks (CommonMark 0.31 §3, leaf blocks), for the formats that keep or split a page's markdown by block:
 `markdown_fit` (`fit`) and `chunks` (`chunks`).
 
-A block is an ATX heading (§4.2), a fenced code block (§4.5), a list item (§5.2, with its nested lines), or the
-paragraph-like lines between blank lines (§4.8, a GFM table too). Rendering joins the blocks again: consecutive list
+A block is an ATX heading, a fenced code block, a list item (with its nested lines), or the
+paragraph-like lines between blank lines (a GFM table too). Rendering joins the blocks again: consecutive list
 items stay a tight list, any other blocks are separated by a blank line.
 """
 

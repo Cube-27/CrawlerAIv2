@@ -1,4 +1,4 @@
-"""What a caller's secret values are shown as, and a stored request with them hidden (D-1432, D-1510).
+"""What a caller's secret values are shown as, and a stored request with them hidden.
 
 A request's `fetch` holds the caller's header and cookie values (`services.fetch_options`). Every answer that shows a
 stored request, and the job that ends (`db.jobs.transition_job`), replace each value by `REDACTED`, keeping the names.

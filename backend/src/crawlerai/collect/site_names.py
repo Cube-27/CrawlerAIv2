@@ -1,4 +1,4 @@
-"""What names the site a page belongs to, as opposed to the thing the page is about (extraction spec): the Open Graph
+"""What names the site a page belongs to, as opposed to the thing the page is about: the Open Graph
 `og:site_name` ("the name of the overall site"), each separator run of it, and the label of the page host's
 registrable domain (Public Suffix List, "Formal Algorithm": the public suffix plus one label).
 
@@ -20,7 +20,7 @@ from crawlerai.normalize.strings import fold
 _SEPARATOR = re.compile(r"(?<!\s)\s+[^\w\s]\s+")
 _WORD = re.compile(r"\w+")
 # Structural bound: the runs of n parts number n(n+1)/2, so only a name's first parts are combined; a site name of
-# more than this many separator-set-apart parts is a keyword list, not a name (D-1274).
+# more than this many separator-set-apart parts is a keyword list, not a name.
 _MAX_PARTS = 8
 
 

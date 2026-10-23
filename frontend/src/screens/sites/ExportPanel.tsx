@@ -15,7 +15,7 @@ const FORMATS: readonly (readonly [ExportFormat, string])[] = [
   ["platform_draft", "Platform draft"],
 ];
 
-// learning-configs spec: a `manual` field is one the release executor did not reproduce; it needs hand work after export.
+// a `manual` field is one the release executor did not reproduce; it needs hand work after export.
 function ReleaseOutcome({ field }: Readonly<{ field: ReleaseField }>) {
   return (
     <StatusLabel
@@ -61,7 +61,7 @@ function ReleaseReportView({ report }: Readonly<{ report: ReleaseReport }>) {
   );
 }
 
-/** Exports the config in a chosen format (learning-configs spec), saves it as a file and shows its release report. */
+/** Exports the config in a chosen format, saves it as a file and shows its release report. */
 export function ExportPanel({ config }: Readonly<{ config: ConfigDetail }>) {
   const [format, setFormat] = useState<ExportFormat>("json");
   const exported = useExportConfig(config.id);

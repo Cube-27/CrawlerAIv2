@@ -1,11 +1,11 @@
-"""Records as the API returns them (rest-api spec, INV-22, INV-27): `scrape`, `/v1/records`
+"""Records as the API returns them: `scrape`, `/v1/records`
 and replay answer with them. And the records service: what `GET /v1/records` and the MCP record tools do, over a
 connection.
 
 Every schema field is a member, published or not, with the §13.1 attributes (`value`, `status`, `evidence`,
 `confidence`, `calibrated`, `locator`) and `reason`, `source_kind`, `derived_by` from `field_meta`. The value is the
-record's published value in its served form (`normalize.dispatch.served`: money, ranges and numbers as JSON numbers;
-INV-27), and `None` for a field that did not publish.
+record's published value in its served form (`normalize.dispatch.served`: money, ranges and numbers as JSON numbers),
+and `None` for a field that did not publish.
 """
 
 from collections.abc import Mapping, Sequence
@@ -61,7 +61,7 @@ class RecordField(FieldMeta):
 
 
 class ExtractedRecord(BaseModel):
-    """A record's content (§6 `record`): `complete` when every required field and group published (§10), and its
+    """A record's content (§6 `record`): `complete` when every required field and group published, and its
     confidence, the minimum over the required fields, `None` when any of them is uncalibrated. A replay answers with
     these: they are not stored, so they have no id."""
 
@@ -102,9 +102,9 @@ class ScrapedRecord(ExtractedRecord):
 class StoredRecord(ScrapedRecord):
     """A `record` row, with the capture it was extracted from (`None` once the capture expired),
     the schema its fields follow, its own version and the fields whose published value differs from the
-    version it supersedes, empty for an entity's first (§14, jobs spec). `egress_country` is the ISO 3166-1 country the
+    version it supersedes, empty for an entity's first. `egress_country` is the ISO 3166-1 country the
     page was fetched from (null: unknown) and `egress_basis` how that is known: `pool` (the proxy pool's declared
-    country), `machine` (a direct fetch from the machine's declared country) or `unknown` (acquisition spec)."""
+    country), `machine` (a direct fetch from the machine's declared country) or `unknown`."""
 
     capture_id: CaptureId | None
     schema_id: SchemaId
@@ -112,7 +112,7 @@ class StoredRecord(ScrapedRecord):
     changed_fields: list[str]
     egress_country: str | None
     egress_basis: EgressBasis
-    # Listed by job: what the record is against the entity's previous record (jobs spec, "Page delta"); null otherwise.
+    # Listed by job: what the record is against the entity's previous record; null otherwise.
     delta: Delta | None = None
 
 
@@ -129,9 +129,9 @@ class RecordPage(BaseModel):
 
 class RecordFilter(BaseModel):
     """The records to list: those of a job, of a site (its host), of a schema, stored at or after a time, or any
-    combination. A job's are those its pages stand for, stored by it or found equal to the latest version (jobs spec).
-    Stored from `changed_since` on, a record is a new entity or a new version of one: the change feed of recurring runs
-    (§4.4). An entity re-extracted equal stores no record, so `changed_since` does not list it again."""
+        combination. A job's are those its pages stand for, stored by it or found equal to the latest version.
+        Stored from `changed_since` on, a record is a new entity or a new version of one: the change feed of recurring runs.
+    An entity re-extracted equal stores no record, so `changed_since` does not list it again."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -186,7 +186,7 @@ def _first_task(link: Any, owner: Any, job_id: JobId, record: Any) -> ScalarSele
 
 
 def _job_statement(statement: Select[Any], job_id: JobId) -> Select[Any]:
-    """`statement` narrowed to the job's records (jobs spec): those its tasks stand for, stored or found equal,
+    """`statement` narrowed to the job's records: those its tasks stand for, stored or found equal,
     each once, at the first task of the job that stood for it."""
     link, owner = aliased(TaskRecord), aliased(UrlTask)
     return (
@@ -258,7 +258,7 @@ def _delta(row: RowMapping, schema: SchemaDef) -> Delta:
 
 
 def page_fields(schema: SchemaDef, fields: FieldSet) -> dict[str, RecordField]:
-    """A listing's page-scope fields (persistence-storage spec `scope: page`) in the record field shape: what a listing
+    """A listing's page-scope fields (`scope: page`) in the record field shape: what a listing
     that kept no record still resolved, such as its next page."""
     scoped = {name: outcome for name, outcome in fields.items() if schema.fields[name].scope == "page"}
     data = {name: outcome.published for name, outcome in scoped.items() if outcome.status == "published"}

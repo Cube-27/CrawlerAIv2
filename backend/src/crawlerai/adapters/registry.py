@@ -1,13 +1,13 @@
-"""Which adapter, if any, serves a URL or reads a capture (acquisition spec; adapters spec).
+"""Which adapter, if any, serves a URL or reads a capture.
 
 Every platform adapter runs unless the deployment disables it (`CRAWLERAI_DISABLED_ADAPTERS`, owner 2026-10-16); the
 caller builds the registry from the running ones (`acquire.rungs.adapter_registry`).
 
-A platform on tenants' own hosts (adapters spec) can only tell a host is not its own from the host's answer. A host that
+A platform on tenants' own hosts can only tell a host is not its own from the host's answer. A host that
 answered an adapter without the platform's signal (`NOT_PLATFORM`) is declined for that adapter for a while, so a
 site that is not the platform's gets at most one adapter request per window. A registry remembers the declines it
 made for as long as it lives; the processes that fetch take one per page (`for_host`) from the declines stored on the
-page's site row (`site.adapter_declined`, D-1384) and store the ones it made back (`declined_for`), so the window holds
+page's site row (`site.adapter_declined`) and store the ones it made back (`declined_for`), so the window holds
 across processes and restarts.
 
 A page-scoped adapter (`PageScoped`, a storefront collection) is never asked on the page's own turn: it serves a page
@@ -98,7 +98,7 @@ class Registry:
 
     def reader(self, url: str, endpoint: str) -> tuple[Adapter, AdapterMatch] | None:
         """The active adapter that reads an `api` capture of the page at `url` whose final URL is `endpoint`, with its
-        match: one that detects the page and fetches from that endpoint (INV-39)."""
+        match: one that detects the page and fetches from that endpoint."""
         for adapter in self._active:
             if (match := adapter.detect(url)) is not None and adapter.serves(match, endpoint):
                 return adapter, match
@@ -106,8 +106,8 @@ class Registry:
 
     def referred(self, refs: Callable[[], PageRefs], kind: PageKind | None, types: tuple[str, ...]) -> str | None:
         """The platform page URL the page with `refs` (read only when an active adapter refers) stands for, read for
-        the schema.org `types`, by the first active adapter whose `referred` names one it has not declined the host of
-        (adapters spec)."""
+        the schema.org `types`, by the first active adapter whose `referred` names one it has not declined the host
+        of."""
         referring = [adapter for adapter in self._active if isinstance(adapter, Referring)]
         if not referring:
             return None

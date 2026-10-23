@@ -1,4 +1,4 @@
-"""`GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/outcomes` and `GET /v1/jobs/{id}/results` (jobs spec):
+"""`GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/outcomes` and `GET /v1/jobs/{id}/results`:
 the jobs a page at a time, a job's summary and outcomes, its cancel, and its records or page outputs a page at a
 time."""
 
@@ -61,8 +61,8 @@ async def get_job(job_id: JobId, request: Request) -> JobSummary:
 
 @router.get("/{job_id}/outcomes")
 async def get_job_outcomes(job_id: JobId, request: Request) -> JobOutcomes:
-    """The job's pages by outcome, and the fields of its records by status with the reasons the unpublished ones give
-    (resolution spec): counted from what the job stored."""
+    """The job's pages by outcome, and the fields of its records by status with the reasons the unpublished ones give:
+    counted from what the job stored."""
     async with database(request).connect() as conn:
         try:
             return await job_outcomes(conn, job_id)

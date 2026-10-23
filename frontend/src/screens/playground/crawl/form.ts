@@ -56,8 +56,8 @@ export interface RuleRow {
   pageKind: PageKind;
 }
 
-/** Crawl's options panel (frontend spec): each is a `CrawlRequest` member, except `metadataInJson`, a view option.
- * `fields` are the names `schema.fields` drafts a schema from (§4.10). An empty limit (NaN) is left out, so the
+/** Crawl's options panel: each is a `CrawlRequest` member, except `metadataInJson`, a view option.
+ * `fields` are the names `schema.fields` drafts a schema from. An empty limit (NaN) is left out, so the
  * server's default applies. */
 export interface CrawlOptions extends FormatSettings {
   include: readonly string[];
@@ -68,7 +68,7 @@ export interface CrawlOptions extends FormatSettings {
   maxDepth: number;
   limit: number;
   /**
-   * How the frontier is ordered (jobs spec, "Crawl strategy and best-first scoring"); `query` and `keywords` order a
+   * How the frontier is ordered; `query` and `keywords` order a
    * best-first crawl only.
    */
   strategy: CrawlStrategy;
@@ -81,7 +81,7 @@ export interface CrawlOptions extends FormatSettings {
   maxRows: number;
   /** `min_confidence` as a percent; NaN (empty) leaves it out: every value publishes with its confidence. */
   minConfidence: number;
-  /** The Advanced settings: request context, page actions and cache (D-1430, D-1436). */
+  /** The Advanced settings: request context, page actions and cache. */
   advanced: AdvancedFetch;
   /** An empty URL: no webhook. */
   webhook: WebhookSettings;
@@ -95,13 +95,13 @@ export const DEFAULT_CRAWL_OPTIONS: CrawlOptions = {
   fields: [],
   maxDepth: Number.NaN,
   limit: Number.NaN,
-  // CrawlRequest's own defaults (D-1440).
+  // CrawlRequest's own defaults.
   strategy: "bfs",
   query: "",
   keywords: [],
   allowSubdomains: false,
   allowExternal: false,
-  // FetchPolicy's own default (acquisition spec).
+  // FetchPolicy's own default.
   methodHint: "auto",
   maxRows: Number.NaN,
   minConfidence: Number.NaN,
@@ -147,7 +147,7 @@ function fieldsErrors(rules: readonly RuleRow[]): Readonly<Record<string, string
   return kinds.size > 1 ? MIXED_RULES : (fieldsPageKindErrors(kind ?? null) ?? NO_ERRORS);
 }
 
-/** Why `form` can't be sent, by field. A crawl's results are records or page outputs (jobs spec): with a schema
+/** Why `form` can't be sent, by field. A crawl's results are records or page outputs: with a schema
  * or field names it asks for `records` alone, which needs a rule; every rule is for the schema's page kind, and field
  * names take rules of one page kind. Without either it asks for at least one format. */
 export function crawlErrors(form: CrawlFormState): Readonly<Record<string, string>> {

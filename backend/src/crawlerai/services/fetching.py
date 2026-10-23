@@ -1,8 +1,8 @@
 """What the services that fetch while their caller waits (`scrape`, `map`, `extract`) and the worker's handlers fetch
-with: the rungs and guard of this process, the SSRF guard's refusals (INV-16), and the page fetch they send through
-the one polite fetch (`services.polite`, acquisition spec): the page through `acquire`, its adapter's and active
-config's API recipe's requests sent as politely as a page's (adapters spec), as a learning run's recipe replays
-are (§4.6, §4.7), and the plain HTTP fetches of a site's sitemaps.
+with: the rungs and guard of this process, the SSRF guard's refusals, and the page fetch they send through
+the one polite fetch (`services.polite`): the page through `acquire`, its adapter's and active
+config's API recipe's requests sent as politely as a page's, as a learning run's recipe replays
+are, and the plain HTTP fetches of a site's sitemaps.
 """
 
 import asyncio
@@ -57,19 +57,19 @@ from crawlerai.storage.base import ObjectStore
 @dataclass(frozen=True)
 class Fetching:
     """What a service fetches with: the rungs, the SSRF guard they connect through, the object store captures go to,
-    and the per-host limiter (acquisition spec) of this process."""
+    and the per-host limiter of this process."""
 
     rungs: Rungs
     connector: SafeConnector
     store: ObjectStore
     limiter: HostLimiter
-    # The configured proxy pools (`CRAWLERAI_PROXY_POOLS`), which a request's `fetch.proxy_pool` is checked against
-    # (D-1434), and the countries fetches go out from (`core.egress`).
+    # The configured proxy pools (`CRAWLERAI_PROXY_POOLS`), which a request's `fetch.proxy_pool` is checked against,
+    # and the countries fetches go out from (`core.egress`).
     egresses: Egresses = field(default_factory=Egresses)
 
 
 class TargetRejected(Refusal):
-    """The SSRF guard refused the target, or a redirect from it (INV-16). `reason` is the guard's, without the URL."""
+    """The SSRF guard refused the target, or a redirect from it. `reason` is the guard's, without the URL."""
 
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
@@ -77,7 +77,7 @@ class TargetRejected(Refusal):
 
 
 class TargetsRejected(Refusal):
-    """The SSRF guard refused a target a request names (INV-16): `member` names it (`urls[3]`, `webhook_url`), `reason`
+    """The SSRF guard refused a target a request names: `member` names it (`urls[3]`, `webhook_url`), `reason`
     is the guard's, without the URL."""
 
     def __init__(self, member: str, reason: str) -> None:
@@ -96,8 +96,7 @@ async def check_targets(
     """Check each of `targets`, (member, URL) pairs, and the request's `webhook_url` with the guard, before anything
     is fetched or stored. Raises `TargetsRejected` for the first refused one in order. The members in `queued`, URLs
     a task of their own fetches, are checked by their form alone (`SafeConnector.check_form`): a refusal only
-    resolving the host tells (`dns`, a `private_address` it resolves to) fails that task when it fetches the URL
-    (rest-api spec)."""
+    resolving the host tells (`dns`, a `private_address` it resolves to) fails that task when it fetches the URL."""
     if webhook_url is not None:
         targets = [*targets, ("webhook_url", webhook_url)]
     checks = (_checked(connector, url, form_only=member in queued) for member, url in targets)
@@ -125,19 +124,19 @@ async def check_target(connector: SafeConnector, url: str) -> None:
 
 
 def refusal(result: FetchResult) -> str | None:
-    """The guard's refusal of a request of the fetch, which a rung records as the attempt's error rather than raising
-    (acquisition spec); `None` when it refused none."""
+    """The guard's refusal of a request of the fetch, which a rung records as the attempt's error rather than raising;
+    `None` when it refused none."""
     return next((a.error for a in result.attempts if a.error is not None and a.error.startswith(SSRF_REJECTED)), None)
 
 
 def site_rungs(fetching: Fetching, host: str, site: SiteRow) -> Rungs:
-    """This process's rungs with an adapter registry knowing the declines stored on the site of `host` (D-1384)."""
+    """This process's rungs with an adapter registry knowing the declines stored on the site of `host`."""
     return replace(fetching.rungs, adapters=fetching.rungs.adapters.for_host(host, site.adapter_declined))
 
 
 async def store_declines(engine: AsyncEngine, site: SiteRow, host: str, rungs: Rungs) -> None:
     """Store on the site of `host`, in a transaction of its own, the adapter declines `rungs` made for it
-    (`site_rungs`): those that differ from what its row held (adapters spec, "Fallback to the page rungs (INV-40)").
+    (`site_rungs`): those that differ from what its row held (the fallback to the page rungs).
     They are merged into the stored ones in one statement (a JSONB concatenation), so fetches that read the row before
     either stored keep each other's declines. One that ran out stays stored, and holds back nothing (`Registry.for_host`
     reads its time): the row holds at most one per adapter."""
@@ -168,12 +167,12 @@ class _Turn:
 def recipe_rung(
     fetching: Fetching, recipe: ApiRecipe, page_host: str, rules: ReadRules, waiting: Waiting = IN_PLACE
 ) -> RecipeRung | None:
-    """`recipe` bound to this process's rungs (adapters spec), for a page on `page_host` whose robots.txt the caller
-    has checked and whose turn at the host's rate it has taken. That turn goes to the first request to the host: the
-    HTML page the recipe fetches to bind, or else its endpoint. An endpoint is requested only where its host's
-    robots.txt (`rules`) allows it, at that host's rate, waiting in place for a turn of its own when it needs one; a
-    request robots.txt keeps from being sent leaves the page unserved, and `acquire` fetches it the configured way
-    (§4.10). None without the JSON rung."""
+    """`recipe` bound to this process's rungs, for a page on `page_host` whose robots.txt the caller
+        has checked and whose turn at the host's rate it has taken. That turn goes to the first request to the host: the
+        HTML page the recipe fetches to bind, or else its endpoint. An endpoint is requested only where its host's
+        robots.txt (`rules`) allows it, at that host's rate, waiting in place for a turn of its own when it needs one; a
+        request robots.txt keeps from being sent leaves the page unserved, and `acquire` fetches it the configured way.
+    None without the JSON rung."""
     json = fetching.rungs.json
     if json is None:
         return None
@@ -190,7 +189,7 @@ def recipe_rung(
 def adapter_send(
     fetching: Fetching, page_host: str, rules: ReadRules, waiting: Waiting = IN_PLACE
 ) -> JsonFetcher | None:
-    """The JSON fetch an adapter requests its API with (adapters spec), for a page on `page_host` whose robots.txt the
+    """The JSON fetch an adapter requests its API with, for a page on `page_host` whose robots.txt the
     caller has checked and whose turn at the host's rate it has taken: an endpoint is requested only where its host's
     robots.txt (`rules`) allows it, at that host's rate; the first request to the page's host takes the caller's turn,
     as a recipe's does. A request robots.txt keeps from being sent leaves the page to the page rungs. None without the
@@ -233,10 +232,10 @@ def _polite_send(
 
 
 def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replays | None:
-    """A learning run's recipe replays (adapters spec) over this process's JSON rung, as politely as a served
-    recipe's request: at the endpoint host's rate (D-0731). A `learn` job names no fetch policy, so replays go with
-    the default one, which does not read robots.txt (owner decision #75) and goes direct; their requests count as the
-    job's usage (D-1381). None without the JSON rung."""
+    """A learning run's recipe replays over this process's JSON rung, as politely as a served
+    recipe's request: at the endpoint host's rate. A `learn` job names no fetch policy, so replays go with
+    the default one, which does not read robots.txt and goes direct; their requests count as the
+    job's usage. None without the JSON rung."""
     json = fetching.rungs.json
     if json is None:
         return None
@@ -261,7 +260,7 @@ def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replays | None:
 class RecipePages:
     """A listing's pages as its active config's listing recipe (one with pagination, Appendix A #59) serves them, up
     to `limit` requests and until `deadline`; the pages after the first are kept in `further` and their attempts added
-    to `attempts`. `refused` is the SSRF guard's refusal of a further page's request, which fails the fetch (INV-16):
+    to `attempts`. `refused` is the SSRF guard's refusal of a further page's request, which fails the fetch:
     a refused page is never stored, and the listing is not cut short silently."""
 
     limit: int = MAX_PAGES
@@ -272,9 +271,9 @@ class RecipePages:
 
     async def rung(self, recipe: RecipeRung, url: str, policy: FetchPolicy) -> Rung | None:
         """The recipe rung `acquire` fetches the page through: one that answers with the first page the listing recipe
-        served, its further pages kept, so `acquire` keeps or falls back from that one answer as from any recipe's
-        (adapters spec); None when it served no page. Each page request waits for its host's rate on its own
-        (`recipe_rung`)."""
+                served, its further pages kept, so `acquire` keeps or falls back from that one answer as from any recipe's;
+        None when it served no page. Each page request waits for its host's rate on its own
+                (`recipe_rung`)."""
         pages = [
             page async for page in recipe.pages(url, policy, records=None, limit=self.limit, deadline=self.deadline)
         ]
@@ -300,7 +299,7 @@ async def grown(
     admit_next: Admit,
     known: HostRules,
 ) -> PagedFetch:
-    """The listing at `url` from the listing rung with the paging driver (`crawl.paging.collect`, owner #52): each
+    """The listing at `url` from the listing rung with the paging driver (`crawl.paging.collect`): each
     action waits for a turn at the site's rate (`admit_next`), and acts only on the listing's own host, where its
     robots.txt (`known`) allows it: a next page it navigates to, or the document the tab shows for a click or a scroll
     (the caller's steps may have navigated it elsewhere). That host's robots.txt and rate say nothing of another's
@@ -334,9 +333,8 @@ async def _on_host(
 
 @dataclass
 class Growth:
-    """A single-URL listing scrape's browser actions where its page is rendered (master plan 2026-10-18 decision 11,
-    amending owner #52): the browser rung of the fetch grows the list toward `actions.records` until `deadline`, and
-    keeps the document states it made in `paged`."""
+    """A single-URL listing scrape's browser actions where its page is rendered: the browser rung of the fetch
+    grows the list toward `actions.records` until `deadline`, and keeps the document states it made in `paged`."""
 
     actions: BrowserActions
     deadline: float
@@ -385,7 +383,7 @@ def _uses_recipe(page: PagePlan, url: str) -> bool:
 def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Waiting) -> PageFetch:
     """The page through `acquire`, as the polite fetch calls it: the adapter that detects the URL and the active
     config's API recipe ask their endpoints politely (`adapter_send`, `recipe_rung`; endpoints on the page's host by the
-    rules the polite fetch read, D-1384, others by `rules`), and every attempt is added to the request's attempts."""
+    rules the polite fetch read, others by `rules`), and every attempt is added to the request's attempts."""
 
     async def fetch(url: str, admit_next: Admit, known: HostRules) -> FetchResult:
         host = urlsplit(url).hostname or ""
@@ -403,7 +401,7 @@ def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Wa
         rungs = page.rungs
         if page.growth is not None:
             # The growing render serves every browser attempt, the one after a refusal too: that one opens no site
-            # session (INV-29's exception), whose cookies serve later HTTP fetches only.
+            # session, whose cookies serve later HTTP fetches only.
             rungs = replace(rungs, browser=page.growth.rung(fetching, admit_next, known), exporting=None)
 
         result = await acquire(
@@ -427,8 +425,8 @@ async def fetch_now(
     engine: AsyncEngine, fetching: Fetching, url: str, page: PagePlan, *, tries: int = 1
 ) -> FetchResult | str:
     """The page at `url` fetched while the caller waits (`polite_fetch`, `IN_PLACE`), or why nothing was sent
-    (`polite.Refused`); the adapter declines it made are stored on the site (D-1384). Raises `TargetRejected` when the
-    guard refused a request of the fetch (INV-16)."""
+    (`polite.Refused`); the adapter declines it made are stored on the site. Raises `TargetRejected` when the
+    guard refused a request of the fetch."""
     host = urlsplit(url).hostname or ""
     rules = rules_of(engine, fetching.rungs.http, page.attempts, Turns(fetching.limiter, IN_PLACE))
     fetch = page_fetch(fetching, page, rules, IN_PLACE)

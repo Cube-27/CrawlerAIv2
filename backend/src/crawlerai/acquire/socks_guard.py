@@ -1,4 +1,4 @@
-"""The browser's SSRF guard (acquisition spec, INV-16): a SOCKS5 proxy on loopback that the
+"""The browser's SSRF guard: a SOCKS5 proxy on loopback that the
 browser context sends every connection through.
 
 A request interceptor can't be the guard: the browser follows redirects itself, and interception sees only the
@@ -7,12 +7,11 @@ host name), so each connection, on every redirect hop and from every frame or wo
 guard checks it with `SafeConnector.check` and connects only to the checked address, which is fixed for the life of
 the guard: a name is resolved once per fetch, and a changed DNS answer can't redirect a later connection.
 
-Only CONNECT with no authentication is spoken (RFC 1928 §3, §4). Bytes are relayed unread, so TLS stays end to end
+Only CONNECT with no authentication is spoken (RFC 1928 §3). Bytes are relayed unread, so TLS stays end to end
 between the browser and the site.
 
 With an `upstream` proxy pool, the guard still checks each host, then opens the connection as a CONNECT tunnel
-through the pool's proxy (`acquire.tunnel`), naming the host: the proxy resolves it, so the address can't be pinned
-.
+through the pool's proxy (`acquire.tunnel`), naming the host: the proxy resolves it, so the address can't be pinned.
 """
 
 import asyncio

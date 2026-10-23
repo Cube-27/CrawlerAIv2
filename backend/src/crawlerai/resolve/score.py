@@ -1,11 +1,11 @@
-"""The candidate score (resolution spec, "Candidate score"): one number per kept candidate of a field, the product of
+"""The candidate score: one number per kept candidate of a field, the product of
 its source weight, its scope match and its value's cross-source agreement. Preference publishes the value of the best
 score (`resolve.preference`); this module only scores.
 
 - Source weight: how far the candidate's own evidence is trusted, before any other candidate is looked at. For text,
   long_text, url and image_url it is the kind's place in the type's order fitted on dev (`source_precedence.yaml`):
   the first kind weighs 1, each later place 1/n less, a kind outside the order 0; a fragment of another candidate's
-  value (`supersede`) weighs 0. For money it is the strength of the currency evidence (normalization spec, `Ok.basis`):
+  value (`supersede`) weighs 0. For money it is the strength of the currency evidence (`Ok.basis`):
   a stated currency weighs 1, each weaker basis of `BASES` 1/(len(BASES)+1) less. Every other type has no measured
   order between kinds, so every kind weighs 1. A fallback (`Candidate.fallback`: a platform's own record standing in
   for the property, not the page's statement of it) weighs 0 beside an independent candidate that is none, and is
@@ -42,7 +42,7 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 # The types whose source weight is the fitted order of source kinds; every other type weighs every kind alike.
 PRECEDENCE_TYPES: Final = frozenset({FieldType.TEXT, FieldType.LONG_TEXT, FieldType.URL, FieldType.IMAGE_URL})
 # Another Offer of the target, or of one of its variants, than the anchor: the product's, but not the offer the page
-# states for it (atomic offers, INV-15). Half the anchor's, so it outscores the anchor's value only with at least twice
+# states for it (atomic offers). Half the anchor's, so it outscores the anchor's value only with at least twice
 # its source weight times agreement. Scores are exact fractions, so two values tie only when their scores are equal.
 OTHER_OFFER: Final = Fraction(1, 2)
 OWN: Final = Fraction(1)
@@ -51,7 +51,7 @@ _NONE: Final = Fraction(0)
 Scope = Callable[[Candidate], Fraction]
 
 PRECEDENCE_FILE = "source_precedence.yaml"
-# What the fit stamped on the file (frozen 2026-10-18; evaluation spec); every other key names a field type.
+# What the fit stamped on the file (frozen 2026-10-18); every other key names a field type.
 STAMP = frozenset({"source_split", "git_sha"})
 _SOURCE_KINDS: frozenset[str] = frozenset(get_args(SourceKind))
 
@@ -140,7 +140,7 @@ def _support(candidates: Sequence[Candidate], weights: dict[int, Fraction]) -> F
 def _grouped(spec: FieldSpec, kept: Sequence[Candidate]) -> list[list[int]]:
     """The kept candidates' places, by value: equal keys (`equality_key`) or files (`resource_key`) meet in one pass;
     a value with neither joins the first group whose first value it equals (the location type's equality is not
-    transitive, schemas spec)."""
+    transitive)."""
     groups: list[list[int]] = []
     by_key: dict[Hashable, list[int]] = {}
     for i, candidate in enumerate(kept):
@@ -187,7 +187,7 @@ def value_of(candidate: Candidate) -> JsonValue:
 
 
 def load_precedence(path: Path) -> dict[FieldType, tuple[SourceKind, ...]]:
-    """The orders of a `source_precedence.yaml`: fitted once (frozen engine data, evaluation spec), with one order per
+    """The orders of a `source_precedence.yaml`: fitted once (frozen engine data), with one order per
     precedence type."""
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(document, dict) or document.get("source_split") != "dev":

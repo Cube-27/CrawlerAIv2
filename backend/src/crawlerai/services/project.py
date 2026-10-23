@@ -3,8 +3,8 @@
 `llm_call_cap` bounds the LLM calls of every job whose request sets no `budget.llm_calls`; null bounds none (owner,
 2026-10-16). It is read when a job checks its budget (`db.usage.budget_remaining`), so a change applies to running
 jobs too. `draft_call_cap` bounds the uncharged role S calls (field-name drafts) of each API key; null bounds none
-(D-1282, `crawlerai.llm.draft_cap`). `require_config_approval` makes a learned config wait for a person's approval
-before it serves (D-1342, `store_pending` in `config_ir.activation`); off, it activates once validated.
+(`crawlerai.llm.draft_cap`). `require_config_approval` makes a learned config wait for a person's approval
+before it serves (`store_pending` in `config_ir.activation`); off, it activates once validated.
 """
 
 from typing import Annotated

@@ -24,7 +24,7 @@ from urllib.parse import unquote, urlsplit
 
 Strategy = Literal["bfs", "dfs", "best_first"]
 
-# BM25's usual constants (Robertson and Zaragoza 2009, §3.3): term-frequency saturation and length normalisation.
+# BM25's usual constants (Robertson and Zaragoza 2009): term-frequency saturation and length normalisation.
 BM25_K1: Final = 1.2
 BM25_B: Final = 0.75
 # sitemaps.org, <priority>: "The default priority of a page is 0.5".

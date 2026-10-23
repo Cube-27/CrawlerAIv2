@@ -1,7 +1,7 @@
-"""The Shopify adapter (adapters spec): detect storefront collection URLs, locale-prefixed ones too, ask the
+"""The Shopify adapter: detect storefront collection URLs, locale-prefixed ones too, ask the
 Storefront API for their collection, page through its cursor, serve only the products the page lists, and tell the
 platform's answer from any other. Product
-pages take the page path (D-1118).
+pages take the page path.
 
 Shopify is a multi-tenant platform, not a site (C6, C9). Shops and answers are synthetic (`example.test` hosts,
 invented handles and products, C3).

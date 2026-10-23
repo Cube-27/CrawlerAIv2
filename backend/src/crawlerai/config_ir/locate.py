@@ -1,4 +1,4 @@
-"""The locate run (learning-configs spec, "Locate run"): where the fields a surface's HTTP pages leave missing live,
+"""The locate run: where the fields a surface's HTTP pages leave missing live,
 found on browser renders of its stored pages and written into its config as field sources.
 
 A learning run on a surface whose render mode locates (`locate`, `always`), or one a job's `render` started
@@ -292,7 +292,7 @@ async def _locate_field(run: _Run, name: str, pages: Sequence[Sampled], located:
 
 def _add_recipe(located: Located, name: str, recipe: ApiRecipe) -> None:
     """`recipe` named `name`; or, when a field located before calls the same request, that field's recipe reading
-    this field too, so the fetch sends one companion call per endpoint (acquisition spec, "Data calls")."""
+    this field too, so the fetch sends one companion call per endpoint."""
     request = set(RequestSpec.model_fields)
     shared = next(
         (n for n, r in located.recipes.items() if r.model_dump(include=request) == recipe.model_dump(include=request)),

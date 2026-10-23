@@ -9,7 +9,7 @@ import { fill, openPlayground, posted } from "../../test/playground";
 import { runApi } from "../../test/runs";
 import { scheduleChange } from "./cadence";
 
-// `fetch` answers `/v1/schedules` and `/v1/jobs` with the shapes the rest-api spec defines (D-1417).
+// `fetch` answers `/v1/schedules` and `/v1/jobs` with the shapes the API defines.
 
 const SCHEDULE_ID = "0192a000-0000-7000-8000-00000000a001";
 const JOB_ID = "0192a000-0000-7000-8000-00000000a0j1";

@@ -376,7 +376,7 @@
       },
       "BatchScrapeRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/batch/scrape` (\u00a74.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a\nscrape's (rest-api spec), for every URL. A batch's results are either records or page outputs, so `records` is\nasked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),\nand `schema.fields` is drafted while the caller waits (frontend spec). Role C fills a page's gaps as in a scrape;\n`budget.llm_calls` bounds the job's calls, and without a `budget` the project's cap does, as for every job\nkind (D-1006, D-1121). The webhook options are `WebhookOptions` (\u00a74.2).",
+        "description": "The body of `POST /v1/batch/scrape`. The formats, `schema`, `page_kind`, `fetch` and `locale` are a\nscrape's, for every URL. A batch's results are either records or page outputs, so `records` is\nasked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),\nand `schema.fields` is drafted while the caller waits. Role C fills a page's gaps as in a scrape;\n`budget.llm_calls` bounds the job's calls, and without a `budget` the project's cap does, as for every job\nkind. The webhook options are `WebhookOptions`.",
         "properties": {
           "budget": {
             "anyOf": [
@@ -576,7 +576,7 @@
       },
       "BrowserActions": {
         "additionalProperties": false,
-        "description": "A single-URL listing scrape's browser actions (owner #52). `records` is a soft target: the run stops once it\nhas seen at least that many rows, so it may pass it by one page or batch. Without a `hint` the mechanism is\ndetected.",
+        "description": "A single-URL listing scrape's browser actions. `records` is a soft target: the run stops once it\nhas seen at least that many rows, so it may pass it by one page or batch. Without a `hint` the mechanism is\ndetected.",
         "properties": {
           "hint": {
             "anyOf": [
@@ -986,7 +986,7 @@
       },
       "ContextHeader": {
         "additionalProperties": false,
-        "description": "A header the recipe sends with the value the caller's request context holds for `name` (D-1430): the recipe\nstores the name alone, never a value.",
+        "description": "A header the recipe sends with the value the caller's request context holds for `name`: the recipe\nstores the name alone, never a value.",
         "properties": {
           "from_context": {
             "const": true,
@@ -1133,7 +1133,7 @@
       },
       "CrawlRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/crawl` (\u00a74.5). The formats, `schema`, `fetch` and `locale` are a batch's (\u00a74.3), for every\npage the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted\nwhile the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does\n(D-1286). `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which\npages are extracted. The webhook options are `WebhookOptions` (\u00a74.2).\n\n`strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the\nlinks that best match `query` and `keywords` first (`crawl.scoring`). `allow_subdomains`\nkeeps the start host's subdomains without an `include`, and `allow_external` any host (D-1440, D-1441).",
+        "description": "The body of `POST /v1/crawl`. The formats, `schema`, `fetch` and `locale` are a batch's, for every\n    page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted\n    while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does.\n`include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which\n    pages are extracted. The webhook options are `WebhookOptions`.\n\n    `strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the\n    links that best match `query` and `keywords` first (`crawl.scoring`). `allow_subdomains`\n    keeps the start host's subdomains without an `include`, and `allow_external` any host.",
         "properties": {
           "allow_external": {
             "default": false,
@@ -1667,7 +1667,7 @@
       },
       "Delta": {
         "additionalProperties": false,
-        "description": "What a job's record is against the entity's previous record under the same schema (jobs spec, \"Page delta\"):\n`new`, `changed` with its changed fields in schema order, or `same`.",
+        "description": "What a job's record is against the entity's previous record under the same schema:\n`new`, `changed` with its changed fields in schema order, or `same`.",
         "properties": {
           "changes": {
             "items": {
@@ -1687,7 +1687,7 @@
         "type": "object"
       },
       "DeltaCounts": {
-        "description": "How many of a job's records are each delta (jobs spec, \"Page delta\").",
+        "description": "How many of a job's records are each delta.",
         "properties": {
           "changed": {
             "title": "Changed",
@@ -1802,7 +1802,7 @@
       },
       "DroppedRowMeta": {
         "additionalProperties": false,
-        "description": "A row that did not publish: its row entities' locators and the reason (variants spec).",
+        "description": "A row that did not publish: its row entities' locators and the reason.",
         "properties": {
           "locators": {
             "items": {
@@ -1824,7 +1824,7 @@
         "type": "object"
       },
       "ExportPage": {
-        "description": "One page of a job's records in an export format (learning-configs spec); `next_cursor` as in `RecordPage`.",
+        "description": "One page of a job's records in an export format; `next_cursor` as in `RecordPage`.",
         "properties": {
           "content": {
             "title": "Content",
@@ -1881,7 +1881,7 @@
       },
       "ExtractRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/extract` (\u00a74.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it\ninline, or asks for a draft from a `prompt` or from field names (`fields`, frontend spec), and its page kind must\nbe `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` (else the project's cap) bounds a prompt's\ndraft. The `fetch` and `locale` are a scrape's (rest-api spec), for every URL. The webhook options are\n`WebhookOptions` (\u00a74.2).",
+        "description": "The body of `POST /v1/extract`. `urls` are URLs and URL globs; `schema` names a schema by id, gives it\ninline, or asks for a draft from a `prompt` or from field names (`fields`), and its page kind must\nbe `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` (else the project's cap) bounds a prompt's\ndraft. The `fetch` and `locale` are a scrape's, for every URL. The webhook options are\n`WebhookOptions`.",
         "properties": {
           "budget": {
             "anyOf": [
@@ -2038,7 +2038,7 @@
         "type": "object"
       },
       "ExtractedRecord": {
-        "description": "A record's content (\u00a76 `record`): `complete` when every required field and group published (\u00a710), and its\nconfidence, the minimum over the required fields, `None` when any of them is uncalibrated. A replay answers with\nthese: they are not stored, so they have no id.",
+        "description": "A record's content (\u00a76 `record`): `complete` when every required field and group published, and its\nconfidence, the minimum over the required fields, `None` when any of them is uncalibrated. A replay answers with\nthese: they are not stored, so they have no id.",
         "properties": {
           "complete": {
             "title": "Complete",
@@ -2191,7 +2191,7 @@
       },
       "FetchOptions": {
         "additionalProperties": false,
-        "description": "How a request's pages are fetched. `headers` go over HTTP to the page's own host only, never in the browser\n(INV-44), and `cookies` to that host in either; `wait_for` and `actions` run in the browser, so they make the fetch\na browser one and refuse `method_hint` `http`, and a browser fetch takes no `headers`.",
+        "description": "How a request's pages are fetched. `headers` go over HTTP to the page's own host only, never in the browser,\nand `cookies` to that host in either; `wait_for` and `actions` run in the browser, so they make the fetch\n    a browser one and refuse `method_hint` `http`, and a browser fetch takes no `headers`.",
         "properties": {
           "actions": {
             "default": [],
@@ -2329,7 +2329,7 @@
         "type": "object"
       },
       "FetchSummary": {
-        "description": "The fetch of the page: the method, status and class of the kept attempt, the platform adapter that read an `api`\ncapture (INV-39; null for any other), and every attempt made.",
+        "description": "The fetch of the page: the method, status and class of the kept attempt, the platform adapter that read an `api`\ncapture (null for any other), and every attempt made.",
         "properties": {
           "adapter": {
             "anyOf": [
@@ -2398,7 +2398,7 @@
       },
       "FieldChange": {
         "additionalProperties": false,
-        "description": "A field whose published value differs from the entity's previous record: both values as published, None for a\nside that published none (INV-27).",
+        "description": "A field whose published value differs from the entity's previous record: both values as published, None for a\nside that published none.",
         "properties": {
           "field": {
             "title": "Field",
@@ -2420,7 +2420,7 @@
         "type": "object"
       },
       "FieldCounts": {
-        "description": "How many fields of a job's records have each status (resolution spec).",
+        "description": "How many fields of a job's records have each status.",
         "properties": {
           "abstained": {
             "title": "Abstained",
@@ -2570,7 +2570,7 @@
       },
       "FieldSpec-Input": {
         "additionalProperties": false,
-        "description": "One field of a schema, or the item of a list.\n\nThe parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,\n`item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants spec\n\u00a74.2): the path names the row entities, and `key` names the sub-fields that identify a row.",
+        "description": "One field of a schema, or the item of a list.\n\nThe parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,\n`item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants): the path names the row entities, and `key` names the sub-fields that identify a row.",
         "properties": {
           "description": {
             "anyOf": [
@@ -2694,7 +2694,7 @@
       },
       "FieldSpec-Output": {
         "additionalProperties": false,
-        "description": "One field of a schema, or the item of a list.\n\nThe parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,\n`item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants spec\n\u00a74.2): the path names the row entities, and `key` names the sub-fields that identify a row.",
+        "description": "One field of a schema, or the item of a list.\n\nThe parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,\n`item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants): the path names the row entities, and `key` names the sub-fields that identify a row.",
         "properties": {
           "description": {
             "anyOf": [
@@ -2818,7 +2818,7 @@
       },
       "FieldSteps": {
         "additionalProperties": false,
-        "description": "A field's steps in order (the first valid value wins, \u00a712.1), its status, and its held-out yield and validity\n(learning-configs spec) once validated.",
+        "description": "A field's steps in order (the first valid value wins), its status, and its held-out yield and validity\nonce validated.",
         "properties": {
           "call": {
             "anyOf": [
@@ -3609,7 +3609,7 @@
       },
       "JsonValue": {},
       "JsonValuesItem": {
-        "description": "A task of a job in `json_values` (frontend spec): its URL, its outcome (null until it ends), the clean records\nits page stands for, and, when asked for, its page's metadata and fetch. `records` is empty for a task with no\nrecord (failed, blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or\npartial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts;\n`screenshot` and `pdf` with `fetch`, for a capture that kept the file.",
+        "description": "A task of a job in `json_values`: its URL, its outcome (null until it ends), the clean records\nits page stands for, and, when asked for, its page's metadata and fetch. `records` is empty for a task with no\nrecord (failed, blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or\npartial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts;\n`screenshot` and `pdf` with `fetch`, for a capture that kept the file.",
         "properties": {
           "fetch": {
             "$ref": "#/components/schemas/FetchSummary"
@@ -3860,7 +3860,7 @@
       },
       "ListingSpec": {
         "additionalProperties": false,
-        "description": "Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` locates the next\npage's URL. A `jsonpath` row step selects the rows' JSON objects in its source's documents (listings spec, \"Rows\nfrom page state\"), and its fields' steps are `jsonpath` steps of the same source read from each row (`$`).",
+        "description": "Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` locates the next\npage's URL. A `jsonpath` row step selects the rows' JSON objects in its source's documents, and its fields' steps are `jsonpath` steps of the same source read from each row (`$`).",
         "properties": {
           "fields": {
             "patternProperties": {
@@ -3934,7 +3934,7 @@
       },
       "MapRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/map` (\u00a74.4).",
+        "description": "The body of `POST /v1/map`.",
         "properties": {
           "exclude": {
             "default": [],
@@ -4041,7 +4041,7 @@
         "type": "object"
       },
       "ModelRoleUsage": {
-        "description": "The calls to one model for one role (`prompt_kind`, llm spec).",
+        "description": "The calls to one model for one role (`prompt_kind`).",
         "properties": {
           "calls": {
             "title": "Calls",
@@ -4432,7 +4432,7 @@
       },
       "NormalizeOp-Input": {
         "additionalProperties": false,
-        "description": "`{\"<field type>\": {}}`: the type's normalizer (schemas spec) runs on the value.",
+        "description": "`{\"<field type>\": {}}`: the type's normalizer runs on the value.",
         "properties": {
           "type": {
             "$ref": "#/components/schemas/FieldType"
@@ -4537,7 +4537,7 @@
       },
       "PageKindRule": {
         "additionalProperties": false,
-        "description": "A crawl's rule (\u00a74.5): a URL `pattern` matches is extracted as a `page_kind` page.",
+        "description": "A crawl's rule: a URL `pattern` matches is extracted as a `page_kind` page.",
         "properties": {
           "page_kind": {
             "enum": [
@@ -4633,7 +4633,7 @@
         "type": "object"
       },
       "PageOutput": {
-        "description": "A task of a job without a schema, with the content formats the job asked for. The formats\nare members only when the task reached its page and its capture is still kept. `last_error` is why the task\nfailed, or why it ended with its outcome when the outcome alone does not say (a `blocked` task's `robots`), as the\nworker recorded it: URLs redacted under `CRAWLERAI_LOG_REDACT_URLS` (persistence-storage spec).",
+        "description": "A task of a job without a schema, with the content formats the job asked for. The formats\nare members only when the task reached its page and its capture is still kept. `last_error` is why the task\nfailed, or why it ended with its outcome when the outcome alone does not say (a `blocked` task's `robots`), as the\nworker recorded it: URLs redacted under `CRAWLERAI_LOG_REDACT_URLS`.",
         "properties": {
           "capture_id": {
             "anyOf": [
@@ -4995,7 +4995,7 @@
       },
       "Problem": {
         "additionalProperties": false,
-        "description": "RFC 9457 problem details (rest-api spec). `type` is one of the API's problem types, or `about:blank` when the\nHTTP status says all there is to say (RFC 9457 \u00a74.2.1); `instance` is the request's path (\u00a73.1.5).",
+        "description": "RFC 9457 problem details. `type` is one of the API's problem types, or `about:blank` when the\nHTTP status says all there is to say (RFC 9457 \u00a74.2.1); `instance` is the request's path.",
         "properties": {
           "detail": {
             "title": "Detail",
@@ -5081,7 +5081,7 @@
       },
       "Proof": {
         "additionalProperties": false,
-        "description": "How the recipe was accepted: the held-out captures it reproduced (\u00a74.7), the headers replay tried (\u00a74.6) and\nwhat bound it.",
+        "description": "How the recipe was accepted: the held-out captures it reproduced, the headers replay tried and\nwhat bound it.",
         "properties": {
           "bound_by": {
             "enum": [
@@ -5158,7 +5158,7 @@
       },
       "RecipeFieldReport": {
         "additionalProperties": false,
-        "description": "One field of an API recipe's map (adapters spec). `published`: held-out pages where the engine published the\nfield; `reproduced`: those where the replayed response gave that value.",
+        "description": "One field of an API recipe's map. `published`: held-out pages where the engine published the\nfield; `reproduced`: those where the replayed response gave that value.",
         "properties": {
           "published": {
             "title": "Published",
@@ -5178,7 +5178,7 @@
       },
       "RecipeReport": {
         "additionalProperties": false,
-        "description": "The API recipe's held-out validation (adapters spec). `refused` says why the recipe did not enter the config.",
+        "description": "The API recipe's held-out validation. `refused` says why the recipe did not enter the config.",
         "properties": {
           "fields": {
             "additionalProperties": {
@@ -5652,7 +5652,7 @@
       },
       "RenderOptions": {
         "additionalProperties": false,
-        "description": "The `render` member (rest-api spec, \"Render mode\"): its mode, and the schema fields `locate` looks for (else the\nfields the HTTP extraction left missing). Pinned with the request (INV-28).",
+        "description": "The `render` member: its mode, and the schema fields `locate` looks for (else the\nfields the HTTP extraction left missing). Pinned with the request.",
         "properties": {
           "fields": {
             "items": {
@@ -5724,7 +5724,7 @@
       },
       "RowMeta": {
         "additionalProperties": false,
-        "description": "A published row's sub-field outcomes, aligned with the field's value by index (variants spec).",
+        "description": "A published row's sub-field outcomes, aligned with the field's value by index.",
         "properties": {
           "fields": {
             "additionalProperties": {
@@ -6054,7 +6054,7 @@
       },
       "SchemaDef": {
         "additionalProperties": false,
-        "description": "A `schema_def` row: a document plus where it came from and whether it is in use. One row per\nname, edited in place.\n\n`labels` are the synonyms role S drafted for its fields' labels, by field (extraction spec, \"Label vocabulary\"),\neditable; None until drafted, and again after an edit of the document. They are no part of the document, so\nthey change neither its digest nor what was learned for it.",
+        "description": "A `schema_def` row: a document plus where it came from and whether it is in use. One row per\nname, edited in place.\n\n`labels` are the synonyms role S drafted for its fields' labels, by field,\neditable; None until drafted, and again after an edit of the document. They are no part of the document, so\nthey change neither its digest nor what was learned for it.",
         "properties": {
           "field_order": {
             "items": {
@@ -6156,7 +6156,7 @@
       },
       "SchemaFields": {
         "additionalProperties": false,
-        "description": "Field names, drafted into a schema with exactly those top-level fields by role S (frontend spec, D-0810).",
+        "description": "Field names, drafted into a schema with exactly those top-level fields by role S.",
         "properties": {
           "fields": {
             "items": {
@@ -6247,7 +6247,7 @@
       },
       "SchemaRef": {
         "additionalProperties": false,
-        "description": "The schema a config is for: its name, and the digest of its document at learning (`document_digest`). A schema\nis edited in place (D-0950), so only the digest says which document the config was learned for.",
+        "description": "The schema a config is for: its name, and the digest of its document at learning (`document_digest`). A schema\nis edited in place, so only the digest says which document the config was learned for.",
         "properties": {
           "digest": {
             "pattern": "^[0-9a-f]{64}$",
@@ -6269,7 +6269,7 @@
       },
       "ScrapeRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/scrape` (\u00a74.4). `records` needs a schema and a `page_kind`, and the schema's page kind\nmust be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds\nits draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched\nwithin that many seconds. `browser_actions` collects more of a listing's rows in the browser (owner #52); a listing\nscrape for `records` in `auto` without it takes the default actions where its page is rendered (master plan\n2026-10-18 decision 11).",
+        "description": "The body of `POST /v1/scrape`. `records` needs a schema and a `page_kind`, and the schema's page kind\nmust be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds\nits draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched\nwithin that many seconds. `browser_actions` collects more of a listing's rows in the browser; a listing\nscrape for `records` in `auto` without it takes the default actions where its page is rendered.",
         "properties": {
           "browser_actions": {
             "anyOf": [
@@ -6437,7 +6437,7 @@
         "type": "object"
       },
       "ScrapeResult": {
-        "description": "The answer to a scrape (\u00a74.4). A page that robots.txt kept from being fetched has no capture, so\n`capture_id`, `final_url`, `fetched_at` and `fetch` are None, and `reason` says why, as the task's `last_error`\ndoes (acquisition spec): `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC\n9309 \u00a72.3.1.4), `slow_down` for a host whose turn at its rate was more than a minute off; for a fetched page a\nvendor's challenge kept out, `challenge: <vendor>`; for a fetched listing whose extraction gave no rows,\n`no_rows: <cause>` (`no_rows` in `resolve.pipeline`; rest-api spec, \"Scrape outcomes, not errors, for page\nfailures\"); None for any other page that was fetched. `schema` is the draft of a `schema.prompt`.",
+        "description": "The answer to a scrape. A page that robots.txt kept from being fetched has no capture, so\n`capture_id`, `final_url`, `fetched_at` and `fetch` are None, and `reason` says why, as the task's `last_error`\ndoes: `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC\n9309 \u00a72.3.1.4), `slow_down` for a host whose turn at its rate was more than a minute off; for a fetched page a\nvendor's challenge kept out, `challenge: <vendor>`; for a fetched listing whose extraction gave no rows,\n`no_rows: <cause>` (`no_rows` in `resolve.pipeline`, \"Scrape outcomes, not errors, for page\nfailures\"); None for any other page that was fetched. `schema` is the draft of a `schema.prompt`.",
         "properties": {
           "browser_actions": {
             "$ref": "#/components/schemas/ActionsReport"
@@ -6955,7 +6955,7 @@
         "type": "object"
       },
       "StoredRecord": {
-        "description": "A `record` row, with the capture it was extracted from (`None` once the capture expired),\nthe schema its fields follow, its own version and the fields whose published value differs from the\nversion it supersedes, empty for an entity's first (\u00a714, jobs spec). `egress_country` is the ISO 3166-1 country the\npage was fetched from (null: unknown) and `egress_basis` how that is known: `pool` (the proxy pool's declared\ncountry), `machine` (a direct fetch from the machine's declared country) or `unknown` (acquisition spec).",
+        "description": "A `record` row, with the capture it was extracted from (`None` once the capture expired),\nthe schema its fields follow, its own version and the fields whose published value differs from the\nversion it supersedes, empty for an entity's first. `egress_country` is the ISO 3166-1 country the\npage was fetched from (null: unknown) and `egress_basis` how that is known: `pool` (the proxy pool's declared\ncountry), `machine` (a direct fetch from the machine's declared country) or `unknown`.",
         "properties": {
           "capture_id": {
             "anyOf": [
@@ -7071,7 +7071,7 @@
       },
       "SubFieldMeta": {
         "additionalProperties": false,
-        "description": "A row sub-field's outcome without its candidates (variants spec, INV-34).",
+        "description": "A row sub-field's outcome without its candidates.",
         "properties": {
           "basis": {
             "anyOf": [
@@ -7202,7 +7202,7 @@
         "type": "object"
       },
       "TaskCounts": {
-        "description": "How many of the job's tasks are in each status (persistence-storage spec).",
+        "description": "How many of the job's tasks are in each status.",
         "properties": {
           "cancelled": {
             "title": "Cancelled",
@@ -7250,7 +7250,7 @@
       },
       "TypeAction": {
         "additionalProperties": false,
-        "description": "Type `text` into an element; refused in the browser for a password or credential field (D-1438).",
+        "description": "Type `text` into an element; refused in the browser for a password or credential field.",
         "properties": {
           "selector": {
             "anyOf": [
@@ -7333,7 +7333,7 @@
       },
       "ValidationReport": {
         "additionalProperties": false,
-        "description": "The `extraction_config.validation_report` (learning-configs spec). `refused` says why nothing can activate;\n`api_recipe` is the recipe's validation when the site has one (adapters spec).",
+        "description": "The `extraction_config.validation_report`. `refused` says why nothing can activate;\n`api_recipe` is the recipe's validation when the site has one.",
         "properties": {
           "api_recipe": {
             "anyOf": [
@@ -9579,7 +9579,7 @@
     },
     "/v1/jobs/{job_id}/outcomes": {
       "get": {
-        "description": "The job's pages by outcome, and the fields of its records by status with the reasons the unpublished ones give\n(resolution spec): counted from what the job stored.",
+        "description": "The job's pages by outcome, and the fields of its records by status with the reasons the unpublished ones give:\ncounted from what the job stored.",
         "operationId": "get_job_outcomes_v1_jobs__job_id__outcomes_get",
         "parameters": [
           {
@@ -11698,7 +11698,7 @@
     },
     "/v1/schemas/draft": {
       "post": {
-        "description": "The schema role S drafts from `fields` for `page_kind` pages, with exactly those top-level fields, as a run's\n`schema.fields` uses it: the stored draft when these names were drafted for this page kind before, else a new\none, stored. A client shows it for editing before the run (frontend spec). A draft the LLM could not give is a\nproblem typed with the LLM failure (502, 503), or a 429 once the key has made the project's `draft_call_cap` of\nthem; a retired draft is a 422.",
+        "description": "The schema role S drafts from `fields` for `page_kind` pages, with exactly those top-level fields, as a run's\n`schema.fields` uses it: the stored draft when these names were drafted for this page kind before, else a new\none, stored. A client shows it for editing before the run. A draft the LLM could not give is a\nproblem typed with the LLM failure (502, 503), or a 429 once the key has made the project's `draft_call_cap` of\nthem; a retired draft is a 422.",
         "operationId": "draft_schema_v1_schemas_draft_post",
         "requestBody": {
           "content": {

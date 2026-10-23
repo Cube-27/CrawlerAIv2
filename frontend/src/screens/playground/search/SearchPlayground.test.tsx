@@ -11,7 +11,7 @@ import {
   toggleFormats,
 } from "../../../test/playground";
 
-// `fetch` answers `POST /v1/search` with the shape of D-1442.
+// `fetch` answers `POST /v1/search` with the shape of.
 
 const JOB_ID = "0192a000-0000-7000-8000-0000000000d1";
 

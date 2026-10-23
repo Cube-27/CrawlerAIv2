@@ -12,14 +12,14 @@ secrets/
 /captures/
 /eval-private/
 /var/
-# Local filesystem object store used by `make dev` (SPEC-00 §4.4).
+# Local filesystem object store used by `make dev`.
 .data/
 *.zst
 eval-aggregate.json
 sites*.txt
 
 # --- Python ---
-# Written by the build: the git SHA in ENGINE_VERSION (SPEC-01 §4.7).
+# Written by the build: the git SHA in ENGINE_VERSION.
 backend/VERSION
 __pycache__/
 *.py[cod]
@@ -75,6 +75,6 @@ worktrees/
 RESUME.md
 license-report/
 
-# --- Fetched data (SPEC-04 §4.6): `crawlerai data fetch` downloads it; never committed ---
+# --- Fetched data: `crawlerai data fetch` downloads it; never committed ---
 backend/data/schemaorg/
 backend/data/publicsuffix/

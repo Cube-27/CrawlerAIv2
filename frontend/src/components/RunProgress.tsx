@@ -5,13 +5,13 @@ import { DurationText } from "./Duration";
 import { endedTasks, OutcomeSummary, taskTotal } from "./OutcomeCounts";
 
 /** "N of M pages done", where done is fetched to an end (done or failed), and then how many were cancelled: a cancelled
- * page ended without being fetched, so it is not counted as done (D-0981). */
+ * page ended without being fetched, so it is not counted as done. */
 function progressText(counts: TaskCounts): string {
   const done = `${String(counts.done + counts.failed)} of ${plural(taskTotal(counts), "page")} done`;
   return counts.cancelled === 0 ? done : `${done}, ${String(counts.cancelled)} cancelled`;
 }
 
-/** A run's progress (frontend spec, D-0975): a bar of the pages done, "N of M pages done" and the elapsed time under
+/** A run's progress: a bar of the pages done, "N of M pages done" and the elapsed time under
  * it, and the outcomes reached so far on the right. */
 export function RunProgress({ job }: Readonly<{ job: JobSummary }>) {
   const ended = endedTasks(job.counts);

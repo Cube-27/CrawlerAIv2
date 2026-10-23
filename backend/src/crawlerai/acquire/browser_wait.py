@@ -1,4 +1,4 @@
-"""The browser rung's one wait (acquisition spec, "HTTP and browser rungs"): a page is read once it is ready
+"""The browser rung's one wait: a page is read once it is ready
 (`settle`) and shows the text its scripts carry (`_rendered`), its main frame's document navigations followed
 (`MainFrame`), an interstitial given its own bounded wait to navigate on.
 """
@@ -24,7 +24,7 @@ __all__ = ["READY_MAX_S", "STEP_QUIET_S", "MainFrame", "called", "ms_until", "se
 # The wait for the page to be ready ends at this share of `browser_timeout_s` whatever navigations the page makes; the
 # rest is for reading the DOM and the bodies.
 _SETTLE_SHARE = 0.9
-# The one wait (`settle`, acquisition spec "HTTP and browser rungs"): from `DOMContentLoaded` (HTML Standard
+# The one wait (`settle`): from `DOMContentLoaded` (HTML Standard
 # §8.4.6), a document is read as soon as it is ready (`_ready`), and at most this long after it fired `load`, ready or
 # not: what is there then is read. Before `load`, only the wait's deadline bounds it. An unmeasured starting point
 # within 3 to 4 s.
@@ -35,17 +35,17 @@ _POLL_S = 0.25
 STEP_QUIET_S: Final = 0.5
 # RFC 9110 §15.4: a 3xx document answer is a redirect hop (or a validator's 304), never the document the frame shows.
 _REDIRECTION = range(300, 400)
-# D-1206, D-1262: for a ready document `interstitial` judges to stand in for the page, the wait for the main frame to
+# for a ready document `interstitial` judges to stand in for the page, the wait for the main frame to
 # navigate on ends this share of `browser_timeout_s` after the fetch began, and at most `_INTERSTITIAL_MAX_S` after,
 # whatever rule judged it (a refusal's status, or a rendered 2xx document's structure), and as soon as a navigation
-# commits. Nothing is clicked or typed. The bound is an unmeasured starting point (master plan
-# 2026-10-18 §6): a challenge that does not clear headless held each fetch for the whole share (backlog, #244).
+# commits. Nothing is clicked or typed. The bound is an unmeasured starting point: a challenge that does not clear
+# headless held each fetch for the whole share (backlog, #244).
 _INTERSTITIAL_SHARE = 0.4
 _INTERSTITIAL_MAX_S = 10.0
 
 
 class MainFrame:
-    """The main frame's document navigations (D-1201): the latest request (one per redirect hop), whether one is in
+    """The main frame's document navigations: the latest request (one per redirect hop), whether one is in
     flight, the response of the latest document, which the frame shows once the navigation commits, how many
     navigations have committed, and when the latest document fired `DOMContentLoaded` and `load` (HTML Standard
     §8.4.6)."""
@@ -171,7 +171,7 @@ def called(calls: DataCalls, answered: int) -> bool:
 
 
 def _ready(frame: MainFrame, calls: DataCalls, policy: FetchPolicy) -> bool:
-    """Whether the document is ready to read (acquisition spec, "HTTP and browser rungs"), a fixed condition: it has
+    """Whether the document is ready to read, a fixed condition: it has
     fired `DOMContentLoaded` (HTML Standard §8.4.6), and (a) every endpoint the site's located `call` field sources
     name (`policy.ready_calls`) has answered, else (b) no data call has been in flight since, for `STEP_QUIET_S`. A
     listing is read when the wait ends: its item area (`item_areas`) may still be filling in."""

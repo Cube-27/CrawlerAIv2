@@ -1,12 +1,12 @@
-"""Every collector over one page (extraction spec rule 1): their entities, candidates
+"""Every collector over one page: their entities, candidates
 and diagnostics as one result.
 
 The adapter collectors, then the standard collectors, run first, each on its own: one that raises gives no candidates
-and a diagnostic, and the others still run. An `api` capture of an active adapter adds that adapter's collector
-(D-0445), as does the answer a page-scoped adapter joined to the page it serves (`ADAPTER_CALL`), read with that
+and a diagnostic, and the others still run. An `api` capture of an active adapter adds that adapter's collector,
+as does the answer a page-scoped adapter joined to the page it serves (`ADAPTER_CALL`), read with that
 adapter's shapes; a platform's documented product JSON that a detail page's HTTP fetch joined after its identity check
 is read as that platform documents it (`collect.platform_json`). Then js_state and xhr admit their values against the
-candidates of the other kinds (D-0418); on a listing, xhr also reads the rows of the page's captured calls (Appendix A
+candidates of the other kinds; on a listing, xhr also reads the rows of the page's captured calls (Appendix A
 #59), which resolution takes where structured data and the config give none; on a listing none of whose groups aligns
 and with no call rows, the rows of its state JSON are read too (`collect.items.state_rows`), resolution taking them, and
 their candidates, only where no other source gives rows.
@@ -218,7 +218,7 @@ def _adapter_collectors(
     vocabulary: Vocabulary,
     diagnostics: list[str],
 ) -> list[AdapterCollector]:
-    """D-0445, INV-39: an `api` capture holds the JSON of the adapter that detects its page URL, the bundle's `url`, and
+    """an `api` capture holds the JSON of the adapter that detects its page URL, the bundle's `url`, and
     fetches from its final URL; a network body marked `ADAPTER_CALL` holds the JSON of the page-scoped adapter that
     detects the page's final URL (the one it served) and fetches from the body's URL."""
     if manifest.method == "api":

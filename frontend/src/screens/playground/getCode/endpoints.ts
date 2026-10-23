@@ -1,6 +1,6 @@
 import type { ModeId } from "../modes";
 
-/** The endpoint a mode's primary action posts to (frontend spec, "Endpoint"). */
+/** The endpoint a mode's primary action posts to. */
 export interface Endpoint {
   /** The OpenAPI path; every mode sends a `POST`. */
   path: string;
@@ -8,7 +8,7 @@ export interface Endpoint {
   title: string;
   /** The first sentence of the operation's OpenAPI description. */
   sentence: string;
-  /** The MCP tool that takes the same request (jobs spec); null when no tool does. */
+  /** The MCP tool that takes the same request; null when no tool does. */
   mcpTool: string | null;
 }
 

@@ -26,7 +26,7 @@ function ProblemLines({ problem }: Readonly<{ problem: Problem }>) {
   );
 }
 
-/** An RFC 9457 problem from the API, shown the same way on every screen (frontend spec): its title, its detail, then
+/** An RFC 9457 problem from the API, shown the same way on every screen: its title, its detail, then
  * any per-field lines and retry time. `children` are more lines, as `Alert.Description`s. */
 export function ProblemAlert({
   problem,

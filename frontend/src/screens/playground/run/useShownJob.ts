@@ -4,7 +4,7 @@ import { useJobRequest } from "../../../api/hooks/jobs";
 import { JOB } from "./jobParam";
 import type { StoredRequest } from "./storedRequest";
 
-/** The run a mode's page shows from `?job=` (frontend spec). Once its stored request loads, it fills the form
+/** The run a mode's page shows from `?job=`. Once its stored request loads, it fills the form
  * (`formOf`, `setForm`) and the page is read-only until `edit`; "Edit and re-run" then starts a new job, and the old one
  * is kept. `show` puts a new run in the address, `clear` takes the run out of it. */
 export function useShownJob<F>(formOf: (request: StoredRequest) => F, setForm: (form: F) => void) {

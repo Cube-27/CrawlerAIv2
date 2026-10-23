@@ -1,4 +1,4 @@
-"""What a page states about itself and links to (adapters spec): its final URL, canonical link and `og:url`, and the
+"""What a page states about itself and links to: its final URL, canonical link and `og:url`, and the
 absolute targets of its links, read from the document by the HTML rules (base URL, link relations)."""
 
 import time

@@ -1,4 +1,4 @@
-"""Identity (extraction spec): the entities that state one item, from one collector or several, are one entity of
+"""Identity: the entities that state one item, from one collector or several, are one entity of
 the entity graph, and a standalone variant joins the group whose `productGroupID` it names."""
 
 import json
@@ -116,7 +116,7 @@ def test_roots_naming_only_the_page_by_one_name_are_one_item() -> None:
     assert graph.entities["jsonld:5:$"].parent == "jsonld:0:$"
 
 
-# `isVariantOf` (D-1344): the inverse of `hasVariant`, so the group stands beside the page's Product.
+# `isVariantOf`: the inverse of `hasVariant`, so the group stands beside the page's Product.
 
 
 _KEYS = st.sampled_from([("sku", "A"), ("sku", "B"), ("gtin13", "4006381333931"), ("@id", "https://x.example/1")])

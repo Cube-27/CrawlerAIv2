@@ -1,6 +1,6 @@
-"""The target's Offers (resolution spec, Atomic offers, INV-15; variants spec), as preference reads them.
+"""The target's Offers (Atomic offers), as preference reads them.
 
-An Offer field is one whose `schema_org` path starts at Offer (§4.8). The anchor Offer is the one holding kept values
+An Offer field is one whose `schema_org` path starts at Offer. The anchor Offer is the one holding kept values
 for the most offer fields, the first seen on a tie; on a detail page, the Offers of the variant the target shows win:
 the variants and Offers whose sku or gtin is one the target publishes as its own, one per source (GS1 GTIN and a
 seller's SKU identify one variant, whichever source states it), and each other source's lone Offer of the target. A
@@ -25,7 +25,7 @@ VARIANT_IDS = frozenset({"gtin", "sku"})
 @dataclass(frozen=True, slots=True)
 class PageOffers:
     """The page's Offers as preference reads them: `anchor`, the Offers whose values have scope 1 (none: every Offer
-    has), and `shown`, the Offers of the variant the target shows (variants spec)."""
+    has), and `shown`, the Offers of the variant the target shows."""
 
     anchor: frozenset[str] = frozenset()
     shown: frozenset[str] = frozenset()
@@ -40,7 +40,7 @@ class TargetOffers:
 
     def shown_value(self, contenders: list[Group], offers: PageOffers) -> Group | None:
         """The one value (an amount, an availability) the shown variant's Offers state when every other value is
-        only an Offer outside it (INV-38): the other variants' values are theirs, not the item's."""
+        only an Offer outside it: the other variants' values are theirs, not the item's."""
 
         def inside(group: Group) -> bool:
             return any(self.offer_of(c) in offers.shown for c in group.members)
@@ -52,16 +52,16 @@ class TargetOffers:
         return shown[0] if len(shown) == 1 and all(elsewhere(g) for g in contenders if g not in shown) else None
 
     def split(self, top: Group, offers: PageOffers) -> bool:
-        """Whether only Offers other than the anchor state the value (INV-15)."""
+        """Whether only Offers other than the anchor state the value."""
         return bool(offers.anchor) and all(self.offer_of(c) not in (None, *offers.anchor) for c in top.members)
 
     def offers_disagree(self, groups: list[Group]) -> bool:
-        """Whether two of the field's values are stated by Offers (§4.8)."""
+        """Whether two of the field's values are stated by Offers."""
         return sum(any(self.offer_of(c) is not None for c in g.members) for g in groups) > 1
 
     def lone_offers(self, named: frozenset[str]) -> frozenset[str]:
         """The Offers of the target each of whose sources (`source_of`) other than `named` states one alone: a source's
-        one Offer of the item is its offer, the variant the page shows (resolution spec, Atomic offers). A source
+        one Offer of the item is its offer, the variant the page shows (Atomic offers). A source
         listing several states which of them each is by its sku or gtin."""
         by_source: dict[str, list[str]] = {}
         for offer in self.graph.offers(self.target):
@@ -75,7 +75,7 @@ class TargetOffers:
         own: list[tuple[Candidate, FieldSpec]],
         request_url: str,
     ) -> tuple[frozenset[str], frozenset[str]]:
-        """The Offers of the variant the target shows (variants spec): of the target's Offers and variants, those
+        """The Offers of the variant the target shows: of the target's Offers and variants, those
         whose sku or gtin (a field's or a row sub-field's) equals one of `own`, or whose own URL is `request_url`
         (`addressed`), at most one per source, with every other source's Offer stating the same sku or gtin as one of
         them (GS1 GTIN and a seller's SKU identify one variant, whichever source states it); none when no unit matches
@@ -95,7 +95,7 @@ class TargetOffers:
     def addressed(self, request_url: str) -> set[str]:
         """The target's variants and Offers whose own URL is the request URL, where it is not the target's own: a
         variant's URL (schema.org `url`, an Offer's `url`) addresses the page showing that variant, so a request for
-        it is a request for the page with that variant selected (variants spec, "Shown variant")."""
+        it is a request for the page with that variant selected."""
         if names_item(self.target, request_url):
             return set()
         units = [*self.graph.variants(self.target), *self.graph.offers(self.target)]
@@ -123,7 +123,7 @@ class TargetOffers:
 
     def is_offer_field(self, spec: FieldSpec) -> bool:
         # A field whose `schema_org` path starts at Offer (or a subtype), in every alternative, holds a part of an
-        # offer (§4.8).
+        # offer.
         return spec.schema_org is not None and all(
             self.graph.vocabulary.is_a(path.root, OFFER) for path in parse_paths(spec.schema_org)
         )
@@ -133,7 +133,7 @@ class TargetOffers:
         return owner.id if self.graph.is_a(owner, OFFER) else None
 
     def anchor(self, offer_fields: Mapping[str, Sequence[Candidate]]) -> str | None:
-        """The Offer the page's offer fields come from (INV-15): the one holding kept candidates for the most of
+        """The Offer the page's offer fields come from: the one holding kept candidates for the most of
         them, the first seen on a tie; `None` when no Offer holds any."""
         coverage: dict[str, int] = {}
         for kept in offer_fields.values():

@@ -1,5 +1,5 @@
-"""The MCP server (jobs spec): twenty-one tools, each one call into `crawlerai.services`,
-answered as `output` shapes them. It holds no logic of its own (§3).
+"""The MCP server: twenty-one tools, each one call into `crawlerai.services`,
+answered as `output` shapes them. It holds no logic of its own.
 
 One server runs over stdio (`python -m crawlerai.mcp_server`) and over streamable HTTP at `/mcp` in the API app
 (`crawlerai.api.mcp`). Each transport binds a call to the runtime it runs with and the API key that authenticated it.
@@ -401,7 +401,7 @@ def _answered[**P](tool: Callable[P, Awaitable[CallToolResult]]) -> Callable[P, 
 def build_server(bind: Bind) -> FastMCP:
     """The server with its twenty-one tools. `bind` gives a call its runtime and API key, and refuses an unauthenticated
     one. Over HTTP the server is stateless and answers JSON, so any API process can take any request; DNS-rebinding
-    protection is off, since a request authenticates with a bearer key a browser never sends on its own (§18)."""
+    protection is off, since a request authenticates with a bearer key a browser never sends on its own."""
     server = FastMCP(
         "CrawlerAI",
         instructions=f"CrawlerAI extracts schema-shaped records from web pages. {UNTRUSTED}",

@@ -1,4 +1,4 @@
-"""Rung selection (acquisition spec): which rungs a fetch tries, which outcome it keeps, and what it records.
+"""Rung selection: which rungs a fetch tries, which outcome it keeps, and what it records.
 
 The rungs are stubs answering synthetic outcomes; no network.
 """
@@ -165,10 +165,10 @@ def test_the_bundle_records_every_attempt_beside_its_policy() -> None:
     }
 
 
-# --- the API recipe rung (adapters spec) ------------------------------------------------------------------------
+# --- the API recipe rung ------------------------------------------------------------------------
 
 
-# --- acquisition spec "Browser on block or by field source": never for an HTTP `ok` page ----------------------------
+# --- never for an HTTP `ok` page ----------------------------
 
 # Whether an `auto` fetch retries each HTTP outcome in the browser (the a.3 table): a block, a shell (a challenge's or
 # a script-only document's), an unanswered request; never an `ok` page, a 4xx class, a redirect class or a non-HTML
@@ -210,7 +210,7 @@ def test_no_browser_retry_starts_too_close_to_the_deadline() -> None:
     assert (result.method, stubs.browser.calls) == ("http", [])
 
 
-# --- D-1261: an HTTP listing shell kept for want of a browser outcome is the fetch's last page ---
+# --- an HTTP listing shell kept for want of a browser outcome is the fetch's last page ---
 
 
 def test_the_last_rungs_shell_no_challenge_names_is_the_page() -> None:
@@ -229,10 +229,10 @@ def test_the_last_rungs_shell_no_challenge_names_is_the_page() -> None:
     assert (http_only.method, http_only.block_class) == ("http", "ok")
 
 
-# --- D-1263: a 503 interstitial gets one browser attempt after the site's pause ---
+# --- a 503 interstitial gets one browser attempt after the site's pause ---
 
 
-# --- owner decision 2026-10-23: an HTTP 429 gets one browser attempt after the pause it asks for ---
+# --- an HTTP 429 gets one browser attempt after the pause it asks for ---
 
 
 def test_a_429_is_answered_once_in_the_browser_after_its_pause() -> None:
@@ -257,7 +257,7 @@ def test_a_429_is_answered_once_in_the_browser_after_its_pause() -> None:
     assert (_attempts(result), stubs.browser.calls) == ([("http", "blocked")], [])
 
 
-# --- adapters spec "Referral from a tenant's own host": a shell asks its referral before the render ---------------
+# --- a shell asks its referral before the render ---------------
 
 PLATFORM = "https://jobs.example.test/board"
 

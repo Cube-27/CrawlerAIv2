@@ -1,4 +1,4 @@
-"""Stand-in markers (D-1470, INV-24 amended): a 2xx HTML document that shows a vendor's stand-in marker is `blocked`
+"""Stand-in markers (): a 2xx HTML document that shows a vendor's stand-in marker is `blocked`
 and labelled with that vendor; nothing else in the vendor data changes a block class. The markers come from the
 adapter package's data, never from this file (C3)."""
 

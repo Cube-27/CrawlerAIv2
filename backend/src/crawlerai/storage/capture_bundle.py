@@ -1,15 +1,15 @@
-"""The capture bundle (persistence-storage spec): everything replay needs, in one zstd-compressed tar.
+"""The capture bundle: everything replay needs, in one zstd-compressed tar.
 
 ```
 manifest.json      # CaptureManifest
 body.html          # response body as received (transfer/content encoding removed); body.json for API captures;
                    # for browser captures, the rendered DOM
-body.raw.html      # browser captures only: the navigation response body as the server sent it (acquisition spec)
+body.raw.html      # browser captures only: the navigation response body as the server sent it
 network/0001.json  # JSON bodies in response order, as received: a render's captured calls, or an HTTP page's data
                    # calls (`acquire.identity`)
 ```
 
-`encode` and `decode` are pure and `decode(encode(b)) == b` (INV-10). Replay reads nothing but the bundle.
+`encode` and `decode` are pure and `decode(encode(b)) == b`. Replay reads nothing but the bundle.
 """
 
 import hashlib
@@ -40,7 +40,7 @@ _RAW_BODY = "body.raw.html"
 
 
 class CorruptBundle(Exception):
-    """The bytes are not a valid bundle (persistence-storage spec)."""
+    """The bytes are not a valid bundle."""
 
 
 class _Frozen(BaseModel):
@@ -56,9 +56,9 @@ class NetworkBody(_Frozen):
     """Manifest entry for one captured network body; the bytes sit at the same index of the bundle's `network`.
 
     `method`, `request_body` and `request_headers` describe the request the body answered, which API discovery groups
-    and binds by (adapters spec) and header minimization replays (§4.6); bundles written before they were kept decode
+    and binds by and header minimization replays; bundles written before they were kept decode
     with None. `request_body` is None also for a request without a body or with one that is not UTF-8 text.
-    `request_headers` are recorded as the page's are (acquisition spec: no cookies), in the order sent.
+    `request_headers` are recorded as the page's are (no cookies), in the order sent.
 
     `response_headers` are recorded the same way, in the order received; `resource_type` is the request's Fetch
     destination as the browser names it (`fetch`, `xhr`, `document`); `action` is how many browser actions the page
@@ -209,7 +209,7 @@ CAPTURES_PREFIX: Final = "captures/"
 
 
 def capture_key(capture_id: UUID, fetched_at: datetime) -> str:
-    """Production captures, which expire after 30 days (persistence-storage spec). `fetched_at` must be
+    """Production captures, which expire after 30 days. `fetched_at` must be
     timezone-aware."""
     month = fetched_at.astimezone(UTC)
     return f"{CAPTURES_PREFIX}{month:%Y}/{month:%m}/{capture_id}.bundle.zst"
@@ -261,7 +261,7 @@ def decode_html(body: bytes, headers: HeaderList, method: CaptureMethod) -> str:
     encoding sniffing says (HTML Standard §13.2.3.2): a byte order mark, else the charset its Content-Type names (RFC
     9110 §8.3.2), else a `meta` declaration in its first bytes, else UTF-8; a label names its encoding as the Encoding
     Standard §4.2 says (`iso-8859-1` is windows-1252), and an unknown label is skipped. A JSON body (`_is_json`) is
-    UTF-8 (RFC 8259 §8.1; its media type has no charset parameter, §11), whatever charset its label names; the UTF-16
+    UTF-8 (RFC 8259 §8.1, its media type has no charset parameter), whatever charset its label names; the UTF-16
     and UTF-32 forms are told from its first bytes as `core.json_text` reads them (RFC 4627 §3)."""
     if method == "browser":
         return body.decode(_UTF8.codec_info.name, errors="replace")
@@ -273,8 +273,8 @@ def decode_html(body: bytes, headers: HeaderList, method: CaptureMethod) -> str:
 
 
 def _is_json(headers: HeaderList, method: CaptureMethod) -> bool:
-    """Whether a body is a JSON text: labelled with a JSON MIME type, or an API capture's (`body.json`; acquisition
-    spec, "Structural outcome classification (INV-24)") not labelled HTML. The essence is the last Content-Type's,
+    """Whether a body is a JSON text: labelled with a JSON MIME type, or an API capture's (`body.json`) not labelled
+    HTML. The essence is the last Content-Type's,
     lower-cased, parameters dropped (RFC 9110 §8.3.1)."""
     types = [value.split(";", 1)[0].strip().lower() for name, value in headers if name.lower() == "content-type"]
     essence = types[-1] if types else ""
@@ -320,7 +320,7 @@ _GUARD_PREFIX_MAX: Final = 16
 
 
 def network_json(data: bytes) -> JsonValue:
-    """A captured network body as JSON (RFC 8259): UTF-8 text (§8.1; a byte order mark is ignored, as §8.1 allows),
+    """A captured network body as JSON (RFC 8259): UTF-8 text (a byte order mark is ignored, as §8.1 allows),
     either one JSON text or a short guard prefix followed by an object or array (`_GUARD_PREFIX_MAX`). Raises
     `ValueError` when it is neither. The browser reads bodies to keep with it and every reader of the bundle's
     network bodies parses them with it, so the two agree."""

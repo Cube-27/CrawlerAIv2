@@ -6,7 +6,7 @@ import { jobSummary } from "../../../test/jobs";
 import { openPlayground } from "../../../test/playground";
 import { runApi } from "../../../test/runs";
 
-// `fetch` answers `GET /v1/jobs/{id}/webhook-deliveries` as the rest-api spec defines it (D-1511).
+// `fetch` answers `GET /v1/jobs/{id}/webhook-deliveries` as the API defines it.
 
 const JOB_ID = "0192a000-0000-7000-8000-00000000d0b1";
 const DELIVERIES = `GET /v1/jobs/${JOB_ID}/webhook-deliveries`;

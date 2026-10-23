@@ -1,4 +1,4 @@
-"""The paged list walk adapters share (adapters spec): pages are asked while the adapter names a next one, the rows
+"""The paged list walk adapters share: pages are asked while the adapter names a next one, the rows
 stay under the request's target and the hard cap, and a later page that fails ends the walk without losing the rows."""
 
 import asyncio

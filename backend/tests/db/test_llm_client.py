@@ -1,4 +1,4 @@
-"""The LLM client's budget and usage (llm spec, INV-23): every call is checked against the job's `llm_calls`
+"""The LLM client's budget and usage: every call is checked against the job's `llm_calls`
 budget first and writes its usage afterwards, in a transaction of its own, so a task that then fails keeps it."""
 
 from typing import Any
@@ -89,7 +89,7 @@ async def test_a_call_writes_its_usage_events_and_counters(engine: AsyncEngine) 
         "model": "fake-model",
         "request_hash": request_hash(request(job_id)),
         "latency_ms": response.latency_ms,
-        # The call's prompt length, which a price tiered by prompt length needs for the output tokens too (§4.8).
+        # The call's prompt length, which a price tiered by prompt length needs for the output tokens too.
         "tokens_in": 120,
         "cache_read_tokens": 0,
         "cache_write_tokens": 0,

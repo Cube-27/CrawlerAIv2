@@ -1,4 +1,4 @@
-"""The browser's SSRF guard (acquisition spec, INV-16): a SOCKS5 front that checks every connection the browser opens
+"""The browser's SSRF guard: a SOCKS5 front that checks every connection the browser opens
 and connects only to the checked address. Spoken to here as a SOCKS5 client would (RFC 1928); no browser, no DNS.
 
 `.test` hosts are pinned to a local echo server; every other name goes through the real guard with a stub resolver.

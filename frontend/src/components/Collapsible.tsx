@@ -1,7 +1,7 @@
 import { Button, Disclosure } from "@heroui/react";
 import { useState, type ReactNode } from "react";
 
-/** A part of a screen that starts collapsed (DESIGN.md, Collapsible): a quiet trigger named `title` with `aside` beside
+/** A part of a screen that starts collapsed: a quiet trigger named `title` with `aside` beside
  * it (a status), then `children` once opened. The children are rendered only while open, so a collapsed live list
  * costs nothing. */
 export function Collapsible({

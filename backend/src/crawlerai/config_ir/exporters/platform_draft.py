@@ -1,16 +1,15 @@
-"""The `platform_draft` export (learning-configs spec): a config as XPath 1.0, regex and JSONPath steps for
+"""The `platform_draft` export: a config as XPath 1.0, regex and JSONPath steps for
 an external crawler platform whose own format is not known yet (OPEN_QUESTIONS #1), so every export says `draft: true`.
 
-Each field keeps its steps in order, since the first valid value wins (§12.1) and a field reduced to one selector would
+Each field keeps its steps in order, since the first valid value wins and a field reduced to one selector would
 export something other than what the engine runs. A CSS step is exported as its XPath translation, which is what the
 executors run, and an `attr` step as the XPath attribute step `@name` (XPath 1.0 §2.5), which reads the same attribute
 of the context node: the row in a listing, the root element on a page. The release executor runs both steps the same
 way (a CSS step by its XPath, `attr` as the context node's attribute), so the release check of the IR is the check of
-the draft. A field the release check marks `manual` (§12.3) is exported with `manual: true`. An `api_recipe` is
-exported as stored, since held-out validation replayed it (adapters spec), and with its PHP code hint (`php_hint`).
+the draft. A field the release check marks `manual` is exported with `manual: true`. An `api_recipe` is
+exported as stored, since held-out validation replayed it, and with its PHP code hint (`php_hint`).
 XPath steps run in PHP 8.4 on the HTML Standard parse of the page (`xpath_document`). Regexes are in the portable
-subset (`portable_regex`) and run with PHP's `/u` modifier (`regex_flags`). Exports carry selectors only, never values
-(INV-27).
+subset (`portable_regex`) and run with PHP's `/u` modifier (`regex_flags`). Exports carry selectors only, never values.
 """
 
 from collections.abc import Sequence
@@ -57,7 +56,7 @@ class PlatformDraft(_Model):
     # PHP PCRE pattern modifiers for every regex: `u`, UTF mode, in which `.` and classes match code points as in the
     # engine (`portable_regex`).
     regex_flags: Literal["u"] = "u"
-    # The PHP 8.4 document every XPath step runs on, with `new Dom\XPath($document)`: the HTML Standard parse (§13.2),
+    # The PHP 8.4 document every XPath step runs on, with `new Dom\XPath($document)`: the HTML Standard parse,
     # the tree the engine and the release check read, so a step selects the same element there. `HTML_NO_DEFAULT_NS`
     # leaves HTML elements in no namespace, as lxml has them, so an unprefixed name test (XPath 1.0 §2.3) matches them;
     # `LIBXML_NOERROR` keeps parse errors, which the HTML Standard recovers from, out of PHP's warnings.

@@ -1,4 +1,4 @@
-"""The paging driver's stop and keep rules over a simulated tab (owner #52): whatever the list's length, its batch size,
+"""The paging driver's stop and keep rules over a simulated tab: whatever the list's length, its batch size,
 the row target and the action cap, the run stops for a stated reason, overshoots the target by less than one batch,
 never passes its cap, and keeps the grown document once. A list that recycles its items while it grows keeps every
 item in some kept state; a list whose items hold no link is counted by the rows of its calls.

@@ -1,4 +1,4 @@
-"""Sitemaps (jobs spec; sitemaps.org protocol): where they are found, how an urlset, an index and a gzipped
+"""Sitemaps (sitemaps.org protocol): where they are found, how an urlset, an index and a gzipped
 sitemap read, and how far indexes are followed. Synthetic sitemaps on RFC 2606 hosts; the fetch is a stub."""
 
 import gzip

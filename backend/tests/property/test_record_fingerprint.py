@@ -1,4 +1,4 @@
-"""Record fingerprints and changed fields (jobs spec): the fingerprint is a pure function of the published values, and
+"""Record fingerprints and changed fields: the fingerprint is a pure function of the published values, and
 `changed_fields` names exactly the fields whose published value differs, a field that became published or stopped
 publishing included."""
 

@@ -1,4 +1,4 @@
-"""The names an item's attributes state, and the run of their words a block shows (listings spec, "Rows from blocks"):
+"""The names an item's attributes state, and the run of their words a block shows:
 WCAG 2.1 SC 2.5.3 (Label in Name) has a component's accessible name hold its visible label, so a stated name is
 checked against the block's shown lines (`collect.items.align`)."""
 

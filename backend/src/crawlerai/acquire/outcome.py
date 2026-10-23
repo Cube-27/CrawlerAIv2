@@ -1,5 +1,5 @@
 """One fetch attempt as a `FetchResult`: the manifest, the attempt record and the bundle, built the same way by every
-fetcher (acquisition spec)."""
+fetcher."""
 
 import time
 from dataclasses import dataclass
@@ -26,7 +26,7 @@ __all__ = ["Content", "Exchange", "Traffic", "as_error", "fetch_result", "report
 
 @dataclass(frozen=True)
 class Exchange:
-    """The last request and response of a fetch. `status` is 0 when no status line arrived (D-0127)."""
+    """The last request and response of a fetch. `status` is 0 when no status line arrived."""
 
     url: str
     status: int
@@ -37,7 +37,7 @@ class Exchange:
 @dataclass
 class Traffic:
     """The bytes a fetch's requests have moved so far, both ways, which `proxy_bytes` usage counts for a fetch through
-    a pool (D-1381): the HTTP messages of the HTTP and JSON rungs, the tunnelled bytes of the browser's guard."""
+    a pool: the HTTP messages of the HTTP and JSON rungs, the tunnelled bytes of the browser's guard."""
 
     bytes: int = 0
 
@@ -75,9 +75,9 @@ def fetch_result(
     """`started` is the `time.monotonic()` reading when the fetch began; `timings` are added to its total; `challenge`
     labels the attempt (`acquire.challenge`); `transferred` is the bytes the attempt moved (`Traffic`); `steps` how the
     policy's page steps ended; `artifacts` are the files made of an `ok` page, kept with the result. The caller's header
-    values are recorded redacted (D-1432)."""
+    values are recorded redacted."""
     if error is not None:
-        # An error keeps no body: it yields no records (INV-11), and a partial body would mislead a replay.
+        # An error keeps no body: it yields no records, and a partial body would mislead a replay.
         content = Content(body=b"")
     exchange = exchange or Exchange(url=url, status=0, request_headers=(), response_headers=())
     duration_ms = round((time.monotonic() - started) * 1000)
@@ -123,7 +123,7 @@ def fetch_result(
 
 def _redacted(headers: HeaderList, policy: FetchPolicy) -> HeaderList:
     """`headers` with the value of each header the caller set (`RequestContext`) redacted: the caller's values are
-    secrets (D-1432)."""
+    secrets."""
     if policy.context is None or not policy.context.headers:
         return headers
     names = policy.context.header_names()
@@ -132,7 +132,7 @@ def _redacted(headers: HeaderList, policy: FetchPolicy) -> HeaderList:
 
 def as_error(result: FetchResult, reason: str) -> FetchResult:
     """`result` as an `error` outcome for `reason`: an answer that arrived but is not the content the fetch asked for
-    (an adapter's answer that does not serve its page, adapters spec). As every error, it keeps no body."""
+    (an adapter's answer that does not serve its page). As every error, it keeps no body."""
     manifest = result.bundle.manifest.model_copy(update={"block_class": "error", "html_sha256": sha256_hex(b"")})
     last = result.attempts[-1].model_copy(update={"block_class": "error", "error": reason})
     return FetchResult(
@@ -168,5 +168,5 @@ _OWN_FAILURES = frozenset({"body_cap", "decode_error"})
 
 def _not_the_endpoints(error: str | None) -> bool:
     """A failure of our own limits or guard, not of the endpoint: a cap or a decoding error keeps the status of an
-    answer the endpoint did relay, which says nothing either way (acquisition spec, "Proxy pools")."""
+    answer the endpoint did relay, which says nothing either way."""
     return error is not None and (error in _OWN_FAILURES or error.startswith(SSRF_REJECTED))

@@ -1,4 +1,4 @@
-"""The wheel carries `VERSION` and the manifest's data files, and an installed copy finds them (D-0492)."""
+"""The wheel carries `VERSION` and the manifest's data files, and an installed copy finds them."""
 
 import importlib.util
 import json

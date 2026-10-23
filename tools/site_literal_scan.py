@@ -1,4 +1,4 @@
-"""Fail when a tracked file names a site outside the places allowed to (INV-03, C3).
+"""Fail when a tracked file names a site outside the places allowed to (C3).
 
 A site literal is the host of an `http(s)://` URL, or a whole dotted token whose last label is in the IANA root-zone
 list (pinned in `backend/data/manifest.json`). Hosts in `tools/site_literal_allowlist.txt` and files under the exempt
@@ -7,14 +7,14 @@ paths pass. Tests are not exempt (C9).
 Dotted tokens are also file names (`cli.py`) and attribute accesses in code, so:
 - in source code (Python, including `*.py.*` templates, and JS/TS) only string literals and comments are scanned;
 - a two-label token whose last label is the extension of a tracked file, or of a data file
-  `backend/data/manifest.json` pins (a fetched one is not tracked; schemas spec), is a file name;
+  `backend/data/manifest.json` pins (a fetched one is not tracked), is a file name;
 - a token that is the dotted path of a tracked Python module is a module name;
 - a two-label token `table.column` naming a column of a table the repository's schema defines is a qualified column
   reference (SQL's `<column reference>`), as in `ForeignKey("table.column")`. The schema is read from the tracked
   Python files: Alembic `create_table` and `add_column`, SQLAlchemy `Table`, and declarative `__tablename__` classes;
 - a token that is, as written, a schema.org property path some tracked schema document maps a field to is that path.
-  A schema document is a JSON object with a `name`, a `page_kind` and a `fields` object
-  (schemas spec); the paths are the `schema_org` values of its fields, of their `item` and of their nested `fields`,
+  A schema document is a JSON object with a `name`, a `page_kind` and a `fields` object;
+the paths are the `schema_org` values of its fields, of their `item` and of their nested `fields`,
   up to any `+`, that follow schema.org naming. The paths are read from the documents, as columns are read from the
   schema.
 Schemas (the tables and the schema documents) are read only from files outside the exempt paths: an exempt file
@@ -67,8 +67,8 @@ DOTTED = re.compile(r"(?i)(?<![a-z0-9-])[a-z0-9-]+(?:\.[a-z0-9-]+)+(?![a-z0-9-]|
 # that are neither identifier nor host characters, so `cache_shop.example.com` is not one.
 COLUMN_REF = re.compile(r"(?i)(?<![\w.-])([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)(?![\w-]|\.[\w-])")
 # schema.org naming conventions (https://schema.org/docs/styleguide.html): a path starts at an UpperCamelCase type and
-# follows lowerCamelCase properties; `+` joins a second property of the last type (schemas spec), and `|` separates
-# alternative paths (variants spec). A path is matched only as written, so a host in its usual lowercase form is never
+# follows lowerCamelCase properties; `+` joins a second property of the last type, and `|` separates
+# alternative paths. A path is matched only as written, so a host in its usual lowercase form is never
 # one.
 SCHEMA_ORG_PATH = re.compile(r"([A-Z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)+)(?:\+[a-z][A-Za-z0-9]*)?")
 # JS/TS string literals and comments, matched left to right. Quoted strings stay on one line, so a regex literal
@@ -210,7 +210,7 @@ def schema_org_paths(file: Path) -> Iterator[str]:
 
 
 def _paths(value: object) -> Iterator[str]:
-    """The paths of a field's `schema_org` value, one per `|` or `>` alternative (D-1493), each up to any `+`."""
+    """The paths of a field's `schema_org` value, one per `|` or `>` alternative, each up to any `+`."""
     if isinstance(value, str):
         for alternative in re.split(r"[|>]", value):
             if match := SCHEMA_ORG_PATH.fullmatch(alternative):

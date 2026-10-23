@@ -1,4 +1,4 @@
-"""The configured providers, in failover order (llm spec): `CRAWLERAI_LLM_PROVIDERS`, the model per class for
+"""The configured providers, in failover order: `CRAWLERAI_LLM_PROVIDERS`, the model per class for
 each, and each one's API key."""
 
 from typing import assert_never

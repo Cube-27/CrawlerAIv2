@@ -1,4 +1,4 @@
-"""A job's run events as a stream (jobs spec): the stored `job_event` rows in id order, from
+"""A job's run events as a stream: the stored `job_event` rows in id order, from
 after the last one a client saw, with the job's task counts as `progress` after each batch, until the job's end event.
 `GET /v1/jobs/{id}/events` sends these over SSE.
 

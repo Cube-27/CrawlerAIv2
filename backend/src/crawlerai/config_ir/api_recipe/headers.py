@@ -1,4 +1,4 @@
-"""Header minimization by replay (adapters spec: "headers proven necessary by replay").
+"""Header minimization by replay ("headers proven necessary by replay").
 
 A recipe starts with `Accept: application/json` alone. When its replay does not reproduce every sample page, the
 headers the browser sent with the endpoint request are added one at a time, in the order sent, and the first whose
@@ -6,7 +6,7 @@ addition makes the replay pass is kept; the others are dropped. So a kept header
 
 Some captured headers are never sent: the ones the client sets itself, credentials, values that look like tokens and
 values that differ between sample pages (a recipe's header is a constant, or the page URL as `{page_url}`). After the
-captured ones, each header the caller's request context supplies (D-1430) is tried as a reference (`ContextHeader`): the
+captured ones, each header the caller's request context supplies is tried as a reference (`ContextHeader`): the
 replay sends the context's value, and the recipe keeps the name alone, never the value. When the replay needs anything
 else, or more than one added header, the recipe is not learnable and the field stays on the browser (§2: cookie
 handoff, tokens and signed requests are §22).
@@ -55,7 +55,7 @@ class NotLearnable:
 async def minimize(
     spec: RequestSpec, fields: Mapping[str, str], pages: Sequence[ReplayPage], schema: SchemaDef, replay: Replay
 ) -> Proven | NotLearnable:
-    """The smallest header set (§4.6) with which replaying `spec` reproduces the `fields` map on every page of
+    """The smallest header set with which replaying `spec` reproduces the `fields` map on every page of
     `pages`; their captured requests give the headers to try, in the order the first page's request sent them, then
     the request context of the pages (`ReplayPage.context`) its header names, each as a reference."""
     base = _with_headers(spec, [_ACCEPT])

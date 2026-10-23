@@ -1,4 +1,4 @@
-"""Record versions (jobs spec): how a page's records are stored when the same
+"""Record versions: how a page's records are stored when the same
 entities were extracted before.
 
 Each record is compared with the latest version of its entity, the record with the same (site, schema, entity key) and
@@ -6,8 +6,8 @@ the highest `version`. A record equal to it in every value (`recurring.record_fp
 completeness, under the same document of the schema, stores nothing and answers with that version, which holds exactly
 what was just extracted; any difference, none stored, or another document (`record.schema_digest`; a schema is edited
 in place) adds the next version, superseding it and naming its changed fields. Either
-way the task stands for the record it answers with (`task_record`, §4.2), so that its job lists it, with what the record
-is against the entity's previous record (`task_record.delta`, jobs spec "Page delta"): `new` when it had none,
+way the task stands for the record it answers with (`task_record`), so that its job lists it, with what the record
+is against the entity's previous record (`task_record.delta`): `new` when it had none,
 `changed` when a published value differs, else `same`. This is the
 `resolve.task.RecordWriter` a page task stores its records with.
 """

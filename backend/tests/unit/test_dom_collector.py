@@ -1,4 +1,4 @@
-"""The structural DOM collector (extraction spec admitted 2026-10-16): label-value pairs whose
+"""The structural DOM collector (admitted): label-value pairs whose
 label is one of a field's labels (its name, schema.org property, description or drafted synonyms), the main region's
 one typed value outside other items, and the main content's first image. Every
 candidate is the page's, independent, with a `dom:` locator naming the element its value came from. Pages are
@@ -202,7 +202,7 @@ def test_without_one_main_region_image_there_is_no_main_image(body: str) -> None
     ],
 )
 def test_an_image_in_a_dialog_or_a_hidden_subtree_is_not_the_main_image(wrapper: str) -> None:
-    # D-1023: a drawer or modal inside `main` holds images of its own (a badge, a size chart), not the entity's.
+    # a drawer or modal inside `main` holds images of its own (a badge, a size chart), not the entity's.
     found = _collect(f'<main>{wrapper.format("<img src=/badge.png>")}<img src="/p/1.jpg"></main>')
 
     assert [value for value, _ in found["image_url"]] == ["https://shop.example.test/p/1.jpg"]

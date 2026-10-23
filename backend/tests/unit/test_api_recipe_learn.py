@@ -1,4 +1,4 @@
-"""Recipe learning in a learning run (adapters spec "integration into learning-configs spec learning", §4.3 to §4.7):
+"""Recipe learning in a learning run (integration into config learning):
 from the sample pages' browser captures, find the endpoint that carries the published values, bind its request
 (deterministically, or by role D when that is ambiguous), prove its headers by replay and validate it on the held-out
 pages. Only a recipe that passed all of it comes back with its proof; one that failed comes back refused with the
@@ -36,7 +36,7 @@ StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` 
 JOB = JobId(uuid7())
 SITE = "https://shop.example.test"
 ENDPOINT = "https://api.example.test/v1/products"
-# `+` joins the amount and currency paths of a money field (adapters spec).
+# `+` joins the amount and currency paths of a money field.
 MAP = {"title": "$['data']['name']", "price": "$['data']['price']+$['data']['currency']"}
 # Eight products: the first five are the learning sample, the rest held out.
 PRODUCTS = [(f"{1000 + n}", f"item-{chr(97 + n)}", f"Item {chr(65 + n)}", f"{n + 1}.50") for n in range(8)]
@@ -197,4 +197,4 @@ def test_an_ambiguous_binding_is_bound_by_role_d_and_accepted_by_replay(stand_in
     assert [request.prompt_kind for request in client.requests] == ["d_bind"]
 
 
-# --- why a run has no recipe (D-0583: the report says) ---
+# --- why a run has no recipe (the report says) ---

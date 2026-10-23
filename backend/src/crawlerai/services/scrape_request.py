@@ -1,5 +1,5 @@
-"""The members of the requests that run page tasks (`scrape`, rest-api spec; `batch_scrape`, `extract` and `crawl`,
-jobs spec) and their checks: the formats a page is read for, how a request names its schema, its `render` member,
+"""The members of the requests that run page tasks (`scrape`, `batch_scrape`, `extract` and `crawl`) and their checks:
+the formats a page is read for, how a request names its schema, its `render` member,
 and the request as a job row stores it.
 """
 
@@ -31,13 +31,13 @@ class Input(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-# The description of the `min_confidence` member of the requests that extract `records` (resolution spec, "Evidence and
-# confidence"): a field whose calibrated bucket is below it is left unpublished, else every value publishes.
+# The description of the `min_confidence` member of the requests that extract `records`: a field whose calibrated bucket
+# is below it is left unpublished, else every value publishes.
 MIN_CONFIDENCE_DESCRIPTION: Final = (
     "Leave unpublished (abstained) a records field whose calibrated confidence is below this. "
     "Unset: every value publishes with its confidence."
 )
-# The description of the `render` member of the requests that extract `records` (rest-api spec, "Render mode"): HTTP by
+# The description of the `render` member of the requests that extract `records`: HTTP by
 # default; the caller asks the system to find where fields live (`locate`) or to render every page (`always`).
 RENDER_DESCRIPTION: Final = (
     "How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP "
@@ -48,8 +48,8 @@ MAX_RENDER_FIELDS: Final = 50
 
 
 class RenderOptions(Input):
-    """The `render` member (rest-api spec, "Render mode"): its mode, and the schema fields `locate` looks for (else the
-    fields the HTTP extraction left missing). Pinned with the request (INV-28)."""
+    """The `render` member: its mode, and the schema fields `locate` looks for (else the
+    fields the HTTP extraction left missing). Pinned with the request."""
 
     mode: RenderMode = "off"
     fields: list[Name] = Field(default_factory=list, max_length=MAX_RENDER_FIELDS)
@@ -76,14 +76,14 @@ class SchemaPrompt(Input):
     @field_validator("prompt")
     @classmethod
     def _not_blank(cls, prompt: str) -> str:
-        # Role S reads the prompt whitespace-normalized (llm spec), so one of only whitespace is empty.
+        # Role S reads the prompt whitespace-normalized, so one of only whitespace is empty.
         if not normalize_prompt(prompt):
             raise ValueError("the prompt is empty")
         return prompt
 
 
 class SchemaFields(Input):
-    """Field names, drafted into a schema with exactly those top-level fields by role S (frontend spec, D-0810)."""
+    """Field names, drafted into a schema with exactly those top-level fields by role S."""
 
     fields: list[Name] = Field(min_length=1, max_length=MAX_FIELD_NAMES)
 
@@ -108,7 +108,7 @@ def check_formats(
     if CAPTURE_FORMATS.intersection(formats) and fetch.method_hint == "http":
         raise ValueError("screenshot and pdf are made in the browser, so method_hint cannot be http")
     if CAPTURE_FORMATS.intersection(formats) and fetch.headers:
-        raise ValueError("headers are sent over HTTP only (INV-44), so they cannot go with screenshot or pdf")
+        raise ValueError("headers are sent over HTTP only, so they cannot go with screenshot or pdf")
     if fit is not None and "markdown_fit" not in formats:
         raise ValueError("fit is the option of the markdown_fit format")
     if chunking is not None and "chunks" not in formats:
@@ -116,7 +116,7 @@ def check_formats(
 
 
 def check_records(formats: list[PageFormat], schema: SchemaRequest | None, page_kind: PageKind | None) -> None:
-    """`records` needs a schema and a `page_kind`, and the schema's page kind must be that one (rest-api spec). Raises
+    """`records` needs a schema and a `page_kind`, and the schema's page kind must be that one. Raises
     `ValueError`, for a request model's validator."""
     if "records" not in formats:
         return
@@ -133,7 +133,7 @@ class SchemaUnusable(Refusal):
 
 
 async def fields_schema(engine: AsyncEngine, llm: LLMClient, fields: list[Name], page_kind: PageKind) -> SchemaDef:
-    """Role S's draft of `fields` for `page_kind` pages, checked usable for them (frontend spec). Raises the LLM
+    """Role S's draft of `fields` for `page_kind` pages, checked usable for them. Raises the LLM
     client's `LLMFailure`, and `SchemaUnusable` for a retired draft."""
     drafted = await draft_fields(engine, llm, fields=fields, page_kind=page_kind)
     check_usable(drafted, page_kind)
@@ -175,7 +175,7 @@ async def _stated_schema(
 
 def stored_request(request: BaseModel, context: dict[str, object] | None = None) -> dict[str, Any]:
     """`request` as a job row stores it; a `render` member the caller left out is left out, so the job inherits the
-    surface's render mode (rest-api spec, "Render mode")."""
+    surface's render mode."""
     stored: dict[str, Any] = request.model_dump(mode="json", by_alias=True, context=context)
     if "render" in type(request).model_fields and "render" not in request.model_fields_set:
         stored.pop("render", None)
@@ -183,8 +183,8 @@ def stored_request(request: BaseModel, context: dict[str, object] | None = None)
 
 
 def check_render(render: RenderOptions, schema: SchemaDef | None) -> None:
-    """`SchemaUnusable` when `render.fields` names a field the request's schema does not have (rest-api spec, "Render
-    mode"): no locate run fills it. Without a resolved schema (a prompt, drafted on the page), none is checked."""
+    """`SchemaUnusable` when `render.fields` names a field the request's schema does not have: no locate run fills it.
+    Without a resolved schema (a prompt, drafted on the page), none is checked."""
     if schema is None:
         return
     unknown = [name for name in render.fields if name not in schema.fields]

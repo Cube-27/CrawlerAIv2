@@ -1,4 +1,4 @@
-"""The browser context's locality (acquisition spec, "Patchright's documented browser setup"): the request's locale
+"""The browser context's locality: the request's locale
 (`FetchPolicy.locale_hint`) sets the context's `locale` (and so the `Accept-Language` the browser sends), and the
 country the render goes out from sets the `timezone_id`, so the zone a page reads agrees with the address it sees.
 Without a declared egress country, the locale's region sets the zone, as a visitor of that locale has it.
@@ -48,7 +48,7 @@ def language_headers(hint: str | None) -> dict[str, str]:
 
 
 def _parsed(hint: str) -> tuple[str, str | None, str | None] | None:
-    """The language, script and region subtags of a BCP 47 tag (RFC 5646 §2.1), in their canonical case (§2.1.1)."""
+    """The language, script and region subtags of a BCP 47 tag (RFC 5646 §2.1), in their canonical case."""
     subtags = hint.strip().replace("_", "-").split("-")
     language = subtags.pop(0)
     if not (2 <= len(language) <= 8 and language.isascii() and language.isalpha()):

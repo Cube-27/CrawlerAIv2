@@ -6,7 +6,7 @@ export interface ApiClientOptions {
 }
 
 /** A typed client for the backend API. `paths` is generated from `openapi.json` by `pnpm gen:api`. It sends no
- * credentials: the server that serves the UI attaches the API key (frontend spec). */
+ * credentials: the server that serves the UI attaches the API key. */
 export function createApiClient({ baseUrl }: ApiClientOptions) {
   return createClient<paths>({ baseUrl });
 }

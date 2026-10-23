@@ -1,4 +1,4 @@
-"""The cleaned text role C reads on a detail page (llm spec, "Role C input, claims and candidates"): ids for the links
+"""The cleaned text role C reads on a detail page: ids for the links
 and images the fields asked can claim, only for links to another resource, and offsets that map back past them."""
 
 from hypothesis import given

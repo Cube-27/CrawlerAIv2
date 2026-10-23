@@ -1,4 +1,4 @@
-"""`extract` jobs (jobs spec): submitted through the extract service, with globs expanded by a map of their host
+"""`extract` jobs: submitted through the extract service, with globs expanded by a map of their host
 and a prompt drafted from the first pages while the caller waits, then run by a worker loop through the real queue.
 
 The web is a stub that answers synthetic pages and sitemaps on RFC 2606 hosts, the resolver a stub, and the LLM a
@@ -51,7 +51,7 @@ NO_LLM = Unconfigured("no provider")
 
 
 def _draft_reply(page_kind: str = "detail") -> ProviderReply:
-    """A role S reply: a draft schema document without a name (llm spec)."""
+    """A role S reply: a draft schema document without a name."""
     document: dict[str, JsonValue] = {"page_kind": page_kind, "fields": {"title": TITLE, "price": PRICE}}
     return ProviderReply(model="fake-strong", text=json.dumps(to_wire(document)), tokens_in=900, tokens_out=80)
 
@@ -172,7 +172,7 @@ async def test_the_tasks_are_the_given_urls_then_each_globs_once_in_canonical_fo
     ]
     job = await _job(engine, submitted.job_id)
     assert (job.kind, job.status, job.schema_id) == ("extract", "queued", kettle_schema.id)
-    assert job.pinned is not None  # INV-28: what its pages run with is pinned at submit
+    assert job.pinned is not None  # what its pages run with is pinned at submit
     async with engine.connect() as conn:
         maps: list[str] = list(
             (await conn.execute(select(Job.request["url"].astext).where(Job.kind == "map"))).scalars()
@@ -261,7 +261,7 @@ async def test_a_prompt_is_drafted_from_the_first_pages_reached_and_returned(
     )
 
     assert (submitted.schema_.name, submitted.schema_.origin) == (draft_name(prompt), "prompt_draft")
-    # The first three URLs are fetched for samples; the two reached are the samples (llm spec: cleaned text).
+    # The first three URLs are fetched for samples; the two reached are the samples (cleaned text).
     call = provider.calls[0]  # the draft; its label synonyms (`s_labels`) follow in the background
     assert "Blue kettle boils" in call.user
     assert "Red kettle boils" in call.user
@@ -347,7 +347,7 @@ async def test_a_cache_only_prompt_is_drafted_from_stored_captures_and_fetches_n
 
     await submit_extract(engine, fetching, request, llm=MeteredClient([provider], engine), data=engine_data)
 
-    # `cache: only` never fetches (jobs spec, "Request context and actions per page"): the sample is the stored page;
+    # `cache: only` never fetches: the sample is the stored page;
     # the page with no capture is none.
     call = provider.calls[0]  # the draft; its label synonyms (`s_labels`) follow in the background
     assert "Blue kettle boils" in call.user
@@ -463,8 +463,8 @@ async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
     engine_data: EngineData,
     fetch_result: Callable[..., FetchResult],
 ) -> None:
-    # jobs spec, extraction spec: an extract page is extracted cold, and role C reads a missing required field from
-    # the page text. The client commits its usage on its own connection while the task's transaction is open (D-0346).
+    # An extract page is extracted cold, and role C reads a missing required field from
+    # the page text. The client commits its usage on its own connection while the task's transaction is open.
     url = f"{own_origin}/p/1"
     body = _page("Blue kettle", offers=False).replace(b"</main>", b"<aside>19.90 EUR</aside></main>")
     web.serve(url, body)
@@ -493,7 +493,7 @@ async def test_a_refused_role_c_call_leaves_the_field_missing_and_is_not_retried
     kettle_schema: SchemaDef,
     engine_data: EngineData,
 ) -> None:
-    # llm spec: a call the provider refuses gives no reply, like an unavailable provider; the page keeps its
+    # a call the provider refuses gives no reply, like an unavailable provider; the page keeps its
     # structured values, and its task ends instead of being retried with the same request.
     url = f"{own_origin}/p/1"
     web.serve(url, _page("Blue kettle", offers=False))

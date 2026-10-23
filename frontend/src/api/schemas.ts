@@ -2,7 +2,7 @@ import type { ApiClient } from "./client";
 import { apiDone, apiResult, type ApiResult } from "./result";
 import type { components } from "./schema";
 
-/** `/v1/schemas` (rest-api spec), in the generated shapes. */
+/** `/v1/schemas`, in the generated shapes. */
 export type SchemaDef = components["schemas"]["SchemaDef"];
 export type NewSchema = components["schemas"]["NewSchema"];
 export type SchemaContent = components["schemas"]["SchemaContent"];
@@ -41,7 +41,7 @@ export function updateSchema(
   );
 }
 
-/** The schema role S drafts from field names for one page kind (frontend spec): the stored draft when these names were
+/** The schema role S drafts from field names for one page kind: the stored draft when these names were
  * drafted before, else a new one, stored. */
 export function draftSchema(client: ApiClient, body: FieldsDraft): Promise<ApiResult<SchemaDef>> {
   return apiResult(() => client.POST("/v1/schemas/draft", { body }), "Drafting the schema");

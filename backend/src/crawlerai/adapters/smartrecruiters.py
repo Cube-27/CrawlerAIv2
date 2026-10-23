@@ -35,7 +35,7 @@ _POSTING: Final = re.compile(r"(\d+)(?:-.*)?", re.ASCII)
 
 # A posting as a schema.org JobPosting: a listed posting's page is `/{company}/{id}` on the career host (the prefix
 # `shapes` puts before `id`); the posting's own answer gives `postingUrl`, and `applyUrl`, its application form, the
-# `target` of its schema.org ApplyAction (D-1493). The description is the job ad's sections about the job, as HTML
+# `target` of its schema.org ApplyAction. The description is the job ad's sections about the job, as HTML
 # (Posting API documentation, "JobAd": `jobDescription`, `qualifications`, `additionalInformation`, each a `title` and
 # a `text`), in the order the posting's page shows them; `companyDescription` describes the hiring organization, not
 # the job. The hiring organization is the posting's `company`.

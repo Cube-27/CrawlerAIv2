@@ -1,4 +1,4 @@
-"""The caller's request context and page actions as a request names them (D-1430 to D-1438): the checks of `fetch`,
+"""The caller's request context and page actions as a request names them: the checks of `fetch`,
 the step vocabulary's translation, the redaction of secret values, and the HTTP rung sending headers and cookies to the
 fetched URL's host only.
 
@@ -115,7 +115,7 @@ def _fetch_json(server: Server, endpoint: str, context: RequestContext) -> Fetch
 
 
 def test_a_json_call_to_another_host_carries_neither_the_header_nor_the_cookie(server: Server) -> None:
-    # An adapter's or a recipe's endpoint on another host than the page the caller named (D-1431, D-1433).
+    # An adapter's or a recipe's endpoint on another host than the page the caller named.
     server.route("/api/jobs", Reply(200, (("Content-Type", "application/json"),), b"[]"))
     context = _context({"Authorization": "Bearer t0ken"}, {"sid": "s3cret"})
     _fetch_json(server, server.url("/api/jobs", "api.example.test"), context)

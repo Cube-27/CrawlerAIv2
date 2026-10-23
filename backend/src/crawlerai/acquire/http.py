@@ -1,12 +1,12 @@
-"""HTTP fetch with curl_cffi and Chrome TLS impersonation (acquisition spec), through `curl_client`, with a
+"""HTTP fetch with curl_cffi and Chrome TLS impersonation, through `curl_client`, with a
 new curl session per fetch.
 
-Redirects are followed by hand so the SSRF guard checks every hop (§4.5), and each request connects only to the
+Redirects are followed by hand so the SSRF guard checks every hop, and each request connects only to the
 address the guard checked. Through a proxy pool, which resolves names itself, the guard still checks each hop's host
 before it is requested. Every failure becomes an `error` outcome with a short reason that never
 contains the URL. The request is a navigation, sent with the impersonation's headers (`acquire.impersonate`), in
 the request locale's language as the browser rung asks for it (`acquire.locality`), and with a site session's cookies
-where the site has one (`acquire.session`, INV-29's exception).
+where the site has one (`acquire.session`).
 """
 
 import asyncio
@@ -45,7 +45,7 @@ async def fetch_http(
 ) -> FetchResult:
     """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every request. `sessions`
     are this process's site sessions: the site's, if any, goes with the fetch, and is dropped when it is `blocked`; a
-    fetch with the caller's own context takes none (D-1432)."""
+    fetch with the caller's own context takes none."""
     fetched_at = datetime.now(UTC)
     started = time.monotonic()
     if policy.context is not None:
@@ -81,7 +81,7 @@ async def fetch_http(
             served = last.exchange.url
             challenge = await asyncio.to_thread(challenge_label, last.status, last.response_headers, text, served)
     elif sent.error == BODY_CAP and last is not None and unread_media(last.status, last.response_headers):
-        # INV-30 stopped the body, which no page reader would read: its status and media type class the answer.
+        # stopped the body, which no page reader would read: its status and media type class the answer.
         block_class = "unsupported_media"
     count(challenge, "http")
     result = fetch_result(
@@ -110,7 +110,7 @@ def _follow(hop: Hop, _status: int, _target: Target) -> Hop:
 
 
 class RequestFailed(Exception):
-    """A request got no response: the reason never contains the URL (acquisition spec)."""
+    """A request got no response: the reason never contains the URL."""
 
 
 async def post(url: str, body: bytes, headers: Mapping[str, str], *, connector: SafeConnector, timeout_s: float) -> int:

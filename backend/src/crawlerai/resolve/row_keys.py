@@ -1,5 +1,5 @@
-"""A listing's row keys: each row's item URL without the page's session parameters (listings spec, "Row item URL";
-`normalize.url_key.session_parameters`), so two visits of one listing key its items alike and an item's URL is the one
+"""A listing's row keys: each row's item URL without the page's session parameters
+(`normalize.url_key.session_parameters`), so two visits of one listing key its items alike and an item's URL is the one
 its page states without the visit's query."""
 
 from collections.abc import Collection, Iterable, Sequence

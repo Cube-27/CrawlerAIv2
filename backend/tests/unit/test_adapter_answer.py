@@ -1,4 +1,4 @@
-"""An adapter's answer recorded as JSON (acquisition spec, "Structural outcome classification (INV-24)"): the recorded
+"""An adapter's answer recorded as JSON (structural outcome classification): the recorded
 body is UTF-8 JSON text, so it decodes as that, whatever charset the platform's own answer declared."""
 
 import time

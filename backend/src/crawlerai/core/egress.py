@@ -1,4 +1,4 @@
-"""The country a request goes out from (acquisition spec, "Egress country"): what a record states about where its page
+"""The country a request goes out from: what a record states about where its page
 was fetched, because a site may price by the visitor's country.
 
 A fetch through a proxy pool goes out from the pool's country (`CRAWLERAI_PROXY_POOLS`, `country`); a direct fetch from

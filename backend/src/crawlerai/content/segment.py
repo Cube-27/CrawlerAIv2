@@ -1,4 +1,4 @@
-"""The item layer's segment step (listings spec, "Item groups"; owner #67): which groups of repeated item blocks
+"""The item layer's segment step: which groups of repeated item blocks
 (`acquire.items`) a page shows its items in, best first. `ParsedPage.item_groups` holds the answer once per page;
 every reader of a listing's items (the item layer's alignment, the render-need check, `xhr`, the browser's
 paging driver) takes it from there or from `rank`, so one ranker decides.

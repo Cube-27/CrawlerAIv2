@@ -1,6 +1,6 @@
 """JSON documents as collectors read them (parsed by `core.json_text`, JSON-LD blocks leniently), addressed by RFC 9535
 normalized paths (`$['offers'][0]`), the path part of the `jsonld`, `js_state`, `xhr` and
-`adapter` locators (extraction spec), and queried with the RFC 9535 subset adapter maps are written in."""
+`adapter` locators, and queried with the RFC 9535 subset adapter maps are written in."""
 
 import re
 from collections.abc import Iterator
@@ -49,7 +49,7 @@ def is_scalar(value: JsonValue) -> TypeGuard[str | int | float]:
 def select(query: str, document: JsonValue, at: str = ROOT) -> list[tuple[str, JsonValue]]:
     """The nodes `query` selects in `document`, in document order, each with its normalized path; `at` is the path of
     `document` itself. The query is `$` followed by name segments (`['name']`, RFC 9535 §2.5.1.1, the name holding no
-    quote or backslash), wildcard segments (`[*]`, §2.5.1.2) and non-negative index segments (`[0]`, §2.3.3), so a
+    quote or backslash), wildcard segments (`[*]`) and non-negative index segments (`[0]`), so a
     normalized path is one; raises `ValueError` for any other query."""
     if not query.startswith(ROOT) or _QUERY_SEGMENTS.fullmatch(query, len(ROOT)) is None:
         raise ValueError(f"not a query of name, wildcard and index segments: {query!r}")

@@ -1,4 +1,4 @@
-"""The locator format (extraction spec): `<scheme>:<address>`, one address grammar per scheme."""
+"""The locator format: `<scheme>:<address>`, one address grammar per scheme."""
 
 import pytest
 

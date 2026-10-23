@@ -1,5 +1,5 @@
-"""`POST /v1/scrape` (rest-api spec): the scrape service over HTTP. A page that could not be fetched is an outcome in
-a 200 answer; a refused target, a schema `records` cannot use, and a timeout are problems (§4.8)."""
+"""`POST /v1/scrape`: the scrape service over HTTP. A page that could not be fetched is an outcome in
+a 200 answer; a refused target, a schema `records` cannot use, and a timeout are problems."""
 
 from typing import Annotated
 

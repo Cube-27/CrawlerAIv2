@@ -1,4 +1,4 @@
-"""URL and image_url normalizer (normalization spec): an absolute, canonical http(s) URL.
+"""URL and image_url normalizer: an absolute, canonical http(s) URL.
 
 Accepts a string, from the DOM, an LLM or a structured source (JSON-LD `url` and `image` values are strings). Any
 other JSON value is `Invalid("not_a_string")`. A relative reference resolves against `ctx.base_url`. The reference as
@@ -33,13 +33,13 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 # tab or newline.
 _C0_AND_SPACE = "".join(chr(c) for c in range(0x21))
 _TAB_OR_NEWLINE = re.compile(r"[\t\n\r]")
-# INV-06: a reference of C0 controls, spaces and Unicode White_Space (`\s`) only carries no URL. `\s` already
+# a reference of C0 controls, spaces and Unicode White_Space (`\s`) only carries no URL. `\s` already
 # covers U+0009-000D, U+001C-001F and the space, so the class lists only the other C0 controls.
 _BLANK = re.compile(r"[\x00-\x08\x0e-\x1b\s]*")
 # RFC 3986 §2.1 and §6.2.2.1: percent-encoding triplets; hex digits compare case-insensitively, uppercase is
 # canonical.
 _PERCENT_TRIPLET = re.compile(r"%([0-9A-Fa-f]{2})")
-# RFC 3986 §2.3: unreserved characters. Percent-encoded, they are equivalent to the character (§6.2.2.2).
+# RFC 3986 §2.3: unreserved characters. Percent-encoded, they are equivalent to the character.
 _UNRESERVED = frozenset(string.ascii_letters + string.digits + "-._~")
 # RFC 3986 §3.3 `pchar` without the unreserved set (which `quote` never encodes), plus `/`; §3.4 adds `?` for the
 # query. `%` stays, so existing triplets and a bare `%` (a WHATWG validation error, not a failure) are kept.
@@ -50,7 +50,7 @@ _QUERY_SAFE = _PATH_SAFE + "?"
 _FORBIDDEN_IN_DOMAIN = frozenset(" #/:<>?@[\\]^|%\x7f" + "".join(chr(c) for c in range(0x20)))
 # RFC 9110 §4.2.1 and §4.2.2: the default ports of http and https, the only schemes of the type.
 _DEFAULT_PORT = {"http": 80, "https": 443}
-# A relative reference with no base to resolve it against; `resolve.derive` absolutizes these (extraction spec).
+# A relative reference with no base to resolve it against; `resolve.derive` absolutizes these.
 RELATIVE_WITHOUT_BASE = Invalid("relative_without_base")
 # The registered media types of a file name's extension (IANA media types, as Python's built-in `mimetypes` table holds
 # them; `MimeTypes()` reads that table only, never the host's files, so the answer is the same on every machine).
@@ -60,7 +60,7 @@ _IMAGE_TYPE = "image"
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
-    """Normalize a url or image_url field (normalization spec)."""
+    """Normalize a url or image_url field."""
     if spec.type not in (FieldType.URL, FieldType.IMAGE_URL):
         raise TypeError(f"the url normalizer does not handle type {spec.type}")
     if not isinstance(raw, str):
@@ -72,7 +72,7 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
         and ctx.page_url is not None
         and canonical(ctx.page_url, None) == result
     ):
-        # normalization spec: without a fetch there is no content-type evidence, so the structural checks are that an
+        # without a fetch there is no content-type evidence, so the structural checks are that an
         # image is not the page it appears on, and that its path names no file of another media type (`_other_media`).
         return Invalid("page_url")
     if spec.type is FieldType.IMAGE_URL and isinstance(result, Ok) and _other_media(result.value):
@@ -106,7 +106,7 @@ def _other_media(value: JsonValue) -> bool:
 
 
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
-    """Equality as a key (normalization spec): equal after canonicalization. A relative URL has no canonical form
+    """Equality as a key: equal after canonicalization. A relative URL has no canonical form
     without its base."""
     url = canonical(value, None) if isinstance(value, str) else None
     return ("url", url.value, url.reasons) if isinstance(url, Ok) else raw_key(value)
@@ -136,13 +136,13 @@ def _reference(raw: str) -> str:
 # so its results are kept; the results are frozen dataclasses, safe to share.
 @lru_cache(maxsize=8192)
 def canonical(raw: str, base: str | None) -> NormalizeResult:
-    """The url type's canonical form of `raw`, resolved against `base` when relative (normalization spec). Other modules
+    """The url type's canonical form of `raw`, resolved against `base` when relative. Other modules
     that canonicalize URLs outside a field (the `links` content format) call this, so there is one set of rules."""
     # A URL is percent-encoded as UTF-8 (WHATWG URL Standard), and a lone surrogate has no UTF-8 encoding.
     if has_surrogate(raw):
         return Invalid("surrogate")
     reference = _reference(raw)
-    # INV-06: a blank reference is empty whatever the base (it would otherwise resolve to the base).
+    # a blank reference is empty whatever the base (it would otherwise resolve to the base).
     if _BLANK.fullmatch(reference):
         return Invalid("empty")
     try:
@@ -158,13 +158,13 @@ def canonical(raw: str, base: str | None) -> NormalizeResult:
         port = parts.port
     except ValueError:
         return Invalid("unparsable")
-    # normalization spec: only http(s) URLs are values of the type. `urlsplit` lowercases the scheme
+    # only http(s) URLs are values of the type. `urlsplit` lowercases the scheme
     # (RFC 3986 §3.1: schemes are case-insensitive).
     if parts.scheme not in _DEFAULT_PORT:
         return Invalid("not_http")
     # RFC 9110 §4.2.1: a recipient rejects an http(s) URI with an empty host, as `https:////host/path` has (RFC 3986
     # §3.2: the authority between `//` and the next `/` is empty). It is not repaired by skipping slashes as the WHATWG
-    # parser does: the next segment is the host only when the slashes were a mistake (D-1022, C7).
+    # parser does: the next segment is the host only when the slashes were a mistake (C7).
     if not parts.hostname:
         return Invalid("no_host")
     host = _host(parts.hostname)

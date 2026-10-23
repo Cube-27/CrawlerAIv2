@@ -1,13 +1,13 @@
-"""The adapter collector (extraction spec, adapters spec): a platform API's JSON, read as the schema.org
+"""The adapter collector: a platform API's JSON, read as the schema.org
 nodes its adapter's shapes say it holds. Each entity carries its identity and item URLs as every structured collector's
 do (`schema_org_map.entity`), so resolution merges it with the page's own statement of the item (`resolve.identity`).
 
-An adapter capture's body is the JSON the platform's documented API serves for the page (acquisition spec). Each object
+An adapter capture's body is the JSON the platform's documented API serves for the page. Each object
 a shape reaches is an entity (`adapter:<name>:<normalized path>`, its kind the shape's type, its parent the enclosing
 node's entity, `via` the property the shape is under) and a node `schema_org_map` reads. Candidates come from
 `field_candidates` with source kind `adapter`, so a field's path reads adapter JSON by the rules it reads JSON-LD and
 microdata with: alternatives, identifier sub-properties, `.name` stand-ins, lists, and the sub-fields of a row-mapped
-field (variants spec). Each value is located at its own normalized path. Nothing here interprets a value: the field's
+field. Each value is located at its own normalized path. Nothing here interprets a value: the field's
 normalizer is the only filter (C7).
 """
 
@@ -67,7 +67,7 @@ class AdapterCollector:
         return read.model_copy(update={"entities": rows})
 
     def _rows_schema(self, schema: SchemaDef) -> SchemaDef:
-        """A listing's page-scoped fields describe the page, not a row (extraction spec): the API's rows hold none."""
+        """A listing's page-scoped fields describe the page, not a row: the API's rows hold none."""
         if self._match.page_kind == "detail":
             return schema
         rows = {name: spec for name, spec in schema.fields.items() if spec.scope == "row"}

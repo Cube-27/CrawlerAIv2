@@ -1,6 +1,6 @@
-"""The MCP server (jobs spec): the SDK's client calls each of the twenty-one tools over streamable HTTP at `/mcp` in
+"""The MCP server: the SDK's client calls each of the twenty-one tools over streamable HTTP at `/mcp` in
 the API app, and over stdio from `python -m crawlerai.mcp_server`. What each tool does is its service's, tested with the
-service; here, that a tool reaches it with the caller's key, and answers by the output rules (§13.3).
+service; here, that a tool reaches it with the caller's key, and answers by the output rules.
 
 The app runs as the REST tests run it: real settings against the test database, its fetching a stub web of synthetic
 pages on RFC 2606 hosts with a stub resolver, so nothing leaves the process.
@@ -79,7 +79,7 @@ TOOLS = {
     "delete_schedule",
     "webhook_deliveries",
 }
-# The tools that answer with page content say that it is untrusted (§4.7).
+# The tools that answer with page content say that it is untrusted.
 CONTENT_TOOLS = {"scrape", "map", "search", "crawl_status", "extract_status", "llms_txt"}
 PNG = b"\x89PNG\r\n\x1a\nsynthetic screenshot"
 
@@ -404,7 +404,7 @@ async def test_an_uncharged_llm_call_over_stdio_counts_against_the_keys_draft_ca
     down = MeteredClient([FakeProvider([ProviderError("down")])], engine)
     runtime = Runtime(engine, fetching, down, engine_data, None, LLMSetup.unavailable("no LLM"))
     caller = await key_bind(runtime, key.key)(cast(AnyContext, None))
-    # A role S draft (field names), which no job pays for (llm spec "Per-key cap").
+    # A role S draft (field names), which no job pays for.
     draft = LLMRequest(
         prompt_kind="s_draft",
         model_class="fast",

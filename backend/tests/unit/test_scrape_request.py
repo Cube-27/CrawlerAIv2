@@ -1,4 +1,4 @@
-"""The `POST /v1/scrape` body (rest-api spec): what it accepts, its defaults, and what it refuses."""
+"""The `POST /v1/scrape` body: what it accepts, its defaults, and what it refuses."""
 
 from typing import Any
 

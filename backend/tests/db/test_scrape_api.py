@@ -1,4 +1,4 @@
-"""`POST /v1/scrape` over HTTP (rest-api spec): what a client sends and gets back. What a scrape does is the
+"""`POST /v1/scrape` over HTTP: what a client sends and gets back. What a scrape does is the
 service's (`test_scrape_service.py`)."""
 
 import json
@@ -154,9 +154,9 @@ async def test_a_prompt_returns_its_draft_and_reuses_it(
     assert (first.json()["usage"]["llm_calls"], second.json()["usage"]["llm_calls"]) == (1, 0)
 
 
-# --- records (§4.4) ---
+# --- records ---
 
-# §13.1's six attributes, plus `reason`, `source_kind` and `derived_by` from `field_meta` (§4.4).
+# §13.1's six attributes, plus `reason`, `source_kind` and `derived_by` from `field_meta`.
 FIELD_MEMBERS = {
     "value",
     "status",

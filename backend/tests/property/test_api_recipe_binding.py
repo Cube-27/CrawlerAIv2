@@ -1,4 +1,4 @@
-"""Binding (adapters spec): sample pages and the endpoint requests made for them bind to a request spec whose templates
+"""Binding: sample pages and the endpoint requests made for them bind to a request spec whose templates
 reproduce every request, or to `Ambiguous` with the reason. Binder round trips: a value placed in a page URL is read
 back by its binder, and endpoint requests generated from a template bind back to binders that reproduce every
 request."""

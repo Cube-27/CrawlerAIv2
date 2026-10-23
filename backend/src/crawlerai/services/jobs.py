@@ -1,11 +1,11 @@
-"""The jobs service (jobs spec): the jobs a page at a time, a job's summary, its cancel, and
+"""The jobs service: the jobs a page at a time, a job's summary, its cancel, and
 its results a page at a time. `GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/results` and the MCP
 status tools answer with these.
 
 The results of a job with a schema are its records. Those of a job without one are its page outputs: each task's
 content formats, made from its capture when they are read. A format is a function of the capture alone, so nothing else
-is stored, and a page's outputs go when its capture expires. Either kind of job also answers `json_values` (frontend
-spec): each task with the clean records its page stands for.
+is stored, and a page's outputs go when its capture expires. Either kind of job also answers `json_values`: each task
+with the clean records its page stands for.
 """
 
 import asyncio
@@ -88,7 +88,7 @@ class NotExportable(Exception):
 
 
 class TaskCounts(BaseModel):
-    """How many of the job's tasks are in each status (persistence-storage spec)."""
+    """How many of the job's tasks are in each status."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -132,15 +132,15 @@ class JobSummary(BaseModel):
     finished_at: datetime | None
     counts: TaskCounts
     outcomes: OutcomeCounts
-    usage: dict[str, int]  # per `usage_event.resource` (persistence-storage spec)
-    # The estimated cost of its LLM calls in USD, for visibility, not billing (llm spec); null when some of their
+    usage: dict[str, int]  # per `usage_event.resource`
+    # The estimated cost of its LLM calls in USD, for visibility, not billing; null when some of their
     # tokens have no price.
     llm_cost_usd: float | None
     webhook_url: str | None
     engine_version: str
-    # The cancel was asked for (persistence-storage spec); a running job stays running until its claimed tasks end.
+    # The cancel was asked for; a running job stays running until its claimed tasks end.
     cancel_requested: bool
-    # What it was started on (frontend spec): the request's `url` (scrape, crawl, map), or how many `urls` it had
+    # What it was started on: the request's `url` (scrape, crawl, map), or how many `urls` it had
     # (batch, extract); null when the request has no such member. The whole request is `job_request`.
     start_url: str | None
     url_count: int | None
@@ -171,7 +171,7 @@ class JobListQuery(BaseModel):
 
 
 class ExportPage(BaseModel):
-    """One page of a job's records in an export format (learning-configs spec); `next_cursor` as in `RecordPage`."""
+    """One page of a job's records in an export format; `next_cursor` as in `RecordPage`."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -184,7 +184,7 @@ class PageOutput(BaseModel):
     """A task of a job without a schema, with the content formats the job asked for. The formats
     are members only when the task reached its page and its capture is still kept. `last_error` is why the task
     failed, or why it ended with its outcome when the outcome alone does not say (a `blocked` task's `robots`), as the
-    worker recorded it: URLs redacted under `CRAWLERAI_LOG_REDACT_URLS` (persistence-storage spec)."""
+    worker recorded it: URLs redacted under `CRAWLERAI_LOG_REDACT_URLS`."""
 
     task_id: UrlTaskId
     url: str
@@ -218,7 +218,7 @@ class PageOutputPage(BaseModel):
 
 
 class JsonValuesItem(BaseModel):
-    """A task of a job in `json_values` (frontend spec): its URL, its outcome (null until it ends), the clean records
+    """A task of a job in `json_values`: its URL, its outcome (null until it ends), the clean records
     its page stands for, and, when asked for, its page's metadata and fetch. `records` is empty for a task with no
     record (failed, blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or
     partial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts;
@@ -255,7 +255,7 @@ class ResultsQuery(BaseModel):
     limit: int = Field(default=_DEFAULT_LIMIT, ge=1, le=MAX_PAGE)
     format: ResultFormat = "json"
     include: list[Literal["metadata", "fetch"]] = Field(default_factory=list)  # `json_values` only
-    csv_safe: bool = False  # `csv_records` only: quote formula-like cells for spreadsheets (D-0879)
+    csv_safe: bool = False  # `csv_records` only: quote formula-like cells for spreadsheets
 
     @model_validator(mode="after")
     def _options_fit_the_format(self) -> "ResultsQuery":
@@ -294,8 +294,8 @@ async def get_job(conn: AsyncConnection, job_id: JobId) -> JobSummary:
 
 
 async def job_request(conn: AsyncConnection, job_id: JobId) -> dict[str, Any]:
-    """The request the job was submitted with, as stored (`job.request`), its `fetch` secrets redacted (D-1432): the
-    playground shows it again to edit and re-run (frontend spec)."""
+    """The request the job was submitted with, as stored (`job.request`), its `fetch` secrets redacted: the
+    playground shows it again to edit and re-run."""
     request = (await conn.execute(select(Job.request).where(Job.id == job_id))).scalar_one_or_none()
     if request is None:
         raise JobNotFound(f"no job {job_id}")
@@ -347,7 +347,7 @@ async def _summaries(conn: AsyncConnection, jobs: Sequence[RowMapping]) -> list[
 
 
 async def cancel_job(conn: AsyncConnection, job_id: JobId) -> JobSummary:
-    """Ask the job to stop (jobs spec): its queued tasks are cancelled at once, its claimed ones as their workers
+    """Ask the job to stop: its queued tasks are cancelled at once, its claimed ones as their workers
     finish, and the job is `cancelled` once none is claimed. Cancelling a cancelled job again changes nothing; a job
     that completed or failed cannot be cancelled (`JobEnded`)."""
     status = (await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one_or_none()
@@ -374,7 +374,7 @@ async def _cancel(conn: AsyncConnection, job_id: JobId) -> None:
     await conn.execute(update(Job).where(Job.id == job_id).values(cancel_requested=True))
     if job.status == "queued":
         # No task of it was ever claimed: a claim starts its job in the same transaction. A `learn` job that never
-        # started ends its state's run as a cancelled run does (D-0622).
+        # started ends its state's run as a cancelled run does.
         if job.kind == "learn":
             await learning_failed(conn, StateKey.from_request(job.request))
         await transition_job(conn, job_id, "cancelled")
@@ -386,7 +386,7 @@ async def job_results(
     conn: AsyncConnection, job_id: JobId, query: ResultsQuery, *, store: ObjectStore, adapters: Adapters | None = None
 ) -> RecordPage | ExportPage | PageOutputPage | JsonValuesPage:
     """The job's records after `query.cursor`, newest first, in the field shape of `/v1/records` (`json`) or exported
-    in the schema's columns. Values are the stored published values, served (INV-27). A job without a schema
+    in the schema's columns. Values are the stored published values, served. A job without a schema
     answers `json` with its page outputs, made from the captures in `store`, and has nothing to export. Any job
     answers `json_values` with its tasks after `query.cursor`, oldest first. `adapters` names the platform adapter in a
     fetch summary; without it none is named."""
@@ -483,7 +483,7 @@ async def _page_outputs(
 
 def _fetch_of(row: _TaskRow, adapters: Adapters | None) -> FetchSummary | None:
     """The fetch of the task's page, from what its capture row kept: the method, status and class of the kept attempt,
-    and every attempt made (acquisition spec); None for a task with no capture, or one that kept no attempts."""
+    and every attempt made; None for a task with no capture, or one that kept no attempts."""
     attempts = None if row.fetch_policy is None else row.fetch_policy.get("attempts")
     if not attempts or row.method is None or row.block_class is None or row.final_url is None:
         return None
@@ -512,7 +512,7 @@ async def _page_output(
         fetched_at=row.fetched_at,
         fetch=_fetch_of(row, adapters),
     )
-    # Only a page the task reached and extracted has formats (rest-api spec): a crawl's `links_only` page was reached,
+    # Only a page the task reached and extracted has formats: a crawl's `links_only` page was reached,
     # for its links, and is never extracted.
     if row.outcome != "extracted" or row.object_key is None or row.final_url is None:
         return output
@@ -539,7 +539,7 @@ async def _clean_records(
     conn: AsyncConnection, schema_id: SchemaId | None, task_ids: list[UrlTaskId]
 ) -> dict[UrlTaskId, list[dict[str, JsonValue]]]:
     """The clean records each task's page stands for, oldest first: those it stored, or the latest versions of its
-    entities when its records equalled them (`task_record`, jobs spec), served as the API serves records."""
+    entities when its records equalled them (`task_record`), served as the API serves records."""
     if schema_id is None or not task_ids:
         return {}
     schema = await registry.get_by_id(conn, schema_id)
@@ -591,7 +591,7 @@ async def _json_values_item(
 def _formats_of(
     store: ObjectStore, object_key: str, formats: list[PageFormat], options: FormatOptions | None = None
 ) -> Formats | None:
-    """The formats of the capture at `object_key`, from one parse of it (INV-26) and the files stored beside it; None
+    """The formats of the capture at `object_key`, from one parse of it and the files stored beside it; None
     once its bundle is gone."""
     try:
         bundle = decode(store.get(object_key))

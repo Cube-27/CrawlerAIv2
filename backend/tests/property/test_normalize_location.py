@@ -1,4 +1,4 @@
-"""The location normalizer (normalization spec): a location publishes what the page states. Text stays
+"""The location normalizer: a location publishes what the page states. Text stays
 text, a `PostalAddress`'s parts stay as written, a country code only when the page states a valid ISO 3166-1 alpha-2
 code, and `remote_flag` only from `TELECOMMUTE` or a `type:remote` phrase.
 
@@ -40,7 +40,7 @@ def value(
 
 def test_text_publishes_as_written_with_whitespace_collapsed_and_no_place_inferred() -> None:
     assert norm("  Lake \n Town ") == Ok(value("Lake Town"))
-    # Owner, 2026-10-16 (D-0946 class 11): the location publishes as written; no "or" split, no region parsing.
+    # Owner, 2026-10-16: the location publishes as written; no "or" split, no region parsing.
     assert norm("North Region or  Lakeside, Remote") == Ok(value("North Region or Lakeside, Remote", remote=True))
 
 

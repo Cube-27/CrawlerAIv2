@@ -231,7 +231,7 @@ function StepRow({
   );
 }
 
-/** A field's config steps as an ordered list (frontend spec): the first step with a valid value wins. It checks nothing itself; the server validates the steps when the correction is submitted. */
+/** A field's config steps as an ordered list: the first step with a valid value wins. It checks nothing itself; the server validates the steps when the correction is submitted. */
 export function StepsEditor({
   steps,
   onChange,

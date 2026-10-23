@@ -1,4 +1,4 @@
-"""Date and datetime normalizer (normalization spec): an ISO 8601 date (`YYYY-MM-DD`) or an RFC 3339
+"""Date and datetime normalizer: an ISO 8601 date (`YYYY-MM-DD`) or an RFC 3339
 datetime in UTC (`YYYY-MM-DDTHH:MM:SS[.ffffff]Z`).
 
 Accepts a string, from the DOM, an LLM or a structured source (JSON-LD `datePosted` and similar values are strings).
@@ -10,7 +10,7 @@ Any other JSON value is `Invalid("not_a_string")`. Three paths, tried in order:
 3. Anything else goes to `dateparser` in the page's languages, once per allowed order, with `ctx.captured_at` as the
    base of relative dates ("2 days ago").
 
-The locales are the page's (`page_locales`, normalization spec "Page languages"); with none, every order is
+The locales are the page's (`page_locales`); with none, every order is
 allowed. A datetime needs a time and a numeric UTC offset; a date takes the calendar date the input states, in its own
 offset.
 """
@@ -36,12 +36,12 @@ Order = Literal["DMY", "MDY", "YMD"]
 # The day/month/year orders of CLDR short date patterns, which are also the orders `dateparser` takes (`DATE_ORDER`).
 _ORDERS: tuple[Order, ...] = ("DMY", "MDY", "YMD")
 
-# normalization spec: years outside this range are not values of the type.
+# years outside this range are not values of the type.
 _MIN_YEAR, _MAX_YEAR = 1970, 2100
 
 # RFC 3339 §5.6 `full-date` and `date-time`, with the ISO 8601 space separator and lowercase `t`/`z` that RFC 3339
-# §5.6 notes permit, and the other ISO 8601 offset forms (§4.2.5.1: `±hh:mm`, `±hhmm`, `±hh`) and decimal comma
-# (§4.2.2.4). Fractions longer than microseconds are cut to six digits (Python's resolution). A zone written as a
+# §5.6 notes permit, and the other ISO 8601 offset forms (§4.2.5.1: `±hh:mm`, `±hhmm`, `±hh`) and decimal comma.
+# Fractions longer than microseconds are cut to six digits (Python's resolution). A zone written as a
 # name after the time, with or without a space ("09:31:36 UTC"), is `UTC` (the time scale ISO 8601-1 §4.3.3's `Z`
 # designator stands for) or `GMT` (RFC 5322 §3.3 `zone`): both are zero offset, and no other abbreviation fixes one.
 _RFC_3339 = re.compile(
@@ -51,7 +51,7 @@ _RFC_3339 = re.compile(
     re.ASCII,
 )
 _ZERO_OFFSET_NAMES = frozenset({"UTC", "GMT"})
-# An ISO 8601 calendar date in extended format (`YYYY-MM-DD`, §4.1.2.2) fixes the order of its fields: text that
+# An ISO 8601 calendar date in extended format (`YYYY-MM-DD`) fixes the order of its fields: text that
 # starts with one is read year first whatever the page's locales say, and must state that date.
 _ISO_DATE_PREFIX = re.compile(r"\d{4}-\d{2}-\d{2}(?!\d)", re.ASCII)
 _YEAR_FIRST: tuple[Order, ...] = ("YMD",)
@@ -75,7 +75,7 @@ _DATEPARSER_LANGUAGES = frozenset(language_order)
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
-    """Normalize a date or datetime field (normalization spec)."""
+    """Normalize a date or datetime field."""
     if spec.type not in (FieldType.DATE, FieldType.DATETIME):
         raise TypeError(f"the date normalizer does not handle type {spec.type}")
     if not isinstance(raw, str):
@@ -273,7 +273,7 @@ def _decide(readings: set[date] | set[datetime], want_time: bool) -> NormalizeRe
 
 
 def _in_range(value: date | datetime, want_time: bool) -> bool:
-    # normalization spec's year range holds for the value as stored: the stated date, and for a datetime its UTC date as
+    # The year range holds for the value as stored: the stated date, and for a datetime its UTC date as
     # well (`2100-12-31T23:00-05:00` is 2101 in UTC). The stated year is checked first, so the UTC conversion never
     # leaves the years `datetime` can hold.
     if not _MIN_YEAR <= _stated(value).year <= _MAX_YEAR:
@@ -295,7 +295,7 @@ def _render(value: date | datetime, want_time: bool) -> str:
 
 
 def _orders(ctx: Context) -> tuple[Order, ...]:
-    """The date orders of the page's locales (normalization spec); every order when no locale is known."""
+    """The date orders of the page's locales; every order when no locale is known."""
     found = {order for tag in locales.page_locales(ctx, request=True) for order in _tag_orders(tag)}
     return tuple(o for o in _ORDERS if o in found) or _ORDERS
 
@@ -343,5 +343,5 @@ def _languages(ctx: Context) -> tuple[str, ...]:
 
 
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
-    """Equality as a key (normalization spec): exact. A normalized value has one form (D-0296: a datetime is in UTC)."""
+    """Equality as a key: exact. A normalized value has one form (a datetime is in UTC)."""
     return raw_key(value)

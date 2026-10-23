@@ -1,14 +1,14 @@
-"""A crawl's frontier (jobs spec): the URLs a fetched page contributes, which of them the crawl
+"""A crawl's frontier: the URLs a fetched page contributes, which of them the crawl
 takes, and enqueueing them as the job's tasks.
 
-A page contributes its links (rest-api spec) and its next-page candidates (extraction spec), in canonical form
+A page contributes its links and its next-page candidates, in canonical form
 (`crawl.canonical`). The crawl takes those its request's scope admits (`crawl.rules.Scope`), and never one off the start
-page's host and its subdomains, whatever an `include` glob matches (D-0037): every page fetched is on the site the
-caller named, on the host the site's own redirect of the start URL put it, when that host is on the same site (D-0991).
+page's host and its subdomains, whatever an `include` glob matches: every page fetched is on the site the
+caller named, on the host the site's own redirect of the start URL put it, when that host is on the same site.
 A URL is enqueued once per job (`url_task` UNIQUE (`job_id`, `canonical_url`)), and never when a task of the job was
-already fetched at it after a redirect (`url_task.final_url`, D-1382), at its parent's depth plus one, up to
+already fetched at it after a redirect (`url_task.final_url`), at its parent's depth plus one, up to
 `max_depth`, until the job has `limit` tasks; its page kind is the first matching page-kind rule's. Patterns come from
-requests; this module names no host (INV-03)."""
+requests; this module names no host."""
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -134,7 +134,7 @@ class Frontier:
         `depth`, scored by the strategy from the links' `anchor_text`, the sitemaps' `priorities` and the `inherited`
         relevance of the page that holds them, until the job has `capacity` tasks (a scored crawl then replaces its
         weakest queued tasks by better candidates); none past `max_depth` or once the job's cancel was requested. A URL
-        a task was fetched at after a redirect is that task's page, never a task of its own (D-1382). Returns how many
+        a task was fetched at after a redirect is that task's page, never a task of its own. Returns how many
         were added."""
         taken = list(dict.fromkeys(filter(self.admits, urls)))
         if depth > self.max_depth or not taken:

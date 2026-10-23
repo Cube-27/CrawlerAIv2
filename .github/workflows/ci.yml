@@ -47,7 +47,7 @@ jobs:
             python3 tools/ci_changes.py --all >> "$GITHUB_OUTPUT"
           fi
 
-  # SPEC-00 §4.6: the backend's static checks, beside the tests (`backend`) so neither waits for the other.
+  # the backend's static checks, beside the tests (`backend`) so neither waits for the other.
   backend-static:
     needs: changes
     if: needs.changes.outputs.backend_static == 'true'
@@ -78,7 +78,7 @@ jobs:
       # ([tool.complexipy] in pyproject.toml). `--no-ignore`: an inline suppression does not exempt a function.
       - run: uv run --no-sync --no-build complexipy --no-ignore
 
-  # SPEC-00 §4.6: migrations and the tests. Later SPEC-00 rows add the replay split and the other jobs.
+  # migrations and the tests. Later rows add the replay split and the other jobs.
   backend:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
@@ -107,7 +107,7 @@ jobs:
       # The project alone is built from this repo's source (`--no-binary-package crawlerai`) and installed
       # non-editable, and every later step runs without re-syncing.
       - run: uv sync --frozen --no-build --no-binary-package crawlerai --no-editable
-      # Google Chrome stable, run headless, for the `browser`-marked tests (SPEC-02 §6), installed as the Patchright
+      # Google Chrome stable, run headless, for the `browser`-marked tests, installed as the Patchright
       # README sets it up (the browser rung's `chrome` channel).
       - run: uv run --no-sync --no-build patchright install --with-deps chrome
       - name: Create databases and roles
@@ -157,7 +157,6 @@ jobs:
       - run: uv sync --frozen --no-build --no-binary-package crawlerai --no-editable
       - run: uv run --no-sync --no-build pytest tests/property/test_money_properties.py -q --hypothesis-profile=verify
 
-  # SPEC-00 §4.6.
   frontend:
     needs: changes
     if: needs.changes.outputs.frontend == 'true'
@@ -184,7 +183,7 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
-  # The API client freshness check (SPEC-00 §4.5): the committed client matches one generated from the backend.
+  # The API client freshness check: the committed client matches one generated from the backend.
   api-client:
     needs: changes
     if: needs.changes.outputs.api_client == 'true'
@@ -254,7 +253,7 @@ jobs:
         env:
           TLC_HEAP: 4g
 
-  # SPEC-00 §4.6 job 4: no site literals outside adapters/ (C3, INV-03). Also lints and tests the repo tools and checks
+  # no site literals outside adapters/ (C3). Also lints and tests the repo tools and checks
   # the decisions log.
   site-literals:
     runs-on: ubuntu-24.04
@@ -274,14 +273,14 @@ jobs:
       - run: uv run --no-sync --no-build pytest ../tools/tests
       - run: uv run --no-sync --no-build python ../tools/site_literal_scan.py --public
 
-  # SPEC-00 §4.6 job 5: every file under backend/data/ is pinned in the manifest (C4, INV-05).
+  # every file under backend/data/ is pinned in the manifest (C4).
   data-manifest:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: python3 tools/data_manifest_check.py
 
-  # SPEC-00 §4.6 job 3: dependency license deny-list and CycloneDX SBOMs (ARCHITECTURE §18).
+  # dependency license deny-list and CycloneDX SBOMs.
   licenses:
     needs: changes
     if: needs.changes.outputs.licenses == 'true'
@@ -308,8 +307,8 @@ jobs:
           name: license-report
           path: license-report/
 
-  # SPEC-00 §4.6 job 6: no size, complexity or coverage-threshold gate in CI, hooks or tool configs beyond C11's two
-  # (INV-18), and the soft file-length limit, which only warns.
+  # no size, complexity or coverage-threshold gate in CI, hooks or tool configs beyond C11's two
+  # checks, and the soft file-length limit, which only warns.
   no-size-gates:
     runs-on: ubuntu-24.04
     steps:

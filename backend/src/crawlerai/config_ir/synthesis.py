@@ -1,4 +1,4 @@
-"""Role A: selector synthesis (learning-configs spec), for the fields induction left.
+"""Role A: selector synthesis, for the fields induction left.
 
 The model reads the fields' descriptions, the cleaned sample pages (`sample_view`) and the values the engine published
 on them, and replies with steps, never values: the output schema has no place for one. Each round, the engine executor
@@ -6,15 +6,15 @@ runs the steps on every sample page, and a field is kept only if, on every page 
 value is `equal` to the published one, and every value it gives elsewhere is valid. Fields that fail get their
 diagnostics (`no_match`, `multi_match(n)`, `value_mismatch(got, want)`, `invalid(...)`, `invalid_xpath(...)`) in a
 repair prompt, at most `MAX_REPAIRS` times; fields still failing are left without steps, and role C fills them in
-`active` mode (§8.4).
+`active` mode.
 
 On a listing the model also writes the `row` selector, which must select at least 3 rows on every sample page, and as
 many as the engine published where it published rows; row fields are checked row by row in document order, relative
 to it, and are written again whenever the row selector is. `next_page_url` becomes the listing's `next` step.
 
-Model output is data: steps are parsed by the IR model and interpreted by the executors, never executed (INV-17); an
+Model output is data: steps are parsed by the IR model and interpreted by the executors, never executed; an
 invalid step is a diagnostic, not an error. An LLM failure (`LLMFailure`: budget, unavailable, refused, invalid)
-propagates: the learning job ends `failed` and nothing activates (§4.13).
+propagates: the learning job ends `failed` and nothing activates.
 """
 
 import asyncio
@@ -64,7 +64,7 @@ MAX_DIAGNOSTICS: Final = 10
 VALUE_MAX_CHARS: Final = 200
 # The key of the listing's row selector among the targets; a field name has no `.` (`NAME_PATTERN`).
 ROW: Final = "listing.row"
-_STATUS: Final[FieldStatus] = "uncorroborated"  # until validation (§4.7)
+_STATUS: Final[FieldStatus] = "uncorroborated"  # until validation
 
 
 class _OneStep(BaseModel):
@@ -196,7 +196,7 @@ def _add(proposal: _Proposal, target: str, written: JsonValue, *, one: bool = Fa
             invalid.append(f"step {n}: invalid_step({target} takes one step)")
             continue
         if not one and step_wire.absolutizes(raw):
-            # A field's URL publishes as the page writes it (normalization spec); only `next`, which is fetched,
+            # A field's URL publishes as the page writes it; only `next`, which is fetched,
             # resolves.
             invalid.append(f"step {n}: invalid_step(absolutize_url is for the next page's URL only)")
             continue
@@ -411,7 +411,7 @@ class _Learning:
         return frozenset(name for name in ask.page if self._is_next(name))
 
     def _is_next(self, name: str) -> bool:
-        """`next_page_url` of a listing: the listing's one `next` step (IR §12.1), run on the whole page (§4.3)."""
+        """`next_page_url` of a listing: the listing's one `next` step (IR §12.1), run on the whole page."""
         return self.schema.page_kind == "listing" and name == NEXT_PAGE_FIELD
 
     # --- verification ---
@@ -434,7 +434,7 @@ class _Learning:
 
     def _trial(self, proposal: _Proposal, row: Step | None) -> ExtractionConfigIR:
         """The config with every verified and proposed step; a listing's `next_page_url` runs as a page-level field,
-        which is how the executor runs `next` (§4.3)."""
+        which is how the executor runs `next`."""
         proposed = {target: FieldSteps(steps=s, status=_STATUS) for target, s in proposal.steps.items() if s}
         page = {n: s for n, s in proposed.items() if n != ROW and not self._in_row(n)}
         rows = {n: s for n, s in proposed.items() if n != ROW and self._in_row(n)}
@@ -571,7 +571,7 @@ def output_schema(page: Sequence[str], row: bool, rows: Sequence[str]) -> dict[s
     """Steps in the wire form (`step_wire`) for the asked page fields, the listing's row selector and its row
     fields; no place for a value. Fields are a list of `{field, steps}` entries, `field` one of the asked names, so
     the step form appears once however many fields are asked: a provider compiles the schema into a grammar whose
-    size it caps, and a closed object with the step form under every field outgrew it (D-1008)."""
+    size it caps, and a closed object with the step form under every field outgrew it."""
     properties: dict[str, JsonValue] = {}
     if page:
         properties["fields"] = _entries_schema(page)

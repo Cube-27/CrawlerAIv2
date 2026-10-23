@@ -1,4 +1,4 @@
-"""Number normalizer (normalization spec): a decimal number as the page states it, such as a rating value (schema.org
+"""Number normalizer: a decimal number as the page states it, such as a rating value (schema.org
 `Rating.ratingValue`, whose range is Number or Text).
 
 Accepts:
@@ -28,14 +28,14 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 
 # schema.org AggregateRating: `ratingValue` is the rating, `reviewCount` the count of reviews it is based on.
 _RATING_VALUE, _REVIEW_COUNT = "ratingValue", "reviewCount"
-# A served number keeps at most two decimal places (normalization spec, "Served form"), rounded half to even (ISO
+# A served number keeps at most two decimal places, rounded half to even (ISO
 # 80000-1 Annex B, IEEE 754's default): a rating's float noise, `4.439477977161501`, serves as 4.44.
 _SERVED_PLACES = Decimal("0.01")
 _EXACT_DIGITS = 15  # IEEE 754 binary64 holds 15 significant decimal digits exactly
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
-    """Normalize a number field (normalization spec)."""
+    """Normalize a number field."""
     if spec.type is not FieldType.NUMBER:
         raise TypeError(f"the number normalizer does not handle type {spec.type}")
     if isinstance(raw, dict):
@@ -90,7 +90,7 @@ def _written(value: Decimal) -> str:
 
 
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
-    """Equality as a key (normalization spec): equal as decimals, so `4.5` equals `4.50`."""
+    """Equality as a key: equal as decimals, so `4.5` equals `4.50`."""
     if isinstance(value, str):
         with suppress(InvalidOperation):
             return Decimal(value)
@@ -98,7 +98,7 @@ def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
 
 
 def served(value: JsonValue) -> JsonValue:
-    """A published number as a record serves it (normalization spec, "Served form"): a JSON number of at most two
+    """A published number as a record serves it: a JSON number of at most two
     decimal places (`numbers.json_number`); any other value as it is."""
     if isinstance(value, str):
         with suppress(InvalidOperation):

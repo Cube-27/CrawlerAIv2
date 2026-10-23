@@ -1,4 +1,4 @@
-"""Per-unit and per-period amounts (normalization spec, "money"; extraction spec, "Structural DOM values"): an amount
+"""Per-unit and per-period amounts: an amount
 written with a CLDR "per" pattern and a unit after it (`€25/kg`, `$0.50 per 100 ml`, `$25/mo`) is a price of one unit
 or one period, not the price of the item.
 

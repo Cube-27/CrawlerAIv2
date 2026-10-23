@@ -1,4 +1,4 @@
-"""Header minimization by replay (adapters spec): a recipe starts with `Accept: application/json` only and keeps a
+"""Header minimization by replay: a recipe starts with `Accept: application/json` only and keeps a
 captured header only when adding it makes the replay reproduce every sample page's values; credentials, tokens and
 headers that vary per page are never sent, and a recipe that needs one is not learnable.
 

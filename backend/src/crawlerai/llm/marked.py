@@ -1,16 +1,16 @@
-"""The cleaned text as role C reads it on a detail page (llm spec, "Role C input, claims and candidates"): the text,
+"""The cleaned text as role C reads it on a detail page: the text,
 with an id after each shown link and at each shown image the fields asked can claim (`content.text.Mark`).
 
 A link reads `[L<n>]` after its text, or `[L<n>: <name>]` when it announces a name its text does not show; an image
-reads `[I<n>]`, or `[I<n>: <alt>]`. The ids are numbered in document order, so the same page gives the same text
-(INV-10). Only a link to another resource is marked: a same-document reference (RFC 3986 §4.4: resolved, the base URL
+reads `[I<n>]`, or `[I<n>: <alt>]`. The ids are numbered in document order, so the same page gives the same text.
+Only a link to another resource is marked: a same-document reference (RFC 3986 §4.4: resolved, the base URL
 up to its fragment) names the page itself, not a link it states. A target that is not an http(s) URL (a `data:` image,
 a `javascript:` link) is not marked either, as no url or image_url value comes of it (`normalize.url`). The page is
 its own URL when known: a `<base href>` elsewhere moves where relative targets resolve, not which page this is. The ids
 take at most `budget` characters together, so the text stays near its cut; the marks past it are not shown.
 
 The ids are not page text: a span the model claims is grounded in the cleaned text itself, its offsets moved back past
-the ids before it (`cleaned_offset`), and a claimed id is grounded in the element it marks (`llm.grounding`, INV-12).
+the ids before it (`cleaned_offset`), and a claimed id is grounded in the element it marks (`llm.grounding`).
 
 Role C's evidence is the product's own (`scoped`): the text runs and marks of the elements that hold other items'
 content (`collect.dom.other_item_paths`: related and similar items, reviews, lists of other documents' cards, the cards
@@ -124,7 +124,7 @@ class Scoped:
 
     def whole_span(self, start: int, end: int) -> tuple[int, int] | None:
         """The span `[start, end)` of the scoped text in the whole cleaned text; None when it crosses where other
-        items' content was cut, as the whole text does not hold it then (INV-12)."""
+        items' content was cut, as the whole text does not hold it then."""
         whole = self.cleaned_offset(start), self.cleaned_offset(end, end=True)
         return whole if whole[1] - whole[0] == end - start else None
 

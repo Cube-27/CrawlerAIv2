@@ -1,5 +1,5 @@
 """Candidates of one text, long_text or image list field that another candidate of the same field supersedes
-(resolution spec, requirement "Source precedence for text, url and image").
+(requirement "Source precedence for text, url and image").
 
 Source precedence ranks by kind, so a kind that states a field as a fragment would win over one that states it whole.
 Two structural properties of the values say a candidate is a fragment of another, whatever its kind:
@@ -8,7 +8,7 @@ Two structural properties of the values say a candidate is a fragment of another
   Open Graph description (the protocol defines it as a one-to-two sentence summary) is a summary, and so is a
   candidate of another kind stating the same text as it, so a longer description of a kind other than Open Graph
   supersedes it. A text that is another's with fewer line breaks, white space aside, is that
-  text with its block structure flattened (paragraphs and `br` line breaks, HTML Standard §4.4.1, §4.5.27, dropped),
+  text with its block structure flattened (paragraphs and `br` line breaks, HTML Standard §4.4.1, dropped),
   so the rendition keeping more of its lines supersedes it. A text whose first line stands alone before the start of a
   longer candidate is that text with the heading that names its block kept as text (HTML Standard §4.3.6: a heading
   names its section, it is not its content; microdata reads an element's whole text content), a cut of it all the

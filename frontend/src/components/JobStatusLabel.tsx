@@ -1,7 +1,7 @@
 import type { JobStatus, TaskStatus } from "../api/jobs";
 import { StatusLabel, type StatusTone } from "./StatusLabel";
 
-// One tone per `job.status` (persistence-storage spec): waiting, in progress, or ended; a cancel is the caller's own end.
+// One tone per `job.status`: waiting, in progress, or ended; a cancel is the caller's own end.
 const JOB_STATUS_TONES: Record<JobStatus, StatusTone> = {
   queued: "neutral",
   running: "accent",
@@ -10,7 +10,7 @@ const JOB_STATUS_TONES: Record<JobStatus, StatusTone> = {
   cancelled: "neutral",
 };
 
-// One tone per `url_task.status` (persistence-storage spec), as for jobs; `claimed` is a task a worker is running.
+// One tone per `url_task.status`, as for jobs; `claimed` is a task a worker is running.
 const TASK_STATUS_TONES: Record<TaskStatus, StatusTone> = {
   queued: "neutral",
   claimed: "accent",

@@ -1,4 +1,4 @@
-# Local development (SPEC-00 §4.4). Needs Docker, uv and GNU make.
+# Local development. Needs Docker, uv and GNU make.
 
 .DEFAULT_GOAL := dev
 COMPOSE := docker compose -f infra/docker-compose.yml
@@ -48,7 +48,7 @@ migrate:
 api:
 	cd backend && uv run uvicorn --factory crawlerai.api.app:create_app --reload --port 8000
 
-## Regenerate frontend/openapi.json and the TS client types from the backend (SPEC-00 §4.5). CI fails when the
+## Regenerate frontend/openapi.json and the TS client types from the backend. CI fails when the
 ## committed files differ from a fresh run.
 api-client:
 	cd backend && $(UV_RUN) crawlerai openapi > ../frontend/openapi.json
@@ -59,7 +59,7 @@ api-client:
 verify-worker-queue:
 	python3 tools/verify/worker_queue.py
 
-## Everything CI runs (SPEC-00 §4.4, §4.6), in the same order per job, failing at the first error. Needs Docker for
+## Everything CI runs, in the same order per job, failing at the first error. Needs Docker for
 ## the backend's database steps and `pnpm install` in frontend/. The fast staged-file hooks are in
 ## .pre-commit-config.yaml.
 check: check-data check-size-gates check-complexity check-theme check-tools check-backend check-frontend \

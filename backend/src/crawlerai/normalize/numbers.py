@@ -1,4 +1,4 @@
-"""Numbers as pages write them (normalization spec): the page locales (`page_locales` of `normalize/locales.py`), and
+"""Numbers as pages write them: the page locales (`page_locales` of `normalize/locales.py`), and
 the values a written number has under their Unicode CLDR number symbols (Babel). Shared by the normalizers that read
 numbers from text (money, count, number), so each reads them one way."""
 
@@ -35,7 +35,7 @@ Convention = tuple[str, str, object]
 MINUS = ("-", "\u2212")
 
 
-# The persistence-storage spec stores money as `numeric(18,6)`: an amount has at most 12 integer and 6 fraction digits.
+# Storage keeps money as `numeric(18,6)`: an amount has at most 12 integer and 6 fraction digits.
 _MAX_INTEGER_DIGITS = 12
 _MAX_EXPONENT = -6
 
@@ -62,7 +62,7 @@ def json_decimal(value: object) -> Decimal | None:
 
 
 def json_number(value: Decimal) -> int | float:
-    """A finite decimal as the JSON number a record serves (RFC 8259 §6; normalization spec, "Served form"): an integer
+    """A finite decimal as the JSON number a record serves (RFC 8259 §6): an integer
     when it is whole (`85.00` is 85), else the IEEE 754 binary64 nearest it (I-JSON, RFC 7493 §2.2), whose shortest
     form (`repr`) writes its digits back for up to 15 significant digits (`199.95` stays 199.95)."""
     return int(value) if value == value.to_integral_value() else float(value)
@@ -226,7 +226,7 @@ def negated(before: str) -> bool:
     """Whether a minus sign (`MINUS`) in the text before a number touches it, so the number is negative.
 
     CLDR number patterns write the minus sign against the digits (`-5`, `-$5`); a minus set apart by a space is
-    punctuation ("In stock - 5 left"), not a sign (D-1270)."""
+    punctuation ("In stock - 5 left"), not a sign."""
     last = max(before.rfind(minus) for minus in MINUS)
     return last >= 0 and not any(c.isspace() for c in before[last + 1 :])
 

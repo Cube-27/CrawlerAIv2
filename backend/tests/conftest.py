@@ -1,7 +1,7 @@
-"""Hypothesis profiles: CI runs every property test with a fixed `max_examples=200` (schemas spec); local runs keep
+"""Hypothesis profiles: CI runs every property test with a fixed `max_examples=200`; local runs keep
 the Hypothesis default; the verify-* skills run theirs with the `verify` profile. GitHub Actions sets `CI`. Every test
-runs without the process's `CRAWLERAI_*` variables. For INV-26, counters of HTML parser constructions. For API adapters
-and recipes (acquisition spec, adapters spec), a stand-in API."""
+runs without the process's `CRAWLERAI_*` variables. Counters of HTML parser constructions. For API adapters
+and recipes, a stand-in API."""
 
 import os
 from collections.abc import Callable, Mapping
@@ -69,7 +69,7 @@ class ParserCounter:
 
 @pytest.fixture
 def parses(monkeypatch: pytest.MonkeyPatch) -> Mapping[str, ParserCounter]:
-    """INV-26: the selectolax and lxml parser constructions while the test runs."""
+    """the selectolax and lxml parser constructions while the test runs."""
     counters = {"selectolax": ParserCounter(), "lxml": ParserCounter()}
     monkeypatch.setattr(lexbor, "LexborHTMLParser", counters["selectolax"].wrap(lexbor.LexborHTMLParser))
     monkeypatch.setattr(lxml_html, "document_fromstring", counters["lxml"].wrap(lxml_html.document_fromstring))
