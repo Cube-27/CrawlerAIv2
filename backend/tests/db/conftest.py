@@ -6,6 +6,7 @@ import json
 import os
 import uuid
 from collections.abc import AsyncIterator, Callable, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -294,8 +295,8 @@ async def submit_app(
         raise AssertionError("submitting a job fetches nothing")
 
     async with api(engine) as (app, client):
-        app.state.fetching = fetching_from(Rungs(http=never, browser=never), tmp_path / "objects")
-        app.state.engine_data = None
+        fetching = fetching_from(Rungs(http=never, browser=never), tmp_path / "objects")
+        app.state.runtime = replace(app.state.runtime, fetching=fetching, engine_data=None)
         yield app, client
 
 

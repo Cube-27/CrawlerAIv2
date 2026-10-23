@@ -4,11 +4,11 @@ read are left out of a 200 answer, and the timeout cuts the answer (`truncated`)
 from fastapi import APIRouter, Depends, Request
 
 from crawlerai.api.auth import require_api_key
-from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.problems import target_refused
+from crawlerai.api.runtime import database, runtime
 from crawlerai.services import map as map_service
-from crawlerai.services.fetching import Fetching, TargetRejected
+from crawlerai.services.fetching import TargetRejected
 from crawlerai.services.map import MapRequest, MapResult
 
 router = APIRouter(
@@ -25,7 +25,7 @@ async def map_urls(body: MapRequest, request: Request) -> MapResult:
     of `url`, or the `include` globs, less the `exclude` globs. At most `limit`; `truncated` says more were found, or
     that reading stopped at a cap or the 60 s timeout."""
     engine = database(request)
-    fetching: Fetching = request.app.state.fetching
+    fetching = runtime(request).fetching
     try:
         return await map_service.map_urls(engine, fetching, body)
     except TargetRejected as e:

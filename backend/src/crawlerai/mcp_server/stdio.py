@@ -2,20 +2,17 @@
 every call, as the API looks up each request's, so a revoked key stops working at once. A local process has one
 client, so no rate limit stands in front of the lookup."""
 
-from dataclasses import replace
-
 from mcp.server.fastmcp.exceptions import ToolError
 
 from crawlerai.core.settings import McpSettings, Settings
 from crawlerai.db.keys import authenticate, hash_key
-from crawlerai.llm.draft_cap import KeyCapped
-from crawlerai.mcp_server.server import AnyContext, Bind, Caller, build_server
-from crawlerai.services.runtime import Runtime, open_runtime
+from crawlerai.mcp_server.server import AnyContext, Bind, build_server
+from crawlerai.services.runtime import Caller, Runtime, open_runtime
 
 
 def key_bind(runtime: Runtime, api_key: str) -> Bind:
     """Each call bound to `runtime` and the key, refused while the key is unknown or revoked. Its LLM calls that no job
-    pays for count against the key's draft cap, as over HTTP (`crawlerai.api.mcp`)."""
+    pays for count against the key's draft cap (`Caller.of`), as over HTTP."""
     hashed = hash_key(api_key)
 
     async def bind(ctx: AnyContext) -> Caller:
@@ -23,7 +20,7 @@ def key_bind(runtime: Runtime, api_key: str) -> Bind:
             key_id = await authenticate(conn, hashed)
         if key_id is None:
             raise ToolError("CRAWLERAI_API_KEY is unknown or revoked")
-        return Caller(replace(runtime, llm=KeyCapped(runtime.llm, runtime.database, key_id)), key_id)
+        return Caller.of(runtime, key_id)
 
     return bind
 

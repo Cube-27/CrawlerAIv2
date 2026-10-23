@@ -6,7 +6,7 @@ import asyncio
 import functools
 import itertools
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from ipaddress import IPv4Address, ip_address
 from pathlib import Path
 from typing import Any
@@ -142,8 +142,7 @@ async def client(
 ) -> AsyncIterator[httpx.AsyncClient]:
     """The app against the test database, fetching through `fetching`."""
     async with api(engine) as (app, client):
-        app.state.fetching = fetching
-        app.state.engine_data = engine_data
+        app.state.runtime = replace(app.state.runtime, fetching=fetching, engine_data=engine_data)
         yield client
 
 

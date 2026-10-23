@@ -5,7 +5,7 @@ validates with."""
 
 import json
 from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Final
 
@@ -198,7 +198,7 @@ async def client(
     """The app against the test database, reading captures from the world's object store."""
     app_env.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
     async with api(world.engine) as (app, client):
-        app.state.engine_data = app_data
+        app.state.runtime = replace(app.state.runtime, engine_data=app_data)
         yield client
 
 

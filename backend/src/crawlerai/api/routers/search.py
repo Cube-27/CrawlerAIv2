@@ -3,19 +3,15 @@ its status is `GET /v1/jobs/{id}` and what it made `GET /v1/jobs/{id}/results`."
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 
-from crawlerai.api.auth import require_api_key
-from crawlerai.api.database import database
+from crawlerai.api.auth import caller, require_api_key
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.problems import ProblemError
 from crawlerai.api.submissions import submission_problems
-from crawlerai.db.models import ApiKeyId
-from crawlerai.llm.draft_cap import KeyCapped
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.search.providers import SearchFailed, SearchProvider
+from crawlerai.search.providers import SearchFailed
 from crawlerai.services import search as search_service
-from crawlerai.services.fetching import Fetching
+from crawlerai.services.runtime import Caller
 from crawlerai.services.search import SearchRequest, SearchResult, SearchUnavailable
 
 router = APIRouter(
@@ -27,27 +23,22 @@ router = APIRouter(
 
 
 @router.post("", responses={409: PROBLEM_RESPONSE, 502: PROBLEM_RESPONSE, 503: PROBLEM_RESPONSE})
-async def search(
-    body: SearchRequest, request: Request, key: Annotated[ApiKeyId, Depends(require_api_key)]
-) -> SearchResult:
+async def search(body: SearchRequest, caller: Annotated[Caller, Depends(caller)]) -> SearchResult:
     """The web results of `query` from the configured provider: `url`, `title` and `snippet`, in its order, at most
     `limit`. With `scrape`, a batch job scrapes the results (`job_id`); a result the API may not fetch is counted in
     `skipped`. 503 `search_unavailable` when no provider is configured, 502 when the provider does not answer."""
-    fetching: Fetching = request.app.state.fetching
-    provider: SearchProvider | None = request.app.state.search
-    data: EngineData | None = request.app.state.engine_data
-    llm = KeyCapped(request.app.state.llm, database(request), key)
+    runtime = caller.runtime
     try:
         with submission_problems():
             return await search_service.search(
-                database(request),
-                fetching.connector,
-                provider,
+                runtime.database,
+                runtime.fetching.connector,
+                runtime.search,
                 body,
-                data=data,
-                llm=llm,
-                api_key_id=key,
-                egresses=fetching.egresses,
+                data=runtime.engine_data,
+                llm=runtime.llm,
+                api_key_id=caller.api_key_id,
+                egresses=runtime.fetching.egresses,
             )
     except SearchUnavailable as e:
         raise ProblemError(503, "search_unavailable", "Search unavailable", str(e)) from e

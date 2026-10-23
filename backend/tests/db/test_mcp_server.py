@@ -11,7 +11,7 @@ import json
 import os
 import sys
 from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -125,8 +125,7 @@ async def app_client(key: CreatedKey, fetching: Fetching, engine_data: EngineDat
             headers={"authorization": f"Bearer {key.key}"},
         ) as client,
     ):
-        app.state.fetching = fetching
-        app.state.engine_data = engine_data
+        app.state.runtime = replace(app.state.runtime, fetching=fetching, engine_data=engine_data)
         yield client
 
 

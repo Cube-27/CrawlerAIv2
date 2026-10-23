@@ -3,6 +3,7 @@ service's and the worker's (`test_extract.py`)."""
 
 import json
 from collections.abc import AsyncIterator, Callable
+from dataclasses import replace
 from typing import Any
 
 import httpx
@@ -56,9 +57,8 @@ async def client(
 ) -> AsyncIterator[httpx.AsyncClient]:
     """The app with the engine's data, fetching `web` and drafting with `provider`."""
     async with api(engine) as (app, client):
-        app.state.fetching = fetching
-        app.state.engine_data = engine_data
-        app.state.llm = MeteredClient([provider], engine)
+        llm = MeteredClient([provider], engine)
+        app.state.runtime = replace(app.state.runtime, fetching=fetching, engine_data=engine_data, llm=llm)
         yield client
 
 

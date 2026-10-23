@@ -2,6 +2,7 @@
 (`test_map_service.py`)."""
 
 from collections.abc import AsyncIterator, Callable
+from dataclasses import replace
 from typing import Any
 
 import httpx
@@ -32,7 +33,7 @@ async def client(
     app_env: pytest.MonkeyPatch, engine: AsyncEngine, fetching: Fetching
 ) -> AsyncIterator[httpx.AsyncClient]:
     async with api(engine) as (app, client):
-        app.state.fetching = fetching
+        app.state.runtime = replace(app.state.runtime, fetching=fetching)
         yield client
 
 

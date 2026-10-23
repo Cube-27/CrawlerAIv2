@@ -36,13 +36,7 @@ log = logging.getLogger(__name__)
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     async with open_runtime(Settings()) as runtime, mcp.running(app):
-        app.state.database = runtime.database
-        app.state.fetching = runtime.fetching
-        app.state.llm = runtime.llm
-        app.state.engine_data = runtime.engine_data
-        app.state.drift_margins = runtime.drift_margins
-        app.state.llm_setup = runtime.llm_setup
-        app.state.search = runtime.search
+        app.state.runtime = runtime
         yield
 
 

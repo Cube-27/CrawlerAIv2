@@ -3,18 +3,14 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, status
 
-from crawlerai.api.auth import require_api_key
-from crawlerai.api.database import database
+from crawlerai.api.auth import caller, require_api_key
 from crawlerai.api.dto import PROBLEM_RESPONSE
 from crawlerai.api.submissions import submission_problems
-from crawlerai.db.models import ApiKeyId
-from crawlerai.llm.draft_cap import KeyCapped
-from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import crawl
 from crawlerai.services.crawl import CrawlRequest, CrawlSubmitted
-from crawlerai.services.fetching import Fetching
+from crawlerai.services.runtime import Caller
 
 router = APIRouter(
     prefix="/v1/crawl",
@@ -29,9 +25,7 @@ router = APIRouter(
     status_code=status.HTTP_202_ACCEPTED,
     responses={409: PROBLEM_RESPONSE, 502: PROBLEM_RESPONSE, 503: PROBLEM_RESPONSE},
 )
-async def crawl_site(
-    body: CrawlRequest, request: Request, key: Annotated[ApiKeyId, Depends(require_api_key)]
-) -> CrawlSubmitted:
+async def crawl_site(body: CrawlRequest, caller: Annotated[Caller, Depends(caller)]) -> CrawlSubmitted:
     """Queue a job that crawls from `url`: its sitemaps and the links of each page, within `include` and `exclude`,
     `max_depth` and `limit`, on its host (and the subdomains an `include` names). A page a `page_kind_rules` pattern
     matches is extracted; with rules, any other page is fetched for its links only. `strategy` orders the visits: `bfs`
@@ -39,16 +33,14 @@ async def crawl_site(
     text and URL path against the query, the holding page's relevance, sitemap priority, shallower first);
     `allow_subdomains` and `allow_external` widen the host scope. Pages the `limit` leaves unfetched end `cancelled`.
     A target the API may not fetch, in `url` or `webhook_url`, is a 422 and nothing is queued."""
-    fetching: Fetching = request.app.state.fetching
-    data: EngineData | None = request.app.state.engine_data
-    llm = KeyCapped(request.app.state.llm, database(request), key)
+    runtime = caller.runtime
     with submission_problems():
         return await crawl.submit_crawl(
-            database(request),
-            fetching.connector,
+            runtime.database,
+            runtime.fetching.connector,
             body,
-            data=data,
-            llm=llm,
-            api_key_id=key,
-            egresses=fetching.egresses,
+            data=runtime.engine_data,
+            llm=runtime.llm,
+            api_key_id=caller.api_key_id,
+            egresses=runtime.fetching.egresses,
         )

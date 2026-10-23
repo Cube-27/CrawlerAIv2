@@ -6,8 +6,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request
 
 from crawlerai.api.auth import require_api_key
-from crawlerai.api.database import database
 from crawlerai.api.dto import PROBLEM_RESPONSE
+from crawlerai.api.runtime import database
 from crawlerai.llm.pricing import default_pricing
 from crawlerai.services import llm_costs
 from crawlerai.services.llm_costs import CostQuery, CostReport, JobCostPage, JobCostQuery
