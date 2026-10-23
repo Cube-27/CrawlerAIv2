@@ -39,7 +39,7 @@ from crawlerai.acquire.browser_capture import (
     item_areas,
     json_bodies,
 )
-from crawlerai.acquire.browser_scroll import SCROLL_MAX_S, scroll_through
+from crawlerai.acquire.browser_scroll import SCROLL_MAX_S, scroll_back, scroll_through, watch
 from crawlerai.acquire.browser_session import (
     BrowserSession,
     Failed,
@@ -111,6 +111,8 @@ class Render:
         read its document, the context's cookies, and classify it with the redirect rules of where its navigation led
         (`classified`), labelled with its challenge."""
         self.temporary = page.temporary
+        if scroll:
+            await watch(page.page)  # the caller's steps may scroll too
         self.steps = await stepped(page)  # kept by a failure after the steps ran too
         if scroll:
             await scroll_through(page.page, page.frame, page.calls)
@@ -186,6 +188,8 @@ async def fetch_browser(
             async with asyncio.timeout(policy.browser_timeout_s + extra_s):
                 async with rendered(url, policy, session, connector or SafeConnector(), run, sessions) as page:
                     await run.read(page, scroll=True)
+                    if policy.screenshot == "viewport":
+                        await scroll_back(page.page)  # the viewport the page first showed
                     run.artifacts = await capture_artifacts(page.page, policy)
             if export is not None:
                 export.cookies, export.proxy = run.cookies, run.proxy

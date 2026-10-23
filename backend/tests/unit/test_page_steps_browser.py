@@ -228,6 +228,8 @@ def test_the_page_is_read_scrolled_through_with_what_it_rendered_on_the_way(brow
     body = browser.fetch("/scrolled").bundle.body.decode()
 
     assert "lazy section text" in body
-    assert all(f"row number {i}<" in body for i in range(30))  # the rows scrolled past are read where they were
+    rows = [body.find(f"row number {i}<") for i in range(30)]
+    assert -1 not in rows  # the rows scrolled past are read where they were, in order
+    assert rows == sorted(rows)
     assert "list ends" in body
     assert "loader 7f" not in body  # replaced in view: not something scrolled past

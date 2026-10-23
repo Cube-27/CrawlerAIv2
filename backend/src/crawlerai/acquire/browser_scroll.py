@@ -20,12 +20,12 @@ import time
 from typing import Final
 
 from patchright.async_api import Error as PlaywrightError
-from patchright.async_api import Page
+from patchright.async_api import Page, Request
 
 from crawlerai.acquire.browser_capture import DataCalls
 from crawlerai.acquire.browser_wait import MainFrame
 
-__all__ = ["SCROLL_MAX_S", "scroll_through"]
+__all__ = ["SCROLL_MAX_S", "scroll_back", "scroll_through", "watch"]
 
 # The pass ends this long after it began, and after this many steps, whatever still renders: an infinite feed never
 # ends by itself. Unmeasured starting points.
@@ -71,7 +71,7 @@ _AT_JS: Final = """() => {
 # coordinates, where its viewport begins at `scrollTop`: every element's when the watch begins, and each added one's
 # when it is added. A removed node whose end lay above the viewport was scrolled past; for one never measured, the
 # place it left is judged instead (the next sibling's top, else the previous sibling's bottom, else the parent's
-# bottom). Those that hold text are logged as `__scrolledPast`, which `browser_capture.DOCUMENT_HTML_JS` reads. False
+# bottom). Those that hold text are logged as `__scrolledPast`, which `browser_capture.document_html` reads. False
 # when nothing scrolls.
 _WATCH_JS: Final = (
     "() => {\n  if (("
@@ -98,26 +98,25 @@ _WATCH_JS: Final = (
     const rect = node.getBoundingClientRect();
     return rect.width || rect.height ? rect : null;
   };
-  const place = ({ previousSibling: prev, nextSibling: next, target }) => {
+  // The place removed nodes left (DOMRect `y` is the top of a box of non-negative height).
+  const place = (prev, next, parent) => {
     const after = box(next && (next.nodeType === Node.ELEMENT_NODE ? next : next.nextElementSibling));
-    if (after) return after.top;
+    if (after) return after.y;
     const before = box(prev && (prev.nodeType === Node.ELEMENT_NODE ? prev : prev.previousElementSibling));
     if (before) return before.bottom;
-    const parent = box(target);
-    return parent ? parent.bottom : Infinity;
+    const around = box(parent);
+    return around ? around.bottom : Infinity;
   };
   globalThis.__scrollWatch = new MutationObserver((records) => {
     const { top, scrolled } = origin();
-    for (const record of records) {
-      const nodes = Array.from(record.removedNodes).filter((node) => {
+    for (const { removedNodes, addedNodes, target: parent, previousSibling: prev, nextSibling: next } of records) {
+      const nodes = Array.from(removedNodes).filter((node) => {
         if (!/\\S/.test(node.textContent || '')) return false;
         const end = ends.get(node);
-        return end === undefined ? place(record) <= top : end <= scrolled;
+        return end === undefined ? place(prev, next, parent) <= top : end <= scrolled;
       });
-      if (nodes.length > 0) {
-        past.push({ nodes, parent: record.target, prev: record.previousSibling, next: record.nextSibling });
-      }
-      for (const node of record.addedNodes) {
+      if (nodes.length > 0) past.push({ nodes, parent, prev, next });
+      for (const node of addedNodes) {
         if (node.nodeType === Node.ELEMENT_NODE && node.isConnected) measure(node);
       }
     }
@@ -128,11 +127,21 @@ _WATCH_JS: Final = (
 }"""
 )
 _UNWATCH_JS: Final = "() => globalThis.__scrollWatch?.disconnect()"
+# CSSOM View `scrollTo`: the scroller back at its start.
+_BACK_JS: Final = "() => globalThis.__scroller?.scrollTo(0, 0)"
+
+
+async def watch(page: Page) -> None:
+    """Start logging what the page removes once scrolled past (`_WATCH_JS`), before anything scrolls it: the caller's
+    steps may."""
+    with contextlib.suppress(PlaywrightError):
+        await page.evaluate(_WATCH_JS, isolated_context=True)
 
 
 async def scroll_through(page: Page, frame: MainFrame, calls: DataCalls) -> None:
-    """Scroll the page through (module docstring), within `SCROLL_MAX_S`; a document the main frame navigates to
-    meanwhile, or one that can no longer be read, ends the pass."""
+    """Scroll the page through (module docstring), within `SCROLL_MAX_S`, the removals logged since `watch` (started
+    here when it was not); a document the main frame navigates to meanwhile, or one that can no longer be read, ends
+    the pass."""
     deadline = time.monotonic() + SCROLL_MAX_S
     shown = frame.latest
     with contextlib.suppress(PlaywrightError):
@@ -146,13 +155,21 @@ async def scroll_through(page: Page, frame: MainFrame, calls: DataCalls) -> None
             await page.evaluate(_UNWATCH_JS, isolated_context=True)
 
 
+async def scroll_back(page: Page) -> None:
+    """Scroll the scroller back to its start, for a view of the page as it first showed."""
+    with contextlib.suppress(PlaywrightError):
+        await page.evaluate(_BACK_JS, isolated_context=True)
+
+
 async def _step(page: Page, calls: DataCalls, deadline: float) -> bool:
     """Scroll one viewport and wait for what it loads; whether there is more to scroll: the end is not in view, or it
     moved away while the step settled."""
+    # Calls in flight before the step (a long poll, a stream) are not the step's: they may never end.
+    earlier = set(calls.in_flight)
     before = await page.evaluate(_STEP_JS, isolated_context=True)
     if before is None:
         return False
-    await _settled(calls, deadline)
+    await _settled(calls, earlier, deadline)
     after = await page.evaluate(_AT_JS, isolated_context=True)
     return after is not None and (not _at_end(after) or after["height"] > before["height"])
 
@@ -161,10 +178,8 @@ def _at_end(at: dict[str, float]) -> bool:
     return at["top"] + at["view"] >= at["height"] - 1
 
 
-async def _settled(calls: DataCalls, deadline: float) -> None:
+async def _settled(calls: DataCalls, earlier: set[Request], deadline: float) -> None:
     begun = time.monotonic()
-    # Calls in flight before the step (a long poll, a stream) are not the step's: they may never end.
-    earlier = set(calls.in_flight)
     end = min(deadline, begun + _STEP_MAX_S)
     quiet_since = begun
     while (now := time.monotonic()) < end:
