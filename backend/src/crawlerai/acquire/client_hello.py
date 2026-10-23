@@ -20,6 +20,7 @@ __all__ = ["HELLO_HOST", "ClientHello", "hello_listener", "ja4", "parse_client_h
 # no address); `localhost` resolves to the loopback address in each client (RFC 6761 §6.3).
 HELLO_HOST: Final = "localhost"
 _LOOPBACK: Final = "127.0.0.1"
+_LOOPBACK_IPV6: Final = "::1"
 _HANDSHAKE: Final = 22  # TLS ContentType handshake (RFC 8446 §5.1)
 _CLIENT_HELLO: Final = 1  # HandshakeType client_hello (RFC 8446 §4)
 _SERVER_NAME: Final = 0x0000  # RFC 6066 §3
@@ -179,7 +180,7 @@ def _hash(text: str, values: list[int]) -> str:
 
 @asynccontextmanager
 async def hello_listener() -> AsyncIterator[tuple[str, "asyncio.Future[ClientHello]"]]:
-    """A listener on the loopback address that reads the first ClientHello sent to it (module docstring): the URL a
+    """A listener on the loopback addresses that reads the first ClientHello sent to it (module docstring): the URL a
     client opens, and the ClientHello once a client has sent it (a malformed one leaves it unset)."""
     first: asyncio.Future[ClientHello] = asyncio.get_running_loop().create_future()
 
@@ -191,6 +192,11 @@ async def hello_listener() -> AsyncIterator[tuple[str, "asyncio.Future[ClientHel
                 first.set_result(parse_client_hello(record))
         writer.close()
 
-    server = await asyncio.start_server(serve, _LOOPBACK, 0)
-    async with server:
-        yield urlunsplit(("https", f"{HELLO_HOST}:{server.sockets[0].getsockname()[1]}", "/", "", "")), first
+    async with contextlib.AsyncExitStack() as servers:
+        ipv4 = await servers.enter_async_context(await asyncio.start_server(serve, _LOOPBACK, 0))
+        port = ipv4.sockets[0].getsockname()[1]
+        # `localhost` may resolve to the IPv6 loopback address alone (RFC 6761 §6.3 names both): the same port there,
+        # unless the machine has no IPv6 or the port is taken on it.
+        with contextlib.suppress(OSError):
+            await servers.enter_async_context(await asyncio.start_server(serve, _LOOPBACK_IPV6, port))
+        yield urlunsplit(("https", f"{HELLO_HOST}:{port}", "/", "", "")), first
