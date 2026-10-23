@@ -8,9 +8,9 @@ RUN pnpm install --frozen-lockfile
 COPY frontend ./
 RUN pnpm build
 
-FROM nginx:1.29-alpine
+# The unprivileged build: nginx runs as its own user and listens on 8080.
+FROM nginxinc/nginx-unprivileged:1.29-alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY infra/web/default.conf.template /etc/nginx/templates/default.conf.template
 # `.envsh` files, when executable, are sourced by the entrypoint, so the export reaches the template step.
-COPY infra/web/10-ui-key.envsh /docker-entrypoint.d/10-ui-key.envsh
-RUN chmod 755 /docker-entrypoint.d/10-ui-key.envsh
+COPY --chmod=755 infra/web/10-ui-key.envsh /docker-entrypoint.d/10-ui-key.envsh

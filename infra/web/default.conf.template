@@ -1,7 +1,7 @@
 # The web UI: the Vite build, and the API behind it with the UI's key attached, so the browser never holds one. nginx's
 # image fills ${UI_API_KEY} in at start (10-ui-key.envsh reads it from the file the migrate service wrote).
 server {
-    listen 80;
+    listen 8080;
     root /usr/share/nginx/html;
 
     # W3C Fetch Metadata: a request another site's page made (`cross-site`, `same-site`) is refused, since the key is

@@ -102,7 +102,7 @@ services:
       dockerfile: infra/web/Dockerfile
     image: crawlerai-web
     ports:
-      - "127.0.0.1:8080:80"
+      - "127.0.0.1:8080:8080"
     volumes:
       - ui:/ui:ro
     restart: unless-stopped

@@ -15,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BACKEND = ROOT / "backend"
+TOOLS = "../tools"  # from backend/, where the tool checks run
 FRONTEND = ROOT / "frontend"
 SDK = ROOT / "sdk"
 UV_RUN = shlex.split(os.environ.get("UV_RUN") or "uv run")
@@ -82,13 +83,13 @@ def verify_worker_queue() -> None:
 
 
 def check_data() -> None:
-    uv(BACKEND, "python", "../tools/data_manifest_check.py")
+    uv(BACKEND, "python", f"{TOOLS}/data_manifest_check.py")
 
 
 def check_size_gates() -> None:
     """C11: no gate beyond the two allowed; files over 800 lines only warn."""
-    uv(BACKEND, "python", "../tools/no_size_gates.py")
-    uv(BACKEND, "python", "../tools/file_length.py")
+    uv(BACKEND, "python", f"{TOOLS}/no_size_gates.py")
+    uv(BACKEND, "python", f"{TOOLS}/file_length.py")
 
 
 def check_complexity() -> None:
@@ -98,15 +99,15 @@ def check_complexity() -> None:
 
 def check_theme() -> None:
     """Visual values only in frontend/src/app/theme.css, UI only from @heroui/react (docs/rules.md)."""
-    uv(BACKEND, "python", "../tools/theme_only_check.py")
+    uv(BACKEND, "python", f"{TOOLS}/theme_only_check.py")
 
 
 def check_tools() -> None:
-    uv(BACKEND, "ruff", "check", "../tools")
-    uv(BACKEND, "ruff", "format", "--check", "../tools")
-    uv(BACKEND, "mypy", "--strict", "../tools")
-    uv(BACKEND, "pytest", "../tools/tests")
-    uv(BACKEND, "python", "../tools/site_literal_scan.py", "--public")
+    uv(BACKEND, "ruff", "check", TOOLS)
+    uv(BACKEND, "ruff", "format", "--check", TOOLS)
+    uv(BACKEND, "mypy", "--strict", TOOLS)
+    uv(BACKEND, "pytest", f"{TOOLS}/tests")
+    uv(BACKEND, "python", f"{TOOLS}/site_literal_scan.py", "--public")
 
 
 def psql(sql: str) -> None:
