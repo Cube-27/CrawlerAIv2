@@ -84,7 +84,7 @@ export function ConfigFieldsTable({ config }: Readonly<{ config: ConfigDetail }>
     steps,
   }));
   const { listing } = config.ir;
-  const absent = config.ir.absent ?? [];
+  const { absent } = config.ir;
   return (
     <div className="flex flex-col gap-3">
       <Typography.Paragraph>Fetch method: {config.ir.fetch.method}</Typography.Paragraph>
