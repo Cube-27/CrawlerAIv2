@@ -3,7 +3,9 @@
     uv run tools/dev.py <command>        (from the repo root; `uv run tools/dev.py` lists the commands)
 
 This runs no part of the app: `docker compose up` does. Needs `uv` and `pnpm`; the backend's database steps need
-Docker (`docker compose up -d postgres`). CI sets `UV_RUN` to run against an environment it has already installed.
+Docker (`docker compose up -d postgres`). Each CI job is one `check-<job>` command here, so a green `check` is a green
+CI: the workflow only checks out, installs and starts services, then runs `python3 tools/dev.py check-<job>`, with
+`UV_RUN` set to run against the environment it has installed and `PSQL` to reach its Postgres service.
 """
 
 import os
@@ -21,8 +23,8 @@ SDK = ROOT / "sdk"
 UV_RUN = shlex.split(os.environ.get("UV_RUN") or "uv run")
 
 # The scratch databases the backend checks recreate each run, so the dev database keeps its data: the tests run in
-# parallel (`-n auto`), each xdist worker in its own copy of the migrated `crawlerai_check` (`_gw0`, ...).
-# 127.0.0.1, not localhost: asyncpg can hang resolving localhost on Windows.
+# parallel (`PYTEST_WORKERS`, default one per CPU), each xdist worker in its own copy of the migrated
+# `crawlerai_check` (`_gw0`, ...). 127.0.0.1, not localhost: asyncpg can hang resolving localhost on Windows.
 CHECK_DATABASE_URL = "postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai_check"
 
 
@@ -43,6 +45,11 @@ def capture(cwd: Path, *argv: str) -> str:
 
 def uv(cwd: Path, *argv: str, env: dict[str, str] | None = None) -> None:
     run(cwd, *UV_RUN, *argv, env=env)
+
+
+def tool(*argv: str) -> None:
+    """A standard-library script under tools/, run by this interpreter, so it needs no installed environment."""
+    run(ROOT, sys.executable, *argv)
 
 
 # --- generators ---
@@ -74,35 +81,22 @@ def stale(paths: list[str], hint: str) -> None:
         sys.exit(f"{hint} is out of date: run it and commit the result.")
 
 
-def verify_worker_queue() -> None:
-    """Model-check the worker/queue concurrency with TLC (.claude/skills/verify-worker-queue/SKILL.md)."""
-    run(ROOT, sys.executable, "tools/verify/worker_queue.py")
+# --- checks: one per CI job, named after it (`check-<job>`), in CI's order ---
 
 
-# --- checks, in CI's order per job ---
+def check_data_manifest() -> None:
+    """C4: every file under backend/data/ is pinned in the manifest."""
+    tool("tools/data_manifest_check.py")
 
 
-def check_data() -> None:
-    uv(BACKEND, "python", f"{TOOLS}/data_manifest_check.py")
-
-
-def check_size_gates() -> None:
+def check_no_size_gates() -> None:
     """C11: no gate beyond the two allowed; files over 800 lines only warn."""
-    uv(BACKEND, "python", f"{TOOLS}/no_size_gates.py")
-    uv(BACKEND, "python", f"{TOOLS}/file_length.py")
+    tool("tools/no_size_gates.py")
+    tool("tools/file_length.py")
 
 
-def check_complexity() -> None:
-    """C11: cognitive complexity of at most 15 per function in the backend and tools/ ([tool.complexipy])."""
-    uv(BACKEND, "complexipy", "--no-ignore")
-
-
-def check_theme() -> None:
-    """Visual values only in frontend/src/app/theme.css, UI only from @heroui/react (docs/rules.md)."""
-    uv(BACKEND, "python", f"{TOOLS}/theme_only_check.py")
-
-
-def check_tools() -> None:
+def check_site_literals() -> None:
+    """C3: no site literals outside adapters/; also lints, type-checks and tests the repo tools."""
     uv(BACKEND, "ruff", "check", TOOLS)
     uv(BACKEND, "ruff", "format", "--check", TOOLS)
     uv(BACKEND, "mypy", "--strict", TOOLS)
@@ -110,80 +104,111 @@ def check_tools() -> None:
     uv(BACKEND, "python", f"{TOOLS}/site_literal_scan.py", "--public")
 
 
-def psql(sql: str) -> None:
-    run(ROOT, "docker", "compose", "exec", "-T", "postgres", "psql", "-v", "ON_ERROR_STOP=1", "-q", "-U", "postgres",
-        stdin=sql)  # fmt: skip
-
-
-def check_backend() -> None:
-    """The same steps and order as CI's backend-static and backend jobs. `browser` tests are skipped where Google
-    Chrome is not installed (`uv run patchright install chrome` once)."""
-    run(ROOT, "docker", "compose", "up", "-d", "--wait", "postgres")
+def check_backend_static() -> None:
+    """The backend's lint, format, types and import contracts, and C11: cognitive complexity of at most 15 per function
+    in src, tests, migrations and tools/ ([tool.complexipy]; `--no-ignore`: an inline suppression does not exempt a
+    function)."""
     uv(BACKEND, "ruff", "check")
     uv(BACKEND, "ruff", "format", "--check")
     uv(BACKEND, "mypy", "src", "tests", "migrations")
     uv(BACKEND, "lint-imports")
+    uv(BACKEND, "complexipy", "--no-ignore")
+
+
+def psql(sql: str) -> None:
+    """Run `sql` as the postgres superuser: with `PSQL` where Postgres already runs (CI's service), else in the compose
+    service."""
+    argv = shlex.split(os.environ.get("PSQL") or "docker compose exec -T postgres psql -U postgres")
+    run(ROOT, *argv, "-v", "ON_ERROR_STOP=1", "-q", stdin=sql)
+
+
+def check_backend() -> None:
+    """The migrations upgraded, downgraded and upgraded again, then the tests. `browser` tests are skipped where Google
+    Chrome is not installed (`uv run patchright install chrome` once); `--durations=20` lists the slowest tests."""
+    if not os.environ.get("PSQL"):
+        run(ROOT, "docker", "compose", "up", "-d", "--wait", "postgres")
     env = {"CRAWLERAI_DATABASE_URL": CHECK_DATABASE_URL}
     psql("DROP DATABASE IF EXISTS crawlerai_check;\nCREATE DATABASE crawlerai_check OWNER app;\n")
     for target in ("head", "base", "head"):
         verb = "upgrade" if target == "head" else "downgrade"
         uv(BACKEND, "alembic", verb, target, env=env)
-    workers = int(os.environ.get("PYTEST_XDIST_AUTO_NUM_WORKERS") or os.cpu_count() or 1)
+    workers = int(os.environ.get("PYTEST_WORKERS") or os.cpu_count() or 1)
     psql("".join(
         f"DROP DATABASE IF EXISTS crawlerai_check_gw{i}; "
         f"CREATE DATABASE crawlerai_check_gw{i} TEMPLATE crawlerai_check OWNER app;\n"
         for i in range(workers)
     ))  # fmt: skip
-    uv(BACKEND, "pytest", "-n", "auto", env={"CRAWLERAI_TEST_DATABASE_URL": CHECK_DATABASE_URL})
+    test_env = {"CRAWLERAI_TEST_DATABASE_URL": CHECK_DATABASE_URL}
+    uv(BACKEND, "pytest", "-n", str(workers), "--durations=20", env=test_env)
+
+
+def check_verify_money() -> None:
+    """The verify-money skill's one command (.claude/skills/verify-money/SKILL.md): the money property checks with the
+    `verify` Hypothesis profile."""
+    uv(BACKEND, "pytest", "tests/property/test_money_properties.py", "-q", "--hypothesis-profile=verify")
+
+
+def check_verify_worker_queue(*args: str) -> None:
+    """Model-check the worker/queue concurrency with TLC (.claude/skills/verify-worker-queue/SKILL.md). `args` go to
+    the script: CI runs it in three shards (`--shard i/3`)."""
+    tool("tools/verify/worker_queue.py", *args)
 
 
 def check_frontend() -> None:
+    """Visual values only in theme.css, UI only from @heroui/react (docs/rules.md); Vite+'s format check, lint and
+    strict type-check in one pass; the tests; the build."""
+    tool("tools/theme_only_check.py")
     run(FRONTEND, "pnpm", "check")
     run(FRONTEND, "pnpm", "test")
     run(FRONTEND, "pnpm", "build")
 
 
 def check_api_client() -> None:
+    """The committed API client matches one generated from the backend."""
     api_client()
-    run(ROOT, "git", "diff", "--exit-code", "--", "frontend/openapi.json", "frontend/src/api/schema.d.ts")
+    stale(
+        ["frontend/openapi.json", "frontend/src/api/schema.d.ts"], "the API client (`uv run tools/dev.py api-client`)"
+    )
 
 
 def check_sdk() -> None:
-    """CI's sdk job: the regenerated files must match the committed ones; then each SDK's checks and tests."""
+    """The regenerated SDK files must match the committed ones; then each SDK's checks and tests."""
     sdk()
     stale(["sdk"], "the SDK (`uv run tools/dev.py sdk`)")
     run(SDK / "typescript", "pnpm", "check")
     run(SDK / "typescript", "pnpm", "test")
     python = SDK / "python"
     run(python, "uv", "sync", "--frozen", "--no-build", "--no-binary-package", "crawlerai-sdk", "--extra", "dev", "-q")
-    for tool in (("ruff", "check", "src", "tests"), ("mypy", "src", "tests"), ("pytest", "-q")):
-        run(python, "uv", "run", "--no-sync", *tool)
+    for step in (("ruff", "check", "src", "tests"), ("mypy", "src", "tests"), ("pytest", "-q")):
+        run(python, "uv", "run", "--no-sync", *step)
 
 
 def check_licenses() -> None:
-    """Writes the reports and SBOMs to license-report/ (gitignored), as CI does."""
+    """The dependency licence deny-list; writes the reports and SBOMs to license-report/ (gitignored), as CI does."""
     run(ROOT, "bash", "tools/license_scan.sh", "license-report")
 
 
 def check() -> None:
-    """Everything CI runs, in the same order per job, failing at the first error."""
-    for step in (check_data, check_size_gates, check_complexity, check_theme, check_tools, check_backend,
-                 check_frontend, check_api_client, check_sdk, check_licenses):  # fmt: skip
+    """Every CI job, in order, failing at the first error."""
+    for step in (check_data_manifest, check_no_size_gates, check_site_literals, check_backend_static, check_backend,
+                 check_verify_money, check_verify_worker_queue, check_frontend, check_api_client, check_sdk,
+                 check_licenses):  # fmt: skip
         step()
 
 
-COMMANDS: dict[str, Callable[[], None]] = {
+COMMANDS: dict[str, Callable[..., None]] = {
     name.replace("_", "-"): function
     for name, function in globals().items()
-    if callable(function)
-    and (name in ("api_client", "sdk", "verify_worker_queue", "check") or name.startswith("check_"))
+    if callable(function) and (name in ("api_client", "sdk", "check") or name.startswith("check_"))
 }
+# The one command that passes its arguments on, to its script.
+TAKES_ARGS = "check-verify-worker-queue"
 
 
 def main(argv: list[str]) -> None:
-    if len(argv) != 1 or argv[0] not in COMMANDS:
+    if not argv or argv[0] not in COMMANDS or (argv[1:] and argv[0] != TAKES_ARGS):
         sys.exit("usage: uv run tools/dev.py <command>\n" + "\n".join(f"  {name}" for name in COMMANDS))
-    COMMANDS[argv[0]]()
+    COMMANDS[argv[0]](*argv[1:])
 
 
 if __name__ == "__main__":

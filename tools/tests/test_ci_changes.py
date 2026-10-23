@@ -1,5 +1,6 @@
 """Behaviour of `tools/ci_changes.py`, run as CI runs it: changed paths on stdin, job flags on stdout."""
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -90,3 +91,19 @@ def test_all_runs_every_job_without_reading_input() -> None:
         run("--all")
         == f"backend=true\nbackend_static=true\nfrontend=true\napi_client=true\nlicenses=true\n{MODEL}{MONEY}{SDK}"
     )
+
+
+def test_every_ci_job_runs_its_one_dev_py_command() -> None:
+    """A job's checks live only in `tools/dev.py check-<job>`, so a green `dev.py check` is a green CI."""
+    workflow = (TOOL.parents[1] / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    # Each job's block: from its `  <job>:` line to the next one. Only a `run:` step in it counts, not a comment.
+    _, *blocks = re.split(r"^  ([a-z][a-z-]*):$", workflow.split("\njobs:\n", 1)[1], flags=re.MULTILINE)
+    jobs = dict(zip(blocks[::2], blocks[1::2], strict=True))
+    missing = [
+        job
+        for job, block in jobs.items()
+        if job != "changes"
+        and not re.search(rf"^ +- run: python3 (?:\.\./)?tools/dev\.py check-{job}(?: |$)", block, flags=re.MULTILINE)
+    ]
+    assert len(jobs) > 1
+    assert missing == []

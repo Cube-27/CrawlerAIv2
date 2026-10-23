@@ -4,7 +4,8 @@ Reads changed paths, one per line (`git diff --name-only base...head`), on stdin
 job for `$GITHUB_OUTPUT`. With `--all` it prints every job as `true` and reads nothing: a push to main runs them all.
 
 A job runs when any changed path starts with one of its inputs: the directories it checks, the files its commands
-read, and the workflow itself. Jobs that are cheap (site literals, data manifest, size gates) are not gated.
+read, the workflow itself and tools/dev.py, which holds every job's steps (`dev.py check-<job>`). Jobs that are cheap
+(site literals, data manifest, size gates) are not gated.
 """
 
 import argparse
@@ -12,18 +13,19 @@ import sys
 from collections.abc import Iterable
 
 WORKFLOW = ".github/workflows/ci.yml"
+DEV = "tools/dev.py"
+BACKEND = "backend/"
 
 # The path prefixes each gated job reads. Directory prefixes end in "/".
 JOB_INPUTS: dict[str, tuple[str, ...]] = {
     # Migrations and tests of backend/; the job runs infra/postgres/init.sql.
-    "backend": ("backend/", "infra/", WORKFLOW),
+    "backend": (BACKEND, "infra/", DEV, WORKFLOW),
     # Lint, types, import contracts and complexity of backend/; complexipy also covers ../tools.
-    "backend_static": ("backend/", "tools/", WORKFLOW),
+    "backend_static": (BACKEND, "tools/", WORKFLOW),
     # The frontend checks.
-    "frontend": ("frontend/", "tools/theme_only_check.py", WORKFLOW),
-    # The API client freshness check: regenerates the client from backend/ with the frontend's generator, through
-    # tools/dev.py.
-    "api_client": ("frontend/", "backend/", "tools/dev.py", WORKFLOW),
+    "frontend": ("frontend/", "tools/theme_only_check.py", DEV, WORKFLOW),
+    # The API client freshness check: regenerates the client from backend/ with the frontend's generator.
+    "api_client": ("frontend/", BACKEND, DEV, WORKFLOW),
     # The dependency licence scan reads only the lockfiles, the manifests they come from, and its own scripts.
     "licenses": (
         "backend/pyproject.toml",
@@ -33,6 +35,7 @@ JOB_INPUTS: dict[str, tuple[str, ...]] = {
         "frontend/pnpm-workspace.yaml",
         "tools/license_scan.sh",
         "tools/license_policy.py",
+        DEV,
         WORKFLOW,
     ),
     # The worker/queue model (.claude/skills/verify-worker-queue/SKILL.md): the code it models, and itself.
@@ -48,6 +51,7 @@ JOB_INPUTS: dict[str, tuple[str, ...]] = {
         "backend/src/crawlerai/acquire/politeness.py",
         "backend/src/crawlerai/acquire/shared_browser.py",
         "tools/verify/",
+        DEV,
         WORKFLOW,
     ),
     # The verify-money skill's one command (.claude/skills/verify-money/SKILL.md): the money code it runs, its test
@@ -63,10 +67,11 @@ JOB_INPUTS: dict[str, tuple[str, ...]] = {
         "backend/pyproject.toml",
         "backend/uv.lock",
         ".claude/skills/verify-money/",
+        DEV,
         WORKFLOW,
     ),
-    # The SDKs (`tools/dev.py check-sdk`): regenerated from the API document and checked.
-    "sdk": ("sdk/", "frontend/openapi.json", "tools/dev.py", WORKFLOW),
+    # The SDKs: regenerated from the API document and checked.
+    "sdk": ("sdk/", "frontend/openapi.json", DEV, WORKFLOW),
 }
 
 

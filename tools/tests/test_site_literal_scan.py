@@ -116,6 +116,33 @@ def test_names_of_tracked_files_and_modules_are_not_hosts_but_urls_are_checked(t
     assert result.stdout.splitlines() == ["link.txt:1: readme.example"]
 
 
+# Attributes of modules, joined at run time like the names above: `.now` is a TLD.
+MODULE_ATTRIBUTE = ".".join([*MODULE_PATH[1:], "now"])
+NEW_MODULE_ATTRIBUTE = ".".join(["pkg", "fresh", "now"])
+ONE_LABEL_PREFIX = ".".join([MODULE_PATH[-1], "now"])
+
+
+def test_attributes_of_modules_are_not_hosts_but_one_label_prefixes_and_urls_are_checked(tmp_path: Path) -> None:
+    repo = make_repo(
+        tmp_path / "repo",
+        {
+            "backend/src/" + "/".join(MODULE_PATH) + ".py": "",
+            "notes.txt": f"{MODULE_ATTRIBUTE}_stalled() and {NEW_MODULE_ATTRIBUTE}()\n",
+            "hosts.txt": f"{ONE_LABEL_PREFIX} and app.example.com\nhttps://{MODULE_ATTRIBUTE}/\n",
+        },
+    )
+    # Not yet added: a module written in the same change as the comment that names it.
+    (repo / "backend/src/pkg/fresh.py").write_text("", encoding="utf-8")
+
+    result = run_scan(repo, allowlist=[])
+
+    assert result.stdout.splitlines() == [
+        f"hosts.txt:1: {ONE_LABEL_PREFIX}",
+        "hosts.txt:1: app.example.com",
+        f"hosts.txt:2: {MODULE_ATTRIBUTE}",
+    ]
+
+
 # `table.column` reference, joined at run time like the names above: `.id` is a TLD.
 WIDGET_ID = ".".join(["widget", "id"])
 MIGRATION = 'def upgrade():\n    op.create_table("widget", sa.Column("id", sa.Uuid()))\n'
