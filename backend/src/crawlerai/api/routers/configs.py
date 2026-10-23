@@ -1,6 +1,6 @@
-"""`/v1/sites/{host}/configs`, `/v1/configs/{id}`, `/v1/configs/{id}/approve`, `/v1/configs/{id}/reject`,
-`/v1/configs/{id}/export` and `/v1/sites/{host}/learn`: a site's configs,
-operator corrections (C5), approval and refusal of learned configs, exports and forced learning. The
+"""`/v1/sites/{host}/configs`, `/v1/configs/{id}`, `/v1/configs/{id}/recipe`, `/v1/configs/{id}/approve`,
+`/v1/configs/{id}/reject`, `/v1/configs/{id}/export` and `/v1/sites/{host}/learn`: a site's configs,
+operator corrections (C5), custom recipes, approval and refusal of learned configs, exports and forced learning. The
 rules are the configs service's; this router translates HTTP to it and its errors to problems."""
 
 from collections.abc import AsyncIterator
@@ -15,6 +15,7 @@ from crawlerai.api.dto import PROBLEM_RESPONSE, ConfigList, LearnStarted
 from crawlerai.api.problems import conflict, invalid, not_found, records_unavailable
 from crawlerai.api.runtime import database, runtime
 from crawlerai.config_ir.corrections import Correction, InvalidCorrection
+from crawlerai.config_ir.custom_recipe import CustomRecipe, InvalidRecipe
 from crawlerai.config_ir.exporters.configs import ConfigExport
 from crawlerai.db.models import ExtractionConfigId
 from crawlerai.schemas.registry import SchemaNotFound
@@ -49,16 +50,35 @@ async def _transaction(request: Request) -> AsyncIterator[AsyncConnection]:
         raise not_found(str(e)) from e
     except ConfigConflict as e:
         raise conflict(str(e)) from e
-    except InvalidCorrection as e:
+    except (InvalidCorrection, InvalidRecipe) as e:
         raise invalid(str(e), e.errors) from e
 
 
 @router.get("/sites/{host}/configs", responses=_NOT_FOUND)
 async def list_site_configs(host: str, request: Request) -> ConfigList:
-    """Every version of the site's configs, with status, field status and validation report, by schema, page
-    kind and version."""
+    """Every version of the site's configs, custom recipes included, with status, field status and validation report,
+    by schema, page kind and version."""
     async with _transaction(request) as conn:
         return ConfigList(items=await configs.list_for_host(conn, host))
+
+
+@router.post("/sites/{host}/configs", status_code=201, responses=_CHANGES)
+async def create_recipe(host: str, body: CustomRecipe, request: Request) -> ConfigDetail:
+    """Saves a custom recipe: the site's next config version for the schema and page kind, `origin=operator`,
+    `active` at once. It serves the URLs its patterns match; the learned config stays active and serves the rest.
+    409 when an active recipe of the site, schema and page kind already serves a URL pattern of the same shape (the
+    pattern with its parameter names left out); 422 when the recipe does not fit the site or schema."""
+    async with _transaction(request) as conn:
+        return await configs.create_recipe(conn, host, body)
+
+
+@router.put("/configs/{config_id}/recipe", responses=_CHANGES)
+async def edit_recipe(config_id: ExtractionConfigId, body: CustomRecipe, request: Request) -> ConfigDetail:
+    """Edits a custom recipe: the next version, `active`, replacing `config_id`, which is `suspended`. 409 when
+    `config_id` is not a custom recipe or not the latest version of its patterns' shape, or when another active recipe
+    serves a pattern of a new shape."""
+    async with _transaction(request) as conn:
+        return await configs.edit_recipe(conn, config_id, body)
 
 
 @router.get("/configs/{config_id}", responses=_NOT_FOUND)

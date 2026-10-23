@@ -27,14 +27,24 @@ from crawlerai.collect import json_doc
 from crawlerai.collect.api import map_paths
 from crawlerai.collect.network_match import LearnedCalls
 from crawlerai.config_ir.portable_regex import PCRE_FLAGS, check_pattern
+from crawlerai.config_ir.xpath1 import check_xpath1
 from crawlerai.db.models import CaptureId
 from crawlerai.schemas.types import NAME_PATTERN, Name
 
 # Where a binder reads a parameter's value: a path segment, a query value or a regex group of the page URL, or a
-# scalar in one of the page's JSON documents (the two need the HTML page fetched first).
-BinderKind = Literal["path", "query", "regex", "jsonld", "js_state"]
+# scalar in one of the page's JSON documents (the two need the HTML page fetched first). A custom recipe's binders also
+# read a parameter of the URL pattern the page matched (`pattern`), its warm-up's answer by JSONPath, XPath 1.0 or a
+# regex group (`warm_up`, `warm_up_xpath`, `warm_up_regex`), and, in an extra call, the main call's answer (`main`).
+BinderKind = Literal[
+    "path", "query", "regex", "jsonld", "js_state", "pattern", "warm_up", "warm_up_xpath", "warm_up_regex", "main"
+]
 PageDataKind = Literal["jsonld", "js_state"]
 PAGE_DATA_KINDS: Final = frozenset(get_args(PageDataKind))
+# The binders a custom recipe's serving reads, not the page.
+CUSTOM_KINDS: Final[frozenset[BinderKind]] = frozenset({"pattern", "warm_up", "warm_up_xpath", "warm_up_regex", "main"})
+WARM_UP_KINDS: Final[frozenset[BinderKind]] = frozenset({"warm_up", "warm_up_xpath", "warm_up_regex"})
+# What a call answers: a JSON document (RFC 8259) its map reads by JSONPath, or an HTML document read by XPath 1.0.
+Answer = Literal["json", "html"]
 # What produced a recipe's request: deterministic binding or role D.
 BoundBy = Literal["deterministic", "role_d"]
 
@@ -90,8 +100,9 @@ class Binder(NamedTuple):
 
 
 def parse_binder(text: str) -> Binder:
-    """`path:<index>`, `query:<name>`, `regex:<pattern with one group>`, `jsonld:<query>` or `js_state:<query>`;
-    raises `ValueError` for anything else."""
+    """`path:<index>`, `query:<name>`, `regex:<pattern with one group>`, `jsonld:<query>`, `js_state:<query>`,
+    `pattern:<name>`, `warm_up:<query>`, `warm_up_xpath:<XPath 1.0>`, `warm_up_regex:<pattern with one group>` or
+    `main:<query>`; raises `ValueError` for anything else."""
     name, _, arg = text.partition(":")
     for kind, check in _BINDER_CHECKS.items():
         if kind == name:
@@ -120,12 +131,26 @@ def _engine_jsonpath(arg: str) -> None:
     json_doc.select(arg, None)  # raises for a query outside the subset the engine reads
 
 
+def _pattern_name(arg: str) -> None:
+    if re.fullmatch(NAME_PATTERN, arg) is None:
+        raise ValueError(f"not a URL pattern parameter: {arg!r}")
+
+
+def _xpath1(arg: str) -> None:
+    check_xpath1(arg)
+
+
 _BINDER_CHECKS: Final[dict[BinderKind, Callable[[str], None]]] = {
     "path": _path_index,
     "query": _query_name,
     "regex": _one_group_regex,
     "jsonld": _engine_jsonpath,
     "js_state": _engine_jsonpath,
+    "pattern": _pattern_name,
+    "warm_up": _engine_jsonpath,
+    "warm_up_xpath": _xpath1,
+    "warm_up_regex": _one_group_regex,
+    "main": _engine_jsonpath,
 }
 
 
@@ -140,7 +165,10 @@ def check_jsonpath(path: str) -> str:
     return path
 
 
-def _check_map_path(path: str) -> str:
+def check_map_path(path: str, answer: "Answer" = "json") -> str:
+    """`path` when it reads the answer: JSONPaths the engine reads joined by `+` for JSON, XPath 1.0 for HTML."""
+    if answer == "html":
+        return check_xpath1(path)
     for part in map_paths(path):
         _engine_jsonpath(part)
     return path
@@ -172,7 +200,6 @@ UrlTemplate = Annotated[str, AfterValidator(_check_url_template)]
 HeaderName = Annotated[str, StringConstraints(pattern=rf"^{_TOKEN.pattern}$")]
 HeaderText = Annotated[str, AfterValidator(_check_header_value)]
 EngineJsonPath = Annotated[str, AfterValidator(check_jsonpath)]
-MapPath = Annotated[str, AfterValidator(_check_map_path)]
 
 
 def _not_page_url(name: str) -> str:
@@ -208,9 +235,15 @@ RecipeHeader = HeaderValue | ContextHeader
 
 
 class RequestBody(_Model):
-    """A JSON request body with `{name}` placeholders; a value is written JSON-escaped where its placeholder stands."""
+    """A request body with `{name}` placeholders: JSON, where a value is written JSON-escaped (RFC 8259 §7), or
+    `form`, application/x-www-form-urlencoded (HTML §4.10.21.7), where a value is written percent-encoded."""
 
     template: str = Field(min_length=1)
+    encoding: Literal["json", "form"] = "json"
+
+
+# HTML §4.10.21.7: the media type of a `form` body.
+FORM_TYPE: Final = "application/x-www-form-urlencoded"
 
 
 # Where a listing's next request carries its page value: a query parameter (RFC 3986 §3.4), named; or a value of the
@@ -286,6 +319,7 @@ class RequestSpec(_Model):
     body: RequestBody | None = None
     pagination: Pagination | None = None
     requires_page_fetch: bool = False
+    answer: Answer = "json"
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
@@ -310,8 +344,8 @@ class RequestSpec(_Model):
     def _pagination_fits(self) -> Self:
         if (path := body_pagination_path(self.pagination)) is not None:
             _check_body_path(path)
-            if self.body is None:
-                raise ValueError("a pagination value in the body needs a request body")
+            if self.body is None or self.body.encoding != "json":
+                raise ValueError("a pagination value in the body needs a JSON request body")
         return self
 
     @property
@@ -326,6 +360,10 @@ class RequestSpec(_Model):
     @property
     def reads_page_data(self) -> bool:
         return any(binder.kind in PAGE_DATA_KINDS for binder in self.binders.values())
+
+    def binder_args(self, kinds: frozenset[BinderKind]) -> set[str]:
+        """The arguments of the binders of `kinds`."""
+        return {binder.arg for binder in self.binders.values() if binder.kind in kinds}
 
 
 def with_pagination(spec: RequestSpec, pagination: Pagination | None) -> RequestSpec | None:
@@ -349,8 +387,19 @@ class Proof(_Model):
 
 
 class ApiRecipe(RequestSpec):
-    map: dict[Name, MapPath] = Field(min_length=1)
-    proof: Proof
+    """A request and where each field sits in its answer. A learned recipe holds its `proof`; an operator's custom
+    recipe may hold none: the engineer's test proved it, not held-out pages."""
+
+    map: dict[Name, str] = Field(min_length=1)
+    proof: Proof | None = None
+
+    @model_validator(mode="after")
+    def _map_reads_the_answer(self) -> Self:
+        for path in self.map.values():
+            check_map_path(path, self.answer)
+        if self.answer == "html" and self.pagination is not None:
+            raise ValueError("a pagination's rows are JSONPaths: an HTML answer has none")
+        return self
 
     @property
     def learned_calls(self) -> LearnedCalls | None:

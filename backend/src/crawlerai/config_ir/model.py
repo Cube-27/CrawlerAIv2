@@ -24,8 +24,16 @@ from pydantic import (
     model_validator,
 )
 
-from crawlerai.config_ir.api_recipe.model import ApiRecipe, check_jsonpath
+from crawlerai.config_ir.api_recipe.model import (
+    CUSTOM_KINDS,
+    PLACEHOLDER,
+    WARM_UP_KINDS,
+    ApiRecipe,
+    UrlTemplate,
+    check_jsonpath,
+)
 from crawlerai.config_ir.portable_regex import PCRE_FLAGS, check_pattern, check_replacement
+from crawlerai.config_ir.url_pattern import UrlPattern, params
 from crawlerai.config_ir.xpath1 import check_xpath1
 from crawlerai.db.models import CaptureId, ConfigOrigin, FetchMethod, FieldStatus, PageKind
 from crawlerai.schemas.types import NEXT_PAGE_FIELD as NEXT_PAGE_FIELD  # the executors read it from here
@@ -49,6 +57,8 @@ SchemaOrgType = Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Za-z0-9]*$")
 # An HTML attribute name an XPath `@name` test can reach: an XML NCName (Namespaces in XML §3), ASCII here.
 AttrName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z_][A-Za-z0-9_.\-]*$")]
 Ratio = Annotated[float, Field(ge=0, le=1)]
+# Who sends a custom recipe's calls: the HTTP client, or the browser from a warm page of the site.
+SentBy = Literal["http", "browser"]
 
 _HTML_CSS = HTMLTranslator()
 
@@ -298,6 +308,13 @@ class Provenance(_Model):
     engine_version: str = Field(min_length=1)
 
 
+class WarmUp(_Model):
+    """The request a custom recipe's calls follow: the page itself (`url` null), or a fixed URL whose `{name}`
+    placeholders are the URL pattern's parameters. Its answer may bind the calls' parameters (`warm_up*` binders)."""
+
+    url: UrlTemplate | None = None
+
+
 class ExtractionConfigIR(_Model):
     ir_version: Literal["1"]
     site: str = Field(min_length=1)
@@ -314,6 +331,44 @@ class ExtractionConfigIR(_Model):
     provenance: Provenance
     # The required fields the learning pages never stated, which role C is not asked for (`config_ir.absent`).
     absent: list[Name] = Field(default_factory=list)
+    # A custom recipe's (`config_ir.custom_recipe`): the URL patterns it serves, its warm-up, who sends its calls and
+    # the least interval between its calls, in milliseconds. A learned config has no patterns.
+    patterns: list[UrlPattern] = Field(default_factory=list)
+    warm_up: WarmUp | None = None
+    sent_by: SentBy = "http"
+    rate_ms: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _custom_recipe(self) -> Self:
+        if not self.patterns:
+            if self.warm_up is not None or self.sent_by != "http" or self.rate_ms is not None:
+                raise ValueError("a warm-up, sent_by and rate_ms belong to a config with URL patterns")
+            if any(recipe.proof is None for recipe in self._all_recipes()):
+                raise ValueError("a learned config's api_recipe and recipes hold their proof")
+            if any(recipe.binder_args(CUSTOM_KINDS) for recipe in self._all_recipes()):
+                raise ValueError("pattern, warm_up and main binders belong to a config with URL patterns")
+            return self
+        if self.provenance.origin != "operator":
+            raise ValueError("URL patterns belong to an operator's config")
+        if self.api_recipe is None:
+            raise ValueError("a config with URL patterns holds its main call (api_recipe)")
+        self._check_custom_binders(self.api_recipe)
+        return self
+
+    def _check_custom_binders(self, main: ApiRecipe) -> None:
+        # Every pattern can select the config, so each binds every parameter a binder or the warm-up reads.
+        shared = set.intersection(*(params(pattern) for pattern in self.patterns))
+        warm_up_url = "" if self.warm_up is None else self.warm_up.url or ""
+        named = {name for recipe in self._all_recipes() for name in recipe.binder_args(frozenset({"pattern"}))}
+        if unbound := sorted((named | set(PLACEHOLDER.findall(warm_up_url))) - shared):
+            raise ValueError(f"parameters not every URL pattern binds: {unbound}")
+        if self.warm_up is None and any(recipe.binder_args(WARM_UP_KINDS) for recipe in self._all_recipes()):
+            raise ValueError("a warm_up binder needs the config's warm-up")
+        if main.binder_args(frozenset({"main"})):
+            raise ValueError("a main binder reads the main call's answer: only an extra call has one")
+
+    def _all_recipes(self) -> list[ApiRecipe]:
+        return [*([] if self.api_recipe is None else [self.api_recipe]), *self.recipes.values()]
 
     @model_validator(mode="after")
     def _absent_fields_have_no_steps(self) -> Self:

@@ -75,13 +75,23 @@
         "title": "ActionsReport",
         "type": "object"
       },
-      "ApiRecipe": {
+      "ApiRecipe-Input": {
         "additionalProperties": false,
+        "description": "A request and where each field sits in its answer. A learned recipe holds its `proof`; an operator's custom\nrecipe may hold none: the engineer's test proved it, not held-out pages.",
         "properties": {
+          "answer": {
+            "default": "json",
+            "enum": [
+              "json",
+              "html"
+            ],
+            "title": "Answer",
+            "type": "string"
+          },
           "body": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/RequestBody"
+                "$ref": "#/components/schemas/RequestBody-Input"
               },
               {
                 "type": "null"
@@ -165,7 +175,141 @@
             "type": "object"
           },
           "proof": {
-            "$ref": "#/components/schemas/Proof"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Proof"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requires_page_fetch": {
+            "default": false,
+            "title": "Requires Page Fetch",
+            "type": "boolean"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "url",
+          "map"
+        ],
+        "title": "ApiRecipe",
+        "type": "object"
+      },
+      "ApiRecipe-Output": {
+        "additionalProperties": false,
+        "description": "A request and where each field sits in its answer. A learned recipe holds its `proof`; an operator's custom\nrecipe may hold none: the engineer's test proved it, not held-out pages.",
+        "properties": {
+          "answer": {
+            "default": "json",
+            "enum": [
+              "json",
+              "html"
+            ],
+            "title": "Answer",
+            "type": "string"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RequestBody-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "headers": {
+            "default": [],
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/HeaderValue"
+                },
+                {
+                  "$ref": "#/components/schemas/ContextHeader"
+                }
+              ]
+            },
+            "title": "Headers",
+            "type": "array"
+          },
+          "map": {
+            "minProperties": 1,
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "type": "string"
+              }
+            },
+            "title": "Map",
+            "type": "object"
+          },
+          "method": {
+            "enum": [
+              "GET",
+              "POST"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "pagination": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "cursor": "#/components/schemas/CursorPagination",
+                    "link": "#/components/schemas/LinkPagination",
+                    "next_url": "#/components/schemas/NextUrlPagination",
+                    "param": "#/components/schemas/ParamPagination"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ParamPagination"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CursorPagination"
+                  },
+                  {
+                    "$ref": "#/components/schemas/NextUrlPagination"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LinkPagination"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagination"
+          },
+          "params_from_url": {
+            "default": {},
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "type": "string"
+              }
+            },
+            "title": "Params From Url",
+            "type": "object"
+          },
+          "proof": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Proof"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "requires_page_fetch": {
             "default": false,
@@ -185,6 +329,7 @@
           "body",
           "pagination",
           "requires_page_fetch",
+          "answer",
           "map",
           "proof"
         ],
@@ -1102,6 +1247,10 @@
       "ConfigDetail": {
         "additionalProperties": false,
         "properties": {
+          "custom": {
+            "title": "Custom",
+            "type": "boolean"
+          },
           "field_status": {
             "additionalProperties": {
               "enum": [
@@ -1143,9 +1292,31 @@
             "title": "Page Kind",
             "type": "string"
           },
+          "patterns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Patterns",
+            "type": "array"
+          },
+          "renders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Renders",
+            "type": "array"
+          },
           "schema_id": {
             "format": "uuid",
             "title": "Schema Id",
+            "type": "string"
+          },
+          "sent_by": {
+            "enum": [
+              "http",
+              "browser"
+            ],
+            "title": "Sent By",
             "type": "string"
           },
           "site": {
@@ -1187,6 +1358,10 @@
           "origin",
           "field_status",
           "validation_report",
+          "patterns",
+          "custom",
+          "renders",
+          "sent_by",
           "ir"
         ],
         "title": "ConfigDetail",
@@ -1248,6 +1423,10 @@
         "additionalProperties": false,
         "description": "One version of a site's config for one schema and page kind, without its IR.",
         "properties": {
+          "custom": {
+            "title": "Custom",
+            "type": "boolean"
+          },
           "field_status": {
             "additionalProperties": {
               "enum": [
@@ -1286,9 +1465,31 @@
             "title": "Page Kind",
             "type": "string"
           },
+          "patterns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Patterns",
+            "type": "array"
+          },
+          "renders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Renders",
+            "type": "array"
+          },
           "schema_id": {
             "format": "uuid",
             "title": "Schema Id",
+            "type": "string"
+          },
+          "sent_by": {
+            "enum": [
+              "http",
+              "browser"
+            ],
+            "title": "Sent By",
             "type": "string"
           },
           "site": {
@@ -1329,7 +1530,11 @@
           "status",
           "origin",
           "field_status",
-          "validation_report"
+          "validation_report",
+          "patterns",
+          "custom",
+          "renders",
+          "sent_by"
         ],
         "title": "ConfigSummary",
         "type": "object"
@@ -2126,6 +2331,95 @@
         "title": "CursorPagination",
         "type": "object"
       },
+      "CustomRecipe": {
+        "additionalProperties": false,
+        "description": "A custom recipe: the schema and page kind it serves, the URL patterns of one host it serves them for, the main\ncall and the extra calls by name, the warm-up, the page fields, who sends the calls and the least interval between\nthem (`rate_ms`).",
+        "properties": {
+          "calls": {
+            "default": {},
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "$ref": "#/components/schemas/ApiRecipe-Input"
+              }
+            },
+            "title": "Calls",
+            "type": "object"
+          },
+          "fields": {
+            "default": {},
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "$ref": "#/components/schemas/PageField"
+              }
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "main": {
+            "$ref": "#/components/schemas/ApiRecipe-Input"
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "patterns": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Patterns",
+            "type": "array"
+          },
+          "rate_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Ms"
+          },
+          "schema_id": {
+            "format": "uuid",
+            "title": "Schema Id",
+            "type": "string"
+          },
+          "sent_by": {
+            "default": "http",
+            "enum": [
+              "http",
+              "browser"
+            ],
+            "title": "Sent By",
+            "type": "string"
+          },
+          "warm_up": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WarmUp-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "schema_id",
+          "page_kind",
+          "patterns",
+          "main"
+        ],
+        "title": "CustomRecipe",
+        "type": "object"
+      },
       "DayUsage": {
         "properties": {
           "calls": {
@@ -2858,7 +3152,7 @@
           "api_recipe": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ApiRecipe"
+                "$ref": "#/components/schemas/ApiRecipe-Output"
               },
               {
                 "type": "null"
@@ -2900,13 +3194,32 @@
             "title": "Page Kind",
             "type": "string"
           },
+          "patterns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Patterns",
+            "type": "array"
+          },
           "provenance": {
             "$ref": "#/components/schemas/Provenance"
+          },
+          "rate_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Ms"
           },
           "recipes": {
             "patternProperties": {
               "^[a-z][a-z0-9_]{0,63}$": {
-                "$ref": "#/components/schemas/ApiRecipe"
+                "$ref": "#/components/schemas/ApiRecipe-Output"
               }
             },
             "title": "Recipes",
@@ -2915,10 +3228,29 @@
           "schema": {
             "$ref": "#/components/schemas/SchemaRef"
           },
+          "sent_by": {
+            "default": "http",
+            "enum": [
+              "http",
+              "browser"
+            ],
+            "title": "Sent By",
+            "type": "string"
+          },
           "site": {
             "minLength": 1,
             "title": "Site",
             "type": "string"
+          },
+          "warm_up": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WarmUp-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -2932,7 +3264,11 @@
           "api_recipe",
           "recipes",
           "provenance",
-          "absent"
+          "absent",
+          "patterns",
+          "warm_up",
+          "sent_by",
+          "rate_ms"
         ],
         "title": "ExtractionConfigIR",
         "type": "object"
@@ -5613,6 +5949,53 @@
         "title": "OutcomeCounts",
         "type": "object"
       },
+      "PageField": {
+        "additionalProperties": false,
+        "description": "A field read from the page itself: its steps in order (the first valid value wins), on the HTTP page or, when\nonly a render states it, the browser's (`browser`).",
+        "properties": {
+          "needs": {
+            "default": "http",
+            "enum": [
+              "http",
+              "browser"
+            ],
+            "title": "Needs",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/XPathStep-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/CssStep-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/JsonLdStep-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/JsonPathStep-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/RegexStep-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/AttrStep-Input"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "steps"
+        ],
+        "title": "PageField",
+        "type": "object"
+      },
       "PageKindRule": {
         "additionalProperties": false,
         "description": "A crawl's rule: a URL `pattern` matches is extracted as a `page_kind` page.",
@@ -5952,7 +6335,7 @@
           "api_recipe": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ApiRecipe"
+                "$ref": "#/components/schemas/ApiRecipe-Output"
               },
               {
                 "type": "null"
@@ -6850,10 +7233,19 @@
         "title": "ReplayResult",
         "type": "object"
       },
-      "RequestBody": {
+      "RequestBody-Input": {
         "additionalProperties": false,
-        "description": "A JSON request body with `{name}` placeholders; a value is written JSON-escaped where its placeholder stands.",
+        "description": "A request body with `{name}` placeholders: JSON, where a value is written JSON-escaped (RFC 8259 \u00a77), or\n`form`, application/x-www-form-urlencoded (HTML \u00a74.10.21.7), where a value is written percent-encoded.",
         "properties": {
+          "encoding": {
+            "default": "json",
+            "enum": [
+              "json",
+              "form"
+            ],
+            "title": "Encoding",
+            "type": "string"
+          },
           "template": {
             "minLength": 1,
             "title": "Template",
@@ -6862,6 +7254,32 @@
         },
         "required": [
           "template"
+        ],
+        "title": "RequestBody",
+        "type": "object"
+      },
+      "RequestBody-Output": {
+        "additionalProperties": false,
+        "description": "A request body with `{name}` placeholders: JSON, where a value is written JSON-escaped (RFC 8259 \u00a77), or\n`form`, application/x-www-form-urlencoded (HTML \u00a74.10.21.7), where a value is written percent-encoded.",
+        "properties": {
+          "encoding": {
+            "default": "json",
+            "enum": [
+              "json",
+              "form"
+            ],
+            "title": "Encoding",
+            "type": "string"
+          },
+          "template": {
+            "minLength": 1,
+            "title": "Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template",
+          "encoding"
         ],
         "title": "RequestBody",
         "type": "object"
@@ -9079,6 +9497,47 @@
         "title": "WaitAction",
         "type": "object"
       },
+      "WarmUp-Input": {
+        "additionalProperties": false,
+        "description": "The request a custom recipe's calls follow: the page itself (`url` null), or a fixed URL whose `{name}`\nplaceholders are the URL pattern's parameters. Its answer may bind the calls' parameters (`warm_up*` binders).",
+        "properties": {
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "title": "WarmUp",
+        "type": "object"
+      },
+      "WarmUp-Output": {
+        "additionalProperties": false,
+        "description": "The request a custom recipe's calls follow: the page itself (`url` null), or a fixed URL whose `{name}`\nplaceholders are the URL pattern's parameters. Its answer may bind the calls' parameters (`warm_up*` binders).",
+        "properties": {
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "WarmUp",
+        "type": "object"
+      },
       "WebhookBatch": {
         "additionalProperties": false,
         "description": "How a job's webhook events are grouped: up to `max_events` a delivery, sent when that many wait or the oldest\nhas waited `max_seconds`, whichever comes first.",
@@ -10066,6 +10525,130 @@
           }
         ],
         "summary": "Export Config",
+        "tags": [
+          "configs"
+        ]
+      }
+    },
+    "/v1/configs/{config_id}/recipe": {
+      "put": {
+        "description": "Edits a custom recipe: the next version, `active`, replacing `config_id`, which is `suspended`. 409 when\n`config_id` is not a custom recipe or not the latest version of its patterns' shape, or when another active recipe\nserves a pattern of a new shape.",
+        "operationId": "edit_recipe_v1_configs__config_id__recipe_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "config_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Config Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomRecipe"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Edit Recipe",
         "tags": [
           "configs"
         ]
@@ -14197,7 +14780,7 @@
     },
     "/v1/sites/{host}/configs": {
       "get": {
-        "description": "Every version of the site's configs, with status, field status and validation report, by schema, page\nkind and version.",
+        "description": "Every version of the site's configs, custom recipes included, with status, field status and validation report,\nby schema, page kind and version.",
         "operationId": "list_site_configs_v1_sites__host__configs_get",
         "parameters": [
           {
@@ -14288,6 +14871,127 @@
           }
         ],
         "summary": "List Site Configs",
+        "tags": [
+          "configs"
+        ]
+      },
+      "post": {
+        "description": "Saves a custom recipe: the site's next config version for the schema and page kind, `origin=operator`,\n`active` at once. It serves the URLs its patterns match; the learned config stays active and serves the rest.\n409 when an active recipe of the site, schema and page kind already serves a URL pattern of the same shape (the\npattern with its parameter names left out); 422 when the recipe does not fit the site or schema.",
+        "operationId": "create_recipe_v1_sites__host__configs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "host",
+            "required": true,
+            "schema": {
+              "title": "Host",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomRecipe"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Recipe",
         "tags": [
           "configs"
         ]

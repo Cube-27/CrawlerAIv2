@@ -2,15 +2,18 @@
 record of each page it ran on.
 
 A (site, schema, page kind) with an active config extracts its pages in `config` mode with that config. The config
-row is the authority: `extraction_config` holds at most one active config per site, schema and page kind;
-a schema edit suspends the schema's active configs, so its pages start cold again. Each
+row is the authority: `extraction_config` holds at most one active learned config per site, schema and page kind, and
+any number of active custom recipes, one per pattern shape. A page is extracted with the most specific recipe whose
+URL pattern it matches (`url_pattern.most_specific`), else with the learned config; a schema edit suspends the
+schema's active configs, so its pages start cold again. Each
 page the config ran on, served and resolved, is added to its drift window (`drift.record_run`).
 """
 
+from collections.abc import Collection, Sequence
 from functools import partial
 from urllib.parse import urlsplit
 
-from sqlalchemy import select
+from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.api import JsonRequest
@@ -25,32 +28,57 @@ from crawlerai.config_ir.drift import Drifted, DriftMargins, record_run
 from crawlerai.config_ir.executor import EngineExecutor
 from crawlerai.config_ir.model import ExtractionConfigIR, FieldSteps
 from crawlerai.config_ir.progressive import StateKey
+from crawlerai.config_ir.url_pattern import most_specific
 from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import ExtractionConfig, ExtractionConfigId, JobId, RenderMode, SiteId
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import SchemaDef
 
+_Config = Row[ExtractionConfigId, list[str]]
+# Selection reads the patterns alone; only the chosen config's IR, the large column, is read.
+_COLUMNS = (ExtractionConfig.id, ExtractionConfig.patterns)
+
 
 async def active_config(
-    conn: AsyncConnection, site_id: SiteId, schema: SchemaDef, vocabulary: Vocabulary
+    conn: AsyncConnection, site_id: SiteId, schema: SchemaDef, vocabulary: Vocabulary, url: str
 ) -> ActiveConfig | None:
-    """The active config of `site_id` for `schema` and its page kind, bound to its executor; None in cold mode."""
+    """The active config of `site_id` for `schema` and its page kind that serves `url` (`select_config`), bound to
+    its executor; None in cold mode."""
     configs = ExtractionConfig
     key = StateKey(site_id, schema.id, schema.page_kind)
-    active = (*key.config_scope(), configs.status == "active")
-    row = (await conn.execute(select(configs.id, configs.version, configs.ir).where(*active))).one_or_none()
+    rows = (await conn.execute(select(*_COLUMNS).where(*key.config_scope(), configs.status == "active"))).all()
+    return await _bound_row(conn, select_config(rows, url), vocabulary)
+
+
+async def pinned_config(
+    conn: AsyncConnection, config_ids: Collection[ExtractionConfigId], url: str, vocabulary: Vocabulary
+) -> ActiveConfig | None:
+    """Of the configs `config_ids` (a job's pins for a host: its learned config and recipes), the one that serves
+    `url`, bound to its executor whatever its status now; None when none does."""
+    if not config_ids:
+        return None
+    rows = (await conn.execute(select(*_COLUMNS).where(ExtractionConfig.id.in_(config_ids)))).all()
+    return await _bound_row(conn, select_config(rows, url), vocabulary)
+
+
+def select_config(rows: Sequence[_Config], url: str) -> _Config | None:
+    """Of one scope's configs, the recipe with the most specific URL pattern `url` matches, else the learned
+    config (the one without patterns); None when neither is there."""
+    by_pattern = {pattern: row for row in rows for pattern in row.patterns}
+    # Sorted, so a choice between patterns of equal specificity is the same whatever order the rows came in.
+    chosen = most_specific(sorted(by_pattern), url)
+    if chosen is not None:
+        return by_pattern[chosen]
+    return next((row for row in rows if not row.patterns), None)
+
+
+async def _bound_row(conn: AsyncConnection, row: _Config | None, vocabulary: Vocabulary) -> ActiveConfig | None:
     if row is None:
         return None
-    return _bound(row.id, row.version, ExtractionConfigIR.model_validate(row.ir), vocabulary)
-
-
-async def config_by_id(conn: AsyncConnection, config_id: ExtractionConfigId, vocabulary: Vocabulary) -> ActiveConfig:
-    """Config `config_id` bound to its executor, whatever its status now: the config a job pinned when it was
-    submitted."""
     configs = ExtractionConfig
-    row = (await conn.execute(select(configs.version, configs.ir).where(configs.id == config_id))).one()
-    return _bound(config_id, row.version, ExtractionConfigIR.model_validate(row.ir), vocabulary)
+    found = (await conn.execute(select(configs.version, configs.ir).where(configs.id == row.id))).one()
+    return _bound(row.id, found.version, ExtractionConfigIR.model_validate(found.ir), vocabulary)
 
 
 def fetch_plan(config: ActiveConfig | None, render_mode: RenderMode) -> FetchPlan:
@@ -107,7 +135,8 @@ def _bound(config_id: ExtractionConfigId, version: int, ir: ExtractionConfigIR, 
     executor = EngineExecutor(ir, vocabulary)
     recipe = ir.api_recipe
     api = None if recipe is None else RecipeExecutor.of(recipe, str(config_id), executor.field_status)
-    return ActiveConfig(config_id, version, executor, api)
+    # A custom recipe's pages join no drift window: drift relearns the learned config, never an engineer's recipe.
+    return ActiveConfig(config_id, version, executor, api, drifts=not ir.patterns, patterns=tuple(ir.patterns))
 
 
 async def record_page(

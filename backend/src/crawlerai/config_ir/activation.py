@@ -8,6 +8,11 @@ When the project requires approval, a learning run's validated config is stored 
 An operator's correction is stored as the next version whether or not it validates: active as above, without
 ending any learning run, or a `draft` with the report that says why not.
 
+A custom recipe (`store_recipe`) is stored as the next version, active at once, beside the learned config: a scope
+holds one active config per pattern shape (`url_pattern.patterns_shape`), the learned one's `''`. Activating or
+correcting the learned config suspends only the learned config before it; saving a recipe suspends only the recipe it
+replaces, and the progressive state goes on naming the learned config.
+
 Only a `Validated` with a config activates: nothing activates without validation. Everything runs on the
 caller's connection, in its transaction, so a run that cannot end (`NotLearning`) stores nothing.
 """
@@ -29,6 +34,7 @@ from crawlerai.config_ir.progressive import (
     lock_state,
     operator_activated,
 )
+from crawlerai.config_ir.url_pattern import patterns_shape, shape
 from crawlerai.config_ir.validation import Validated, ValidationReport
 from crawlerai.db.models import (
     ConfigStatus,
@@ -44,6 +50,10 @@ from crawlerai.schemas.types import document_digest
 
 class NotValidated(ValueError):
     """Validation kept no config to activate."""
+
+
+class ShapeTaken(ValueError):
+    """Another active recipe of the scope serves a URL pattern of the same shape."""
 
 
 async def activate(conn: AsyncConnection, key: StateKey, validated: Validated) -> ExtractionConfigId:
@@ -88,11 +98,13 @@ class NotPending(ValueError):
 
 
 async def _lock_pending(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:
-    """Lock `key`'s state, then check that `config_id` is the latest version of its scope and waiting for approval.
+    """Lock `key`'s state, then check that `config_id` is the latest learned version of its scope and waiting for
+    approval.
     Raises `NotPending` otherwise: a newer version, an operator's correction or a draft, was written knowing it."""
     await lock_state(conn, key)
     configs = ExtractionConfig
-    latest = select(func.max(configs.version)).where(*key.config_scope()).scalar_subquery()
+    learned = (*key.config_scope(), configs.pattern_shape == "")
+    latest = select(func.max(configs.version)).where(*learned).scalar_subquery()
     row = select(configs.status, configs.version == latest).where(configs.id == config_id, *key.config_scope())
     found = (await conn.execute(row.with_for_update(of=configs))).first()
     if found is None or found[0] != "pending_approval" or not found[1]:
@@ -138,6 +150,27 @@ async def store_correction(
     return config_id
 
 
+async def store_recipe(
+    conn: AsyncConnection, key: StateKey, ir: ExtractionConfigIR, *, replaces: ExtractionConfigId | None
+) -> ExtractionConfigId:
+    """Store the custom recipe `ir` as `key`'s next version, active, and return its id; the recipe `replaces` names,
+    if any, is suspended, and no other row changes. Raises `ShapeTaken` when another active recipe of the scope has
+    a pattern of one of `ir`'s shapes, and `ConfigMismatch` like `activate`."""
+    await lock_state(conn, key)
+    await _check_key(conn, key, ir)
+    configs = ExtractionConfig
+    others = select(configs.id, configs.patterns).where(
+        *key.config_scope(), configs.status == "active", configs.pattern_shape != ""
+    )
+    shapes = {shape(pattern) for pattern in ir.patterns}
+    for other in (await conn.execute(others)).all():
+        if other.id != replaces and (taken := shapes.intersection(map(shape, other.patterns))):
+            raise ShapeTaken(f"config {other.id} serves URL patterns of shape {sorted(taken)}")
+    if replaces is not None:
+        await conn.execute(update(configs).where(configs.id == replaces).values(status="suspended"))
+    return await _store(conn, key, ir, None, "active")
+
+
 def _field_names(ir: ExtractionConfigIR) -> set[str]:
     return set(ir.fields) | (set(ir.listing.fields) if ir.listing is not None else set())
 
@@ -156,9 +189,9 @@ async def _check_key(conn: AsyncConnection, key: StateKey, ir: ExtractionConfigI
 
 
 async def _suspend_active(conn: AsyncConnection, key: StateKey) -> None:
-    # One active config per (site, schema, page kind); the one before is suspended.
+    # One active learned config per (site, schema, page kind); the one before is suspended, the recipes stay.
     configs = ExtractionConfig
-    active = (*key.config_scope(), configs.status == "active")
+    active = (*key.config_scope(), configs.status == "active", configs.pattern_shape == "")
     await conn.execute(update(configs).where(*active).values(status="suspended"))
 
 
@@ -169,7 +202,11 @@ async def _suspend_waiting(conn: AsyncConnection, key: StateKey) -> None:
 
 
 async def _store(
-    conn: AsyncConnection, key: StateKey, ir: ExtractionConfigIR, report: ValidationReport, status: ConfigStatus
+    conn: AsyncConnection,
+    key: StateKey,
+    ir: ExtractionConfigIR,
+    report: ValidationReport | None,
+    status: ConfigStatus,
 ) -> ExtractionConfigId:
     configs = ExtractionConfig
     version = select(func.coalesce(func.max(configs.version), 0) + 1).where(*key.config_scope()).scalar_subquery()
@@ -183,7 +220,9 @@ async def _store(
         ir=ir.model_dump(mode="json", by_alias=True),
         origin=ir.provenance.origin,
         field_status=statuses,
-        validation_report=report.model_dump(mode="json", by_alias=True),
+        validation_report=None if report is None else report.model_dump(mode="json", by_alias=True),
+        patterns=ir.patterns,
+        pattern_shape=patterns_shape(ir.patterns),
     )
     config_id: ExtractionConfigId = (await conn.execute(stored.returning(configs.id))).scalar_one()
     return config_id

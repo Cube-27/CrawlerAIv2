@@ -157,6 +157,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/configs/{config_id}/recipe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Edit Recipe
+         * @description Edits a custom recipe: the next version, `active`, replacing `config_id`, which is `suspended`. 409 when
+         *     `config_id` is not a custom recipe or not the latest version of its patterns' shape, or when another active recipe
+         *     serves a pattern of a new shape.
+         */
+        put: operations["edit_recipe_v1_configs__config_id__recipe_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/configs/{config_id}/reject": {
         parameters: {
             query?: never;
@@ -770,12 +792,19 @@ export interface paths {
         };
         /**
          * List Site Configs
-         * @description Every version of the site's configs, with status, field status and validation report, by schema, page
-         *     kind and version.
+         * @description Every version of the site's configs, custom recipes included, with status, field status and validation report,
+         *     by schema, page kind and version.
          */
         get: operations["list_site_configs_v1_sites__host__configs_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Recipe
+         * @description Saves a custom recipe: the site's next config version for the schema and page kind, `origin=operator`,
+         *     `active` at once. It serves the URLs its patterns match; the learned config stays active and serves the rest.
+         *     409 when an active recipe of the site, schema and page kind already serves a URL pattern of the same shape (the
+         *     pattern with its parameter names left out); 422 when the recipe does not fit the site or schema.
+         */
+        post: operations["create_recipe_v1_sites__host__configs_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -878,9 +907,64 @@ export interface components {
              */
             stop: "records" | "end" | "no_items" | "no_mechanism" | "action_cap" | "time_cap" | "click_intercepted" | "not_admitted" | "error";
         };
-        /** ApiRecipe */
-        ApiRecipe: {
-            body: components["schemas"]["RequestBody"] | null;
+        /**
+         * ApiRecipe
+         * @description A request and where each field sits in its answer. A learned recipe holds its `proof`; an operator's custom
+         *     recipe may hold none: the engineer's test proved it, not held-out pages.
+         */
+        "ApiRecipe-Input": {
+            /**
+             * Answer
+             * @default json
+             * @enum {string}
+             */
+            answer?: "json" | "html";
+            body?: components["schemas"]["RequestBody-Input"] | null;
+            /**
+             * Headers
+             * @default []
+             */
+            headers?: (components["schemas"]["HeaderValue"] | components["schemas"]["ContextHeader"])[];
+            /** Map */
+            map: {
+                [key: string]: string;
+            };
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "GET" | "POST";
+            /** Pagination */
+            pagination?: (components["schemas"]["ParamPagination"] | components["schemas"]["CursorPagination"] | components["schemas"]["NextUrlPagination"] | components["schemas"]["LinkPagination"]) | null;
+            /**
+             * Params From Url
+             * @default {}
+             */
+            params_from_url?: {
+                [key: string]: string;
+            };
+            proof?: components["schemas"]["Proof"] | null;
+            /**
+             * Requires Page Fetch
+             * @default false
+             */
+            requires_page_fetch?: boolean;
+            /** Url */
+            url: string;
+        };
+        /**
+         * ApiRecipe
+         * @description A request and where each field sits in its answer. A learned recipe holds its `proof`; an operator's custom
+         *     recipe may hold none: the engineer's test proved it, not held-out pages.
+         */
+        "ApiRecipe-Output": {
+            /**
+             * Answer
+             * @default json
+             * @enum {string}
+             */
+            answer: "json" | "html";
+            body: components["schemas"]["RequestBody-Output"] | null;
             /**
              * Headers
              * @default []
@@ -904,7 +988,7 @@ export interface components {
             params_from_url: {
                 [key: string]: string;
             };
-            proof: components["schemas"]["Proof"];
+            proof: components["schemas"]["Proof"] | null;
             /**
              * Requires Page Fetch
              * @default false
@@ -1254,6 +1338,8 @@ export interface components {
         };
         /** ConfigDetail */
         ConfigDetail: {
+            /** Custom */
+            custom: boolean;
             /** Field Status */
             field_status: {
                 [key: string]: "corroborated" | "uncorroborated" | "operator" | "suspended" | "absent";
@@ -1274,11 +1360,20 @@ export interface components {
              * @enum {string}
              */
             page_kind: "detail" | "listing";
+            /** Patterns */
+            patterns: string[];
+            /** Renders */
+            renders: string[];
             /**
              * Schema Id
              * Format: uuid
              */
             schema_id: string;
+            /**
+             * Sent By
+             * @enum {string}
+             */
+            sent_by: "http" | "browser";
             /** Site */
             site: string;
             /**
@@ -1314,6 +1409,8 @@ export interface components {
          * @description One version of a site's config for one schema and page kind, without its IR.
          */
         ConfigSummary: {
+            /** Custom */
+            custom: boolean;
             /** Field Status */
             field_status: {
                 [key: string]: "corroborated" | "uncorroborated" | "operator" | "suspended" | "absent";
@@ -1333,11 +1430,20 @@ export interface components {
              * @enum {string}
              */
             page_kind: "detail" | "listing";
+            /** Patterns */
+            patterns: string[];
+            /** Renders */
+            renders: string[];
             /**
              * Schema Id
              * Format: uuid
              */
             schema_id: string;
+            /**
+             * Sent By
+             * @enum {string}
+             */
+            sent_by: "http" | "browser";
             /** Site */
             site: string;
             /**
@@ -1661,6 +1767,50 @@ export interface components {
              */
             where: "query" | "body";
         };
+        /**
+         * CustomRecipe
+         * @description A custom recipe: the schema and page kind it serves, the URL patterns of one host it serves them for, the main
+         *     call and the extra calls by name, the warm-up, the page fields, who sends the calls and the least interval between
+         *     them (`rate_ms`).
+         */
+        CustomRecipe: {
+            /**
+             * Calls
+             * @default {}
+             */
+            calls?: {
+                [key: string]: components["schemas"]["ApiRecipe-Input"];
+            };
+            /**
+             * Fields
+             * @default {}
+             */
+            fields?: {
+                [key: string]: components["schemas"]["PageField"];
+            };
+            main: components["schemas"]["ApiRecipe-Input"];
+            /**
+             * Page Kind
+             * @enum {string}
+             */
+            page_kind: "detail" | "listing";
+            /** Patterns */
+            patterns: string[];
+            /** Rate Ms */
+            rate_ms?: number | null;
+            /**
+             * Schema Id
+             * Format: uuid
+             */
+            schema_id: string;
+            /**
+             * Sent By
+             * @default http
+             * @enum {string}
+             */
+            sent_by?: "http" | "browser";
+            warm_up?: components["schemas"]["WarmUp-Input"] | null;
+        };
         /** DayUsage */
         DayUsage: {
             /** Calls */
@@ -1935,7 +2085,7 @@ export interface components {
         ExtractionConfigIR: {
             /** Absent */
             absent: string[];
-            api_recipe: components["schemas"]["ApiRecipe"] | null;
+            api_recipe: components["schemas"]["ApiRecipe-Output"] | null;
             fetch: components["schemas"]["Fetch"];
             /** Fields */
             fields: {
@@ -1952,14 +2102,25 @@ export interface components {
              * @enum {string}
              */
             page_kind: "detail" | "listing";
+            /** Patterns */
+            patterns: string[];
             provenance: components["schemas"]["Provenance"];
+            /** Rate Ms */
+            rate_ms: number | null;
             /** Recipes */
             recipes: {
-                [key: string]: components["schemas"]["ApiRecipe"];
+                [key: string]: components["schemas"]["ApiRecipe-Output"];
             };
             schema: components["schemas"]["SchemaRef"];
+            /**
+             * Sent By
+             * @default http
+             * @enum {string}
+             */
+            sent_by: "http" | "browser";
             /** Site */
             site: string;
+            warm_up: components["schemas"]["WarmUp-Output"] | null;
         };
         /** Fetch */
         Fetch: {
@@ -2971,6 +3132,21 @@ export interface components {
             unsupported_media: number;
         };
         /**
+         * PageField
+         * @description A field read from the page itself: its steps in order (the first valid value wins), on the HTTP page or, when
+         *     only a render states it, the browser's (`browser`).
+         */
+        PageField: {
+            /**
+             * Needs
+             * @default http
+             * @enum {string}
+             */
+            needs?: "http" | "browser";
+            /** Steps */
+            steps: (components["schemas"]["XPathStep-Input"] | components["schemas"]["CssStep-Input"] | components["schemas"]["JsonLdStep-Input"] | components["schemas"]["JsonPathStep-Input"] | components["schemas"]["RegexStep-Input"] | components["schemas"]["AttrStep-Input"])[];
+        };
+        /**
          * PageKindRule
          * @description A crawl's rule: a URL `pattern` matches is extracted as a `page_kind` page.
          */
@@ -3090,7 +3266,7 @@ export interface components {
         };
         /** PlatformDraft */
         PlatformDraft: {
-            api_recipe: components["schemas"]["ApiRecipe"] | null;
+            api_recipe: components["schemas"]["ApiRecipe-Output"] | null;
             /** Api Recipe Php */
             api_recipe_php: string | null;
             /**
@@ -3418,9 +3594,31 @@ export interface components {
         };
         /**
          * RequestBody
-         * @description A JSON request body with `{name}` placeholders; a value is written JSON-escaped where its placeholder stands.
+         * @description A request body with `{name}` placeholders: JSON, where a value is written JSON-escaped (RFC 8259 §7), or
+         *     `form`, application/x-www-form-urlencoded (HTML §4.10.21.7), where a value is written percent-encoded.
          */
-        RequestBody: {
+        "RequestBody-Input": {
+            /**
+             * Encoding
+             * @default json
+             * @enum {string}
+             */
+            encoding?: "json" | "form";
+            /** Template */
+            template: string;
+        };
+        /**
+         * RequestBody
+         * @description A request body with `{name}` placeholders: JSON, where a value is written JSON-escaped (RFC 8259 §7), or
+         *     `form`, application/x-www-form-urlencoded (HTML §4.10.21.7), where a value is written percent-encoded.
+         */
+        "RequestBody-Output": {
+            /**
+             * Encoding
+             * @default json
+             * @enum {string}
+             */
+            encoding: "json" | "form";
             /** Template */
             template: string;
         };
@@ -4269,6 +4467,24 @@ export interface components {
             xpath: string | null;
         };
         /**
+         * WarmUp
+         * @description The request a custom recipe's calls follow: the page itself (`url` null), or a fixed URL whose `{name}`
+         *     placeholders are the URL pattern's parameters. Its answer may bind the calls' parameters (`warm_up*` binders).
+         */
+        "WarmUp-Input": {
+            /** Url */
+            url?: string | null;
+        };
+        /**
+         * WarmUp
+         * @description The request a custom recipe's calls follow: the page itself (`url` null), or a fixed URL whose `{name}`
+         *     placeholders are the URL pattern's parameters. Its answer may bind the calls' parameters (`warm_up*` binders).
+         */
+        "WarmUp-Output": {
+            /** Url */
+            url: string | null;
+        };
+        /**
          * WebhookBatch
          * @description How a job's webhook events are grouped: up to `max_events` a delivery, sent when that many wait or the oldest
          *     has waited `max_seconds`, whichever comes first.
@@ -4833,6 +5049,82 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    edit_recipe_v1_configs__config_id__recipe_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomRecipe"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7299,6 +7591,82 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_recipe_v1_sites__host__configs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomRecipe"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

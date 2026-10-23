@@ -277,6 +277,10 @@ def upgrade() -> None:
             server_default=sa.text("'{}'::jsonb"),
             nullable=False,
         ),
+        sa.Column(
+            "patterns", postgresql.JSONB(astext_type=sa.Text()), server_default=sa.text("'[]'::jsonb"), nullable=False
+        ),
+        sa.Column("pattern_shape", sa.Text(), server_default=sa.text("''"), nullable=False),
         sa.CheckConstraint(
             "origin IN ('adapter', 'induced', 'llm_synth', 'operator', 'located')",
             name=op.f("ck_extraction_config_origin"),
@@ -302,7 +306,7 @@ def upgrade() -> None:
     op.create_index(
         "uq_extraction_config_active",
         "extraction_config",
-        ["site_id", "schema_id", "page_kind"],
+        ["site_id", "schema_id", "page_kind", "pattern_shape"],
         unique=True,
         postgresql_where=sa.text("status = 'active'"),
     )
