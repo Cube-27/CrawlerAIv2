@@ -12,6 +12,9 @@ import { ScrapePlayground } from "../screens/playground/scrape/ScrapePlayground"
 import { ScheduleScreen } from "../screens/schedules/ScheduleScreen";
 import { SchedulesScreen } from "../screens/schedules/SchedulesScreen";
 import { SettingsScreen } from "../screens/settings/SettingsScreen";
+import { RecipeBuilder } from "../screens/recipes/RecipeBuilder";
+import { RecipeScreen } from "../screens/recipes/RecipeScreen";
+import { RecipesScreen } from "../screens/recipes/RecipesScreen";
 import { ConfigScreen } from "../screens/sites/ConfigScreen";
 import { SiteScreen } from "../screens/sites/SiteScreen";
 import { SitesScreen } from "../screens/sites/SitesScreen";
@@ -49,6 +52,9 @@ export const routes: RouteObject[] = [
           { path: "records", element: <RecordsScreen /> },
           { path: "sites", element: <SitesScreen /> },
           { path: "sites/:host", element: <SiteScreen /> },
+          { path: "sites/:host/recipes", element: <RecipesScreen /> },
+          { path: "sites/:host/recipes/new", element: <RecipeBuilder /> },
+          { path: "recipes/:id", element: <RecipeScreen /> },
           { path: "configs/:id", element: <ConfigScreen /> },
           { path: "jobs", element: <JobsScreen /> },
           // A job a mode runs redirects to its run there; a `learn` job keeps its page.

@@ -1,0 +1,168 @@
+import { Button, Card, Chip, Table, Typography } from "@heroui/react";
+import { useState } from "react";
+import type { CallSummary, Endpoint } from "../../api/captures";
+import { keyedTexts } from "../../components/keys";
+import { CallDrawer } from "./CallDrawer";
+import { endpointKey, endpointText, isOwnSite, matchLines, sizeText } from "./endpoints";
+
+/** Which sample (from 1) a capture is, by its place among the samples. */
+export type SampleNumber = (captureId: string) => number;
+
+function CallsTable({
+  calls,
+  sampleOf,
+  onOpen,
+}: Readonly<{
+  calls: readonly CallSummary[];
+  sampleOf: SampleNumber;
+  onOpen: (call: CallSummary) => void;
+}>) {
+  const rows = calls.map((call) => ({ ...call, id: `${call.capture_id}/${String(call.index)}` }));
+  return (
+    <Table>
+      <Table.ScrollContainer>
+        <Table.Content aria-label="Calls">
+          <Table.Header>
+            <Table.Column isRowHeader>Sample</Table.Column>
+            <Table.Column>Status</Table.Column>
+            <Table.Column>Content type</Table.Column>
+            <Table.Column>Size</Table.Column>
+            <Table.Column>After</Table.Column>
+            <Table.Column>Call</Table.Column>
+          </Table.Header>
+          <Table.Body items={rows}>
+            {(call) => (
+              <Table.Row id={call.id}>
+                <Table.Cell>{sampleOf(call.capture_id)}</Table.Cell>
+                <Table.Cell>{call.status}</Table.Cell>
+                <Table.Cell>{call.content_type ?? "—"}</Table.Cell>
+                <Table.Cell>{sizeText(call.size)}</Table.Cell>
+                <Table.Cell>
+                  {call.step === null || call.step === 0 ? "Load" : `Step ${String(call.step)}`}
+                </Table.Cell>
+                <Table.Cell>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onPress={() => {
+                      onOpen(call);
+                    }}
+                  >
+                    Open call {call.index}
+                  </Button>
+                </Table.Cell>
+              </Table.Row>
+            )}
+          </Table.Body>
+        </Table.Content>
+      </Table.ScrollContainer>
+    </Table>
+  );
+}
+
+/** One endpoint group: its URL shape, on how many samples it was called, where it carries each field, its calls, and
+ * the choice of it as the recipe's main call. */
+function EndpointCard({
+  endpoint,
+  samples,
+  isMain,
+  sampleOf,
+  onOpen,
+  onPick,
+}: Readonly<{
+  endpoint: Endpoint;
+  samples: number;
+  isMain: boolean;
+  sampleOf: SampleNumber;
+  onOpen: (call: CallSummary) => void;
+  onPick: () => void;
+}>) {
+  const lines = endpoint.fields.flatMap((match) => matchLines(match, samples));
+  const title = endpointText(endpoint);
+  return (
+    <Card>
+      <Card.Header className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Card.Title className="min-w-0 font-mono text-sm break-all">{title}</Card.Title>
+          {isMain ? (
+            <Chip color="success">Main call</Chip>
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              aria-label={`Use ${title} as the main call`}
+              onPress={onPick}
+            >
+              Use as main call
+            </Button>
+          )}
+        </div>
+        <Card.Description>
+          {isOwnSite(endpoint) ? "The page's own site" : "Another site"}, called on{" "}
+          {endpoint.samples.length} of {samples} samples
+          {endpoint.rows === null ? "" : `, rows at ${endpoint.rows}`}
+        </Card.Description>
+      </Card.Header>
+      <Card.Content className="flex flex-col gap-3">
+        {lines.length === 0 ? (
+          <Typography.Paragraph size="sm">Carries no field of the schema.</Typography.Paragraph>
+        ) : (
+          <ul aria-label="Field matches" className="flex flex-col gap-1 font-mono text-sm">
+            {keyedTexts(lines).map(({ key, text }) => (
+              <li key={key}>{text}</li>
+            ))}
+          </ul>
+        )}
+        <CallsTable calls={endpoint.calls} sampleOf={sampleOf} onOpen={onOpen} />
+      </Card.Content>
+    </Card>
+  );
+}
+
+/** The samples' calls by endpoint, the page's own site first; a call opens in a drawer. `main` is the chosen group's
+ * key (`endpointKey`), `onPick` chooses one. */
+export function CallList({
+  endpoints,
+  samples,
+  sampleOf,
+  main,
+  onPick,
+}: Readonly<{
+  endpoints: readonly Endpoint[];
+  samples: number;
+  sampleOf: SampleNumber;
+  main: string | null;
+  onPick: (key: string) => void;
+}>) {
+  const [open, setOpen] = useState<CallSummary | null>(null);
+  return (
+    <div className="flex flex-col gap-4">
+      {endpoints.map((endpoint) => {
+        const key = endpointKey(endpoint);
+        return (
+          <EndpointCard
+            key={key}
+            endpoint={endpoint}
+            samples={samples}
+            isMain={key === main}
+            sampleOf={sampleOf}
+            onOpen={setOpen}
+            onPick={() => {
+              onPick(key);
+            }}
+          />
+        );
+      })}
+      {open === null ? null : (
+        <CallDrawer
+          captureId={open.capture_id}
+          index={open.index}
+          sample={sampleOf(open.capture_id)}
+          onClose={() => {
+            setOpen(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}

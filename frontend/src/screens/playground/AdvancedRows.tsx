@@ -133,7 +133,7 @@ export function AdvancedRows({
 
 /** The actions editor: the page steps in order, each a kind, how it names its target and the target; added up to the
  * server's cap, moved up or down, removed. A row missing its value is not sent. */
-function ActionRows({
+export function ActionRows({
   rows,
   onChange,
 }: Readonly<{ rows: readonly ActionRow[]; onChange: (rows: ActionRow[]) => void }>) {
