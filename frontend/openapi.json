@@ -1746,6 +1746,14 @@
             "title": "Custom",
             "type": "boolean"
           },
+          "drifting": {
+            "items": {
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": "string"
+            },
+            "title": "Drifting",
+            "type": "array"
+          },
           "field_status": {
             "additionalProperties": {
               "enum": [
@@ -1794,12 +1802,38 @@
             "title": "Patterns",
             "type": "array"
           },
+          "pending_repair": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Repair"
+          },
           "renders": {
             "items": {
               "type": "string"
             },
             "title": "Renders",
             "type": "array"
+          },
+          "repair_changes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RecipeChange"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repair Changes"
           },
           "schema_id": {
             "format": "uuid",
@@ -1857,7 +1891,10 @@
           "custom",
           "renders",
           "sent_by",
-          "ir"
+          "drifting",
+          "pending_repair",
+          "ir",
+          "repair_changes"
         ],
         "title": "ConfigDetail",
         "type": "object"
@@ -1922,6 +1959,14 @@
             "title": "Custom",
             "type": "boolean"
           },
+          "drifting": {
+            "items": {
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": "string"
+            },
+            "title": "Drifting",
+            "type": "array"
+          },
           "field_status": {
             "additionalProperties": {
               "enum": [
@@ -1966,6 +2011,18 @@
             },
             "title": "Patterns",
             "type": "array"
+          },
+          "pending_repair": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Repair"
           },
           "renders": {
             "items": {
@@ -2029,7 +2086,9 @@
           "patterns",
           "custom",
           "renders",
-          "sent_by"
+          "sent_by",
+          "drifting",
+          "pending_repair"
         ],
         "title": "ConfigSummary",
         "type": "object"
@@ -7291,6 +7350,29 @@
           "engine_version"
         ],
         "title": "Provenance",
+        "type": "object"
+      },
+      "RecipeChange": {
+        "additionalProperties": false,
+        "description": "One part of a recipe a repair changes: its dotted path in the recipe (`main.map.title`, `main.url`,\n`calls.stock`), and its value before and after (None where it is not there).",
+        "properties": {
+          "after": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "before": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "part": {
+            "title": "Part",
+            "type": "string"
+          }
+        },
+        "required": [
+          "part",
+          "before",
+          "after"
+        ],
+        "title": "RecipeChange",
         "type": "object"
       },
       "RecipeFieldReport": {

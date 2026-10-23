@@ -15,6 +15,7 @@ from crawlerai.config_ir.drift import DriftMargins, record_run
 from crawlerai.config_ir.executor import EngineExecutor
 from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.config_ir.progressive import StateKey, learning_activated, request_learning
+from crawlerai.config_ir.url_pattern import patterns_shape
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import (
@@ -147,3 +148,41 @@ async def test_a_config_that_is_not_active_records_nothing(conn: AsyncConnection
     for _ in range(5):
         assert await _run(conn, other, job_id, NEW) == []
     assert (await _config(conn, other)).drift_window == {}
+
+
+async def test_a_drifted_recipe_starts_its_repair_run_and_leaves_the_learned_config_alone(
+    conn: AsyncConnection,
+) -> None:
+    key, learned_id, job_id = await _active_config(conn)
+    patterns = ["shop.example.test/p/{id}"]
+    recipe_ir = {
+        **IR,
+        "provenance": {**IR["provenance"], "origin": "operator"},
+        "patterns": patterns,
+        "api_recipe": {
+            "method": "GET",
+            "url": "https://api.example.test/products/{id}",
+            "params_from_url": {"id": "pattern:id"},
+            "map": {"price": "$['price']"},
+        },
+    }
+    ExtractionConfigIR.model_validate(recipe_ir)
+    stored = {**key.columns(), "version": 2, "ir": recipe_ir, "origin": "operator", "status": "active"}
+    shape = {"patterns": patterns, "pattern_shape": patterns_shape(patterns), "field_status": {"title": "operator"}}
+    recipe_id: ExtractionConfigId = (
+        await conn.execute(insert(ExtractionConfig).values(**stored, **shape).returning(ExtractionConfig.id))
+    ).scalar_one()
+
+    for _ in range(3):
+        assert await _run(conn, recipe_id, job_id, OLD) == []
+    assert await _run(conn, recipe_id, job_id, NEW) == []
+    assert await _run(conn, recipe_id, job_id, NEW) == ["title"]
+
+    assert (await _config(conn, recipe_id)).field_status == {"title": "suspended"}
+    learn = select(Job.request).where(Job.kind == "learn", Job.schema_id == key.schema_id).order_by(Job.id.desc())
+    request: dict[str, Any] = (await conn.execute(learn.limit(1))).scalar_one()
+    assert (request["force"], request["repair"], "locate" in request) == (True, str(recipe_id), False)
+    learned = await _config(conn, learned_id)
+    assert (learned.status, learned.field_status, learned.drift_window) == ("active", {"title": "corroborated"}, {})
+    state = (await conn.execute(select(ProgressiveState).where(*key.where()))).one()
+    assert state.active_config_id == learned_id

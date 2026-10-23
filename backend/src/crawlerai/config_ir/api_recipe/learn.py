@@ -15,6 +15,9 @@ Network bodies come with browser captures only. With `render`, a page whose capt
 listing: whose calls show no pagination) is rendered in the browser with network capture, a listing with its browser
 actions, at most `MAX_RENDERS` pages per run, sample pages first; its published values stay those of its capture.
 
+A repair run (`repair.py` in `config_ir`) learns the same way from the pages a custom recipe serves, preferring the
+recipe's own endpoint (`prefer`): the candidates of its method, URL shape and body shape come first.
+
 A run always ends with a recipe or the reason it has none, so that the config's validation report says which:
 no endpoint carrying a required field on every sample page (with whether the sample had network bodies at
 all), a listing whose calls show no pagination or come from one listing URL only, or the step a recipe failed. Replays
@@ -26,6 +29,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from typing import Final
 
+from crawlerai.collect.network_match import EndpointKey, endpoint_key, url_shape
 from crawlerai.config_ir.api_recipe.binding import (
     Ambiguous,
     CapturedRequest,
@@ -49,7 +53,7 @@ from crawlerai.config_ir.api_recipe.listing import (
     page_series,
     replay_page,
 )
-from crawlerai.config_ir.api_recipe.model import BoundBy, Pagination, with_pagination
+from crawlerai.config_ir.api_recipe.model import BoundBy, Pagination, RequestSpec, with_pagination
 from crawlerai.config_ir.api_recipe.replay import Render, Replay, ReplayPage
 from crawlerai.config_ir.api_recipe.role_d import Rejected, bind_by_role_d
 from crawlerai.config_ir.api_recipe.validate import HeldOutReplay, RecipeValidated, refused, validate_recipe
@@ -78,18 +82,20 @@ async def learn_recipe(
     *,
     job_id: JobId,
     render: Render | None = None,
+    prefer: RequestSpec | None = None,
 ) -> RecipeValidated:
     """The recipe learned from `sample` and validated on `held_out`, or why there is none; pages without the calls
-    to learn from are rendered with `render`. An LLM failure of role D propagates, as role A's does."""
+    to learn from are rendered with `render`, and the endpoint of `prefer`'s request comes first when the sample shows
+    it. An LLM failure of role D propagates, as role A's does."""
     renders = _Renders(render)
     if schema.page_kind == "listing":
-        return await learn_listing(client, sample, held_out, schema, replay, renders, job_id=job_id)
+        return await learn_listing(client, sample, held_out, schema, replay, renders, job_id=job_id, prefer=prefer)
     sample = await renders.detail(sample, SAMPLE_RENDERS)
     # A capture without network bodies says nothing of the endpoint; binding needs two pages that have some.
     with_calls = [page for page in sample if page.bundle.network]
     sample = with_calls if len(with_calls) >= 2 else sample
     # Parsing the network bodies and the pages is CPU work: a thread keeps the event loop serving meanwhile.
-    found = await asyncio.to_thread(_discover, sample, schema)
+    found = await asyncio.to_thread(_discover, sample, schema, prefer)
     if found is None:
         return refused(_no_endpoint(sample))
     endpoint, pages = found
@@ -149,9 +155,10 @@ async def learn_listing(
     renders: _Renders,
     *,
     job_id: JobId,
+    prefer: RequestSpec | None = None,
 ) -> RecipeValidated:
     """A listing's recipe (module docstring), or why there is none."""
-    found = await _listing_endpoint(sample, schema, renders)
+    found = await _listing_endpoint(sample, schema, renders, prefer)
     if isinstance(found, str):
         return refused(found)
     endpoint, pagination, replayed = found
@@ -171,7 +178,7 @@ async def learn_listing(
 
 
 async def _listing_endpoint(
-    sample: Sequence[StoredPage], schema: SchemaDef, renders: _Renders
+    sample: Sequence[StoredPage], schema: SchemaDef, renders: _Renders, prefer: RequestSpec | None
 ) -> tuple[ListingEndpoint, Pagination, list[ReplayPage]] | str:
     """The sample's listing endpoint, its pagination and the sample pages of distinct URLs as replay reads them; else
     why there is none. Only sample pages with calls are read: a capture without network bodies says nothing."""
@@ -184,7 +191,7 @@ async def _listing_endpoint(
     endpoints = await asyncio.to_thread(discover_listing, with_calls, schema)
     if not endpoints:
         return _NO_LISTING_ENDPOINT
-    endpoint = endpoints[0]
+    endpoint = _preferred(endpoints, _series_endpoint, prefer)
     pagination = await asyncio.to_thread(listing_pagination, with_calls, endpoint.key)
     if pagination is None:
         # The captures show one call each: the listing's browser actions show how it asks for the next page.
@@ -206,14 +213,43 @@ async def _listing_endpoint(
     return endpoint, pagination, replayed
 
 
-def _discover(sample: Sequence[StoredPage], schema: SchemaDef) -> tuple[EndpointCandidate, list[ReplayPage]] | None:
-    """The best endpoint of the sample, with each sample page as replay reads it."""
+def _discover(
+    sample: Sequence[StoredPage], schema: SchemaDef, prefer: RequestSpec | None
+) -> tuple[EndpointCandidate, list[ReplayPage]] | None:
+    """The best endpoint of the sample, `prefer`'s first, with each sample page as replay reads it."""
     samples = [DiscoverySample(page.bundle, page.held_out.facts.published, page.held_out.ctx) for page in sample]
     candidates = discover(samples, schema)
     if not candidates:
         return None
-    endpoint = candidates[0]
+    endpoint = _preferred(candidates, _request_endpoint, prefer)
     return endpoint, [_replay_page(page, request) for page, request in zip(sample, endpoint.requests, strict=True)]
+
+
+def _preferred[T](found: Sequence[T], endpoint: Callable[[T], EndpointKey], prefer: RequestSpec | None) -> T:
+    """The first of `found` (best first) whose endpoint is `prefer`'s, else the best. Endpoints compare without their
+    query names: a listing's series key reads the URL without its query (`network_match.series_key`)."""
+    if prefer is not None:
+        body = None if prefer.body is None else prefer.body.template
+        wanted = _query_free(endpoint_key(prefer.method, prefer.url, body))
+        for item in found:
+            if _query_free(endpoint(item)) == wanted:
+                return item
+    return found[0]
+
+
+def _query_free(key: EndpointKey) -> EndpointKey:
+    origin, has_path, segments, _ = key.url
+    return replace(key, url=(origin, has_path, segments, ()))
+
+
+def _request_endpoint(candidate: EndpointCandidate) -> EndpointKey:
+    request = candidate.requests[0]
+    return endpoint_key(request.method, request.url, request.body)
+
+
+def _series_endpoint(endpoint: ListingEndpoint) -> EndpointKey:
+    method, url, body, _ = endpoint.key
+    return EndpointKey(method, url_shape(url), body)
 
 
 def _no_endpoint(sample: Sequence[StoredPage]) -> str:

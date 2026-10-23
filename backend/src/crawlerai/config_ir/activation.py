@@ -11,7 +11,9 @@ ending any learning run, or a `draft` with the report that says why not.
 A custom recipe (`store_recipe`) is stored as the next version, active at once, beside the learned config: a scope
 holds one active config per pattern shape (`url_pattern.patterns_shape`), the learned one's `''`. Activating or
 correcting the learned config suspends only the learned config before it; saving a recipe suspends only the recipe it
-replaces, and the progressive state goes on naming the learned config.
+replaces, and the progressive state goes on naming the learned config. A learning run only ever replaces the learned
+config. A recipe's repair run stores the recipe's next version `pending_approval` against its shape
+(`store_pending(shape=)`), and approving it suspends only the version of that shape it repairs.
 
 Only a `Validated` with a config activates: nothing activates without validation. Everything runs on the
 caller's connection, in its transaction, so a run that cannot end (`NotLearning`) stores nothing.
@@ -67,6 +69,8 @@ async def activate(conn: AsyncConnection, key: StateKey, validated: Validated) -
     ir = validated.ir
     if ir is None:
         raise NotValidated(f"progressive_state {key}: validation refused the config ({validated.report.refused})")
+    if ir.patterns:
+        raise ConfigMismatch(f"progressive_state {key}: a learning run activates the learned config, not a recipe")
     # One activation per state at a time: the row lock orders them, so versions are taken one after another.
     locked = select(ProgressiveState.learning_started_at).where(*key.where()).with_for_update()
     started = (await conn.execute(locked)).first()
@@ -79,19 +83,25 @@ async def activate(conn: AsyncConnection, key: StateKey, validated: Validated) -
     return config_id
 
 
-async def store_pending(conn: AsyncConnection, key: StateKey, validated: Validated) -> ExtractionConfigId:
-    """Store `validated`'s config for `key` as `pending_approval` and end `key`'s learning run: the config
-    serving before the run, if any, goes on serving until a person approves the new one (`approve`). A config that
-    waited before is `suspended`: the newer run replaces it. Raises like `activate`."""
+async def store_pending(
+    conn: AsyncConnection, key: StateKey, validated: Validated, *, shape: str = ""
+) -> ExtractionConfigId:
+    """Store `validated`'s config for `key` as `pending_approval` against the pattern `shape` (`''`: the learned
+    config's; else a recipe's repair) and end `key`'s learning run: the config serving before the run, if any, goes on
+    serving until a person approves the new one (`approve`). A config of the shape that waited before is `suspended`:
+    the newer run replaces it. The state's active config stays the learned one. Raises like `activate`, and
+    `ConfigMismatch` when the config's patterns are not of `shape`."""
     ir = validated.ir
     if ir is None:
         raise NotValidated(f"progressive_state {key}: validation refused the config ({validated.report.refused})")
+    if patterns_shape(ir.patterns) != shape:
+        raise ConfigMismatch(f"progressive_state {key}: a config of another pattern shape stored for {shape!r}")
     locked = select(ProgressiveState.learning_started_at).where(*key.where()).with_for_update()
     started = (await conn.execute(locked)).first()
     if started is None or started.learning_started_at is None:
         raise NotLearning(key, "await_approval")
     await _check_key(conn, key, ir)
-    await _suspend_waiting(conn, key)
+    await _suspend_waiting(conn, key, shape)
     config_id = await _store(conn, key, ir, validated.report, "pending_approval")
     await learning_awaits_approval(conn, key)
     return config_id
@@ -101,35 +111,47 @@ class NotPending(ValueError):
     """The config is not waiting for approval."""
 
 
-async def _lock_pending(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:
-    """Lock `key`'s state, then check that `config_id` is the latest learned version of its scope and waiting for
-    approval.
-    Raises `NotPending` otherwise: a newer version, an operator's correction or a draft, was written knowing it."""
+async def _lock_pending(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> str:
+    """Lock `key`'s state, then check that `config_id` is the latest version of its pattern shape and waiting for
+    approval, and return the shape; a recipe's repair also needs the version it repairs still active.
+    Raises `NotPending` otherwise: a newer version, an operator's correction, an edit or a draft, was written knowing
+    it."""
     await lock_state(conn, key)
     configs = ExtractionConfig
-    learned = (*key.config_scope(), configs.pattern_shape == "")
-    latest = select(func.max(configs.version)).where(*learned).scalar_subquery()
-    row = select(configs.status, configs.version == latest).where(configs.id == config_id, *key.config_scope())
-    found = (await conn.execute(row.with_for_update(of=configs))).first()
-    if found is None or found[0] != "pending_approval" or not found[1]:
+    pending = select(configs.status, configs.version, configs.pattern_shape).where(
+        configs.id == config_id, *key.config_scope()
+    )
+    found = (await conn.execute(pending.with_for_update(of=configs))).first()
+    if found is None or found.status != "pending_approval":
         raise NotPending(f"config {config_id} is not the latest version waiting for approval")
+    same_shape = (*key.config_scope(), configs.pattern_shape == found.pattern_shape)
+    latest = (await conn.execute(select(func.max(configs.version)).where(*same_shape))).scalar_one()
+    repaired = select(configs.id).where(*same_shape, configs.status == "active")
+    if found.version != latest or (found.pattern_shape and (await conn.execute(repaired)).first() is None):
+        raise NotPending(f"config {config_id} is not the latest version waiting for approval")
+    shape_of: str = found.pattern_shape
+    return shape_of
 
 
 async def approve(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:
-    """Make `config_id`, a config of `key` waiting for approval, the active one, suspending the config active
-    before it. Raises `NotPending` when it is not `pending_approval` or not its scope's latest version."""
-    await _lock_pending(conn, key, config_id)
-    await _suspend_active(conn, key)
+    """Make `config_id`, a config of `key` waiting for approval, the active one, suspending the config of its pattern
+    shape active before it; a learned config becomes the state's. Raises `NotPending` when it is not
+    `pending_approval` or not its shape's latest version."""
+    pattern_shape = await _lock_pending(conn, key, config_id)
+    await _suspend_active(conn, key, pattern_shape)
     await conn.execute(update(ExtractionConfig).where(ExtractionConfig.id == config_id).values(status="active"))
-    await config_approved(conn, key, config_id)
+    if not pattern_shape:
+        await config_approved(conn, key, config_id)
 
 
 async def reject(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:
     """Refuse `config_id`, a config of `key` waiting for approval: it is `suspended`, the config active before
-    it goes on serving, and the state learns again only after more pages. Raises `NotPending` as `approve` does."""
-    await _lock_pending(conn, key, config_id)
+    it goes on serving, and for a learned config the state learns again only after more pages. Raises `NotPending` as
+    `approve` does."""
+    pattern_shape = await _lock_pending(conn, key, config_id)
     await conn.execute(update(ExtractionConfig).where(ExtractionConfig.id == config_id).values(status="suspended"))
-    await config_rejected(conn, key)
+    if not pattern_shape:
+        await config_rejected(conn, key)
 
 
 async def store_correction(
@@ -148,7 +170,7 @@ async def store_correction(
     if validated.ir is None or not set(operated) <= _field_names(validated.ir):
         return await _store(conn, key, corrected, validated.report, "draft")
     await _suspend_active(conn, key)
-    await _suspend_waiting(conn, key)  # the operator's config is newer than one waiting for approval
+    await _suspend_waiting(conn, key, "")  # the operator's config is newer than one waiting for approval
     config_id = await _store(conn, key, validated.ir, validated.report, "active")
     await operator_activated(conn, key, config_id)
     return config_id
@@ -195,16 +217,16 @@ async def _check_key(conn: AsyncConnection, key: StateKey, ir: ExtractionConfigI
         raise ConfigMismatch(f"config learned for an earlier document of schema {ir.schema_.name} activated for {key}")
 
 
-async def _suspend_active(conn: AsyncConnection, key: StateKey) -> None:
-    # One active learned config per (site, schema, page kind); the one before is suspended, the recipes stay.
+async def _suspend_active(conn: AsyncConnection, key: StateKey, pattern_shape: str = "") -> None:
+    # One active config per (site, schema, page kind) and pattern shape; the one before is suspended, the others stay.
     configs = ExtractionConfig
-    active = (*key.config_scope(), configs.status == "active", configs.pattern_shape == "")
+    active = (*key.config_scope(), configs.status == "active", configs.pattern_shape == pattern_shape)
     await conn.execute(update(configs).where(*active).values(status="suspended"))
 
 
-async def _suspend_waiting(conn: AsyncConnection, key: StateKey) -> None:
+async def _suspend_waiting(conn: AsyncConnection, key: StateKey, pattern_shape: str) -> None:
     configs = ExtractionConfig
-    waiting = (*key.config_scope(), configs.status == "pending_approval")
+    waiting = (*key.config_scope(), configs.status == "pending_approval", configs.pattern_shape == pattern_shape)
     await conn.execute(update(configs).where(*waiting).values(status="suspended"))
 
 

@@ -4,7 +4,8 @@ validated on, each parsed with its context and with the facts the engine stored 
 The pages are a site's most recent captures with outcome `extracted` or `partial` that have records of the schema
 version, each with its latest extraction. A locate run samples the surface's stored pages (`listed_nothing`):
 those, and the listing pages of a job of the schema that listed nothing (no record, though a further page of its task
-may have kept some), whose rows a render may show. A capture whose bundle is no
+may have kept some), whose rows a render may show. A run may keep only the captures whose URL `keep` accepts (a URL
+pattern is not SQL): the latest are read in order until `limit` are kept. A capture whose bundle is no
 longer stored (captures expire) is skipped. What the engine published is the extraction's records (`record.data` holds
 published fields only): a detail page's one, or a listing's one per row in the order they were stored, which
 is the page's row order.
@@ -22,7 +23,7 @@ locator of each (`record.field_meta`), which induction generalizes and synthesis
 
 import asyncio
 from collections import defaultdict
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, get_args
 
@@ -168,10 +169,13 @@ async def load_pages(
     *,
     limit: int,
     listed_nothing: bool = False,
+    keep: Callable[[str], bool] | None = None,
 ) -> list[StoredPage]:
     """Up to `limit` stored pages of `site_id` for `schema`'s version, most recent first; with `listed_nothing`, a
-    listing's pages that listed nothing too (module docstring)."""
-    return await _pages(conn, store, schema, await _extractions(conn, site_id, schema, limit, listed_nothing))
+    listing's pages that listed nothing too, and with `keep`, only those whose capture URL it accepts (module
+    docstring)."""
+    found = await _extractions(conn, site_id, schema, limit, listed_nothing, keep)
+    return await _pages(conn, store, schema, found)
 
 
 async def load_captures(
@@ -227,23 +231,36 @@ async def _llm_calls(conn: AsyncConnection, ids: Sequence[ExtractionId]) -> dict
 
 
 async def _extractions(
-    conn: AsyncConnection, site_id: SiteId, schema: SchemaDef, limit: int, listed_nothing: bool
+    conn: AsyncConnection,
+    site_id: SiteId,
+    schema: SchemaDef,
+    limit: int,
+    listed_nothing: bool,
+    keep: Callable[[str], bool] | None,
 ) -> list[tuple[CaptureId, str, ExtractionId]]:
     """The most recent captures with a record of `schema`'s version from an `extracted` or `partial` task, each with
-    its latest such extraction; with `listed_nothing`, a listing's `partial` ones without a record too."""
+    its latest such extraction; with `listed_nothing`, a listing's `partial` ones without a record too; with `keep`,
+    only those whose URL it accepts."""
     latest = (
         _latest(schema, listed_nothing=listed_nothing)
-        .add_columns(Capture.fetched_at)
+        .add_columns(Capture.fetched_at, Capture.url)
         .join(UrlTask, UrlTask.id == Extraction.url_task_id)
         .where(Capture.site_id == site_id, UrlTask.outcome.in_(EXTRACTED))
         .subquery()
     )
-    query = (
-        select(latest.c.id, latest.c.object_key, latest.c.extraction_id)
-        .order_by(latest.c.fetched_at.desc(), latest.c.id.desc())
-        .limit(limit)
+    query = select(latest.c.id, latest.c.object_key, latest.c.extraction_id, latest.c.url).order_by(
+        latest.c.fetched_at.desc(), latest.c.id.desc()
     )
-    return [(row.id, row.object_key, row.extraction_id) for row in await conn.execute(query)]
+    found: list[tuple[CaptureId, str, ExtractionId]] = []
+    # Read in batches of `limit`, the latest first, until `limit` are kept or none are left.
+    offset = 0
+    while limit > 0 and len(found) < limit:
+        batch = (await conn.execute(query.offset(offset).limit(limit))).all()
+        found += [(row.id, row.object_key, row.extraction_id) for row in batch if keep is None or keep(row.url)]
+        if len(batch) < limit:
+            break
+        offset += limit
+    return found[:limit]
 
 
 def _latest(schema: SchemaDef, *, listed_nothing: bool = False) -> Select[CaptureId, str, ExtractionId]:

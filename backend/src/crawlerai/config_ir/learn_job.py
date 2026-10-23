@@ -5,13 +5,20 @@ request, or a `Locate` one when the job asks to locate or the state renders. Wha
 (or left `pending_approval`) unless the run was overtaken meanwhile: its schema edited, its job cancelled or expired,
 or an operator's config activated. A run takes two transactions, one to start the job and one to end it; none is open
 while an LLM is called or a recipe replayed.
+
+A run learns the learned config from the pages no active custom recipe's pattern matches: those are the recipes'. A
+repair run (the job's request names a recipe, `repair_of`) reads only the pages the recipe's patterns match,
+and proposes the recipe's next version (`repair.repaired`), stored `pending_approval` against its pattern shape whatever
+the project's approval setting, unless the recipe was replaced or suspended meanwhile.
 """
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import timedelta
+from functools import partial
 from typing import Any, Final
 
 from pydantic import SecretStr, ValidationError
@@ -33,6 +40,8 @@ from crawlerai.config_ir.progressive import (
     learning_failed,
     lock_state,
 )
+from crawlerai.config_ir.repair import Repair, repaired
+from crawlerai.config_ir.url_pattern import match, patterns_shape
 from crawlerai.config_ir.validation import Validated, ValidationReport
 from crawlerai.core.redaction import REDACTED
 from crawlerai.db.jobs import JOB_TRANSITIONS, lock_job, record_event, transition_job
@@ -66,6 +75,8 @@ EXPIRE_BATCH: Final = 100
 EXPIRED: Final = "expired"
 # The reason a completed run reports when its config waits for approval.
 PENDING: Final = "pending_approval"
+# The reason a repair run ends with when the recipe it repairs was replaced or suspended while it ran.
+RECIPE_REPLACED: Final = "recipe_replaced"
 # The reason of a run cancelled because its worker stops (`run_learner`).
 SHUTDOWN: Final = "shutdown"
 
@@ -96,6 +107,8 @@ class _Run:
     target: Target
     serving: ExtractionConfigId | None
     locating: _Locating | None
+    # A repair run's: the custom recipe it repairs, and that recipe.
+    repairing: tuple[ExtractionConfigId, ExtractionConfigIR] | None = None
 
     @property
     def job_id(self) -> JobId:
@@ -135,7 +148,10 @@ async def run_learn_job(
         # The job is running and its row unlocked, so the bundle reads hold no lock anyone waits on.
         async with engine.connect() as conn:
             request = await _request(conn, store, run)
-        validated = await learned(client, request, vocabulary, max_chars, hooks)
+        if isinstance(request, Repair):
+            validated = await repaired(client, request, hooks)
+        else:
+            validated = await learned(client, request, vocabulary, max_chars, hooks)
         async with engine.begin() as conn:
             return await _finish(conn, run, validated)
     except LLMFailure as e:
@@ -174,32 +190,56 @@ async def _start(conn: AsyncConnection, job_id: JobId) -> _Run | Learned | None:
     state = ProgressiveState
     found = (await conn.execute(select(state.active_config_id, state.render_mode).where(*key.where()))).one()
     await record_event(conn, job_id, LEARNING_STARTED)
+    target = Target(schema, host, fetch, job_id)
+    if (repair := StateKey.repair_of(job.request)) is not None:
+        return _Run(key, target, found.active_config_id, None, (repair, await _ir_of(conn, repair)))
     asked = StateKey.locate_of(job.request) or (LocateRequest() if found.render_mode != "off" else None)
     locating = None
     if asked is not None:
         serving = await _config_ir(conn, found.active_config_id)
         locating = _Locating(asked, serving, await _request_context(conn, asked))
-    return _Run(key, Target(schema, host, fetch, job_id), found.active_config_id, locating)
+    return _Run(key, target, found.active_config_id, locating)
 
 
-async def _request(conn: AsyncConnection, store: ObjectStore, run: _Run) -> Learn | Locate:
-    """The pipeline's request for a started run: the state's stored pages, and a locate run's surface."""
+async def _request(conn: AsyncConnection, store: ObjectStore, run: _Run) -> Learn | Locate | Repair:
+    """The pipeline's request for a started run: the state's stored pages, a locate run's surface, or a repair run's
+    recipe and the pages its patterns match."""
     schema = run.target.schema
-    pages = await load_pages(conn, store, run.key.site_id, schema, limit=LEARN_AFTER_PAGES)
+    if run.repairing is not None:
+        recipe = run.repairing[1]
+        keep = partial(_matched, recipe.patterns)
+        pages = await load_pages(conn, store, run.key.site_id, schema, limit=LEARN_AFTER_PAGES, keep=keep)
+        return Repair(run.target, recipe, pages)
+    recipes = select(ExtractionConfig.patterns).where(
+        *run.key.config_scope(), ExtractionConfig.status == "active", ExtractionConfig.pattern_shape != ""
+    )
+    patterns = [pattern for found in (await conn.execute(recipes)).scalars() for pattern in found]
+
+    def learned_config(url: str) -> bool:  # a page a recipe's pattern matches is the recipe's
+        return not _matched(patterns, url)
+
+    load = partial(load_pages, conn, store, run.key.site_id, schema, limit=LEARN_AFTER_PAGES, keep=learned_config)
+    pages = await load()
     learn = Learn(run.target, pages)
     if run.locating is None:
         return learn
     surface = pages
     # A listing's pages that listed nothing are the surface's too: a locate run renders them.
     if schema.page_kind == "listing":
-        surface = await load_pages(conn, store, run.key.site_id, schema, limit=LEARN_AFTER_PAGES, listed_nothing=True)
+        surface = await load(listed_nothing=True)
     locating = run.locating
     return Locate(learn, locating.asked.fields, surface, locating.serving, locating.context)
 
 
+def _matched(patterns: Sequence[str], url: str) -> bool:
+    return any(match(pattern, url) is not None for pattern in patterns)
+
+
 async def _config_ir(conn: AsyncConnection, config_id: ExtractionConfigId | None) -> ExtractionConfigIR | None:
-    if config_id is None:
-        return None
+    return None if config_id is None else await _ir_of(conn, config_id)
+
+
+async def _ir_of(conn: AsyncConnection, config_id: ExtractionConfigId) -> ExtractionConfigIR:
     ir: dict[str, Any] = (
         await conn.execute(select(ExtractionConfig.ir).where(ExtractionConfig.id == config_id))
     ).scalar_one()
@@ -258,6 +298,8 @@ async def _finish(conn: AsyncConnection, run: _Run, validated: Validated) -> Lea
         return await _fail(conn, run, "cancelled", validated.report, status="cancelled")
     if validated.ir is None:
         return await _fail(conn, run, validated.report.refused or "refused", validated.report)
+    if run.repairing is not None:
+        return await _propose(conn, run, run.repairing[0], validated, shape=patterns_shape(validated.ir.patterns))
     if await _operator_since(conn, run):
         return await _fail(conn, run, "operator_config", validated.report)
     if await _requires_approval(conn, run):
@@ -267,6 +309,19 @@ async def _finish(conn: AsyncConnection, run: _Run, validated: Validated) -> Lea
     config_id = await activate(conn, run.key, validated)
     await _end(conn, run.job_id, "completed", config_id=config_id, reason=None, report=validated.report)
     return Learned(config_id)
+
+
+async def _propose(
+    conn: AsyncConnection, run: _Run, repairs: ExtractionConfigId, validated: Validated, *, shape: str
+) -> Learned:
+    """Store a repair run's proposal `validated` `pending_approval` against its recipe's pattern `shape`, unless the
+    recipe it `repairs` is no longer active: an edit replaced it, or it was suspended."""
+    status = select(ExtractionConfig.status).where(ExtractionConfig.id == repairs)
+    if (await conn.execute(status)).scalar_one() != "active":
+        return await _fail(conn, run, RECIPE_REPLACED, validated.report)
+    config_id = await store_pending(conn, run.key, validated, shape=shape)
+    await _end(conn, run.job_id, "completed", config_id=config_id, reason=PENDING, report=validated.report)
+    return Learned(config_id, PENDING)
 
 
 async def _requires_approval(conn: AsyncConnection, run: _Run) -> bool:

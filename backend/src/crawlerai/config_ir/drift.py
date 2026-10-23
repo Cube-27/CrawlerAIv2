@@ -8,7 +8,9 @@ back to cold-mode resolution, and the site re-learns.
 (`extraction_config.drift_window`), suspends the fields that drifted in both the IR and `field_status`, logs a
 `drift_suspended` job event per field and starts a forced learning run (`progressive.request_learning`). On a surface
 whose render mode still locates (`locate`, `always`), a suspended field a locate run placed (its `needs` is not `http`,
-or its config's origin is `located`) makes that run a locate run for it too (`relocated`).
+or its config's origin is `located`) makes that run a locate run for it too (`relocated`). A custom recipe's drift
+starts its repair run instead (`request_learning(repair=)`): a proposal of the recipe's next version, which waits for
+approval; the learned config is left alone.
 
 The margins are `backend/data/drift_margins.json`, stamped `source_split: dev` and with how they were
 obtained: until labels exist, the values of config learning, stamped "default, unfitted". Without the
@@ -218,8 +220,11 @@ async def _relearn(
     job_id: JobId,
 ) -> None:
     """Start a forced learning run for `config`, a locate run for the `suspended` fields a locate run placed while
-    the surface still locates (`relocated`), with `job_id`'s request context."""
+    the surface still locates (`relocated`), with `job_id`'s request context; for a custom recipe, its repair run."""
     key = StateKey(config.site_id, config.schema_id, config.page_kind)
+    if config.pattern_shape:
+        await request_learning(conn, key, force=True, repair=config.id)
+        return
     locate = relocated(ir, suspended, await render_mode(conn, key), job_id) if suspended else None
     await request_learning(conn, key, force=True, locate=locate)
 

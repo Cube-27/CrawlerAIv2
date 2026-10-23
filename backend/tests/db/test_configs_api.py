@@ -236,11 +236,13 @@ async def test_a_sites_configs_are_listed_with_their_status_and_one_config_has_i
                 "custom": False,
                 "renders": [],
                 "sent_by": "http",
+                "drifting": [],
+                "pending_repair": None,
             }
         ]
     }
     assert one.status_code == 200
-    assert one.json() == {**listed.json()["items"][0], "ir": _ir(world.host, world.schema, H2)}
+    assert one.json() == {**listed.json()["items"][0], "ir": _ir(world.host, world.schema, H2), "repair_changes": None}
 
 
 async def test_the_config_api_needs_a_key(client: httpx.AsyncClient, world: World) -> None:
@@ -390,7 +392,7 @@ async def test_a_recipe_of_a_shape_another_active_recipe_serves_is_refused(
     assert await world.configs() == [(1, "active", "operator")]
 
 
-async def test_an_edit_replaces_the_recipe_and_only_its_shapes_latest_version_is_edited(
+async def test_an_edit_replaces_the_recipe_and_only_its_active_version_is_edited(
     client: httpx.AsyncClient, world: World
 ) -> None:
     learned = await world.active_config(H2)

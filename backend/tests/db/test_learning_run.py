@@ -6,7 +6,7 @@ failed run does."""
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -15,11 +15,14 @@ from jsonschema import Draft202012Validator
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from crawlerai.acquire.api import JsonRequest
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import FetchResult
+from crawlerai.config_ir.activation import store_recipe
 from crawlerai.config_ir.active import active_config, pinned_config, recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Replays
+from crawlerai.config_ir.custom_recipe import CustomRecipe
 from crawlerai.config_ir.learn_job import (
     LEARN_RUN_TIMEOUT,
     LEARNING_FINISHED,
@@ -31,6 +34,7 @@ from crawlerai.config_ir.learn_job import (
 from crawlerai.config_ir.learning import Hooks
 from crawlerai.config_ir.progressive import StateKey, operator_activated, request_learning, trigger_learning
 from crawlerai.db.models import (
+    Capture,
     Extraction,
     ExtractionConfig,
     ExtractionConfigId,
@@ -412,3 +416,95 @@ async def test_a_run_whose_process_died_is_ended_after_the_timeout(site: LearnSi
     assert await site.finished(job_id) == ("failed", {"config_id": None, "reason": "expired", "report": None})
     async with site.engine.connect() as conn:
         assert (await conn.execute(select(Job.status).where(Job.id == recent))).scalar_one() == "running"
+
+
+async def _recipe(site: LearnSite, patterns: list[str], **parts: Any) -> ExtractionConfigId:
+    """A custom recipe of the site for `patterns`, whose main call asks `ENDPOINT`, stored active."""
+    main = {"method": "GET", "url": f"{ENDPOINT}/1", "map": {"price": "$['data']['price']+$['data']['currency']"}}
+    recipe = CustomRecipe.model_validate(
+        {"schema_id": site.schema.id, "page_kind": "detail", "patterns": patterns, "main": main, **parts}
+    )
+    ir = recipe.to_ir(site.schema, at=datetime(2026, 10, 1, tzinfo=UTC), engine_version="t")
+    # As drift leaves it: its page fields suspended.
+    fields = {name: steps.model_copy(update={"status": "suspended"}) for name, steps in ir.fields.items()}
+    async with site.engine.begin() as conn:
+        return await store_recipe(conn, site.key, ir.model_copy(update={"fields": fields}), replaces=None)
+
+
+async def _status(site: LearnSite, config_id: ExtractionConfigId) -> str:
+    async with site.engine.connect() as conn:
+        status: str = (
+            await conn.execute(select(ExtractionConfig.status).where(ExtractionConfig.id == config_id))
+        ).scalar_one()
+    return status
+
+
+async def test_a_learning_run_reads_no_page_a_recipes_pattern_matches_and_leaves_the_recipe_active(
+    site: LearnSite,
+) -> None:
+    await site.pages(10)
+    host = site.origin.removeprefix("https://")
+    recipe_id = await _recipe(site, [f"{host}/p/9", f"{host}/p/10"])
+    await _forced(site)
+
+    role_a = RoleA(PRICE_REPLY)
+    _, learned = await site.learn(role_a)
+
+    assert learned is not None
+    assert learned.config_id is not None
+    shown = "".join(part for request in role_a.requests for part in (*request.cached, request.user))
+    assert ("Kettle 8" in shown, "Kettle 9" in shown, "Kettle 10" in shown) == (True, False, False)
+    async with site.engine.connect() as conn:
+        reported = select(ExtractionConfig.validation_report).where(ExtractionConfig.id == learned.config_id)
+        report: dict[str, Any] = (await conn.execute(reported)).scalar_one()
+        held_out = select(Capture.url).where(Capture.id.in_(report["held_out"]))
+        urls = set((await conn.execute(held_out)).scalars())
+    assert len(urls) == 3
+    assert urls.isdisjoint({f"{site.origin}/p/9", f"{site.origin}/p/10"})
+    assert (await _status(site, recipe_id), (await site.state()).active_config_id) == ("active", learned.config_id)
+
+
+async def test_a_repair_run_proposes_the_recipes_next_version_which_applies_only_once_approved(
+    site: LearnSite,
+) -> None:
+    await site.pages(8, api=True)
+    host = site.origin.removeprefix("https://")
+    # The title's page step no longer reads the page: drift suspended it.
+    recipe_id = await _recipe(site, [f"{host}/p/{{id}}"], fields={"title": {"steps": [{"xpath": "//h2"}]}})
+    async with site.engine.begin() as conn:
+        assert await request_learning(conn, site.key, force=True, repair=recipe_id) is not None
+
+    async def replay(request: JsonRequest) -> FetchResult:
+        n = int(request.url.rsplit("/", 1)[1])
+        return site.fetch_result(request.url, 200, _answer(n), (("Content-Type", "application/json"),))
+
+    job_id, learned = await site.learn(RoleA(), lambda _: replay)
+
+    assert learned is not None
+    assert learned.config_id is not None
+    assert learned.reason == "pending_approval"
+    pending = learned.config_id
+    assert (await site.finished(job_id))[0] == "completed"
+    # The state is the learned config's: the run ended, nothing else moved.
+    state = await site.state()
+    assert (state.mode, state.active_config_id, state.learning_started_at) == ("cold", None, None)
+    async with site.engine.connect() as conn:
+        detail = await configs_service.get(conn, pending)
+        [summary] = [c for c in await configs_service.list_for_host(conn, host) if c.id == recipe_id]
+    assert (detail.status, detail.custom, detail.patterns) == ("pending_approval", True, [f"{host}/p/{{id}}"])
+    # The main call now reads the title; its page field is gone.
+    assert detail.ir.api_recipe is not None
+    assert set(detail.ir.api_recipe.map) == {"title", "price"}
+    assert "title" not in detail.ir.fields
+    assert detail.repair_changes is not None
+    changed = {change.part: change for change in detail.repair_changes}
+    assert {"fields.title", "main.map.title"} <= set(changed)
+    assert changed["fields.title"].after is None
+    assert (summary.status, summary.drifting, summary.pending_repair) == ("active", ["title"], pending)
+
+    async with site.engine.begin() as conn:
+        approved = await configs_service.approve_config(conn, pending)
+
+    assert approved.status == "active"
+    assert await _status(site, recipe_id) == "suspended"
+    assert (await site.state()).active_config_id is None
