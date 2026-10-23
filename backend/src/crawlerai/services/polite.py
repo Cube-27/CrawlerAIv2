@@ -4,7 +4,7 @@ API endpoint an adapter or recipe asks, or a sitemap.
 
 The steps, in order: the host's rules (its interval setting and robots.txt, `ReadRules`; a robots.txt request takes a
 turn at the host's rate and holds the host as a page's does), a turn at the host's rate, the fetch, then the host's rate
-adapted to every answer of the fetch (Per-site rate and backoff) and, when the fetch kept no `ok`
+adapted to every answer of the fetch and, when the fetch kept no `ok`
 answer after a 429 or 503, the host paused by the one back-off rule (`politeness.backoff`), the host held from the
 first turn until then (no other task's request goes to it meanwhile). A caller that waits for
 the answer waits in place for its turns, up to `IN_PLACE.bound`, and a turn further off is not taken (`Refused`,
@@ -90,7 +90,7 @@ class Waiting:
     bound: timedelta
 
 
-# a caller waiting for the answer waits in place up to a minute for a turn.
+# A caller waiting for the answer waits in place up to a minute for a turn.
 IN_PLACE: Final = Waiting(postpone=False, bound=timedelta(minutes=1))
 # A third of the task's deadline leaves the rest for the requests themselves (each within its policy's timeout) and the
 # rest of the task; a longer wait would spend the deadline on turns and record the page as failed.
@@ -118,7 +118,7 @@ class NoTurn(Exception):
 
 
 # A page fetch through the polite step: given the URL, the `Admit` each request after its first waits for, and the
-# host's rules (what it asks of the same host goes by them), the page.
+# host's rules, the page.
 PageFetch = Callable[[str, Admit, HostRules], Awaitable[FetchResult]]
 
 

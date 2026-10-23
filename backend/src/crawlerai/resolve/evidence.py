@@ -206,7 +206,7 @@ class _Published:
 
 
 def _page_url(decision: Derived) -> _Published:
-    # no candidate states a page-URL derivation, so it carries the `derived` source kind and bucket and a
+    # No candidate states a page-URL derivation, so it carries the `derived` source kind and bucket and a
     # `derived:` locator naming the derivation.
     locator = format_locator("derived", decision.derived_by)
     return _Published(

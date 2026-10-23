@@ -183,7 +183,7 @@ async def test_an_expired_lease_is_requeued_with_backoff_and_the_old_claim_is_fe
 
 
 async def test_claim_alternates_between_jobs_and_orders_by_score_only_within_a_job(conn: AsyncConnection) -> None:
-    # a scored crawl does not lease ahead of another job's tasks at the same priority.
+    # A scored crawl does not lease ahead of another job's tasks at the same priority.
     scored, plain = await _job(conn), await _job(conn)
     low, high = await _tasks(conn, scored, 2)
     await conn.execute(update(UrlTask).where(UrlTask.id == low).values(score=0.2))

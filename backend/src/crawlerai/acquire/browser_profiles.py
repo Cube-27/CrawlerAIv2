@@ -3,7 +3,7 @@ rung renders each site in a Chromium profile of its own, as a user's browser kee
 incognito context, which pages can tell apart (a storage quota a fraction of a profile's).
 
 - One profile per site (its registrable domain, HTML Standard §7.1.1), proxy pool and endpoint (`profile_name`), so
-  what a site set through one route never goes out through another (). The directory is
+  what a site set through one route never goes out through another. The directory is
   named by a digest, never by the host.
 - Kept under `CRAWLERAI_BROWSER_PROFILES`, across jobs and processes; deleting that directory resets every profile. A
   profile is opened by one process at a time, under an OS lock on its `.lock` file that the OS releases when the

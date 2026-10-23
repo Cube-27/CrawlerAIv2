@@ -31,7 +31,7 @@ Evidence = Literal[
 # `interaction_required`: missing from a page that was not rendered, whose source in the site's config is the browser
 # (`render_bound`).
 FieldStatus = Literal["published", "missing", "conflict", "abstained", "interaction_required"]
-# the derivations core has, each a named function in `resolve/derive.py`.
+# The derivations core has, each a named function in `resolve/derive.py`.
 Derivation = Literal[PageUrlDerivation, "absolutize"]
 # `url_task.outcome`, except that `error` is stored as `failed`.
 Outcome = Literal[
@@ -187,7 +187,7 @@ class ExtractionResult(_Model):
     def _outcome_fits(self) -> Self:
         if self.outcome in _UNPUBLISHED and (self.entity is not None or self.rows):
             raise ValueError(f"a {self.outcome} page has no fields")
-        # a page that was not served yields no candidates; an `error` keeps its candidates for diagnostics.
+        # A page that was not served yields no candidates; an `error` keeps its candidates for diagnostics.
         if self.outcome in _NOT_SERVED and self.candidates:
             raise ValueError(f"a {self.outcome} page has no candidates")
         return self

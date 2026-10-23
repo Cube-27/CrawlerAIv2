@@ -19,20 +19,20 @@ function joinParts(parts: readonly unknown[], separator: string): string {
     .join(separator);
 }
 
-// money is `{amount, currency}`, shown as "amount currency". A null currency is one the page did not
+// Money is `{amount, currency}`, shown as "amount currency". A null currency is one the page did not
 // settle: the amount is shown with that said, never with a currency filled in.
 function money(value: JsonObject): string {
   return joinParts([value.amount, value.currency ?? "(currency unknown)"], " ");
 }
 
-// location is `{text, locality, region, country, remote_flag}`. `text` is the place as the page writes
+// Location is `{text, locality, region, country, remote_flag}`. `text` is the place as the page writes
 // it and is shown as is; the parts stand in only when it is null. The flag is shown as text, not inferred.
 function location(value: JsonObject): string {
   const place = part(value.text) ?? joinParts([value.locality, value.region, value.country], ", ");
   return joinParts([place, value.remote_flag === true ? "remote" : null], ", ");
 }
 
-// range is `{min, max, currency|unit, period}`.
+// Range is `{min, max, currency|unit, period}`.
 function range(value: JsonObject): string {
   const bounds = joinParts([value.min, value.max], "–");
   const period = part(value.period);

@@ -1,4 +1,4 @@
-"""The candidate, entity and outcome models and: every candidate carries a locator; every
+"""The candidate, entity and outcome models: every candidate carries a locator; every
 published field carries `evidence`, `confidence`, `calibrated`, `source_kind` and `locator`."""
 
 from typing import Any

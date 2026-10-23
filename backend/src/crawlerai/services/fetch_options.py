@@ -46,7 +46,7 @@ __all__ = [
 
 # The serialization context that keeps secret values: only an asynchronous job's stored request, which its workers read.
 KEEP_SECRETS: Final = "keep_secrets"
-# reuse a stored capture as `max_age` allows (`default`), always fetch (`bypass`), or only serve a stored one.
+# Reuse a stored capture as `max_age` allows (`default`), always fetch (`bypass`), or only serve a stored one.
 CacheMode = Literal["default", "bypass", "only"]
 # The formats made in the browser from the rendered page: a PNG of it and a PDF print (`FetchPolicy.screenshot`, `pdf`).
 CAPTURE_FORMATS: Final = frozenset({"screenshot", "pdf"})

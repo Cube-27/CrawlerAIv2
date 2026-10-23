@@ -50,7 +50,7 @@ SecretPair = tuple[str, SecretStr]
 
 class RequestContext(_Frozen):
     """The caller's own request context: headers the HTTP and JSON rungs send to the fetched URL's host, and
-    cookies seeded as host-only cookies of that host (). The values are secrets: every serialization
+    cookies seeded as host-only cookies of that host. The values are secrets: every serialization
     shows them redacted, so neither a capture's manifest nor a log line holds one, beside their keyed digest
     (`core.context_digest`), so that a stored capture stands only for a fetch with the same values."""
 
@@ -180,21 +180,21 @@ class AttemptRecord(_Frozen):
     block_class: BlockClass
     duration_ms: int
     error: str | None = None
-    # the anti-bot challenge its response presents, when the fetch did not keep it as `ok`: a vendor named by
-    # the adapter package's signatures, or `structural` (`acquire.challenge`). Recorded only;.
+    # The anti-bot challenge its response presents, when the fetch did not keep it as `ok`: a vendor named by
+    # the adapter package's signatures, or `structural` (`acquire.challenge`). Recorded only.
     challenge: str | None = None
     # The pause its response's `Retry-After` asked for (RFC 9110 §10.2.3), from when the fetch began: an HTTP-date is
     # measured from `fetched_at`, so the pause is never shorter than asked. Read by the politeness step whichever
     # attempt's outcome is kept; not stored, as the response's other headers are not.
     retry_after: timedelta | None = Field(default=None, exclude=True)
-    # this browser `ok` opened a site session with its cookies (`acquire.session`): when it was needed only to
+    # This browser `ok` opened a site session with its cookies (`acquire.session`): when it was needed only to
     # pass a block, the site's contract keeps its pages on HTTP (`acquire.memory`, handoff). In memory only, like
     # `retry_after`.
     site_session: bool = Field(default=False, exclude=True)
     # The bytes the attempt moved both ways (`outcome.Traffic`), which `proxy_bytes` usage counts for a fetch through a
     # pool. Not stored, as the attempt's other wire details are not.
     transferred: int = Field(default=0, ge=0, exclude=True)
-    # how each of the policy's page steps ended, in order, on the browser attempt that ran them.
+    # How each of the policy's page steps ended, in order, on the browser attempt that ran them.
     steps: tuple[StepOutcome, ...] = ()
     # An `api` attempt that was a detail page's data call (`acquire.identity`): the platform whose documented product
     # JSON it requested. Stored only on such an attempt.

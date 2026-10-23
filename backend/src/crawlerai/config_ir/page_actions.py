@@ -28,7 +28,7 @@ __all__ = [
 ]
 
 MAX_ACTIONS: Final = 20
-# a step's own timeout, and the longest one; a wait of milliseconds lasts at most as long.
+# A step's own timeout, and the longest one; a wait of milliseconds lasts at most as long.
 _DEFAULT_TIMEOUT_MS: Final = 5_000
 _MAX_TIMEOUT_MS: Final = 15_000
 NETWORK_IDLE: Final = "network_idle"

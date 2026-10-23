@@ -354,7 +354,7 @@ LISTING = _schema(
     title=PRODUCT.fields["title"],
     url=FieldSpec(type=FieldType.URL, description="d", required=True, schema_org="Product.url"),
     price=FieldSpec(type=FieldType.MONEY, description="d", schema_org="Offer.price+priceCurrency"),
-    # og:title fills text fields whose path ends in `.name` (the OGP table); on the page, only the page owns it.
+    # Og:title fills text fields whose path ends in `.name` (the OGP table); on the page, only the page owns it.
     page_title=FieldSpec(type=FieldType.TEXT, description="d", scope="page", schema_org="Product.name"),
     next_page_url=FieldSpec(type=FieldType.URL, description="d", scope="page"),
 )

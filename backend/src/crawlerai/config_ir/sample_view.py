@@ -20,7 +20,7 @@ from crawlerai.collect import js_state, jsonld, xhr
 from crawlerai.collect.json_doc import is_scalar, nodes
 from crawlerai.content.page import ParsedPage
 
-# the attributes the model sees, besides every `data-*` one (HTML Standard §3.2.6.6, custom data
+# The attributes the model sees, besides every `data-*` one (HTML Standard §3.2.6.6, custom data
 # attributes). `id`, `class`, `itemprop` and `data-*` are the anchors induction also uses; `href`, `src`,
 # `content`, `name` and `property` carry values (links, images, meta elements).
 KEPT_ATTRIBUTES: Final = frozenset({"id", "class", "itemprop", "href", "src", "content", "name", "property"})

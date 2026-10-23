@@ -25,7 +25,7 @@ _ISBN_PREFIX = re.compile(r"\AISBN\s+")
 _ISBN_BODY = re.compile(r"\d(?:[- ]?\d)*(?:[- ]?[Xx])?", re.ASCII)
 # ISO 2108: an ISBN-13 is an EAN-13 (a GTIN-13) under the GS1 prefixes 978 and 979.
 _ISBN13_PREFIXES = ("978", "979")
-# the length bound of an opaque identifier, in characters.
+# The length bound of an opaque identifier, in characters.
 _MAX_OPAQUE_LEN = 64
 
 
@@ -90,7 +90,7 @@ def _isbn(s: str) -> str | Invalid:
 
 
 def _opaque(s: str) -> str | Invalid:
-    # an mpn, sku or custom identifier is the publisher's own string; only its length is bounded.
+    # An mpn, sku or custom identifier is the publisher's own string; only its length is bounded.
     if len(s) > _MAX_OPAQUE_LEN:
         return Invalid("too_long")
     return s

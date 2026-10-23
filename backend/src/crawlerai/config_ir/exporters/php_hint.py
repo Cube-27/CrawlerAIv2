@@ -1,4 +1,4 @@
-"""The PHP code hint of an API recipe (OPEN_QUESTIONS #12): the recipe's request as
+"""The PHP code hint of an API recipe: the recipe's request as
 curl calls, rendered from `templates/api_recipe.php.j2`. It is a rendering of the data for a reader, never a program we
 run.
 

@@ -47,8 +47,8 @@ __all__ = [
     "json_bodies",
 ]
 
-# data bodies (JSON and Flight) and same-site HTML fragments are captured up
-# to 2 MB each and 50 per page; "Bounded bodies": at most 10 MB of them per page in all.
+# Data bodies (JSON and Flight) and same-site HTML fragments are captured up
+# to 2 MB each and 50 per page; at most 10 MB of them per page in all.
 _JSON_BODY_MAX_BYTES = 2_000_000
 JSON_BODIES_MAX = 50
 JSON_PAGE_MAX_BYTES = 10_000_000

@@ -27,7 +27,7 @@ interface NavGroup {
   entries: NavEntry[];
 }
 
-// one entry per playground mode, from the one list of modes, then the data screens; Settings come last,
+// One entry per playground mode, from the one list of modes, then the data screens; Settings come last,
 // at the foot of the sidebar.
 const PLAYGROUND: NavGroup = {
   title: "Playground",

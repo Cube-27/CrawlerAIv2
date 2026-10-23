@@ -64,7 +64,7 @@ export function ScrapeOptions({
           onChange({ ...options, maxAge });
         }}
       />
-      {/* the request is bounded by `timeout_s`, at most 120. */}
+      {/* The request is bounded by `timeout_s`, at most 120. */}
       <NumberRow
         label="Timeout (s)"
         help="How long the scrape may take, in seconds, at most 120. Empty: the server default."

@@ -86,7 +86,7 @@ def test_a_page_is_fetched_into_a_bundle_through_the_pinned_address(server: Serv
 
 
 def test_a_refusal_standing_in_for_the_page_is_labelled_a_challenge_and_stays_blocked(server: Server) -> None:
-    # the generic structural signal (a 403 document that can navigate on and is no page of the site); the label
+    # The generic structural signal (a 403 document that can navigate on and is no page of the site); the label
     # changes no class. An `ok` page carries none.
     server.route("/p", html(b"<html><body><script>location.reload()</script></body></html>", 403))
     server.route("/ok", html(_PAGE))

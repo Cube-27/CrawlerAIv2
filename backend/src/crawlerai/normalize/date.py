@@ -36,7 +36,7 @@ Order = Literal["DMY", "MDY", "YMD"]
 # The day/month/year orders of CLDR short date patterns, which are also the orders `dateparser` takes (`DATE_ORDER`).
 _ORDERS: tuple[Order, ...] = ("DMY", "MDY", "YMD")
 
-# years outside this range are not values of the type.
+# Years outside this range are not values of the type.
 _MIN_YEAR, _MAX_YEAR = 1970, 2100
 
 # RFC 3339 §5.6 `full-date` and `date-time`, with the ISO 8601 space separator and lowercase `t`/`z` that RFC 3339

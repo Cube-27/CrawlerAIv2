@@ -91,7 +91,7 @@ def test_an_untrusted_peer_cannot_take_a_fresh_bucket_by_forwarding_another_addr
 
 
 def test_every_api_operation_but_healthz_refuses_a_request_without_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    # every route takes the API key, which also rate-limits it; `/healthz` alone is
+    # Every route takes the API key, which also rate-limits it; `/healthz` alone is
     # public. A router added without the key dependency fails here. The burst covers every operation from
     # one client, so the rate limit answers none of them.
     monkeypatch.setenv("CRAWLERAI_API_RATE_BURST", "1000")

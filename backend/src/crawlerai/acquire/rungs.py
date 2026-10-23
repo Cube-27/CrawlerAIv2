@@ -94,7 +94,7 @@ _TOO_MANY = 429  # RFC 6585 §4
 # The HTTP outcomes the browser may pass where HTTP did not: a block, and a shell (a challenge's, or a script-only
 # document's, rendered once per page).
 _BROWSER_EVIDENCE: frozenset[BlockClass] = frozenset({"shell", "blocked"})
-# the reason of a request a transport failure left unanswered (`curl_client.reason`), such as a reset
+# The reason of a request a transport failure left unanswered (`curl_client.reason`), such as a reset
 # HTTP/2 stream (curl 92) or connection. A filter may reset a client whose TLS or HTTP/2 fingerprint it does not trust;
 # the browser's own network stack may pass. A timeout (`policy.timeout_s`) counts too: a filter may hold a
 # client it does not trust unanswered, and the same transport again would wait as long.
@@ -115,7 +115,7 @@ class Rungs:
     # A listing with browser actions (`acquire.browser_tab.fetch_listing`); the API process sets it.
     listing: ListingRung | None = None
     # The site sessions of this process, which the HTTP and JSON rungs were bound to, and the browser rung's exporting
-    # form that opens them; without both a browser retry opens none ( without its exception).
+    # form that opens them; without both a browser retry opens none.
     sessions: SiteSessions | None = None
     exporting: ExportingRung | None = None
     # The eager fragments of an HTTP page, each fetched as a companion call (`_with_frames`); without it none is.
@@ -461,7 +461,7 @@ def _too_many_requests(result: FetchResult) -> bool:
 
 
 async def _interstitial_unavailable(result: FetchResult) -> bool:
-    """a 503 (RFC 9110 §15.6.4) whose document stands in for the page until its script or refresh navigates
+    """A 503 (RFC 9110 §15.6.4) whose document stands in for the page until its script or refresh navigates
     on (`classify.interstitial`): the browser may pass it, once the site's pause is over (`_paused_by`)."""
     manifest = result.bundle.manifest
     if manifest.status_code != _UNAVAILABLE or manifest.method != "http":
@@ -482,7 +482,7 @@ def _paused_by(result: FetchResult) -> timedelta:
 
 
 async def _as_last_page(result: FetchResult, policy: FetchPolicy, *, last: bool) -> FetchResult:
-    """a page kept for want of an `ok` outcome is extracted whatever its links, as the browser's is
+    """A page kept for want of an `ok` outcome is extracted whatever its links, as the browser's is
     (`browser.classified`). When it is the `last` rung's page (the browser's, or HTTP's when no browser attempt is
     made), a `shell` no challenge names (`_referable`: a 2xx document with no vendor's signature on its attempt) is
     `ok`: the server gave the page and it shows what it shows (a page announcing a launch, a

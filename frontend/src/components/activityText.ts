@@ -25,7 +25,7 @@ const METHODS: Readonly<Record<string, string>> = {
   browser: "Fetched with a browser.",
 };
 
-// the block class of a page that came back as itself.
+// The block class of a page that came back as itself.
 const NOT_BLOCKED = "ok";
 
 function fetched(data: JsonObject): string | null {
@@ -105,7 +105,7 @@ const LINES: Readonly<Record<string, Line>> = {
   cancelled: () => "Run cancelled.",
 };
 
-// the task counts after each batch of events. They update the counts, and are no line of their own.
+// The task counts after each batch of events. They update the counts, and are no line of their own.
 const PROGRESS = "progress";
 
 /** An event's line and the task URL it is about (null for the whole run); null for `progress`, which has no line. The

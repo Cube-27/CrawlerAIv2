@@ -67,7 +67,7 @@ function JobView({ job }: Readonly<{ job: JobSummary }>) {
 }
 
 /** One job. A job a playground mode runs redirects to its run there; a `learn` job keeps this page:
- * its status and progress, usage, live events, results with exports, and a cancel. */
+ * Its status and progress, usage, live events, results with exports, and a cancel. */
 export function JobScreen() {
   const { id = "" } = useParams();
   const job = useJob(id);

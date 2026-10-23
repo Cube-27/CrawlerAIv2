@@ -220,7 +220,7 @@ export async function followEvents(options: FollowOptions): Promise<void> {
   }
 }
 
-/** the server sends a heartbeat after 15 s without an event. Two missed heartbeats, with a margin for
+/** The server sends a heartbeat after 15 s without an event. Two missed heartbeats, with a margin for
  * a slow network, mean the server is gone. */
 export const IDLE_MS = 35_000;
 

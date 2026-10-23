@@ -51,7 +51,7 @@ class SchemaList(Model):
 
 
 class ReplayRequest(Model):
-    # a replay calls an LLM only when asked. None does yet: role C is bound by the LLM layer.
+    # A replay calls an LLM only when asked. None does yet: role C is bound by the LLM layer.
     allow_llm: bool = False
 
 

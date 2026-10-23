@@ -45,7 +45,7 @@ async def run_learner(
 ) -> None:
     """Run queued `learn` jobs until `stop` is set, which cancels the run in progress. `max_chars` is role A's HTML
     limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`); `replay` sends the runs' recipe replays, `render`
-    their browser renders (Appendix A #59), and `extract` extracts a locate run's renders."""
+    their browser renders, and `extract` extracts a locate run's renders."""
     while not stop.is_set():
         try:
             async with engine.connect() as conn:

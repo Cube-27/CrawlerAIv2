@@ -61,7 +61,7 @@ _CURLPROXY_HTTP = 0  # curl's `curl_proxytype` for an HTTP proxy (CURLOPT_PROXYT
 # The debug callback's kinds that carry HTTP message bytes (curl_debug_callback, CURLOPT_DEBUGFUNCTION): the headers and
 # the body as transferred, proxy CONNECT exchanges included, without the TLS records or HTTP/2 framing around them.
 _MESSAGE_BYTES = frozenset({CURLINFO_HEADER_IN, CURLINFO_HEADER_OUT, CURLINFO_DATA_IN, CURLINFO_DATA_OUT})
-# the reason of a body past `max_body_bytes` or `max_decompressed_bytes`.
+# The reason of a body past `max_body_bytes` or `max_decompressed_bytes`.
 BODY_CAP: Final = "body_cap"
 _CURL_ERRORS: dict[int, str] = {
     CurlECode.OPERATION_TIMEDOUT: "timeout",

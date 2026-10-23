@@ -371,7 +371,7 @@ async def read_state(
         request_headers=recorded(header_list(sent)),
         response_headers=recorded(header_list(received)),
     )
-    # the size the body arrived with is read before any body, so a body over `max_body_bytes` never enters
+    # The size the body arrived with is read before any body, so a body over `max_body_bytes` never enters
     # this process. The browser hands over bodies after content decoding, in full (Playwright has no streaming read):
     # the decompressed cap is checked once they are read, and bounds what is stored.
     if await _wire_size(response, exchange) > policy.max_body_bytes:

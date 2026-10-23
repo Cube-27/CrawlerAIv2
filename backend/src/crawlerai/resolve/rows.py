@@ -423,7 +423,7 @@ def _merged_keys(rows: Sequence[Entity], keys: Mapping[str, _Keys]) -> _Keys:
 
 
 def _conflicting(row_field: RowField, variant: _Variant) -> bool:
-    """a key sub-field with two different values means two variants were joined, or one source is wrong."""
+    """A key sub-field with two different values means two variants were joined, or one source is wrong."""
     spec = row_field.sub_fields
     return any(not equal(values[0], other, spec[sub]) for sub, values in variant.keys.items() for other in values[1:])
 

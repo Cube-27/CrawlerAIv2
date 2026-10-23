@@ -15,7 +15,7 @@ const FORMATS: readonly (readonly [ExportFormat, string])[] = [
   ["platform_draft", "Platform draft"],
 ];
 
-// a `manual` field is one the release executor did not reproduce; it needs hand work after export.
+// A `manual` field is one the release executor did not reproduce; it needs hand work after export.
 function ReleaseOutcome({ field }: Readonly<{ field: ReleaseField }>) {
   return (
     <StatusLabel

@@ -40,7 +40,7 @@ BACKOFF_MAX: Final = timedelta(minutes=15)  # the longest backoff
 # RFC 6585 §4 (429 Too Many Requests) and RFC 9110 §15.6.4 (503 Service Unavailable): the statuses that ask a
 # client to slow down, optionally with a Retry-After.
 SLOW_DOWN: Final = frozenset({429, 503})
-# the adaptive spacing's recovery, unmeasured starting points: 20 `ok` answers in a row shrink it by 10%.
+# The adaptive spacing's recovery, unmeasured starting points: 20 `ok` answers in a row shrink it by 10%.
 RECOVERY_RUN: Final = 20
 RECOVERY_FACTOR: Final = 0.9
 # A hold in the shared store lapses this long after its process last renewed it: a process that dies, or work left

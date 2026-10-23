@@ -48,8 +48,7 @@ class AcquireSettings(_Base):
     """The subset a fetch needs, so `crawlerai fetch` runs without a database or object store."""
 
     impersonate: BrowserTypeLiteral = IMPERSONATE_DEFAULT
-    # `CRAWLERAI_PROXY_POOLS`, JSON `{pool_name: proxy_url | {"endpoints": [proxy_url, ...], "mode": ...}}` (acquisition
-    # spec §3, OPEN_QUESTIONS #10).
+    # `CRAWLERAI_PROXY_POOLS`, JSON `{pool_name: proxy_url | {"endpoints": [proxy_url, ...], "mode": ...}}`.
     proxy_pools: dict[str, ProxyPool] = Field(default_factory=dict)
     # `CRAWLERAI_EGRESS_COUNTRY`: the ISO 3166-1 alpha-2 country this machine's direct fetches go out from, declared by
     # the operator; unset: unknown.
@@ -95,7 +94,7 @@ LLMProviderName = Literal["anthropic", "gemini"]
 
 
 class LLMSettings(_Base):
-    """The LLM providers (OPEN_QUESTIONS #5): which, in failover order, and a model per model class.
+    """The LLM providers: which, in failover order, and a model per model class.
 
     The model ids are the current Haiku- and Flash-Lite-class models for `fast` (role C) and Sonnet- and Flash-class
     models for `strong` (A, D, S); change them here, not in code.
@@ -109,7 +108,7 @@ class LLMSettings(_Base):
     llm_strong_model_anthropic: str = "claude-sonnet-5-5"
     llm_fast_model_gemini: str = "gemini-3.5-flash-lite"
     llm_strong_model_gemini: str = "gemini-3.8-flash"
-    # role A reads each sample page, its JSON key paths and
+    # Role A reads each sample page, its JSON key paths and
     # its reduced HTML cut to this many characters in all; a larger limit is refused, so a page's cost is bounded.
     llm_a_max_chars: int = Field(default=60_000, gt=0, le=60_000)
     # From the secret store; required for each listed provider when a client is built.

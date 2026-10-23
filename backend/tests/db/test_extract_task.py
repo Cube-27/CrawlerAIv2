@@ -192,7 +192,7 @@ async def test_a_complete_page_stores_its_extraction_candidates_and_record(setup
 async def test_role_c_runs_inside_the_task_without_waiting_on_its_transaction(
     engine: AsyncEngine, tmp_path: Path
 ) -> None:
-    # the client commits usage on its own connection; the step writes nothing before role C's call, so the
+    # The client commits usage on its own connection; the step writes nothing before role C's call, so the
     # call's usage commits while the task's transaction is open, and stays when that transaction rolls back.
     project = select(Project.id).where(Project.name == "default").scalar_subquery()
     async with engine.begin() as committed:

@@ -29,7 +29,7 @@ from crawlerai.collect.scope import LISTS
 from crawlerai.resolve.intent import AmbiguousTarget, is_primary
 from crawlerai.resolve.ownership import EntityGraph
 
-# without an ItemList, at least this many top-level primary entities make a listing's rows; the same
+# Without an ItemList, at least this many top-level primary entities make a listing's rows; the same
 # count of repeated items makes a page show a listing's grid (`acquire.items`).
 MIN_TOP_LEVEL_ROWS: Final = MIN_ITEMS
 # schema.org BreadcrumbList: "an ItemList consisting of a chain of linked Web pages ... typically ending with the

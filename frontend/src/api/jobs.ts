@@ -118,7 +118,7 @@ function results(client: ApiClient, id: string, query: ResultsQuery) {
   return client.GET("/v1/jobs/{job_id}/results", { params: { path: { job_id: id }, query } });
 }
 
-// a completed or failed job can't be cancelled (409); a cancelled one is already.
+// A completed or failed job can't be cancelled (409); a cancelled one is already.
 const CANCELLABLE: ReadonlySet<JobStatus> = new Set<JobStatus>(["queued", "running"]);
 
 /** Where a job is with cancelling: it can be cancelled, a cancel was asked for (it ends once its claimed tasks end),

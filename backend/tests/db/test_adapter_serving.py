@@ -160,7 +160,7 @@ async def test_a_collection_redirected_to_its_www_host_is_joined_with_that_host_
 async def test_a_collection_page_robots_txt_disallows_is_neither_fetched_nor_asked_of_its_api(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, lamp_schema: SchemaDef, data: EngineData
 ) -> None:
-    # a page-scoped adapter serves a fetched page only, so a page robots.txt disallows is not served.
+    # A page-scoped adapter serves a fetched page only, so a page robots.txt disallows is not served.
     url = f"{own_origin}/collections/lamps"
     web.serve(url, PAGE)
     web.robots(own_origin, b"User-agent: *\nDisallow: /collections/\n")

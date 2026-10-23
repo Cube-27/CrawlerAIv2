@@ -202,7 +202,7 @@ def test_without_one_main_region_image_there_is_no_main_image(body: str) -> None
     ],
 )
 def test_an_image_in_a_dialog_or_a_hidden_subtree_is_not_the_main_image(wrapper: str) -> None:
-    # a drawer or modal inside `main` holds images of its own (a badge, a size chart), not the entity's.
+    # A drawer or modal inside `main` holds images of its own (a badge, a size chart), not the entity's.
     found = _collect(f'<main>{wrapper.format("<img src=/badge.png>")}<img src="/p/1.jpg"></main>')
 
     assert [value for value, _ in found["image_url"]] == ["https://shop.example.test/p/1.jpg"]

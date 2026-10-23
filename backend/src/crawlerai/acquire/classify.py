@@ -133,7 +133,7 @@ class Redirect(NamedTuple):
 
 
 _TYPE = "@type"  # JSON-LD 1.1 §3.5: a node's type, a string or an array of them
-# a refusal a page's own script may lift: 403 (RFC 9110 §15.5.4), 429 (RFC 6585 §4), 503 (RFC 9110 §15.6.4);
+# A refusal a page's own script may lift: 403 (RFC 9110 §15.5.4), 429 (RFC 6585 §4), 503 (RFC 9110 §15.6.4);
 # not 401/407, which ask for credentials (RFC 9110 §11.6), nor 451, a legal refusal (RFC 7725).
 INTERSTITIAL_STATUS = frozenset({403, 429, 503})
 # HTML Standard §4.2.5.3: the `refresh` pragma (`meta http-equiv`, an ASCII case-insensitive keyword), and §7.11.1:

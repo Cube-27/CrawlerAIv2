@@ -29,7 +29,7 @@ A locale subfolder names the language the page shows (the platform's internation
 without the language answers in its default one). The subfolder's country is not used: prices are read only
 from a shop with one presentment currency. A shop with several is not served: the answer's amounts
 are its primary market's, while its page may show another market's amounts, so the page path publishes the price the
-page shows, with the currency the page states or, failing that, unknown (money). A stored answer
+page shows, with the currency the page states or, failing that, unknown. A stored answer
 of such a shop is still read without its prices: its amounts are not the page's, whatever their currency.
 
 Product pages are not served: the page states fields the API's answer lacks (its default variant's sku,
@@ -128,7 +128,7 @@ class Shopify:
         return AdapterMatch(tenant=parts.hostname, page_kind="listing", item=handle)
 
     def serves(self, match: AdapterMatch, endpoint: str) -> bool:
-        # the API path on the page's own host (the tenant), where `fetch` asks it.
+        # The API path on the page's own host (the tenant), where `fetch` asks it.
         parts = urlsplit(endpoint)
         return parts.hostname == match.tenant and _ENDPOINT_PATH.fullmatch(parts.path) is not None
 

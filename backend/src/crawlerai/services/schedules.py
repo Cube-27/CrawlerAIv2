@@ -4,7 +4,7 @@ scrape, crawl or extract, submitted as a job at each due time of a cron expressi
 
 Creating a schedule checks its request as its submission would, once, so a schedule that could never run is refused
 at once: the targets pass the SSRF guard, and a `records` schema is resolved and stored by id, so a schema drafted from
-field names is drafted once, not at every run, and an edit of the schema applies to the runs after it ( pins
+field names is drafted once, not at every run, and an edit of the schema applies to the runs after it (the job pins
 it per job). A scrape is scheduled as the batch of its one URL, the queued form of a scrape; its `browser_actions` and
 `timeout_s` belong to a scrape answered while the caller waits, so a request with browser actions is refused. A
 `schema.prompt` is refused: its draft needs fetched pages, and a schedule runs a schema it already has. A request with

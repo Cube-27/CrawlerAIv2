@@ -58,7 +58,7 @@ def test_a_stated_url_with_another_path_or_more_of_one_parameter_names_another_i
 
 
 def test_a_products_offer_url_is_its_rows_item_url() -> None:
-    # schema.org Offer.url: the row's item URL when the Product states none.
+    # Schema.org Offer.url: the row's item URL when the Product states none.
     items = [
         {
             "@type": "Product",

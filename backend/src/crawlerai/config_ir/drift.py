@@ -11,7 +11,7 @@ whose render mode still locates (`locate`, `always`), a suspended field a locate
 or its config's origin is `located`) makes that run a locate run for it too (`relocated`).
 
 The margins are `backend/data/drift_margins.json`, stamped `source_split: dev` and with how they were
-obtained: until labels exist, the values of config learning, stamped "spec default, unfitted". Without the
+obtained: until labels exist, the values of config learning, stamped "default, unfitted". Without the
 file nothing is suspended (C7: no default margin); windows are still recorded.
 """
 
@@ -31,7 +31,7 @@ from crawlerai.db.jobs import record_event
 from crawlerai.db.models import ExtractionConfig, ExtractionConfigId, JobId, RenderMode
 from crawlerai.normalize.base import Ok
 
-# the window is the config's last 50 pages.
+# The window is the config's last 50 pages.
 WINDOW_PAGES: Final = 50
 # The validated yield and validity are measured on at least 3 held-out pages; a window is compared
 # with them once it is as large.
@@ -50,7 +50,7 @@ class DriftMargins(BaseModel):
     yield_: Annotated[float, Field(ge=0, le=1, alias="yield")]
     validity: Annotated[float, Field(ge=0, le=1)]
     source_split: Literal["dev"]
-    # How the margins were obtained, so spec defaults are never taken for values fitted on labels.
+    # How the margins were obtained, so unfitted defaults are never taken for values fitted on labels.
     fit: Annotated[str, Field(min_length=1)]
 
 

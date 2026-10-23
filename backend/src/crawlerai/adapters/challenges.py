@@ -2,7 +2,7 @@
 
 `acquire.challenge` labels a refused response with the vendor whose signature it shows: a response header only that
 vendor sends, a cookie only it sets, or the path of its challenge resource. The label is recorded on the attempt and
-counted. Only a stand-in marker changes the block class (): markup that appears only in the
+counted. Only a stand-in marker changes the block class: markup that appears only in the
 document a vendor serves in place of the page (its challenge, waiting room or block page), never on a page it lets
 through, so a 2xx document showing one is `blocked`. Header names, cookies and script paths only label: a vendor sets
 its cookies and loads its script on the pages it lets through too.

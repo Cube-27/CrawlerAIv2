@@ -1,5 +1,5 @@
-"""Record exporters (PR 12): every published value and status comes back out of the CSV and JSON
-exports, and the CSV header depends on the schema alone ("CSV columns stable", PR plan row 12). `json_records`,
+"""Record exporters: every published value and status comes back out of the CSV and JSON
+exports, and the CSV header depends on the schema alone. `json_records`,
 `csv_records` and `markdown` run over a page of records. A clean record (`json_values`) has the schema's
 published fields, in the columns' name order, and no status column."""
 

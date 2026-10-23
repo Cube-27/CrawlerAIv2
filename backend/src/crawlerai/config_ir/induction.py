@@ -204,7 +204,7 @@ def _locators(f: _Field) -> list[Locator] | None:
 
 
 def _mapped(name: str, scheme: str, locators: Sequence[Locator], result: Induction) -> None:
-    # values an adapter or API recipe published come from its mapping, which the config reuses.
+    # Values an adapter or API recipe published come from its mapping, which the config reuses.
     mappings = {locator.parts[0] for locator in locators}
     if len(mappings) == 1:
         result.mapped[name] = f"{scheme}:{mappings.pop()}"

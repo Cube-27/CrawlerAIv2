@@ -241,7 +241,7 @@ export function ScopeRows({
   );
 }
 
-// a schema's field names are lowercase snake case, `[a-z][a-z0-9_]{0,63}` (`NAME_PATTERN`); the server
+// A schema's field names are lowercase snake case, `[a-z][a-z0-9_]{0,63}` (`NAME_PATTERN`); the server
 // refuses any other, so a name is checked as it is added.
 const FIELD_NAME = /^[a-z][a-z0-9_]{0,63}$/;
 

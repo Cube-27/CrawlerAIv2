@@ -47,7 +47,7 @@ SiteRelation = Literal["same-origin", "same-site", "cross-site"]
 # Fetch Metadata §2.1: across a redirect chain the value is the least related hop's.
 _RELATION_ORDER: Final[tuple[SiteRelation, ...]] = ("same-origin", "same-site", "cross-site")
 _DEFAULT_PORTS: Final = {"http": 80, "https": 443}  # RFC 9110 §4.2
-# the order in which Chromium sends a script's `fetch()` headers, as the browser rung's Chromium sends them to a
+# The order in which Chromium sends a script's `fetch()` headers, as the browser rung's Chromium sends them to a
 # header echo service; the impersonation profile describes a navigation's. A header absent from a request is skipped.
 FETCH_HEADER_ORDER: Final = (
     "host",
@@ -163,7 +163,7 @@ def _outcome(status: int, body: bytes, raw: bool) -> tuple[BlockClass, str | Non
         except ValueError:
             return "error", "decode_error"
         return "ok", None
-    # The status rules of; the body is not HTML, so it is never a shell.
+    # The status rules apply; the body is not HTML, so it is never a shell.
     block_class = classify(status, (), "")
     return ("error", "unexpected_status") if block_class == "ok" else (block_class, None)
 

@@ -111,7 +111,7 @@ export function ExtractOptions({
           onChange({ ...options, maxRows });
         }}
       />
-      {/* an extract's `budget.llm_calls` bounds a prompt's draft. */}
+      {/* An extract's `budget.llm_calls` bounds a prompt's draft. */}
       <LlmCallsRow
         value={options.llmCalls}
         help="The most LLM calls drafting a schema from the prompt may make. Empty: the project's limit in Settings."

@@ -1,4 +1,4 @@
-"""Proxy pools (OPEN_QUESTIONS #10): datacenter or ISP proxies configured by hand in
+"""Proxy pools: datacenter or ISP proxies configured by hand in
 `CRAWLERAI_PROXY_POOLS`, and used for a fetch whose `proxy_pool` names its pool. A pool is one proxy URL, or
 `{"endpoints": [url, ...], "mode": "rotate" | "sticky"}`: `rotate` takes its endpoints in turn, `sticky` keeps
 each site on one endpoint (rendezvous hashing, Thaler and Ravishankar 1998: a site moves only when its endpoint leaves

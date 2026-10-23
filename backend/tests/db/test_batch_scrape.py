@@ -181,10 +181,10 @@ async def test_page_outputs_are_made_from_each_tasks_capture_and_paginate(
     assert (blue.html, blue.raw_html, blue.metadata) == (None, None, None)
 
 
-# settings pinned at submit.
+# Settings pinned at submit.
 
 
-# one task's failure never fails another.
+# One task's failure never fails another.
 
 
 async def _last_attempt(engine: AsyncEngine, url: str) -> None:

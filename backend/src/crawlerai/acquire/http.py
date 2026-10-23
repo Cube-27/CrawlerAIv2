@@ -81,7 +81,7 @@ async def fetch_http(
             served = last.exchange.url
             challenge = await asyncio.to_thread(challenge_label, last.status, last.response_headers, text, served)
     elif sent.error == BODY_CAP and last is not None and unread_media(last.status, last.response_headers):
-        # stopped the body, which no page reader would read: its status and media type class the answer.
+        # Stopped the body, which no page reader would read: its status and media type class the answer.
         block_class = "unsupported_media"
     count(challenge, "http")
     result = fetch_result(

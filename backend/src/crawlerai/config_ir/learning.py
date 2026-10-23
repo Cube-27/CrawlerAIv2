@@ -349,7 +349,7 @@ async def _page_recipe(
         # replay's usage unaccounted, so the run ends failed.
         raise
     except Exception as e:
-        # the recipe learner's own error refuses the recipe, not the config it would have joined.
+        # The recipe learner's own error refuses the recipe, not the config it would have joined.
         log.exception("learn job %s: recipe learning failed", run.job_id)
         return refused(f"recipe_error: {type(e).__name__}")
 
@@ -544,7 +544,7 @@ def _induced(
         listing = listing.model_copy(update={"next": next_steps.steps[0]})
     elif next_steps is not None:
         left[NEXT_PAGE_FIELD] = "no_listing"
-    # a config whose fields an adapter maps is the adapter's.
+    # A config whose fields an adapter maps is the adapter's.
     origin: ConfigOrigin = "adapter" if induction.mapped else "induced"
     ir = ExtractionConfigIR(
         ir_version="1",

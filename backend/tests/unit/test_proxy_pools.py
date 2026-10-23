@@ -243,7 +243,7 @@ def test_pools_are_read_from_json_with_credentials_percent_decoded(monkeypatch: 
         '"http://user:secret-pw@proxy.example.com:99999"',
         '"proxy.example.com:3128"',
         '{"url": "http://user:secret-pw@proxy.example.com:3128"}',
-        # a pool of several endpoints names its mode, lists at least one endpoint, and none twice.
+        # A pool of several endpoints names its mode, lists at least one endpoint, and none twice.
         '{"endpoints": ["http://user:secret-pw@proxy.example.com:3128"]}',
         '{"endpoints": ["http://user:secret-pw@proxy.example.com:3128"], "mode": "random"}',
         '{"endpoints": [], "mode": "rotate"}',

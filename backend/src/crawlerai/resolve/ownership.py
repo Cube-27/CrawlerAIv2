@@ -24,7 +24,7 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 # schema.org: an Offer is the offer of an item (`offers` / `itemOffered`), so its price and availability are the
 # item's (§4.5: Offer values are owned by the Offer whose parent is the Product).
 OFFER = "Offer"
-# schema.org: an AggregateOffer is "a summary of all the offers" of an item, not the offer of one variant, so it is
+# Schema.org: an AggregateOffer is "a summary of all the offers" of an item, not the offer of one variant, so it is
 # never a variant holder.
 AGGREGATE_OFFER = "AggregateOffer"
 _URL = FieldSpec(type=FieldType.URL)

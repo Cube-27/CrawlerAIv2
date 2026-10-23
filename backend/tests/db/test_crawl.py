@@ -231,7 +231,7 @@ async def test_a_product_absent_from_two_consecutive_crawls_is_gone(
     }
     request = records_crawl(f"{own_origin}/", kettle_schema, f"{own_origin}/p/*")
     runs = []
-    # the red kettle leaves the listing after the first run.
+    # The red kettle leaves the listing after the first run.
     for listed in (("/p/blue", "/p/red"), ("/p/blue",), ("/p/blue",)):
         web.pages[f"{own_origin}/"] = page(*listed)
         submitted = await submit_crawl(engine, fetching.connector, request, data=engine_data)

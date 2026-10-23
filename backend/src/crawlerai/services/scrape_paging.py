@@ -30,7 +30,7 @@ from crawlerai.services.fetching import Fetching, TargetRejected, grown, recipe_
 from crawlerai.services.polite import IN_PLACE, HostRules, ReadRules, Refused, Turns, polite_fetch, rules_of
 from crawlerai.storage.capture_bundle import CaptureBundle
 
-# the actions' time cap; the probe's slowest passing listing took under 50 s.
+# The actions' time cap; the probe's slowest passing listing took under 50 s.
 MAX_ACTIONS_S: Final = 60.0
 _TIMEOUT_SHARE: Final = 0.5
 

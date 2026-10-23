@@ -69,7 +69,7 @@ class ParserCounter:
 
 @pytest.fixture
 def parses(monkeypatch: pytest.MonkeyPatch) -> Mapping[str, ParserCounter]:
-    """the selectolax and lxml parser constructions while the test runs."""
+    """The selectolax and lxml parser constructions while the test runs."""
     counters = {"selectolax": ParserCounter(), "lxml": ParserCounter()}
     monkeypatch.setattr(lexbor, "LexborHTMLParser", counters["selectolax"].wrap(lexbor.LexborHTMLParser))
     monkeypatch.setattr(lxml_html, "document_fromstring", counters["lxml"].wrap(lxml_html.document_fromstring))

@@ -432,7 +432,7 @@ DESCRIBED = _schema(
         pytest.param("<b>Fish</b> &amp;amp; chips", "Fish & chips", "Fish & chips", id="fragment-reference"),
         pytest.param("Fish &amp;amp; chips", "Fish & chips", "Fish & chips", id="text-reference"),
         pytest.param("Sizes 1 < 2 & more", "Sizes 1 < 2 & more", "Sizes 1 < 2 & more", id="no-element"),
-        # markup written escaped is the fragment; an escaped `<` that makes no element stays text.
+        # Markup written escaped is the fragment; an escaped `<` that makes no element stays text.
         pytest.param(
             "&lt;p&gt;Soft &lt;b&gt;cotton&lt;/b&gt;.&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Machine wash&lt;/li&gt;&lt;/ul&gt;",
             "Soft cotton. Machine wash",

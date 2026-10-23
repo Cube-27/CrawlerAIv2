@@ -48,7 +48,7 @@ async def store_capture(
             expires_at=None if expires_in is None else manifest.fetched_at + expires_in,
             size_bytes=len(blob),
             duration_ms=result.duration_ms,
-            # the row keeps every rung tried, beside the policy they ran under.
+            # The row keeps every rung tried, beside the policy they ran under.
             fetch_policy=policy_with_attempts(manifest.fetch_policy, result.attempts),
         )
     )

@@ -1,4 +1,4 @@
-"""at the endpoints: every REST endpoint that takes a URL refuses a target that
+"""At the endpoints: every REST endpoint that takes a URL refuses a target that
 is not a public address, wherever the target comes from: a URL the request names (`url`, `urls`, a glob of `urls`,
 `webhook_url`), a redirect hop, or a location a sitemap or page lists."""
 

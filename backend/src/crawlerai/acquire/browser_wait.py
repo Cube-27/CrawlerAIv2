@@ -35,11 +35,11 @@ _POLL_S = 0.25
 STEP_QUIET_S: Final = 0.5
 # RFC 9110 §15.4: a 3xx document answer is a redirect hop (or a validator's 304), never the document the frame shows.
 _REDIRECTION = range(300, 400)
-# for a ready document `interstitial` judges to stand in for the page, the wait for the main frame to
+# For a ready document `interstitial` judges to stand in for the page, the wait for the main frame to
 # navigate on ends this share of `browser_timeout_s` after the fetch began, and at most `_INTERSTITIAL_MAX_S` after,
 # whatever rule judged it (a refusal's status, or a rendered 2xx document's structure), and as soon as a navigation
 # commits. Nothing is clicked or typed. The bound is an unmeasured starting point: a challenge that does not clear
-# headless held each fetch for the whole share (backlog, #244).
+# headless held each fetch for the whole share.
 _INTERSTITIAL_SHARE = 0.4
 _INTERSTITIAL_MAX_S = 10.0
 

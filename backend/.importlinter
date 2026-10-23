@@ -95,7 +95,7 @@ allow_indirect_imports = True
 # `|` siblings are independent of each other. acquire and adapters are `:` siblings because the adapters-isolated
 # contract lets acquire import adapters. normalize sits above schemas because each normalizer reads the field's
 # `FieldSpec`. collect sits above content because every collector reads the `ParsedPage`.
-# services sits under the API and the MCP server, which both call it; the API sits over the MCP server,
+# Services sits under the API and the MCP server, which both call it; the API sits over the MCP server,
 # which it mounts at `/mcp`.
 [importlinter:contract:layers]
 name = Layering

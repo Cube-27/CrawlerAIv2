@@ -2,7 +2,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type ProxyOptions } from "vite-plus";
 
-// the dev server attaches the UI's API key to proxied requests, so the browser never holds one. Vite
+// The dev server attaches the UI's API key to proxied requests, so the browser never holds one. Vite
 // reads no repo-root `.env` by itself, so it is loaded from `..`: pnpm runs scripts in this package's directory. The
 // variable has no `VITE_` prefix, so it never reaches client code. An empty value counts as unset (.env.example).
 const uiApiKey = loadEnv("development", "..", "")["CRAWLERAI_UI_API_KEY"];

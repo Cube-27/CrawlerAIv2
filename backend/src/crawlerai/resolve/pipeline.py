@@ -76,10 +76,10 @@ ABSENT: Final = "absent"
 # The reason of a `missing` field role C claimed a value for that the page's evidence does not hold.
 UNVERIFIED: Final = "unverified"
 
-# without a `source_precedence.yaml` no source kind is ranked, so text, long_text, url and image_url fields
+# Without a `source_precedence.yaml` no source kind is ranked, so text, long_text, url and image_url fields
 # decline as `unranked` rather than follow an unmeasured order (C7). The repo commits the order.
 UNRANKED: Orders = dict.fromkeys(PRECEDENCE_TYPES, ())
-# a capture whose block class is not `ok` is the page's outcome, with no candidates.
+# A capture whose block class is not `ok` is the page's outcome, with no candidates.
 _NOT_SERVED: Mapping[BlockClass, Outcome] = {
     "blocked": "blocked",
     "shell": "shell",
@@ -510,7 +510,7 @@ class _Listing:
         diagnostics = list(page.diagnostics)
         found = next_page_candidate(links, page.schema, page.ctx, diagnostics)
         candidates = (*page.candidates, *(() if found is None else (found,)))
-        # the config's rows serve only where structured data gives none. Its row candidates
+        # The config's rows serve only where structured data gives none. Its row candidates
         # belong to its own row entities, so structured and config values never meet in one row.
         row_fields = {name for name, spec in page.schema.fields.items() if spec.scope == "row"}
         holders = frozenset(c.entity_id for c in page.collected.candidates if c.field in row_fields)

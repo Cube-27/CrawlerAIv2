@@ -344,7 +344,7 @@ async def test_a_refused_role_c_call_keeps_the_structured_values_and_answers(
     kettle_schema: SchemaDef,
     engine_data: EngineData,
 ) -> None:
-    # the provider refusing the request (a 400) leaves the asked fields missing with its reason.
+    # The provider refusing the request (a 400) leaves the asked fields missing with its reason.
     url = f"{own_origin}/kettles/blue"
     web.serve(url, _product_page(url, offers=False))
     provider = FakeProvider([ProviderRefused("fake", "fake-fast", 400, "schema refused")])
@@ -435,7 +435,7 @@ async def test_formats_and_records_read_one_parse_of_the_page(
     result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}, *formats), data=engine_data)
 
     assert result.outcome == "extracted"
-    # every format and the records read one selectolax parse of the page; the lxml tree is its copy, not a
+    # Every format and the records read one selectolax parse of the page; the lxml tree is its copy, not a
     # parse of its own. A parse of the page is one whose input still holds the head's JSON-LD block.
     body_parses = {name: sum(map(_holds_head_script, counter.inputs)) for name, counter in parses.items()}
     assert body_parses == {"selectolax": 1, "lxml": 0}
@@ -569,7 +569,7 @@ async def test_one_page_is_one_entity_whatever_the_order_of_its_query_pairs(
     kettle_schema: SchemaDef,
     engine_data: EngineData,
 ) -> None:
-    # a scrape keys its task by the canonical form a crawl and an extract use (query pairs sorted), so the
+    # A scrape keys its task by the canonical form a crawl and an extract use (query pairs sorted), so the
     # entity key of a page does not depend on the job kind that fetched it.
     urls = [f"{own_origin}/p?id=5&color=red", f"{own_origin}/p?color=red&id=5"]
     for url in urls:
@@ -672,7 +672,7 @@ async def test_a_site_with_an_active_config_is_scraped_in_config_mode_and_the_pa
     kettle_schema: SchemaDef,
     engine_data: EngineData,
 ) -> None:
-    # the site's active config runs on the page, and the page is added to the config's window.
+    # The site's active config runs on the page, and the page is added to the config's window.
     url = f"{own_origin}/kettles/blue"
     web.serve(url, _product_page(url))
     host = own_origin.removeprefix("https://")

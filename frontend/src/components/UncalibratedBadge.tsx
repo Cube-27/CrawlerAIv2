@@ -1,8 +1,8 @@
 import type { RecordField } from "../api/scrape";
 import { StatusLabel } from "./StatusLabel";
 
-/** Whether a published field of `records` is uncalibrated: its confidence is a score, not a measured precision
- *. A field that did not publish has no confidence to qualify. */
+/** Whether a published field of `records` is uncalibrated: its confidence is a score, not a measured precision.
+ * A field that did not publish has no confidence to qualify. */
 export function hasUncalibrated(
   records: readonly {
     fields: Readonly<Record<string, Pick<RecordField, "status" | "calibrated">>>;

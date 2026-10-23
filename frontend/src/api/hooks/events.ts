@@ -6,7 +6,7 @@ import { openJobEvents, type JobStatus } from "../jobs";
 import type { Problem } from "../problem";
 import { jobKey, jobResultsKey } from "./jobs";
 
-// after each batch of stored events the stream sends the task counts as `progress`, which is not stored
+// After each batch of stored events the stream sends the task counts as `progress`, which is not stored
 // and has no id of its own; the job's end event has the kind of the status it ended in.
 const PROGRESS = "progress";
 const ENDS: ReadonlySet<string> = new Set<JobStatus>(["completed", "failed", "cancelled"]);

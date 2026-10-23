@@ -207,7 +207,7 @@ class _Url(NamedTuple):
 
 def bind(samples: Sequence[Sample]) -> RequestSpec | Ambiguous:
     """The request spec whose binders reproduce the endpoint request of every sample page, with no headers
-    yet (§4.6 adds the proven ones); `Ambiguous` when there is none.
+    yet; `Ambiguous` when there is none.
 
     A value of the endpoint request that equals a path segment or query value of the page URL on every sample becomes
     a `path:`/`query:` parameter. A value that varies and appears nowhere in the page URL becomes a `jsonld:`/

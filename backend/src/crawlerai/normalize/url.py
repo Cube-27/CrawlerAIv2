@@ -33,7 +33,7 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 # tab or newline.
 _C0_AND_SPACE = "".join(chr(c) for c in range(0x21))
 _TAB_OR_NEWLINE = re.compile(r"[\t\n\r]")
-# a reference of C0 controls, spaces and Unicode White_Space (`\s`) only carries no URL. `\s` already
+# A reference of C0 controls, spaces and Unicode White_Space (`\s`) only carries no URL. `\s` already
 # covers U+0009-000D, U+001C-001F and the space, so the class lists only the other C0 controls.
 _BLANK = re.compile(r"[\x00-\x08\x0e-\x1b\s]*")
 # RFC 3986 §2.1 and §6.2.2.1: percent-encoding triplets; hex digits compare case-insensitively, uppercase is
@@ -72,7 +72,7 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
         and ctx.page_url is not None
         and canonical(ctx.page_url, None) == result
     ):
-        # without a fetch there is no content-type evidence, so the structural checks are that an
+        # Without a fetch there is no content-type evidence, so the structural checks are that an
         # image is not the page it appears on, and that its path names no file of another media type (`_other_media`).
         return Invalid("page_url")
     if spec.type is FieldType.IMAGE_URL and isinstance(result, Ok) and _other_media(result.value):
@@ -142,7 +142,7 @@ def canonical(raw: str, base: str | None) -> NormalizeResult:
     if has_surrogate(raw):
         return Invalid("surrogate")
     reference = _reference(raw)
-    # a blank reference is empty whatever the base (it would otherwise resolve to the base).
+    # A blank reference is empty whatever the base (it would otherwise resolve to the base).
     if _BLANK.fullmatch(reference):
         return Invalid("empty")
     try:
@@ -158,7 +158,7 @@ def canonical(raw: str, base: str | None) -> NormalizeResult:
         port = parts.port
     except ValueError:
         return Invalid("unparsable")
-    # only http(s) URLs are values of the type. `urlsplit` lowercases the scheme
+    # Only http(s) URLs are values of the type. `urlsplit` lowercases the scheme
     # (RFC 3986 §3.1: schemes are case-insensitive).
     if parts.scheme not in _DEFAULT_PORT:
         return Invalid("not_http")

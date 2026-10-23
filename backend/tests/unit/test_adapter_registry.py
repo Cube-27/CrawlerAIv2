@@ -112,7 +112,7 @@ def test_a_capture_is_read_by_the_adapter_that_detects_its_page_and_serves_its_e
 
 
 def test_a_host_answering_without_the_platform_signal_is_declined_for_the_window() -> None:
-    # one request per host per window, and after the window the host is tried again.
+    # One request per host per window, and after the window the host is tried again.
     adapter = StubAdapter("board", "board.example.test", Rung("api", status=404, reason=NOT_PLATFORM))
     clock = Clock()
     registry = Registry([adapter], clock=clock)

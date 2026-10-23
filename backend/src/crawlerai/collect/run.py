@@ -6,8 +6,8 @@ and a diagnostic, and the others still run. An `api` capture of an active adapte
 as does the answer a page-scoped adapter joined to the page it serves (`ADAPTER_CALL`), read with that
 adapter's shapes; a platform's documented product JSON that a detail page's HTTP fetch joined after its identity check
 is read as that platform documents it (`collect.platform_json`). Then js_state and xhr admit their values against the
-candidates of the other kinds; on a listing, xhr also reads the rows of the page's captured calls (Appendix A
-#59), which resolution takes where structured data and the config give none; on a listing none of whose groups aligns
+candidates of the other kinds; on a listing, xhr also reads the rows of the page's captured calls, which resolution
+takes where structured data and the config give none; on a listing none of whose groups aligns
 and with no call rows, the rows of its state JSON are read too (`collect.items.state_rows`), resolution taking them, and
 their candidates, only where no other source gives rows.
 The page's detect-and-report signals (`content.signals`) join the diagnostics.
@@ -218,7 +218,7 @@ def _adapter_collectors(
     vocabulary: Vocabulary,
     diagnostics: list[str],
 ) -> list[AdapterCollector]:
-    """an `api` capture holds the JSON of the adapter that detects its page URL, the bundle's `url`, and
+    """An `api` capture holds the JSON of the adapter that detects its page URL, the bundle's `url`, and
     fetches from its final URL; a network body marked `ADAPTER_CALL` holds the JSON of the page-scoped adapter that
     detects the page's final URL (the one it served) and fetches from the body's URL."""
     if manifest.method == "api":

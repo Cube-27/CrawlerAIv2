@@ -493,7 +493,7 @@ async def test_a_refused_role_c_call_leaves_the_field_missing_and_is_not_retried
     kettle_schema: SchemaDef,
     engine_data: EngineData,
 ) -> None:
-    # a call the provider refuses gives no reply, like an unavailable provider; the page keeps its
+    # A call the provider refuses gives no reply, like an unavailable provider; the page keeps its
     # structured values, and its task ends instead of being retried with the same request.
     url = f"{own_origin}/p/1"
     web.serve(url, _page("Blue kettle", offers=False))
