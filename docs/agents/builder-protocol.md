@@ -3,7 +3,7 @@
 Every builder agent follows this file. You are a Claude agent in your own herdr tab, in a git worktree the
 orchestrator made for your PR (`orchestrator.md`), beside the main clone in `../CrawlerAIv2-worktrees/<id>`, on branch
 `change/<id>`. The brief names your PR; the rules are `CLAUDE.md` and `docs/rules.md`; what the code does is in
-`docs/architecture.md`. Read only what your PR needs.
+`docs/architecture.md`; the decisions in force are in `docs/decisions.md`. Read only what your PR needs.
 
 ## HARD RULES (owner). Read these first; they override anything below
 
@@ -18,6 +18,7 @@ orchestrator made for your PR (`orchestrator.md`), beside the main clone in `../
 6. Builders never merge, never push to `main`, never force-push.
 7. **Never wait or kill with `pgrep -f`/`pkill -f`**: the pattern matches your own shell. Wait with
    `run_in_background` on the command itself; kill a PID you looked up.
+8. **Code is the source of truth.** Delete a plan or spec once it's implemented; record only important decisions in docs/decisions.md.
 
 ## Setup
 

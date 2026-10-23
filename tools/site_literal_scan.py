@@ -45,12 +45,12 @@ REPO = Path(__file__).resolve().parents[1]
 TLD_LIST = REPO / "backend/data/iana/tlds-alpha-by-domain.txt"
 DEFAULT_ALLOWLIST = PurePosixPath("tools/site_literal_allowlist.txt")
 
-# Documentation is exempt (D-0004): `docs/`, the frozen archive included.
+# Documentation is exempt: `docs/`.
 EXEMPT_DIRS = ("backend/src/crawlerai/adapters/", "docs/", ".github/")
 EXEMPT_NAMES = frozenset({"pnpm-lock.yaml", "package.json", "pyproject.toml", "LICENSE", "NOTICE"})
 EXEMPT_SUFFIXES = (".lock",)
 DATA_MANIFEST = "backend/data/manifest.json"
-# The SDKs' READMEs are documentation (D-0004) full of code samples, whose attribute accesses read as
+# The SDKs' READMEs are documentation full of code samples, whose attribute accesses read as
 # dotted tokens; the SDKs' code and examples are scanned like any other.
 EXEMPT_FILES = frozenset({DATA_MANIFEST, "sdk/python/README.md", "sdk/typescript/README.md"})
 

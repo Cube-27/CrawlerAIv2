@@ -153,7 +153,7 @@ mutant to get a pass.
 - Claim order (priority, round robin between jobs, score): any due tasks may be claimed.
 - Job cancellation (`cancel_requested`, `Skipped`, `cancel_task`), `insert_claimed` (synchronous scrape), tasks a crawl
   adds while it runs, `fail_stalled_jobs`, worker stop.
-- `SharedBrowser`'s restart after a crash; the listing scrape's own browser (outside the cap, acquisition spec);
+- `SharedBrowser`'s restart after a crash; the listing scrape's own browser (outside the cap);
   adapters and recipes; `HostLimiter`'s adaptive spacing arithmetic (the model's spacing is shared; the adaptive part
   is per process); the browser's recycling.
 - Timing beyond order: a blocked event loop that delays the deadline timer past `LEASE - TASK_DEADLINE` breaks

@@ -48,7 +48,7 @@ around a [generalization contract](docs/rules.md):
 | [docs/rules.md](docs/rules.md) | The product and repo rules CI and agents enforce |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute: checks, pull requests, the e2e report |
 | [docs/agents/](docs/agents/) | The agent workflow: orchestrator guide and builder protocol |
-| [docs/archive/](docs/archive/README.md) | Historical (old specs, design, decisions), not maintained |
+| [docs/decisions.md](docs/decisions.md) | The important decisions in force, with the why |
 
 ## Stack
 
@@ -86,7 +86,7 @@ sdk/                    Python (pure httpx, pydantic) and TypeScript clients, ge
 frontend/               Vite + React + TypeScript + HeroUI v3; generated API client in src/api/
 infra/                  docker-compose.yml (Postgres), Dockerfile (the backend image), postgres/init.sql
 tools/                  repo checks: site-literal scan, data manifest, license scan, no-size-gates, file length
-docs/                   architecture, rules, agent guides, historical archive
+docs/                   architecture, rules, decisions, agent guides
 .github/                CI workflows and the pull request template
 .claude/skills/         agent procedures
 ```
