@@ -12,8 +12,8 @@ import asyncio
 from dataclasses import dataclass
 
 from crawlerai.collect.base import PAGE, Candidate
-from crawlerai.collect.dom import other_item_paths
 from crawlerai.collect.labels import field_labels
+from crawlerai.collect.product_scope import other_item_paths
 from crawlerai.db.models import JobId
 from crawlerai.llm.client import LLMClient, LLMFailure, PromptKind
 from crawlerai.llm.roles import c_extract
@@ -33,7 +33,7 @@ class _RoleC:
 
     async def detail(self, request: GapRequest) -> GapReply:
         """One call for every missing field, reading the product's own text: other items' content
-        (`collect.dom.other_item_paths`) is left out."""
+        (`collect.product_scope.other_item_paths`) is left out."""
         fields = {name: request.schema.fields[name] for name in request.missing}
         elsewhere = await asyncio.to_thread(other_item_paths, request.page, request.ctx, request.outside)
         filled = await c_extract.extract_detail(

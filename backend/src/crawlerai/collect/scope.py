@@ -9,8 +9,8 @@ item of its kind (one of their types is the other's or a subtype of it) names th
 sold elsewhere, as recommendations and bundles are. A root of another kind naming the page (its WebPage, a breadcrumb)
 says nothing of which product is the page's, and where no root of its kind names the page, an item is not set apart
 by its URLs (the page's own may state only a URL the request did not use). Collection reads it
-to know the page product's stated prices (`collect.dom.product_apart`); resolution's ownership and intent apply the same
-relations.
+to know the page product's stated prices (`collect.product_scope.product_apart`); resolution's ownership and intent
+apply the same relations.
 """
 
 from collections.abc import Iterable, Sequence

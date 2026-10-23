@@ -48,7 +48,7 @@ C4):
   each of its own text nodes; a line where two text nodes run digits together (`ParsedPage.digit_joins`) is two
   numbers, not one. Of an element and one inside it reading the same value, the inner one. Text the HTML Standard
   marks as no longer accurate (`s`) or removed (`del`), the obsolete `strike` and text an inline
-  `line-through` decoration strikes (`collect.dom.struck`) is no current value: a struck-through former price, which
+  `line-through` decoration strikes (`content.text.struck`) is no current value: a struck-through former price, which
   only a list price field reads; nor is an option of a drop-down `select` that is not selected (HTML Standard
   §4.10.7: a box of one row shows only its selected option, an add-on's other prices); a money field reads by its price
   role (`collect.items.spot.reads`: no amount written
@@ -88,7 +88,6 @@ from pydantic import ValidationError
 
 from crawlerai.acquire.items import MIN_ITEMS, Group, copies_navigation, hyperlinks, shows_items
 from crawlerai.collect.base import ITEM_BLOCK, Candidate, Entity
-from crawlerai.collect.dom import struck as is_struck
 from crawlerai.collect.dom_images import decorative, image_source
 from crawlerai.collect.items.links import current_page, is_heading, item_links, leads_to, tag_path
 from crawlerai.collect.items.spot import Spot, is_typed, reads, spots
@@ -99,6 +98,7 @@ from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.segment import block_links, chrome_links, text_path
 from crawlerai.content.text import completed, hidden, xpath_step
+from crawlerai.content.text import struck as is_struck
 from crawlerai.normalize.base import Ambiguous, Context, raw_key
 from crawlerai.normalize.dispatch import equality_key
 from crawlerai.normalize.strings import collapse

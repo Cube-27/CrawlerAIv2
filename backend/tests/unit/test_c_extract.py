@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pydantic import JsonValue
 
 from crawlerai.collect.base import Entity
-from crawlerai.collect.dom import product_apart
+from crawlerai.collect.product_scope import product_apart
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
