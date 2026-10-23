@@ -354,6 +354,7 @@ dependencies = [
     { name = "tzdata" },
     { name = "uvicorn" },
     { name = "webencodings" },
+    { name = "xvfbwrapper", marker = "sys_platform == 'linux'" },
     { name = "zstandard" },
 ]
 
@@ -423,6 +424,7 @@ requires-dist = [
     { name = "tzdata", specifier = ">=2024.1" },
     { name = "uvicorn", specifier = ">=0.30,<1" },
     { name = "webencodings", specifier = ">=0.5,<1" },
+    { name = "xvfbwrapper", marker = "sys_platform == 'linux'", specifier = ">=0.2.36,<0.3" },
     { name = "zstandard", specifier = ">=0.23,<1" },
 ]
 provides-extras = ["parquet"]
@@ -2248,6 +2250,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/19/70/80f3b7c10d2630aa66414bf23d210386700aa390547278c789afa994fd7e/xmltodict-1.0.4.tar.gz", hash = "sha256:6d94c9f834dd9e44514162799d344d815a3a4faec913717a9ecbfa5be1bb8e61", size = 26124, upload-time = "2026-02-22T02:21:22.074Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/38/34/98a2f52245f4d47be93b580dae5f9861ef58977d73a79eb47c58f1ad1f3a/xmltodict-1.0.4-py3-none-any.whl", hash = "sha256:a4a00d300b0e1c59fc2bfccb53d7b2e88c32f200df138a0dd2229f842497026a", size = 13580, upload-time = "2026-02-22T02:21:21.039Z" },
+]
+
+[[package]]
+name = "xvfbwrapper"
+version = "0.2.36"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a6/3c/abc46ffe2b7752cb6e5c8d45dbf7cf62daff02566cb9bc7ad00ac6017cf7/xvfbwrapper-0.2.36.tar.gz", hash = "sha256:8fba9fccfc7f61a2f8d6ff6c9fa0ab6045dfe6ae440ba9437e4a8df5b009679f", size = 13505, upload-time = "2026-10-23T01:10:16.024Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9a/5f/5bcc4fa3121a48fc166a4c934f6f22c126a57eaf3cd17ee98139eeb36c15/xvfbwrapper-0.2.36-py3-none-any.whl", hash = "sha256:f33766b3b9100ae1c24b8403374fb218d13eaae92587f75621bcfd7033a2b679", size = 7550, upload-time = "2026-10-23T01:10:14.731Z" },
 ]
 
 [[package]]

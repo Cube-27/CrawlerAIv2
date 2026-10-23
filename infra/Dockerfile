@@ -47,11 +47,11 @@ COPY migrations ./migrations
 # and fonts the package depends on; then the service user. A desktop's font set is added so that font enumeration
 # does not single the container out: metric-compatible core fonts (Liberation, Carlito, Caladea; SIL OFL / Apache-2.0),
 # DejaVu, Noto with CJK and colour emoji, and Roboto. The Microsoft core fonts are not redistributable, so Liberation
-# stands in for them.
+# stands in for them. Xvfb is the virtual display a headful browser opens on (`CRAWLERAI_BROWSER_HEADLESS=false`).
 RUN patchright install --with-deps chrome \
     && apt-get install -y --no-install-recommends \
         fonts-crosextra-caladea fonts-crosextra-carlito fonts-dejavu fonts-liberation \
-        fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core fonts-roboto \
+        fonts-noto-cjk fonts-noto-color-emoji fonts-noto-core fonts-roboto xvfb \
     && rm -rf /var/lib/apt/lists/* && fc-cache -f \
     && useradd --system --no-create-home crawlerai
 USER crawlerai

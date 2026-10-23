@@ -326,10 +326,24 @@ class Browser:
 
 @pytest.fixture(scope="module")
 def browser(server: Server) -> Iterator[Browser]:
+    yield from _browser(server, headless=True)
+
+
+@pytest.fixture(scope="module", params=[True, False], ids=["headless", "headful"])
+def each_mode(request: pytest.FixtureRequest, server: Server) -> Iterator[Browser]:
+    """The module's headless browser, then a headful one (`CRAWLERAI_BROWSER_HEADLESS=false`), on a virtual display
+    where the machine has none."""
+    if request.param:
+        yield request.getfixturevalue("browser")
+    else:
+        yield from _browser(server, headless=False)
+
+
+def _browser(server: Server, *, headless: bool) -> Iterator[Browser]:
     with pytest.MonkeyPatch.context() as env, asyncio.Runner() as runner:
         # Read by the Playwright driver when it starts (crBrowser `shouldProxyLoopback`).
         env.setenv("PLAYWRIGHT_DISABLE_FORCED_CHROMIUM_PROXIED_LOOPBACK", "1")
-        opened = open_browser()
+        opened = open_browser(headless=headless)
         try:
             session = runner.run(opened.__aenter__())
         except PlaywrightError as e:
@@ -368,11 +382,12 @@ def test_a_data_call_whose_body_never_ends_is_left_out_and_the_page_kept(browser
 
 
 def test_the_probe_reads_what_every_request_of_a_page_its_frame_and_workers_presents(
-    browser: Browser, server: Server
+    each_mode: Browser, server: Server
 ) -> None:
-    """Owner 2026-10-23: the identity read at startup (`browser_identity`), which the HTTP and JSON rungs send, names no
-    headless mode, and is what the page, a cross-site frame and a dedicated, service and shared worker send and
-    report."""
+    """Owner 2026-10-23: in either mode, the identity read at startup (`browser_identity`), which the HTTP and JSON
+    rungs send, names no headless mode, and is what the page, a cross-site frame and a dedicated, service and shared
+    worker send and report."""
+    browser = each_mode
     identity = browser.session.identity
     hints = ["architecture", "bitness", "fullVersionList", "model", "platformVersion", "wow64"]
     server.routes["/with-worker"] = Reply(body=_WITH_WORKER.format(port=server.port, hints=json.dumps(hints)).encode())

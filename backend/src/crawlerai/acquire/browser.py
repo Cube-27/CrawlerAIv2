@@ -316,7 +316,7 @@ async def _presented(page: Page, session: BrowserSession) -> None:
     """The browser's identity set on the new tab before it navigates (`present`); a tab that cannot take it is not
     rendered."""
     try:
-        await present(page, session.identity)
+        await present(page, session)
     except PlaywrightError as e:
         raise Failed("render_error", None) from e
 

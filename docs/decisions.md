@@ -31,10 +31,14 @@ Reasoning for a single change goes in its PR body.
   Shell pages (no text, no links, no challenge) go to the browser once; `shell` if still empty.
 - **robots.txt off by default.** `respect_robots: true` opts in. Why: owner call on coverage; politeness pacing stays.
 - **One coherent fingerprint.** curl_cffi impersonates the same Chrome the browser rung runs, for HTTP and JSON fetches.
+- **HTTP rung TLS is curl_cffi's newest Chrome target**; it may lag the installed Chrome by a version (today one
+  extension, trust anchors 0xca34; HTTP/2 identical). Accepted, no custom ClientHello.
 - **Real Chrome through Patchright** (`channel=chrome`), with the browser's own client hints through Chrome's override and
   the user agent through `--user-agent`, so service and shared workers present the same identity. Startup refuses a
   browser that still names headless mode.
-- **Viewport per site profile** (one common desktop screen per profile). **Stay headless.**
+- **Headless by default** (with the client-hint override and one common desktop screen per site profile). **Headful
+  option** (`CRAWLERAI_BROWSER_HEADLESS=false`) per the Patchright README's best practice exactly: no user agent, header,
+  screen or override of ours. Xvfb on Linux without a display. Why: owner 2026-10-23, the user chooses.
 - **Cookies are plain cookies.** Earned clearance cookies are kept and replayed like any other, in the site profile and session.
 - **Proxy framework built, not live-tested.** Our own runs go without proxies; no CAPTCHA solving.
 - **Exits declare their place.** A proxy pool states its country, timezone and locale, so the browser's zone and

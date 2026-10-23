@@ -16,7 +16,9 @@ handler of the job kind (`worker/handlers/`); `scheduler/loop.py` enqueues sched
 
 1. **Acquire** (`acquire/`). `rungs.py` picks the rung: HTTP first (`http.py`, `curl_client.py`, TLS profile in
    `impersonate.py`), the Patchright Chrome browser (`browser.py`, `shared_browser.py`, `browser_profiles.py`) when blocked,
-   a JS shell, or `render.mode` asks. `classify.py`/`challenge.py` set the block class (`ok|blocked|shell|not_found|error`).
+   a JS shell, or `render.mode` asks. The browser is headless by default, with the client-hint override and a per-profile
+   screen (`browser_session.py`, `desktop_screen.py`), or headful per the Patchright README
+   (`CRAWLERAI_BROWSER_HEADLESS=false`; Xvfb on Linux without a display, `display.py`). `classify.py`/`challenge.py` set the block class (`ok|blocked|shell|not_found|error`).
    Politeness, robots (off by default), SSRF guard and redirects: `politeness.py`, `robots.py`, `ssrf.py`, `redirects.py`.
    Site memory (the rung a site's pages start with): `memory.py`. The result is a capture bundle (`core/capture.py`,
    `storage/capture_bundle.py`); every record can be replayed from it (`POST /v1/captures/{id}/replay`).
