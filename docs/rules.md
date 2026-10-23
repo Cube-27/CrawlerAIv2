@@ -39,7 +39,8 @@ CI checks and the contract agents rely on. `CLAUDE.md` holds the full agent text
 - Every crawl extracts fresh; learning keeps selectors and cookies, never values.
 - A stated brand outranks the platform vendor; a job page holding its application form is its own `apply_url`; a canonical link
   wins for the page URL.
-- Hide internals from users; unpublished beats wrong.
+- Hide internals from users, except the calls, paths and headers the Recipes screen shows an engineer; unpublished
+  beats wrong.
 
 ## Repo rules
 

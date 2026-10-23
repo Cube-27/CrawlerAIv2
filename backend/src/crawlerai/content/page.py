@@ -351,13 +351,25 @@ def _remove_fallback(marker: lexbor.LexborNode) -> None:
 
 
 def _html_answers(network: tuple[bytes, ...], entries: tuple[NetworkBody, ...]) -> tuple[tuple[NetworkBody, str], ...]:
-    """The captured 2xx HTML answers (no data call's), each decoded as an HTTP body (`decode_html`), in capture
-    order."""
+    """The captured 2xx HTML answers (no data call's) the page fetched from its own site, each decoded as an HTTP body
+    (`decode_html`), in capture order: an engineer capture (`FetchPolicy.calls` `all`) also keeps other sites' answers
+    and the documents a page step navigated to, which are no fragment of this page."""
     return tuple(
-        (entry, decode_html(body, entry.response_headers or _labelled(entry), "http"))
+        (entry, answer_text(entry, body))
         for body, entry in zip(network, entries, strict=False)
-        if 200 <= entry.status < 300 and entry.data_call is None and is_html(entry.content_type)
+        if 200 <= entry.status < 300 and entry.data_call is None and is_html(entry.content_type) and _fragment(entry)
     )
+
+
+def _fragment(entry: NetworkBody) -> bool:
+    """Whether a captured answer is one the page fetched from its own site (HTML Standard §7.1.1), not a document its
+    main frame navigated to (Fetch Standard §2.2.5 destination `document`)."""
+    return entry.same_site is not False and entry.resource_type != "document"
+
+
+def answer_text(entry: NetworkBody, body: bytes) -> str:
+    """A captured answer's body as text, decoded as an HTTP body (`decode_html`) by its response headers."""
+    return decode_html(body, entry.response_headers or _labelled(entry), "http")
 
 
 def _labelled(entry: NetworkBody) -> tuple[tuple[str, str], ...]:

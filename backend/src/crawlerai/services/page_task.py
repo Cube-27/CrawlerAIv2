@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from crawlerai.acquire.memory import learn_fetch
 from crawlerai.acquire.politeness import backoff, slowed_down
 from crawlerai.acquire.rungs import NO_PLAN
-from crawlerai.acquire.types import AttemptRecord, FetchResult
+from crawlerai.acquire.types import AttemptRecord, CallsMode, FetchResult
 from crawlerai.config_ir.active import recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.db.queue import LEASE, ClaimedTask, Failed, Finished, Postpone, TaskResult
@@ -74,7 +74,7 @@ class PageTask:
     fetched when `planned`, and whose config's API recipe serves it when the records are all it reads (`served`); a
     listing recipe with pagination then serves up to `listing_pages` pages, and only the first without. A stored
     capture is read within `max_age` seconds; the fetch is bounded by `deadline`, on `time.monotonic`. `growth` and
-    `paging` are a scrape's (module docstring)."""
+    `paging` are a scrape's (module docstring); `calls`, the calls its capture keeps (`FetchPolicy.calls`)."""
 
     task: ClaimedTask
     options: FetchOptions
@@ -88,6 +88,7 @@ class PageTask:
     max_age: int = 0
     growth: Growth | None = None
     paging: Paging | None = None
+    calls: CallsMode = "data"
 
 
 @dataclass(frozen=True)
@@ -115,6 +116,7 @@ async def fetch_task(
         schema=None if records is None else records.schema,
         vocabulary=None if records is None else records.data.vocabulary,
         formats=page_task.formats,
+        calls=page_task.calls,
     )
     config = None if records is None else records.config
     recipe = recipe_of(config) if page_task.served and config is not None else None

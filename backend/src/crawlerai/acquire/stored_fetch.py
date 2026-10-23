@@ -74,10 +74,14 @@ def fetched_as_kind(kind: PageKind) -> ColumnElement[bool]:
 
 def made_as(policy: FetchPolicy) -> ColumnElement[bool]:
     """The captures made the way a fetch under `policy` would be: with its page steps and its request context (names
-    and value digest), its screenshot area when it asks for a screenshot, and, for a content-only read, judged by that
-    rule or rendered."""
+    and value digest), keeping the same calls (`CallsMode`: a data capture holds too few for an engineer's, an engineer
+    capture other sites' calls an extraction never reads), its screenshot area when it asks for a screenshot, and, for
+    a content-only read, judged by that rule or rendered."""
     made = policy.model_dump(mode="json", include={"steps", "context", "screenshot"})
     same = [_stored("steps") == _jsonb(made["steps"]), _stored("context") == _jsonb(made["context"])]
+    # `calls` is stored only when it is not `data` (`PolicyFields.calls`).
+    calls = Capture.fetch_policy.has_key(_key("calls"))
+    same.append(_stored("calls") == _jsonb(policy.calls) if policy.calls != "data" else ~calls)
     if policy.screenshot is not None:
         # A screenshot of the viewport does not stand for one of the full page, nor the other way round.
         same.append(_stored("screenshot") == _jsonb(made["screenshot"]))

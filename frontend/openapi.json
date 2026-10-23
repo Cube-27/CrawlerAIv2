@@ -864,6 +864,501 @@
         "title": "Budget",
         "type": "object"
       },
+      "CallDetail": {
+        "description": "One call a capture kept (`GET /v1/captures/{id}/calls/{n}`): the request as sent (headers as recorded: no\ncookies, the caller's own values masked), the answer's status, headers and text (its UTF-8 decoding, at most\n`ANSWER_MAX_BYTES`), the page step it followed and whether it went to the page's own site, and the guard prefix\nits JSON opens with.",
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          },
+          "guard_prefix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guard Prefix"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "request_body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Body"
+          },
+          "request_headers": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ],
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Headers"
+          },
+          "resource_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Type"
+          },
+          "response_headers": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ],
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Headers"
+          },
+          "same_site": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Same Site"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "method",
+          "url",
+          "status",
+          "content_type",
+          "resource_type",
+          "step",
+          "same_site",
+          "guard_prefix",
+          "request_headers",
+          "request_body",
+          "response_headers",
+          "size",
+          "answer"
+        ],
+        "title": "CallDetail",
+        "type": "object"
+      },
+      "CallList": {
+        "description": "The calls of the samples, by endpoint in the order they were first called (the samples' order, then each\ncapture's: its own site's calls first).",
+        "properties": {
+          "endpoints": {
+            "items": {
+              "$ref": "#/components/schemas/Endpoint"
+            },
+            "title": "Endpoints",
+            "type": "array"
+          },
+          "samples": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Samples",
+            "type": "array"
+          },
+          "schema_id": {
+            "format": "uuid",
+            "title": "Schema Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_id",
+          "samples",
+          "endpoints"
+        ],
+        "title": "CallList",
+        "type": "object"
+      },
+      "CallSummary": {
+        "description": "One call of a sample: its index among the capture's network bodies (`GET /v1/captures/{id}/calls/{n}`), its\nanswer's status, content type and size, the request's Fetch destination, the page step it followed (0: the page's\nload), and whether it went to the page's own site.",
+        "properties": {
+          "capture_id": {
+            "format": "uuid",
+            "title": "Capture Id",
+            "type": "string"
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "resource_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Type"
+          },
+          "same_site": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Same Site"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step"
+          }
+        },
+        "required": [
+          "capture_id",
+          "index",
+          "status",
+          "content_type",
+          "resource_type",
+          "step",
+          "same_site",
+          "size"
+        ],
+        "title": "CallSummary",
+        "type": "object"
+      },
+      "CallsRequest": {
+        "additionalProperties": false,
+        "description": "The sample captures whose calls are merged: two to five, read for one schema, all distinct.",
+        "properties": {
+          "capture_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 2,
+            "title": "Capture Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "capture_ids"
+        ],
+        "title": "CallsRequest",
+        "type": "object"
+      },
+      "CaptureRequest": {
+        "additionalProperties": false,
+        "description": "The body of `POST /v1/captures`: a sample page of `schema_id`'s page kind, rendered in the browser after the\npage steps (`actions`, `wait_for`, as `fetch` names them), with the caller's `cookies`, through `proxy_pool`.",
+        "properties": {
+          "actions": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "click": "#/components/schemas/ClickAction-Input",
+                  "press": "#/components/schemas/PressAction-Input",
+                  "scroll": "#/components/schemas/ScrollAction-Input",
+                  "type": "#/components/schemas/TypeAction-Input",
+                  "wait": "#/components/schemas/WaitAction-Input"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/WaitAction-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/ClickAction-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/ScrollAction-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/PressAction-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/TypeAction-Input"
+                }
+              ]
+            },
+            "maxItems": 20,
+            "title": "Actions",
+            "type": "array"
+          },
+          "cookies": {
+            "additionalProperties": {
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
+            },
+            "maxProperties": 50,
+            "title": "Cookies",
+            "type": "object"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "page_kind": {
+            "enum": [
+              "detail",
+              "listing"
+            ],
+            "title": "Page Kind",
+            "type": "string"
+          },
+          "proxy_pool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proxy Pool"
+          },
+          "schema_id": {
+            "format": "uuid",
+            "title": "Schema Id",
+            "type": "string"
+          },
+          "timeout_s": {
+            "default": 60,
+            "exclusiveMinimum": 0.0,
+            "maximum": 120.0,
+            "title": "Timeout S",
+            "type": "number"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "wait_for": {
+            "anyOf": [
+              {
+                "maximum": 15000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wait For"
+          }
+        },
+        "required": [
+          "url",
+          "schema_id",
+          "page_kind"
+        ],
+        "title": "CaptureRequest",
+        "type": "object"
+      },
+      "CaptureResult": {
+        "description": "An engineer capture: the stored capture (None when nothing was sent: `reason` says why, as a scrape's does),\nhow its page ended, the records stored from it, and every fetch attempt.",
+        "properties": {
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AttemptRecord"
+            },
+            "title": "Attempts",
+            "type": "array"
+          },
+          "capture_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capture Id"
+          },
+          "outcome": {
+            "enum": [
+              "extracted",
+              "partial",
+              "blocked",
+              "shell",
+              "not_found",
+              "auth_wall",
+              "soft_404",
+              "geo_redirect",
+              "redirected_to_listing",
+              "unsupported_media",
+              "geo_blocked",
+              "no_match",
+              "timeout",
+              "failed"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/ScrapedRecord"
+            },
+            "title": "Records",
+            "type": "array"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "capture_id",
+          "url",
+          "outcome",
+          "reason",
+          "records",
+          "attempts"
+        ],
+        "title": "CaptureResult",
+        "type": "object"
+      },
       "Chunk": {
         "description": "One chunk of a page's markdown: its position, text, size in words and the headings above it.",
         "properties": {
@@ -2438,6 +2933,102 @@
         "title": "DroppedRowMeta",
         "type": "object"
       },
+      "Endpoint": {
+        "description": "One endpoint group: its request method, URL shape (origin, whether there is a path, its segment count, the\nquery names in order) and request body shape, the samples it was called on, its calls, the fields it carries and\nthe row query of the rows it lists.",
+        "properties": {
+          "body_shape": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Shape"
+          },
+          "calls": {
+            "items": {
+              "$ref": "#/components/schemas/CallSummary"
+            },
+            "title": "Calls",
+            "type": "array"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldMatch"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "has_path": {
+            "title": "Has Path",
+            "type": "boolean"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "query": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Query",
+            "type": "array"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          },
+          "samples": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Samples",
+            "type": "array"
+          },
+          "segments": {
+            "title": "Segments",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "method",
+          "origin",
+          "has_path",
+          "segments",
+          "query",
+          "body_shape",
+          "samples",
+          "calls",
+          "fields",
+          "rows"
+        ],
+        "title": "Endpoint",
+        "type": "object"
+      },
       "ExportPage": {
         "description": "One page of a job's records in an export format; `next_cursor` as in `RecordPage`.",
         "properties": {
@@ -3379,6 +3970,38 @@
           "reason"
         ],
         "title": "FieldErrorOut",
+        "type": "object"
+      },
+      "FieldMatch": {
+        "description": "Where an endpoint carries one schema field: `published` paths read the value a sample published, else `paths`\nread a value of the field's type; `in_text` counts the samples whose HTML answer holds the published value's\ntext.",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "in_text": {
+            "title": "In Text",
+            "type": "integer"
+          },
+          "paths": {
+            "items": {
+              "$ref": "#/components/schemas/PathCount"
+            },
+            "title": "Paths",
+            "type": "array"
+          },
+          "published": {
+            "title": "Published",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "field",
+          "published",
+          "paths",
+          "in_text"
+        ],
+        "title": "FieldMatch",
         "type": "object"
       },
       "FieldReport": {
@@ -5944,6 +6567,25 @@
           "rows"
         ],
         "title": "ParamPagination",
+        "type": "object"
+      },
+      "PathCount": {
+        "description": "A map path, and on how many of the samples a call of the endpoint read it.",
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "samples": {
+            "title": "Samples",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "samples"
+        ],
+        "title": "PathCount",
         "type": "object"
       },
       "PlatformDraft": {
@@ -9358,6 +10000,163 @@
         ]
       }
     },
+    "/v1/captures": {
+      "post": {
+        "description": "Render `url` in the browser after the page steps, keeping every call the page makes, and store the capture and\nits record of the schema: a sample page to choose a custom recipe's calls from. Answers when the page has been\nfetched and read, as `POST /v1/scrape` does, with its problems.",
+        "operationId": "capture_v1_captures_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Capture",
+        "tags": [
+          "captures"
+        ]
+      }
+    },
     "/v1/captures/{capture_id}/artifacts/{name}": {
       "get": {
         "description": "The screenshot (`screenshot.png`) or PDF (`page.pdf`) the browser made of the capture's page, as the scrape,\nbatch or crawl that asked for it named it in its answer. 404: no such capture, its files expired with it, or it has\nno such file.",
@@ -9468,6 +10267,325 @@
           }
         ],
         "summary": "Get Artifact",
+        "tags": [
+          "captures"
+        ]
+      }
+    },
+    "/v1/captures/{capture_id}/calls": {
+      "get": {
+        "description": "The capture's calls by endpoint, each with where it carries the fields of the schema it was read for (the values\nof its record, else the paths of each field's type). 404: no such capture, or its bundle expired; 409: it was read\nfor no schema.",
+        "operationId": "get_calls_v1_captures__capture_id__calls_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "capture_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Capture Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Calls",
+        "tags": [
+          "captures"
+        ]
+      }
+    },
+    "/v1/captures/{capture_id}/calls.har": {
+      "get": {
+        "description": "The capture as an HTTP Archive (HAR 1.2): the page's document and every call it kept, without cookies, the\ncaller's own header values masked. 404: no such capture, or its bundle expired.",
+        "operationId": "get_har_v1_captures__capture_id__calls_har_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "capture_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Capture Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Har",
+        "tags": [
+          "captures"
+        ]
+      }
+    },
+    "/v1/captures/{capture_id}/calls/{index}": {
+      "get": {
+        "description": "One call the capture kept, by its index in the call list: the request and the answer's text. 404: no such\ncapture or call, or its bundle expired.",
+        "operationId": "get_call_v1_captures__capture_id__calls__index__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "capture_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Capture Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "title": "Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Call",
         "tags": [
           "captures"
         ]
@@ -12008,6 +13126,118 @@
         "summary": "Patch Project Settings",
         "tags": [
           "project"
+        ]
+      }
+    },
+    "/v1/recipes/calls": {
+      "post": {
+        "description": "The samples' calls by endpoint, each field's paths counted on how many samples they read it. 404: no such\ncapture, or its bundle expired; 409: a capture was read for no schema, or they were read for different ones.",
+        "operationId": "calls_v1_recipes_calls_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CallsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Calls",
+        "tags": [
+          "recipes"
         ]
       }
     },

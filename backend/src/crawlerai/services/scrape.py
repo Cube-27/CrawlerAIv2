@@ -38,7 +38,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.types import ActionsReport, BrowserActions, FetchResult
+from crawlerai.acquire.types import ActionsReport, BrowserActions, CallsMode, FetchResult
 from crawlerai.collect.run import Adapters
 from crawlerai.config_ir.active import active_config
 from crawlerai.config_ir.drift import DriftMargins
@@ -245,6 +245,7 @@ class _Work:
     schema: SchemaDef | None
     deadline: float | None = None  # on `time.monotonic`: when `request.timeout_s` runs out
     render: RenderOptions | None = None  # the request's; None: its surface's
+    calls: CallsMode = "data"  # the calls its capture keeps
 
 
 @dataclass(frozen=True)
@@ -278,8 +279,10 @@ async def scrape(
     llm: LLMClient = NO_LLM,
     data: EngineData | None = None,
     margins: DriftMargins | None = None,
+    calls: CallsMode = "data",
 ) -> ScrapeResult:
-    """Run `request` as a scrape job; `records` reads `data`, and an active config's drift `margins`. Raises, before
+    """Run `request` as a scrape job; `records` reads `data`, and an active config's drift `margins`; its capture
+    keeps `calls` (`FetchPolicy.calls`: `all` for an engineer capture, `services.captures`). Raises, before
     any job is created: `TargetRejected` for a target refused outright, `RecordsUnavailable` for `records` without
     `data`, `SchemaUnusable` for a schema id `records` cannot use, and the schemas service's `SchemaConflict` or
     `InvalidSchema` for an inline schema, and the LLM client's `LLMFailure` for field names it could not draft.
@@ -291,7 +294,8 @@ async def scrape(
     check_proxy_pool(request.fetch, fetching.egresses.pools)
     pinned = None if data is None else data.with_min_confidence(request.min_confidence)
     render = request.render if "render" in request.model_fields_set else None
-    work = _Work(llm, pinned, margins, await _named_schema(engine, request, data, llm), render=render)
+    schema = await _named_schema(engine, request, data, llm)
+    work = _Work(llm, pinned, margins, schema, render=render, calls=calls)
     egress = job_egress(fetching.egresses, request.fetch)
     task = await _start(engine, request, work.schema, egress)
     # The browser's budget is the timeout's, which starts here (`acquire.rungs.BROWSER_MIN_S`).
@@ -392,6 +396,7 @@ async def _run(
         max_age=request.max_age,
         growth=growth,
         paging=paging,
+        calls=work.calls,
     )
     fetched = await fetch_task(engine, fetching, site, page_task, IN_PLACE)
     page = _reached(fetched)

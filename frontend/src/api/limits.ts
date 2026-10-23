@@ -47,6 +47,26 @@ export const LIMITS = {
       "minimum": 0.0
     }
   },
+  "CallsRequest": {
+    "capture_ids": {
+      "maxItems": 5,
+      "minItems": 2
+    }
+  },
+  "CaptureRequest": {
+    "actions": {
+      "maxItems": 20
+    },
+    "timeout_s": {
+      "exclusiveMinimum": 0.0,
+      "maximum": 120.0
+    },
+    "wait_for": {
+      "maximum": 15000.0,
+      "minLength": 1,
+      "minimum": 1.0
+    }
+  },
   "ChunkOptions-Input": {
     "overlap": {
       "minimum": 0.0
