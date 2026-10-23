@@ -179,3 +179,13 @@ def test_a_section_of_another_url_template_is_not_merged_into_the_listing() -> N
 
     assert len(result.rows) == 8
 
+
+def test_a_listing_price_takes_the_currency_a_page_wide_data_attribute_declares() -> None:
+    # HTML Standard §3.2.6.6: `data-currency` is the element's `dataset.currency`, a page-wide currency member.
+    body = '<div class="page" data-currency="GBP">' + _cards("/shop/kettle-{i}", 6, "<span>£1{i}.50</span>") + "</div>"
+
+    result = _extract("", body, LISTING)
+
+    assert {json.dumps(row["price"].value) for row in result.rows} >= {
+        json.dumps({"amount": "10.50", "currency": "GBP"})
+    }

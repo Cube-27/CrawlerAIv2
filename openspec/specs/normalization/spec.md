@@ -72,8 +72,9 @@ page's own before its state members: (3a) `declared_currencies`, OGP `og:price:c
 and, on a page showing its platform's signal, the platform's documented currency global (Shopify
 `Shopify.currency.active`, Shopware `window.currencyIsoCode`, `adapters/platforms.py` `currency_members`); (3b)
 `state_currencies`, a state JSON member named `currency`, `currencyCode` or `activeCurrency` holding an ISO 4217
-code, analytics call arguments included, which a third party's script config writes as readily as the page
-(`collect/currencies.py`); (4) the CLDR
+code, analytics call arguments included, or an element's `dataset` member of those names (HTML Standard §3.2.6.6:
+`data-currency`, `data-currency-code`), which a third party's script config or widget writes as readily as the page
+(`collect/currencies.py`); several such codes settle no unwritten currency; (4) the CLDR
 currency symbols of the locales the page's language tags, Content-Language (RFC 9110 §8.5, its HTML pragma) and ccTLD
 (RFC 1591, a CLDR territory or its CLDR alias: `uk` is GB) name, when they narrow a shared sign to one currency; (5)
 the territory the URL names (owner 2026-10-19, `url_currency`): of the final URL, then the requested one, a locale
