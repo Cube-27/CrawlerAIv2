@@ -55,7 +55,6 @@ def test_the_currency_comes_from_the_best_evidence_with_weaker_evidence_noted() 
     assert money.normalize("$12.99", MONEY, _ctx(html_lang="en")) == _ok("12.99", "USD", "symbol")
     assert money.normalize("$5", MONEY, _ctx()) == _ok("5", "USD", "symbol")
     assert money.normalize("¥500", MONEY, _ctx()) == _ok("500", "JPY", "symbol")
-    assert money.normalize("$5", MONEY, _ctx(page_url="https://shop.example.ca/p")) == _ok("5", "CAD", "locale")
     assert money.normalize("$5", MONEY, _ctx(page_currencies=("AUD",))) == _ok("5", "AUD")
     cctld = "ca"  # RFC 1591: a two-letter ISO 3166-1 code; the host is synthetic, under RFC 2606's `example` label
     assert money.normalize("$5", MONEY, _ctx(page_url=f"https://shop.example.{cctld}/p")) == _ok("5", "CAD", "locale")

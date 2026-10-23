@@ -298,7 +298,7 @@ def _monetary(
         case (Invalid() as declined, _) | (_, Invalid() as declined):
             return declined
         case (Ok(basis="url" | "symbol"), _) | (_, Ok(basis="url" | "symbol")):
-            # A range has no basis to flag a currency only its URL or sign names (normalization spec), so it states none.
+            # A range has no basis to flag a currency only its URL or sign names, so it states none.
             return Ambiguous("currency_unknown", ())
         case (Ambiguous(reason=reason), _) | (_, Ambiguous(reason=reason)):
             # Each reading of the range pairs a reading of each bound in the same currency.

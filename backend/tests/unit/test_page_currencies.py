@@ -50,13 +50,13 @@ def test_values_that_are_not_iso_4217_codes_as_written_are_not_currencies() -> N
 
 
 def test_the_stated_currency_settles_a_symbol_the_page_writes_in_text() -> None:
-    # schemas spec: `$` alone stands for several currencies; the Offer's USD settles it.
-    page = _page(_jsonld({"@context": "https://schema.org", "@type": "Offer", "priceCurrency": "USD"}))
+    # schemas spec: `$` alone stands for several currencies; the Offer's CAD settles it, else the sign's primary one does.
+    page = _page(_jsonld({"@context": "https://schema.org", "@type": "Offer", "priceCurrency": "CAD"}))
     spec = FieldSpec(type=FieldType.MONEY, description="d")
 
-    assert money.normalize("$12.50", spec, CTX) == Ok({"amount": "12.50", "currency": None}, basis="unknown")
+    assert money.normalize("$12.50", spec, CTX) == Ok({"amount": "12.50", "currency": "USD"}, basis="symbol")
     assert money.normalize("$12.50", spec, with_page_declarations(CTX, page)) == Ok(
-        {"amount": "12.50", "currency": "USD"}
+        {"amount": "12.50", "currency": "CAD"}
     )
 
 
