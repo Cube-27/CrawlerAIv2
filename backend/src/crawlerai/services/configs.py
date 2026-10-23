@@ -90,6 +90,8 @@ class ConfigSummary(_Out):
 
 class ConfigDetail(ConfigSummary):
     ir: ExtractionConfigIR
+    # A custom recipe as it is saved and edited (`CustomRecipe`); None for a learned config.
+    recipe: CustomRecipe | None
     # A recipe's repair waiting for approval: what it changes in the active version of its shape.
     repair_changes: list[RecipeChange] | None
 
@@ -186,7 +188,10 @@ async def list_for_host(conn: AsyncConnection, host: str) -> list[ConfigSummary]
 
 async def get(conn: AsyncConnection, config_id: ExtractionConfigId) -> ConfigDetail:
     row = await _row(conn, config_id)
-    return _model(ConfigDetail, {**row, "repair_changes": await _repair_changes(conn, row)})
+    recipe = (
+        CustomRecipe.from_ir(ExtractionConfigIR.model_validate(row["ir"]), row["schema_id"]) if row["custom"] else None
+    )
+    return _model(ConfigDetail, {**row, "recipe": recipe, "repair_changes": await _repair_changes(conn, row)})
 
 
 async def _repair_changes(conn: AsyncConnection, row: RowMapping) -> list[RecipeChange] | None:

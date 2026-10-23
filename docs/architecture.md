@@ -114,7 +114,10 @@ screen only. The recipe builder's helpers persist nothing: `POST /v1/recipes/cal
 `pagination.infer`, `url_pattern.generalize`), and `POST /v1/recipes/test` serves URLs of a recipe's patterns with it
 and with the normal extraction side by side (`services/recipe_trial.py`: a `scrape` job whose trial fetches store no
 capture, record or site memory; `PageTask.trial`). Bearer API keys (`crawlerai apikey create`). Schemas (presets in `schemas/presets/*.json`) are data.
-SDKs in `sdk/python`, `sdk/typescript` (`tools/dev.py sdk`); web UI in `frontend/`.
+SDKs in `sdk/python`, `sdk/typescript` (`tools/dev.py sdk`); web UI in `frontend/`. The Recipes screen
+(`frontend/src/screens/recipes/`, a site's recipes) builds a custom recipe from samples, their calls and the server's
+draft, which the engineer's edits lie over (`draft.ts`), tests it, saves it, edits a saved one (`GET /v1/configs/{id}`
+answers a custom recipe also as the `CustomRecipe` it is edited as) and approves or rejects its pending repair.
 
 ## Pinned data
 

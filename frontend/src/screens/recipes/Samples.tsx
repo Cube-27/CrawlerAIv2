@@ -17,8 +17,6 @@ import { TextAreaRow, TextRow } from "../playground/OptionsPanel";
 /** A sample page the browser captured: the stored capture and what its page gave. */
 export interface Sample {
   captureId: string;
-  /** The schema the page was read for: a call list merges samples of one schema only. */
-  schemaId: string;
   result: CaptureResult;
 }
 
@@ -87,7 +85,7 @@ export function SampleForm({
         capture.mutate(captureRequest(draft, schema), {
           onSuccess: (result) => {
             if (result.capture_id === null) return;
-            onCaptured({ captureId: result.capture_id, schemaId: schema.id, result });
+            onCaptured({ captureId: result.capture_id, result });
             setDraft(EMPTY_DRAFT);
           },
         });

@@ -1,4 +1,5 @@
 import type { Endpoint, FieldMatch } from "../../api/captures";
+import type { EndpointRef } from "../../api/recipes";
 
 /** One endpoint group as text, stable while samples are added: method, origin, path shape, query names and body
  * shape, as the server groups calls by them. */
@@ -11,6 +12,12 @@ export function endpointKey(endpoint: Endpoint): string {
     endpoint.query,
     endpoint.body_shape,
   ]);
+}
+
+/** The endpoint as a draft names it: by the members of its key. */
+export function endpointRef(endpoint: Endpoint): EndpointRef {
+  const { method, origin, has_path: hasPath, segments, query, body_shape: bodyShape } = endpoint;
+  return { method, origin, has_path: hasPath, segments, query, body_shape: bodyShape };
 }
 
 /** The URL shape people read: `GET https://example.test/{3 segments}?page&size`. */

@@ -1,10 +1,20 @@
 import { Link, Typography } from "@heroui/react";
 import { useMemo, useState } from "react";
 import { useParams } from "react-router";
-import { parseFieldTypes } from "../../api/field";
-import { useCallList } from "../../api/hooks/recipes";
+import type { Endpoint } from "../../api/captures";
+import { parseFieldTypes, type FieldTypes } from "../../api/field";
+import { useConfig } from "../../api/hooks/configs";
+import { useCallList, useProposal, useProposeCall, useTestRecipe } from "../../api/hooks/recipes";
 import { problemOf } from "../../api/hooks/query";
-import { MAX_SAMPLES } from "../../api/recipes";
+import { useSchema } from "../../api/hooks/schemas";
+import type { Problem } from "../../api/problem";
+import {
+  MAX_SAMPLES,
+  type CustomRecipe,
+  type Proposal,
+  type ProposeBody,
+  type WrittenRecipe,
+} from "../../api/recipes";
 import type { SchemaDef } from "../../api/schemas";
 import { EmptyView } from "../../components/EmptyView";
 import { keyedTexts } from "../../components/keys";
@@ -13,12 +23,19 @@ import { PageHeader } from "../../components/PageHeader";
 import { ProblemAlert } from "../../components/ProblemAlert";
 import { SchemaSelect } from "../../components/SchemaSelect";
 import { Section } from "../../components/Section";
+import type { EditHandlers } from "./CallEditor";
 import { CallList, type SampleNumber } from "./CallList";
-import { endpointKey, endpointText, matchLines, ownSiteFirst } from "./endpoints";
-import { recipesPath } from "./paths";
+import { applied, fieldSources, NO_EDITS, withEdit, withoutEdit, type Edits } from "./draft";
+import { endpointKey, endpointRef, endpointText, matchLines, ownSiteFirst } from "./endpoints";
+import { ExtrasStep } from "./ExtrasStep";
+import { recipePath, recipesPath } from "./paths";
+import { ReviewStep } from "./ReviewStep";
 import { SampleForm, SampleList, type Sample } from "./Samples";
+import { SaveStep } from "./SaveStep";
+import { TestStep } from "./TestStep";
 
-/** The fewest samples a recipe is built from: one page cannot tell a call's fixed parts from those the URL varies. */
+/** The fewest samples a recipe is drafted from: one page cannot tell a call's fixed parts from those the URL
+ * varies. */
 const MIN_SAMPLES = 2;
 
 function samplesHelp(count: number): string {
@@ -28,18 +45,68 @@ function samplesHelp(count: number): string {
   return `${String(count)} samples; up to ${String(MAX_SAMPLES)}.`;
 }
 
-/** Step 3 and 4: the samples' calls by endpoint, and the main call chosen from them. */
-function CallSteps({
+/** Step 4: the main call chosen, where it carries each field, and how its draft is coming. */
+function MainCall({
+  chosen,
   samples,
+  proposal,
+}: Readonly<{
+  chosen: Endpoint | undefined;
+  samples: number;
+  proposal: ReturnType<typeof useProposal>;
+}>) {
+  const problem = problemOf(proposal.error);
+  if (chosen === undefined) {
+    return (
+      <Typography.Paragraph size="sm" color="muted">
+        Choose the call that answers with the page&apos;s record: &quot;Use as main call&quot; on
+        its group.
+      </Typography.Paragraph>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <Typography.Paragraph className="font-mono text-sm break-all">
+        {endpointText(chosen)}
+      </Typography.Paragraph>
+      <ul aria-label="Main call fields" className="flex flex-col gap-1 font-mono text-sm">
+        {keyedTexts(chosen.fields.flatMap((match) => matchLines(match, samples))).map(
+          ({ key, text }) => (
+            <li key={key}>{text}</li>
+          ),
+        )}
+      </ul>
+      {samples < MIN_SAMPLES ? (
+        <Typography.Paragraph size="sm" color="muted">
+          Capture a second sample to draft the recipe.
+        </Typography.Paragraph>
+      ) : null}
+      {proposal.isFetching ? <LoadingView label="Drafting the recipe" /> : null}
+      {problem === null ? null : <ProblemAlert problem={problem} />}
+    </div>
+  );
+}
+
+/** Step 3 and 4: the samples' calls by endpoint, the main call chosen from them, and extra calls added. */
+function CallSteps({
+  ids,
   main,
+  proposal,
   onPick,
-}: Readonly<{ samples: readonly Sample[]; main: string | null; onPick: (key: string) => void }>) {
-  const ids = useMemo(() => samples.map(({ captureId }) => captureId), [samples]);
+  onAdd,
+}: Readonly<{
+  ids: readonly string[];
+  main: Endpoint | null;
+  proposal: ReturnType<typeof useProposal>;
+  onPick: (endpoint: Endpoint) => void;
+  onAdd: (endpoint: Endpoint) => void;
+}>) {
   const calls = useCallList(ids);
   const problem = problemOf(calls.error);
   const sampleOf: SampleNumber = (captureId) => ids.indexOf(captureId) + 1;
   const endpoints = calls.data === undefined ? [] : ownSiteFirst(calls.data.endpoints);
-  const chosen = endpoints.find((endpoint) => endpointKey(endpoint) === main);
+  const mainKey = main === null ? null : endpointKey(main);
+  const chosen = endpoints.find((endpoint) => endpointKey(endpoint) === mainKey);
   return (
     <>
       <Section title="3. Calls">
@@ -58,54 +125,188 @@ function CallSteps({
           endpoints={endpoints}
           samples={ids.length}
           sampleOf={sampleOf}
-          main={main}
+          main={mainKey}
           onPick={onPick}
+          onAdd={onAdd}
         />
       </Section>
       <Section title="4. Main call">
-        {chosen === undefined ? (
-          <Typography.Paragraph size="sm" color="muted">
-            Choose the call that answers with the page&apos;s record: &quot;Use as main call&quot;
-            on its group.
-          </Typography.Paragraph>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <Typography.Paragraph className="font-mono text-sm break-all">
-              {endpointText(chosen)}
-            </Typography.Paragraph>
-            <ul aria-label="Main call fields" className="flex flex-col gap-1 font-mono text-sm">
-              {keyedTexts(chosen.fields.flatMap((match) => matchLines(match, ids.length))).map(
-                ({ key, text }) => (
-                  <li key={key}>{text}</li>
-                ),
-              )}
-            </ul>
-          </div>
-        )}
+        <MainCall chosen={chosen} samples={ids.length} proposal={proposal} />
       </Section>
+    </>
+  );
+}
+
+/** The first `call_<n>` the recipe has no call of. */
+function newCallName(recipe: CustomRecipe): string {
+  const taken = new Set(Object.keys(recipe.calls ?? {}));
+  let n = 1;
+  while (taken.has(`call_${String(n)}`)) n += 1;
+  return `call_${String(n)}`;
+}
+
+const nothingToAdd: Problem = {
+  title: "The call fills no field the recipe leaves unfilled.",
+  detail: "An extra call reads the fields no other source reads; this one reads none of them.",
+  errors: [],
+  retryAfter: null,
+};
+
+/** The extra call a draft of another endpoint makes: its request, reading only the fields `recipe` has no source
+ * for; null when it reads none of them. */
+function extraCall(drafted: Proposal, recipe: CustomRecipe) {
+  const filled = fieldSources(recipe);
+  const map = Object.fromEntries(
+    Object.entries(drafted.recipe.main.map).filter(([name]) => !filled.has(name)),
+  );
+  return Object.keys(map).length === 0 ? null : { ...drafted.recipe.main, map };
+}
+
+/** Steps 5 to 8 on the recipe as it stands: the proposal (or the stored recipe) with the engineer's edits over it. */
+function RecipeSteps({
+  host,
+  recipe,
+  proposal,
+  fieldTypes,
+  sampleUrls,
+  addProblem,
+  replaces,
+  handlers,
+}: Readonly<{
+  host: string;
+  recipe: CustomRecipe;
+  proposal: Proposal | undefined;
+  fieldTypes: FieldTypes;
+  sampleUrls: readonly string[];
+  addProblem: Problem | null;
+  replaces: string | null;
+  handlers: EditHandlers;
+}>) {
+  const test = useTestRecipe();
+  const fields = Object.keys(fieldTypes);
+  return (
+    <>
+      <ReviewStep
+        recipe={recipe}
+        proposal={proposal}
+        fieldTypes={fieldTypes}
+        tested={test.data}
+        handlers={handlers}
+      />
+      <ExtrasStep recipe={recipe} fields={fields} problem={addProblem} handlers={handlers} />
+      <TestStep recipe={recipe} sampleUrls={sampleUrls} test={test} fieldTypes={fieldTypes} />
+      <SaveStep host={host} recipe={recipe} replaces={replaces} handlers={handlers} />
+    </>
+  );
+}
+
+/** The builder's steps for one schema, from the samples to saving. `stored` is the recipe edited (saved as the next
+ * version of `replaces`), null for a new one; a main call chosen drafts the recipe anew, and the engineer's edits lie
+ * over the draft, so a later draft never overwrites one. */
+function Builder({
+  host,
+  schema,
+  stored,
+  replaces,
+}: Readonly<{
+  host: string;
+  schema: SchemaDef;
+  stored: WrittenRecipe | null;
+  replaces: string | null;
+}>) {
+  const [samples, setSamples] = useState<readonly Sample[]>([]);
+  const [main, setMain] = useState<Endpoint | null>(null);
+  const [edits, setEdits] = useState<Edits>(NO_EDITS);
+  const [addProblem, setAddProblem] = useState<Problem | null>(null);
+  const ids = useMemo(() => samples.map(({ captureId }) => captureId), [samples]);
+  const fieldTypes = useMemo(() => parseFieldTypes(schema.fields, schema.field_order), [schema]);
+  const body = useMemo<ProposeBody | null>(
+    () =>
+      main === null || ids.length < MIN_SAMPLES
+        ? null
+        : { capture_ids: [...ids], main: endpointRef(main), schema_id: schema.id },
+    [ids, main, schema.id],
+  );
+  const proposal = useProposal(body);
+  const addCall = useProposeCall();
+  const base = proposal.data?.recipe ?? stored;
+  const recipe = base === null ? null : applied(base, edits);
+  const handlers: EditHandlers = {
+    edits,
+    onEdit: (part, value) => {
+      setEdits((kept) => withEdit(kept, part, value));
+    },
+    onReset: (part) => {
+      setEdits((kept) => withoutEdit(kept, part));
+    },
+  };
+  const onAdd = (endpoint: Endpoint) => {
+    if (recipe === null || ids.length < MIN_SAMPLES) return;
+    setAddProblem(null);
+    addCall.mutate(
+      { capture_ids: [...ids], main: endpointRef(endpoint), schema_id: schema.id },
+      {
+        onSuccess: (drafted) => {
+          const call = extraCall(drafted, recipe);
+          if (call === null) setAddProblem(nothingToAdd);
+          else handlers.onEdit(["calls", newCallName(recipe)], call);
+        },
+        onError: (error) => {
+          setAddProblem(problemOf(error));
+        },
+      },
+    );
+  };
+  return (
+    <>
+      <Section title="2. Sample pages">
+        <Typography.Paragraph size="sm" color="muted">
+          {samplesHelp(samples.length)}
+        </Typography.Paragraph>
+        <SampleList
+          samples={samples}
+          fieldTypes={fieldTypes}
+          onRemove={(captureId) => {
+            setSamples((kept) => kept.filter((sample) => sample.captureId !== captureId));
+          }}
+        />
+        <SampleForm
+          schema={schema}
+          isFull={samples.length >= MAX_SAMPLES}
+          onCaptured={(sample) => {
+            setSamples((kept) => [...kept, sample]);
+          }}
+        />
+      </Section>
+      {samples.length === 0 ? null : (
+        <CallSteps ids={ids} main={main} proposal={proposal} onPick={setMain} onAdd={onAdd} />
+      )}
+      {recipe === null ? null : (
+        <RecipeSteps
+          host={host}
+          recipe={recipe}
+          proposal={proposal.data}
+          fieldTypes={fieldTypes}
+          sampleUrls={samples.map(({ result }) => result.url)}
+          addProblem={addProblem}
+          replaces={replaces}
+          handlers={handlers}
+        />
+      )}
     </>
   );
 }
 
 /** Building a custom recipe for the site, step by step: 1. the schema, 2. two to five sample pages captured in the
  * browser with their page steps and request context, each with its records, 3. their calls by endpoint, with where
- * each carries the schema's fields, a call opening in a drawer with its headers, body, answer and the HAR, and 4. the
- * main call. Calls, paths and headers are shown here only (a stated exception to hiding internals). Changing the
- * schema starts over: the samples were read for the one chosen. */
+ * each carries the schema's fields, a call opening in a drawer with its headers, body, answer and the HAR, 4. the
+ * main call, which the server drafts a recipe from, 5. the draft reviewed and edited, 6. extra calls, a warm-up and
+ * page fields, 7. a test on any URLs beside the normal extraction, and 8. saving. Calls, paths and headers are shown
+ * here only (a stated exception to hiding internals). Changing the schema starts over: the samples were read for
+ * the one chosen. */
 export function RecipeBuilder() {
   const { host = "" } = useParams();
   const [schema, setSchema] = useState<SchemaDef | null>(null);
-  const [captured, setSamples] = useState<readonly Sample[]>([]);
-  // A capture still running when the schema changed was read for the old one: it is not a sample.
-  const samples = useMemo(
-    () => captured.filter((sample) => sample.schemaId === schema?.id),
-    [captured, schema],
-  );
-  const [main, setMain] = useState<string | null>(null);
-  const fieldTypes = useMemo(
-    () => (schema === null ? {} : parseFieldTypes(schema.fields, schema.field_order)),
-    [schema],
-  );
   return (
     <section className="flex flex-col gap-stack">
       <PageHeader
@@ -117,33 +318,39 @@ export function RecipeBuilder() {
           value={schema?.id ?? ""}
           onChange={(_id, chosen) => {
             setSchema(chosen);
-            setSamples([]);
-            setMain(null);
           }}
         />
       </Section>
       {schema === null ? null : (
-        <Section title="2. Sample pages">
-          <Typography.Paragraph size="sm" color="muted">
-            {samplesHelp(samples.length)}
-          </Typography.Paragraph>
-          <SampleList
-            samples={samples}
-            fieldTypes={fieldTypes}
-            onRemove={(captureId) => {
-              setSamples((kept) => kept.filter((sample) => sample.captureId !== captureId));
-            }}
-          />
-          <SampleForm
-            schema={schema}
-            isFull={samples.length >= MAX_SAMPLES}
-            onCaptured={(sample) => {
-              setSamples((kept) => [...kept, sample]);
-            }}
-          />
-        </Section>
+        <Builder key={schema.id} host={host} schema={schema} stored={null} replaces={null} />
       )}
-      {samples.length === 0 ? null : <CallSteps samples={samples} main={main} onPick={setMain} />}
+    </section>
+  );
+}
+
+/** An active custom recipe in the same builder: its stored values in place of a draft, saved as its next version.
+ * Samples may be captured to choose another main call or add extra calls. */
+export function RecipeEditor() {
+  const { id = "" } = useParams();
+  const config = useConfig(id);
+  const schema = useSchema(config.data?.schema_id ?? null);
+  const problem = problemOf(config.error) ?? problemOf(schema.error);
+  if (problem !== null) return <ProblemAlert problem={problem} />;
+  if (!config.isSuccess || !schema.isSuccess) return <LoadingView label="Loading the recipe" />;
+  const { recipe, site } = config.data;
+  return (
+    <section className="flex flex-col gap-stack">
+      <PageHeader
+        title={`Edit recipe of ${site}`}
+        actions={<Link href={recipePath(id)}>Back to the recipe</Link>}
+      />
+      {recipe === null ? (
+        <EmptyView title="Not a custom recipe">
+          A learned config is corrected on its config screen.
+        </EmptyView>
+      ) : (
+        <Builder host={site} schema={schema.data} stored={recipe} replaces={id} />
+      )}
     </section>
   );
 }

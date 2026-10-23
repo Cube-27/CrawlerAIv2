@@ -10,3 +10,7 @@ export function newRecipePath(host: string): string {
 export function recipePath(id: string): string {
   return `/recipes/${id}`;
 }
+
+export function editRecipePath(id: string): string {
+  return `${recipePath(id)}/edit`;
+}

@@ -4,9 +4,10 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
 import { routes } from "../../app/router";
 import type { CallDetail, CallList, CaptureResult, Endpoint } from "../../api/captures";
-import type { ConfigSummary } from "../../api/configs";
+import type { ConfigDetail, ConfigSummary } from "../../api/configs";
+import type { Proposal, RecipeTestResult, TestRun, WrittenRecipe } from "../../api/recipes";
 import type { SchemaDef } from "../../api/schemas";
-import { stubApi } from "../../test/api";
+import { problem, stubApi } from "../../test/api";
 import { catchDownloads } from "../../test/downloads";
 import { recordField } from "../../test/records";
 import { fieldSpec } from "../../test/schemas";
@@ -18,6 +19,8 @@ const REPAIR_ID = "0192a000-0000-7000-8000-000000000502";
 const LEARNED_ID = "0192a000-0000-7000-8000-000000000503";
 const CAPTURE_1 = "0192a000-0000-7000-8000-000000000701";
 const CAPTURE_2 = "0192a000-0000-7000-8000-000000000702";
+const CAPTURE_3 = "0192a000-0000-7000-8000-000000000703";
+const SAVED_ID = "0192a000-0000-7000-8000-000000000504";
 
 const schema: SchemaDef = {
   id: SCHEMA_ID,
@@ -161,6 +164,110 @@ async function captureSample(url: string) {
   await userEvent.click(screen.getByRole("button", { name: "Capture" }));
 }
 
+const stored: WrittenRecipe = {
+  schema_id: SCHEMA_ID,
+  page_kind: "detail",
+  patterns: [`${HOST}/item/{id}`],
+  main: {
+    method: "GET",
+    url: `https://${HOST}/api/item?id={id}`,
+    params_from_url: { id: "pattern:id" },
+    headers: [{ name: "accept", value: "application/json" }],
+    body: null,
+    pagination: null,
+    requires_page_fetch: false,
+    answer: "json",
+    map: { price: "$.data.price" },
+    proof: null,
+  },
+  calls: {},
+  warm_up: null,
+  fields: {},
+  sent_by: "http",
+  rate_ms: null,
+};
+
+function proposal(map: Record<string, string>): Proposal {
+  return {
+    recipe: { ...stored, main: { ...stored.main, map } },
+    unfilled: ["title"],
+    unbound: [],
+    withheld_headers: ["x-token"],
+  };
+}
+
+function config(id: string, overrides: Partial<ConfigDetail>): ConfigDetail {
+  return {
+    ...summary({ id, pending_repair: null, drifting: [] }),
+    ir: {
+      ir_version: "1",
+      site: HOST,
+      schema: { name: "item_detail", digest: "0".repeat(64) },
+      page_kind: "detail",
+      fetch: { method: "http" },
+      listing: null,
+      api_recipe: stored.main,
+      recipes: {},
+      absent: [],
+      patterns: stored.patterns,
+      warm_up: null,
+      sent_by: "http",
+      rate_ms: null,
+      fields: {},
+      provenance: {
+        origin: "operator",
+        validated_on: [],
+        learned_at: "2026-10-01T00:00:00Z",
+        engine_version: "0.1.0",
+      },
+    },
+    recipe: stored,
+    repair_changes: null,
+    ...overrides,
+  };
+}
+
+const run = (title: string, recipeStatus: number): TestRun => ({
+  records: [
+    {
+      complete: true,
+      confidence: 0.9,
+      mode: "adhoc",
+      fields: { title: recordField({ value: title }) },
+    },
+  ],
+  fetch: {
+    method: "api",
+    status_code: recipeStatus,
+    block_class: "ok",
+    adapter: null,
+    attempts: [
+      {
+        method: "api",
+        status: recipeStatus,
+        block_class: recipeStatus < 400 ? "ok" : "blocked",
+        duration_ms: 12,
+        error: null,
+        challenge: null,
+        steps: [],
+        recipe: RECIPE_ID,
+      },
+    ],
+  },
+  reason: null,
+});
+
+async function pickSchema() {
+  await userEvent.click(screen.getByRole("button", { name: /Schema/ }));
+  await userEvent.click(await screen.findByRole("option", { name: "item_detail" }));
+}
+
+function textbox(name: string, index = 0): HTMLElement {
+  const found = screen.getAllByRole("textbox", { name })[index];
+  if (found === undefined) throw new Error(`no textbox ${name}`);
+  return found;
+}
+
 describe("recipes screen", () => {
   it("lists the site's serving recipes with their patterns, drift and pending repair", async () => {
     stubApi({
@@ -252,5 +359,142 @@ describe("recipes screen", () => {
     await userEvent.click(own);
     const main = screen.getByRole("list", { name: "Main call fields" });
     expect(main).toHaveTextContent("price at $.data.price on 2 of 2");
+  });
+  it("reviews the draft, keeps edits over a later one, adds an extra call, tests and saves", async () => {
+    let captures = 0;
+    const replies = [
+      captured(CAPTURE_1, `https://${HOST}/item/1`),
+      captured(CAPTURE_2, `https://${HOST}/item/2`),
+      captured(CAPTURE_3, `https://${HOST}/item/3`),
+    ];
+    let saves = 0;
+    const tested: RecipeTestResult = {
+      job_id: "0192a000-0000-7000-8000-000000000901",
+      urls: replies.map(({ url }) => ({ url, recipe: run("Lamp", 403), normal: run("Lamp", 200) })),
+      usage: {
+        http_requests: 6,
+        browser_seconds: 0,
+        llm_calls: 0,
+        llm_tokens_in: 0,
+        llm_tokens_out: 0,
+      },
+    };
+    const calls = stubApi({
+      "GET /v1/schemas": json({ items: [schema] }),
+      "POST /v1/captures": () => Response.json(replies[captures++]),
+      "POST /v1/recipes/calls": json(merged),
+      "POST /v1/recipes/propose": ({ body }) =>
+        Response.json(
+          (body as { main: { origin: string } }).main.origin === `https://${HOST}`
+            ? proposal({ price: "$.data.price" })
+            : proposal({ title: "$.name", price: "$.p" }),
+        ),
+      "POST /v1/recipes/test": json(tested),
+      [`GET /v1/sites/${HOST}/configs`]: json({ items: [summary({})] }),
+      [`POST /v1/sites/${HOST}/configs`]: () =>
+        saves++ === 0
+          ? problem(409, {
+              type: "conflict",
+              title: "Conflict",
+              detail: `config ${RECIPE_ID} serves URL patterns of shape ['${HOST}/item/{}']`,
+            })
+          : Response.json(config(SAVED_ID, { version: 4 }), { status: 201 }),
+      [`GET /v1/configs/${SAVED_ID}`]: json(config(SAVED_ID, { version: 4 })),
+    });
+    await open(`/sites/${HOST}/recipes/new`, `New recipe for ${HOST}`);
+    await pickSchema();
+    await captureSample(`https://${HOST}/item/1`);
+    await screen.findByText(`1. https://${HOST}/item/1`);
+    await captureSample(`https://${HOST}/item/2`);
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: `Use GET https://${HOST}/{2 segments}?id as the main call`,
+      }),
+    );
+
+    // The draft, with what it left out; every value editable.
+    expect(await screen.findByText("Header left out: x-token")).toBeInTheDocument();
+    expect(textbox("URL patterns (one per line)")).toHaveValue(`${HOST}/item/{id}`);
+    await userEvent.clear(textbox("Path of price"));
+    await userEvent.type(textbox("Path of price"), "$.data.amount");
+    expect(screen.getByRole("button", { name: "Reset the path of price" })).toBeInTheDocument();
+
+    // A third sample drafts anew; the edit outlasts it.
+    await captureSample(`https://${HOST}/item/3`);
+    await screen.findByText(`3. https://${HOST}/item/3`);
+    await expect
+      .poll(() => calls.filter(({ path }) => path === "/v1/recipes/propose").length)
+      .toBe(2);
+    expect(textbox("Path of price")).toHaveValue("$.data.amount");
+
+    // An extra call reads only the field the main call leaves unfilled.
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Add GET https://cdn.example.net/{2 segments}?v as an extra call",
+      }),
+    );
+    expect(await screen.findByText("call call_1 at $.name")).toBeInTheDocument();
+    expect(screen.getByText("Every field is filled by a call.")).toBeInTheDocument();
+
+    // A browser-sent test whose call the site refuses says it cannot replay.
+    await userEvent.click(screen.getByRole("switch", { name: "Sent by the browser" }));
+    await userEvent.click(screen.getByRole("button", { name: "Test" }));
+    expect(await screen.findAllByText(/Cannot replay/)).toHaveLength(3);
+    const values = screen.getByRole("list", { name: "Values of title" });
+    expect(within(values).getAllByText("Lamp")).toHaveLength(3);
+    const test = calls.find(({ path }) => path === "/v1/recipes/test");
+    expect(test?.body).toMatchObject({
+      urls: replies.map(({ url }) => url),
+      recipe: {
+        sent_by: "browser",
+        main: { map: { price: "$.data.amount" } },
+        calls: { call_1: { map: { title: "$.name" } } },
+      },
+    });
+
+    // A refusal names the recipe of the same shape; saving again opens the saved one.
+    await userEvent.click(screen.getByRole("button", { name: "Save recipe" }));
+    expect(
+      await screen.findByRole("link", {
+        name: `Open the recipe serving https://${HOST}/item/{id}`,
+      }),
+    ).toHaveAttribute("href", `/recipes/${RECIPE_ID}`);
+    await userEvent.click(screen.getByRole("button", { name: "Save recipe" }));
+    await screen.findByRole("heading", { level: 1, name: `Recipe of ${HOST}, version 4` });
+  });
+
+  it("reviews a pending repair and edits the recipe in the builder", async () => {
+    const repair = config(REPAIR_ID, {
+      version: 4,
+      status: "pending_approval",
+      repair_changes: [{ part: "main.map.price", before: "$.data.price", after: "$.data.cost" }],
+    });
+    const calls = stubApi({
+      "GET /v1/schemas": json({ items: [schema] }),
+      [`GET /v1/schemas/${SCHEMA_ID}`]: json(schema),
+      [`GET /v1/configs/${RECIPE_ID}`]: json(config(RECIPE_ID, { pending_repair: REPAIR_ID })),
+      [`GET /v1/configs/${REPAIR_ID}`]: json(repair),
+      [`POST /v1/configs/${REPAIR_ID}/approve`]: json({ ...repair, status: "active" }),
+      [`PUT /v1/configs/${RECIPE_ID}/recipe`]: json(config(SAVED_ID, { version: 5 })),
+      [`GET /v1/configs/${SAVED_ID}`]: json(config(SAVED_ID, { version: 5 })),
+    });
+    await open(`/recipes/${RECIPE_ID}`, `Recipe of ${HOST}, version 3`);
+
+    const changes = await screen.findByRole("grid", { name: "Repair changes" });
+    expect(within(changes).getByText('"$.data.cost"')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await expect
+      .poll(() => calls.some(({ path }) => path === `/v1/configs/${REPAIR_ID}/approve`))
+      .toBe(true);
+
+    await userEvent.click(screen.getByRole("link", { name: "Edit" }));
+    await screen.findByRole("heading", { level: 1, name: `Edit recipe of ${HOST}` });
+    expect(textbox("URL")).toHaveValue(`https://${HOST}/api/item?id={id}`);
+    await userEvent.type(textbox("Path of title"), "$.data.label");
+    await userEvent.click(screen.getByRole("button", { name: "Save new version" }));
+    await screen.findByRole("heading", { level: 1, name: `Recipe of ${HOST}, version 5` });
+    expect(calls.find(({ method }) => method === "PUT")?.body).toMatchObject({
+      main: { map: { price: "$.data.price", title: "$.data.label" } },
+    });
   });
 });
