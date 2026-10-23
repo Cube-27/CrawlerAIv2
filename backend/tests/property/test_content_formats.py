@@ -1,7 +1,8 @@
 """Content-format properties (rest-api spec): `links` are absolute canonical http(s) URLs, cleaned `html` runs no
 script, `metadata.language` is `<html lang>`, else `og:locale`, else absent, a wrapper named after furniture that
-holds the page's longest block is kept, and so is every slide of a carousel. Examples pin the markdown of an article, of a page with furniture and of a
-listing, and that two canonical links name none (RFC 6596 §3); all read the shared `ParsedPage`."""
+holds the page's longest block is kept, and so is every slide of a carousel. Examples pin the markdown of an
+article, of a page with furniture and of a listing, and that two canonical links name none (RFC 6596 §3); all read
+the shared `ParsedPage`."""
 
 from html import escape
 from urllib.parse import urlsplit
@@ -204,7 +205,10 @@ def test_every_slide_of_a_carousel_is_content(shown: int, hiding: str) -> None:
     slides = "".join(
         f"<div class='slide' {'' if i == shown else hiding}><p>Caption {i}.</p></div>" for i in range(1, 5)
     )
-    page = f"<html><body><main><h1>Gallery</h1><div class='slides'>{slides}</div><div hidden>Later</div></main></body></html>"
+    page = (
+        f"<html><body><main><h1>Gallery</h1><div class='slides'>{slides}</div>"
+        "<div hidden>Later</div></main></body></html>"
+    )
 
     made = markdown(ParsedPage(page), FINAL_URL)
 

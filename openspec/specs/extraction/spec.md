@@ -376,8 +376,8 @@ cleaning (`content/`). `markdown` is the page minus its furniture (`content/regi
 collectors share): elements never rendered or hidden by the page itself (`script`, `style`, `template`, `hidden`,
 `aria-hidden="true"`, a closed `dialog`) except a hidden one of like siblings (same tag and role, a class in common)
 one of which is shown, as a carousel's slides and a tab list's panels are (WAI-ARIA Authoring Practices); the landmarks
-`nav`, `aside`, an open `dialog` and a page-level `header` or `footer`: one whose scope is the body, or `main` when it
-holds navigation (HTML-AAM §4.1: one in `main` is the main content's own, unless the page wraps its whole layout,
+`nav`, `aside`, an open `dialog` and a page-level `header` or `footer`: one whose scope is the body, or a child of
+`main` holding navigation (HTML-AAM §4.1: one in `main` is the main content's own, unless the page wraps its whole layout,
 site navigation included, in `main`); the WAI-ARIA landmark and window roles of the same meaning; and elements whose
 class or id names a furniture word (header, footer, nav, menu, breadcrumb, cookie, consent, sidebar, social, share,
 newsletter, modal, popup, skip, as Firecrawl's `excludeNonMainTags` and Readability read them, a name's parts split at

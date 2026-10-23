@@ -10,10 +10,10 @@ Furniture is what a page shows around its content on every page of its site, or 
   the page's content in its turn.
 - **Landmarks.** `nav` and `aside` (HTML Standard §4.3.4, §4.3.5: navigation, content tangential to its
   surroundings), a page-level `header` or `footer` (§4.3.8, §4.3.9: one whose scope is the body is the page's, one in
-  an `article` or `section` that section's; HTML-AAM §4.1: one in `main` the main content's, unless it holds the site's
-  navigation, as on a page that wraps its whole layout in `main`), an open `dialog` (§4.11.4: a window apart from the
-  page), and the WAI-ARIA 1.2 roles of the same meaning (§5.3.4 landmarks `navigation`, `banner`, `contentinfo`,
-  `complementary`, `search`; §5.4 windows `dialog`, `alertdialog`).
+  an `article` or `section` that section's; HTML-AAM §4.1: one in `main` the main content's, unless it is a child of
+  `main` that holds the site's navigation, as on a page that wraps its whole layout in `main`), an open `dialog`
+  (§4.11.4: a window apart from the page), and the WAI-ARIA 1.2 roles of the same meaning (§5.3.4 landmarks
+  `navigation`, `banner`, `contentinfo`, `complementary`, `search`; §5.4 windows `dialog`, `alertdialog`).
 - **Named furniture.** An element whose `class` or `id` names one of the furniture words below, as Firecrawl's
   `onlyMainContent` (`excludeNonMainTags`) and Mozilla Readability (`unlikelyCandidates`) read class and id names: a
   word that is a whole token or one of its parts (split at `-`, `_` and camelCase boundaries), or, for the words that
@@ -228,13 +228,15 @@ def _words(names: list[str]) -> set[str]:
 
 def _page_level(element: HtmlElement) -> bool:
     """Whether the nearest ancestor that is sectioning content, a sectioning root or the main landmark is the body, or
-    it is the main landmark and the element holds navigation: a page that wraps its whole layout in `main` puts its
-    banner and footer there, and they hold the site's navigation; the main content's own header or footer (its title,
-    a citation, a link to the previous and next page) holds none."""
+    it is the main landmark, the element is its child and holds navigation: a page that wraps its whole layout in
+    `main` puts its banner and footer there, beside its content, and they hold the site's navigation; the main
+    content's own header or footer (its title, a citation, a link to the previous and next page) holds none, or sits
+    inside the content's own wrapper."""
     scope = next((a for a in element.iterancestors() if a.tag in _SCOPES or _role(a) == "main"), None)
     if scope is None or scope.tag == "body":
         return True
-    return (scope.tag == "main" or _role(scope) == "main") and bool(element.cssselect(_NAVIGATION))
+    main = scope.tag == "main" or _role(scope) == "main"
+    return main and element.getparent() is scope and bool(element.cssselect(_NAVIGATION))
 
 
 def _alternative(element: HtmlElement) -> bool:

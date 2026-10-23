@@ -312,21 +312,25 @@ def _complete_boundaries(tree: lexbor.LexborHTMLParser) -> None:
     closing comment, is removed, as `completeBoundary` does; for each `$RS(content, placeholder)` call, they take the
     place of the `template` with the placeholder id, as `completeSegment` does."""
     for script in tree.css("script"):
-        if "src" in script.attributes:
-            continue
-        for match in _COMPLETE.finditer(script.text(deep=True)):
-            boundary = match.group(1) == _BOUNDARY
-            marker_id, content_id = (match.group(3), match.group(5)) if boundary else (match.group(5), match.group(3))
-            # Looked up per call: a completed segment may hold a boundary a later call completes.
-            marker, content = tree.css_first(f'[id="{marker_id}"]'), tree.css_first(f'[id="{content_id}"]')
-            if marker is None or content is None or marker.tag != _TEMPLATE:
-                continue
-            if boundary:
-                _remove_fallback(marker)
-            for child in content.iter(include_text=True):
-                marker.insert_before(child)
-            marker.decompose()
-            content.decompose()
+        if "src" not in script.attributes:
+            for match in _COMPLETE.finditer(script.text(deep=True)):
+                _complete(tree, match)
+
+
+def _complete(tree: lexbor.LexborHTMLParser, call: re.Match[str]) -> None:
+    """One `$RC` or `$RS` call (`_complete_boundaries`)."""
+    boundary = call.group(1) == _BOUNDARY
+    marker_id, content_id = (call.group(3), call.group(5)) if boundary else (call.group(5), call.group(3))
+    # Looked up per call: a completed segment may hold a boundary a later call completes.
+    marker, content = tree.css_first(f'[id="{marker_id}"]'), tree.css_first(f'[id="{content_id}"]')
+    if marker is None or content is None or marker.tag != _TEMPLATE:
+        return
+    if boundary:
+        _remove_fallback(marker)
+    for child in content.iter(include_text=True):
+        marker.insert_before(child)
+    marker.decompose()
+    content.decompose()
 
 
 def _remove_fallback(marker: lexbor.LexborNode) -> None:

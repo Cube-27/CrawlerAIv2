@@ -261,8 +261,11 @@ def _carries_unrendered(tree: LexborHTMLParser) -> bool:
     content a script puts in place (module docstring). Counted in non-whitespace characters, as the shell rule counts.
     The tree is read, not changed."""
     scripts = sum(_chars(script.text()) for script in tree.css(_SCRIPT))
+    within: dict[int, bool] = {}
     concealed = sum(
-        _chars(node.text()) for node in tree.css(_CONCEALED) if _concealed(node.attributes) and not _in_concealed(node)
+        _chars(node.text())
+        for node in tree.css(_CONCEALED)
+        if _concealed(node.attributes) and not _in_concealed(node.parent, within)
     )
     if scripts + concealed < _CARRIED_MIN_CHARS:
         return False
@@ -275,15 +278,24 @@ def _carries_unrendered(tree: LexborHTMLParser) -> bool:
     return _chars(shown.text_content()) < _SHELL_MAX_TEXT_CHARS
 
 
-def _in_concealed(node: LexborNode) -> bool:
-    """Whether an ancestor of `node` is concealed too, so that a subtree's text is counted once, with its outermost
-    concealed element. One walk up per node: the time is linear in the concealed elements times the tree's depth."""
-    parent = node.parent
-    while parent is not None and parent.is_element_node:
-        if _concealed(parent.attributes):
-            return True
-        parent = parent.parent
-    return False
+def _in_concealed(node: LexborNode | None, within: dict[int, bool]) -> bool:
+    """Whether `node` or an ancestor is concealed, so that a subtree's text is counted once, with its outermost
+    concealed element. Each element's answer is kept in `within` (by `mem_id`), so the tree is walked up through each
+    element once: selectolax compares nodes by their serialized HTML, never compared here."""
+    path: list[LexborNode] = []
+    found = False
+    while node is not None and node.is_element_node:
+        if (known := within.get(node.mem_id)) is not None:
+            found = known
+            break
+        if _concealed(node.attributes):
+            found = True
+            break
+        path.append(node)
+        node = node.parent
+    for passed in path:
+        within[passed.mem_id] = found
+    return found
 
 
 def _unshown(element: HtmlElement) -> bool:
