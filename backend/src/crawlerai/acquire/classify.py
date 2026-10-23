@@ -198,7 +198,7 @@ def _document_class(
     structured = _structured_rows(tree, documents)
     # A content-only fetch reads the rendered text, whatever structured data the page states.
     described = not content_only and _describes(tree, documents, types)
-    unstructured = _script_state(tree, page_kind) if described else _page_shell(tree, content_only=content_only)
+    unstructured = None if described else _page_shell(tree, content_only=content_only)
     # Before the shell return: a short document that refreshes and links only to mail or phone is a stand-in too.
     if unstructured == "blocked" or (_refreshes(tree, headers) and _offers_no_web_page(tree)):
         return "blocked"
@@ -207,9 +207,11 @@ def _document_class(
     base = None if redirect is None else redirect.answered
     if page_kind == "listing" and not structured and not lists_items(text, base):
         return "shell"
+    moved = None
     if redirect is not None and redirect.kind is not None:
-        return _moved(redirect, described=described, lists=lambda: structured or lists_items(text, base)) or "ok"
-    return "ok"
+        moved = _moved(redirect, described=described, lists=lambda: structured or lists_items(text, base))
+    # After the redirect rules: a detail page that a redirect led elsewhere is not the page, however it renders.
+    return moved or (_script_state(tree, page_kind) if described else None) or "ok"
 
 
 def _page_shell(tree: LexborHTMLParser, *, content_only: bool) -> BlockClass | None:

@@ -4,6 +4,7 @@ page itself. URLs are compared by `normalize.url_key`'s `document_key` and `item
 item URL publishes as its canonical URL, with the `href` the page writes.
 """
 
+import re
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Final
@@ -16,7 +17,7 @@ from crawlerai.collect.dom_images import is_image_url
 from crawlerai.content.dom import tokens
 from crawlerai.content.segment import text_path
 from crawlerai.normalize.url import canonical_url
-from crawlerai.normalize.url_key import document_key, item_key
+from crawlerai.normalize.url_key import DocumentKey, document_key, item_key
 
 # HTML Standard §4.3.6: heading content; WAI-ARIA 1.2 role `heading`.
 _HEADINGS: Final = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
@@ -26,6 +27,8 @@ _HEADING_ROLE: Final = "heading"
 Place = tuple[str, int]
 # The kind of document a URL names (`url_kind`): its host, its number of path segments and its first one.
 Kind = tuple[str, int, str]
+# RFC 3986 §2.3: the unreserved delimiters a path segment's words are written apart with.
+_WORD_BREAK: Final = re.compile(r"[-._~]")
 # WAI-ARIA 1.2 `aria-current` token: "represents the current page within a set of pages".
 _CURRENT_PAGE: Final = "page"
 
@@ -158,7 +161,7 @@ def _link_places(
     links lead to two documents of one kind (`url_kind`) are not one record's title and "more" link but records of
     their own, or one field's values: order does not tell them apart, and those links share their first one's place."""
     parents: dict[str, list[HtmlElement | None]] = {}
-    kinds: dict[tuple[str, Kind], tuple[int, set[str]]] = {}
+    kinds: dict[tuple[str, Kind, str], tuple[int, set[DocumentKey | None]]] = {}
     places: list[tuple[Place, HtmlElement, dict[str, tuple[str, HtmlElement]]]] = []
     for anchor in hyperlinks(block):
         targets = link_targets((anchor,), base, here) if anchor not in sublists else {}
@@ -169,19 +172,33 @@ def _link_places(
         if parent not in seen:
             seen.append(parent)
         rank = seen.index(parent)
-        kinds.setdefault((path, url_kind(next(iter(targets)))), (rank, set()))[1].update(targets)
+        kinds.setdefault(_kind_at(path, targets), (rank, set()))[1].update(map(document_key, targets))
         places.append(((path, rank), anchor, targets))
     # Like elements whose links lead to two documents of one kind are records, or one field's several values (a
     # column of cards, a book's authors), not one record's fields apart: those links share their first one's place.
     return [
-        ((path, _shared(kinds[path, url_kind(next(iter(targets)))], rank)), anchor, targets)
+        ((path, _shared(kinds[_kind_at(path, targets)], rank)), anchor, targets)
         for (path, rank), anchor, targets in places
     ]
 
 
-def _shared(kind: tuple[int, set[str]], rank: int) -> int:
+def _kind_at(path: str, targets: Mapping[str, object]) -> tuple[str, Kind, str]:
+    """A link's tag path with the kind (`url_kind`) and leading word (`leading_word`) of the first document it leads
+    to: `/p-1` and `/author-1` are one `url_kind` but two kinds of link."""
+    first = next(iter(targets))
+    return path, url_kind(first), leading_word(first)
+
+
+def _shared(kind: tuple[int, set[DocumentKey | None]], rank: int) -> int:
     first, documents = kind
     return first if len(documents) > 1 else rank
+
+
+def leading_word(url: str) -> str:
+    """The first word of a URL's first path segment, words split at the unreserved delimiters `-`, `.`, `_` and `~`
+    (RFC 3986 §2.3), lowercased: `job` of `/job-7-welder/`, `p` of `/p/7`."""
+    segment = next((segment for segment in urlsplit(url).path.split("/") if segment), "")
+    return _WORD_BREAK.split(segment, maxsplit=1)[0].lower()
 
 
 def url_kind(url: str) -> Kind:

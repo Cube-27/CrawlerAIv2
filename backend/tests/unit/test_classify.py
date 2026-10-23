@@ -137,8 +137,11 @@ def test_a_document_stating_an_item_of_a_read_type_is_the_page_unless_a_detail_s
     body = f"<html><head>{_POSTING}</head><body><div id='root'></div></body></html>"
     assert classify(200, _HTML, body, types=("JobPosting",)) == "ok"
     assert classify(200, _HTML, body) == "shell"
-    # Fetched as a detail page, its scripts carry the rest of the item: the browser renders it.
+    # Fetched as a detail page, its scripts carry the rest of the item: the browser renders it; unless a redirect led
+    # away from the page asked for.
     assert classify(200, _HTML, body, "detail", types=("JobPosting",)) == "shell"
+    home = Redirect("https://jobs.example.test/job/7", "https://jobs.example.test/", "detail")
+    assert classify(200, _HTML, body, "detail", home, types=("JobPosting",)) == "soft_404"
 
 
 _NAV = "<nav>" + "".join(f'<a href="/s/{i}">Section {i}</a>' for i in range(8)) + "</nav>"

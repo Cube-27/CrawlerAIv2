@@ -44,11 +44,9 @@ whose block does not show the field, so that row still gets the value its data s
 and the resolution spec's evidence rules (a call's value is `network` evidence; a state value is `state` evidence).
 """
 
-import re
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from urllib.parse import urlsplit
 
 from lxml.html import HtmlElement
 from pydantic import JsonValue
@@ -59,7 +57,7 @@ from crawlerai.collect.admission import Document, StateKind
 from crawlerai.collect.base import Candidate, Entity, is_visible_amount
 from crawlerai.collect.induce import induced
 from crawlerai.collect.items.align import AMBIGUOUS_IN_BLOCK, Block, Items, field_roles, quorum
-from crawlerai.collect.items.links import Kind, url_kind
+from crawlerai.collect.items.links import Kind, leading_word, url_kind
 from crawlerai.collect.items.spot import Spot
 from crawlerai.collect.js_state import state_documents
 from crawlerai.collect.schema_org_map import candidate, item_url_fields
@@ -75,8 +73,6 @@ from crawlerai.schemas.types import FieldType, SchemaDef
 # The entity whose row fields a candidate fills: its owner, or the item an Offer it is in offers.
 Holder = Callable[[Candidate], str]
 _STATE_KINDS = ("js_state", "xhr")
-# RFC 3986 §2.3: the unreserved delimiters a path segment's words are written apart with.
-_WORD_BREAK = re.compile(r"[-._~]")
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,7 +227,7 @@ class _Section:
     chosen: Items
     required: set[str]
     kinds: set[Kind]
-    word: str | None  # the leading word a quorum of the chosen group's item URLs share (`_leading_word`)
+    word: str | None  # the leading word a quorum of the chosen group's item URLs share (`leading_word`)
     paths: set[str]
     elements: set[HtmlElement]
     listed: "_Index"
@@ -247,7 +243,7 @@ class _Section:
         last = max((position.get(block.element, -1) for block in chosen.blocks), default=-1)
         pagers = (position[a] for a in listing.page.lxml_tree.iter("a") if _next_link(a) and position[a] > last)
         kinds = {url_kind(block.link) for block in chosen.blocks}
-        words = Counter(_leading_word(block.link) for block in chosen.blocks).most_common(1)
+        words = Counter(leading_word(block.link) for block in chosen.blocks).most_common(1)
         word = words[0][0] if words and words[0][1] >= quorum(len(chosen.blocks)) else None
         paths = {_root_path(block.element) for block in chosen.blocks}
         elements = {block.element for block in chosen.blocks}
@@ -272,7 +268,7 @@ class _Section:
         """Whether an item URL is of the kind the chosen group's are (`url_kind`) and, when a quorum of theirs start
         with one word, starts with it too: what repeats across a template's records is the template's (DEPTA), so
         `/job-7-welder` is not `/jobs-at-acme`'s kind though both are one segment."""
-        return url_kind(link) in self.kinds and (self.word is None or _leading_word(link) == self.word)
+        return url_kind(link) in self.kinds and (self.word is None or leading_word(link) == self.word)
 
     def _copy(self, group: Items) -> bool:
         """Whether half or more of the group's blocks lead to items the chosen group lists: a featured, trending or
@@ -301,13 +297,6 @@ def _next_link(anchor: HtmlElement) -> bool:
     """Whether a hyperlink names the next document of a series (HTML Standard §4.6.7 `rel=next`; `rel` is a set of
     space-separated tokens, compared ASCII case-insensitively)."""
     return anchor.get("href") is not None and "next" in (anchor.get("rel") or "").lower().split()
-
-
-def _leading_word(url: str) -> str:
-    """The first word of a URL's first path segment, words split at the unreserved delimiters `-`, `.`, `_` and `~`
-    (RFC 3986 §2.3), lowercased: `job` of `/job-7-welder/`, `p` of `/p/7`."""
-    segment = next((segment for segment in urlsplit(url).path.split("/") if segment), "")
-    return _WORD_BREAK.split(segment, maxsplit=1)[0].lower()
 
 
 def _overlaps(element: HtmlElement, elements: set[HtmlElement]) -> bool:
