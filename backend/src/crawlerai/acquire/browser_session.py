@@ -3,7 +3,8 @@
 the site's own, not an incognito one). Every connection a profile's browser opens goes through its `SocksGuard`, which
 applies the SSRF guard to every redirect hop, frame and worker (§4.5). The caller's cookies (`RequestContext`) are added
 to the context before the navigation, as host-only cookies of the URL's host; the caller's headers are never set in the
-browser (INV-44). Every page, cross-site frame and popup presents the browser's own identity (`present`).
+browser (INV-44). Every page, cross-site frame and popup presents the browser's own identity (`present`), and so
+does every service and shared worker (`present_workers`).
 """
 
 import asyncio
@@ -18,7 +19,7 @@ from typing import Final, cast
 from urllib.parse import urlsplit, urlunsplit
 
 from patchright._impl._api_structures import ProxySettings, SetCookieParam
-from patchright.async_api import BrowserContext, Frame, Page, Playwright, async_playwright
+from patchright.async_api import BrowserContext, CDPSession, Frame, Page, Playwright, async_playwright
 from patchright.async_api import Error as PlaywrightError
 
 from crawlerai.acquire.browser_profiles import Profile, discard_profile, open_profile, profile_name
@@ -46,23 +47,32 @@ __all__ = [
     "open_browser",
     "open_context",
     "present",
+    "present_workers",
 ]
 
 # Patchright's documented setup (D-1204, D-1205, owner 2026-10-23): Google Chrome stable (`chrome`, installed with
 # `patchright install chrome`), the build the Patchright README recommends, run headless, with its own client hints and
-# no custom headers. Each browser runs in a persistent profile, with the README's `no_viewport` in the window and on the
-# screen of the profile (`acquire.desktop_screen`, owner 2026-10-23) as its only launch arguments: WebRTC's proxy
-# policy is a profile preference (`acquire.browser_profiles`).
+# no custom headers. Each browser runs in a persistent profile, with the README's `no_viewport`, and two kinds of launch
+# argument: its user agent (`_USER_AGENT_SWITCH`), and the window and screen of the profile (`acquire.desktop_screen`,
+# owner 2026-10-23). WebRTC's proxy policy is a profile preference (`acquire.browser_profiles`).
 _CHANNEL = "chrome"
 # The one change to the browser's identity (owner #71 as amended 2026-10-21 and 2026-10-23, INV-44): its own user
 # agent, read from the browser, with the token headless mode adds (`HeadlessChrome/`) named as a headed browser names
-# it, and its own User-Agent Client Hints. Set as the context's user agent and through Chrome's user agent override
-# (`present`), never the `--user-agent` launch switch. Nothing the browser presents may still name headless mode
-# (`_HEADLESS`, case-insensitive): the process refuses to start rather than send it.
+# it, and its own User-Agent Client Hints. The user agent is Chrome's `--user-agent` switch, its default for every
+# request and every worker it starts: a service or shared worker's script request goes from the browser process, and
+# its `navigator.userAgent` is fixed when it starts, both before any CDP target exists. With the switch, Chrome
+# reports no high-entropy client hints of its own, so every page, frame and worker takes them, with the user agent,
+# through Chrome's user agent override (`present`, `present_workers`). Nothing the browser presents may still name
+# headless mode (`_HEADLESS`, case-insensitive): the process refuses to start rather than send it.
 _HEADLESS_PRODUCT: Final = "HeadlessChrome/"
 _HEADED_PRODUCT: Final = "Chrome/"
 _HEADLESS: Final = "headless"
 _USER_AGENT: Final = "user-agent"
+_USER_AGENT_SWITCH: Final = "--user-agent="
+_OVERRIDE: Final = "Emulation.setUserAgentOverride"
+# The targets that run a page's scripts outside its tabs and frames (HTML Standard §10.2.6 shared workers, Service
+# Workers §3.1), in CDP's target types.
+_WORKERS: Final = ({"type": "service_worker"}, {"type": "shared_worker"})
 # The browser started only to read the identity it presents (`browser_identity`) loads no page of any site; anything it
 # requests in the background goes to this closed loopback port and fails, rather than around the guard (INV-16).
 _NOWHERE: Final = "socks5://127.0.0.1:9"
@@ -371,21 +381,48 @@ async def _listening(sent: dict[str, str]) -> AsyncIterator[str]:
 
 async def present(page: Page, identity: Identity) -> None:
     """Set `identity` on `page` before it navigates, then on each cross-site frame and popup it opens: Chrome's user
-    agent override (the CDP Emulation domain's, owner 2026-10-23) with the browser's own client hints, in
-    place of those Playwright derives from the user agent string alone (`platformVersion` from the frozen reduced user
-    agent, `architecture` x86 unless the string names ARM). A dedicated worker takes its page's. A cross-site frame,
-    which renders in a process of its own, and a popup take it once Playwright reports them, so their first requests
-    may carry Playwright's; a service or shared worker is out of reach (known gaps)."""
+    agent override (the CDP Emulation domain's, owner 2026-10-23) with the browser's own client hints, which Chrome
+    does not report itself under the `--user-agent` switch (`_USER_AGENT_SWITCH`). A dedicated worker takes its
+    page's. A cross-site frame, which renders in a process of its own, and a popup take it once Playwright reports
+    them, so their first requests carry the browser's default: the same user agent and brands, without the
+    high-entropy client hints (a known gap). A service or shared worker takes it from `present_workers`."""
     await _override(page, identity)
     page.on("framenavigated", lambda frame: _present_frame(frame, identity))
     page.on("popup", lambda popup: _present_popup(popup, identity))
 
 
+async def present_workers(context: BrowserContext, identity: Identity) -> None:
+    """Set `identity` on each service and shared worker `context`'s browser starts (`_WORKERS`), as `present` sets it
+    on a tab: Chrome's user agent override, sent once Chrome reports the worker (`Target.targetCreated`). Chrome does
+    not hold a worker for this session (Patchright's own session resumes it at once), so what a worker reads in its
+    first milliseconds is the browser's default: the same user agent (`_USER_AGENT_SWITCH`) and brands, without the
+    high-entropy client hints (a known gap). The override stays across the worker's restarts."""
+    browser = context.browser
+    if browser is None:
+        raise PlaywrightError("the context has no browser")
+    session = await browser.new_browser_cdp_session()
+    session.on("Target.targetCreated", lambda event: _present_worker(session, event, identity))
+    await session.send("Target.setDiscoverTargets", {"discover": True, "filter": list(_WORKERS)})
+
+
+async def _present_worker(session: CDPSession, event: Mapping[str, Mapping[str, str]], identity: Identity) -> None:
+    # Patchright's Python CDP session sends only to its own target, never to a flattened child session; a target
+    # attached without `flatten` is reached through `Target.sendMessageToTarget` (Chrome DevTools Protocol, Target).
+    with contextlib.suppress(PlaywrightError):  # the worker or its browser is gone
+        target = {"targetId": event["targetInfo"]["targetId"], "flatten": False}
+        attached = await session.send("Target.attachToTarget", target)
+        message = json.dumps({"id": 1, "method": _OVERRIDE, "params": _override_params(identity)})
+        await session.send("Target.sendMessageToTarget", {"sessionId": attached["sessionId"], "message": message})
+
+
+def _override_params(identity: Identity) -> dict[str, object]:
+    return {"userAgent": identity.agent, "userAgentMetadata": dict(identity.metadata)}
+
+
 async def _override(target: Page | Frame, identity: Identity) -> None:
     owner = target if isinstance(target, Page) else target.page
-    override = {"userAgent": identity.agent, "userAgentMetadata": dict(identity.metadata)}
     session = await owner.context.new_cdp_session(target)
-    await session.send("Emulation.setUserAgentOverride", override)
+    await session.send(_OVERRIDE, _override_params(identity))
 
 
 async def _present_frame(frame: Frame, identity: Identity) -> None:
@@ -440,8 +477,7 @@ async def open_context(
             channel=_CHANNEL,
             headless=True,
             no_viewport=True,
-            args=desktop_screen(profile_name(*site)).launch_args(),
-            user_agent=session.identity.agent,
+            args=[_USER_AGENT_SWITCH + session.identity.agent, *desktop_screen(profile_name(*site)).launch_args()],
             proxy={"server": guard.url, "bypass": _PROXY_ALL_LOOPBACK},
             accept_downloads=False,
             **locale,
@@ -449,6 +485,7 @@ async def open_context(
         held = _Context(context, guard, connector, traffic, stack, locale, profile)
         stack.push_async_callback(context.close)
         context.on("close", lambda _: _closed(session, held))
+        await present_workers(context, session.identity)
         temporary = profile.lock is None and key is not None
         if temporary and sessions is not None and (seeded := await sessions.for_browser(url, policy.proxy_pool)):
             await context.add_cookies(seeded_cookies(seeded))

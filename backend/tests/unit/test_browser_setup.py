@@ -1,7 +1,7 @@
 """The browser rung runs Patchright's documented setup (INV-42, INV-43, INV-44; owner #50 as amended 2026-10-23):
-Google Chrome stable in headless mode, in a persistent profile with the window and screen of its site as its only
-launch arguments, the WebRTC policy the guard needs in the profile's preferences, its own user agent with only its
-headless token renamed (owner #71 as amended), and no client hints or headers. The context's zone is the egress
+Google Chrome stable in headless mode, in a persistent profile, with its own user agent with only its headless token
+renamed (owner #71 as amended) and the window and screen of its site as its launch arguments, the WebRTC policy the
+guard needs in the profile's preferences, and no client hints or headers but its own. The context's zone is the egress
 country's, else the request locale's region's. A fake Playwright records what `open_browser` and `fetch_browser` ask
 for; no browser runs (what the real probe reads, and what pages present on the wire: `test_browser_fetch.py`).
 """
@@ -44,7 +44,22 @@ class _Stop(Exception):
     """Raised where the fake stops: only the launch and context options are under test."""
 
 
+class _Session:
+    def on(self, _event: str, _handler: object) -> None:
+        return None
+
+    async def send(self, _method: str, _params: object) -> dict[str, object]:
+        return {}
+
+
+class _ContextBrowser:
+    async def new_browser_cdp_session(self) -> _Session:
+        return _Session()
+
+
 class _Context:
+    browser = _ContextBrowser()
+
     def on(self, _event: str, _handler: object) -> None:
         return None
 
@@ -156,15 +171,17 @@ def test_inv42_inv43_chrome_headless_in_a_profile_with_the_guards_webrtc_policy(
     with pytest.raises(_Stop):
         asyncio.run(fetching)
 
-    # `chrome` is Google Chrome stable (`patchright install chrome`), Patchright's recommended build, in the window and
-    # on the screen of the site's profile, its only launch arguments; WebRTC's proxy policy, which the SSRF guard needs
-    # (INV-16), is a profile preference.
+    # `chrome` is Google Chrome stable (`patchright install chrome`), Patchright's recommended build; its launch
+    # arguments are its user agent and the window and screen of the site's profile; WebRTC's proxy policy, which the
+    # SSRF guard needs (INV-16), is a profile preference.
     assert {k: v for k, v in recorder.launch.items() if k != "proxy"} == {
         "channel": "chrome",
         "headless": True,
         "no_viewport": True,
-        "args": desktop_screen(profile_name("example.test", None, None)).launch_args(),
-        "user_agent": _OWN_UA.replace("HeadlessChrome/", "Chrome/"),
+        "args": [
+            "--user-agent=" + _OWN_UA.replace("HeadlessChrome/", "Chrome/"),
+            *desktop_screen(profile_name("example.test", None, None)).launch_args(),
+        ],
         "accept_downloads": False,
     }
     # The browser started to read its headers is the same build, loads no site and sends nothing around the guard.
@@ -188,8 +205,8 @@ def test_inv42_inv43_chrome_headless_in_a_profile_with_the_guards_webrtc_policy(
 # allowed set the browser's own user agent with its headless token renamed (owner #71 as amended) and, through Chrome's
 # override, its own client hints (owner 2026-10-23).
 _IDENTITY_CALLS = re.compile(
-    r"user_agent|extra_http_headers|setUserAgentOverride|add_init_script"
-    r"|new_cdp_session|isolated_context=False|--enable-automation|--disable-blink-features"
+    r"user_agent|user-agent=|extra_http_headers|setUserAgentOverride|add_init_script"
+    r"|new_(browser_)?cdp_session|isolated_context=False|--enable-automation|--disable-blink-features"
 )
 
 
@@ -201,11 +218,14 @@ def test_inv44_no_source_file_changes_the_browser_identity() -> None:
         if _IDENTITY_CALLS.search(line)
     ]
 
-    # The profile's user agent, and Chrome's user agent override with the browser's own client hints (`present`).
-    assert offenders == [
-        f"acquire/browser_session.py:{_line_of(line)}"
-        for line in ("new_cdp_session(target)", '"Emulation.setUserAgentOverride", override', "user_agent=session")
-    ]
+    # The browser's user agent switch, and Chrome's user agent override with the browser's own client hints on tabs,
+    # frames and workers (`present`, `present_workers`).
+    allowed = ("user-agent=", '"Emulation.setUserAgentOverride"', "new_browser_cdp_session", "new_cdp_session(target)")
+    assert offenders == sorted((f"acquire/browser_session.py:{_line_of(line)}" for line in allowed), key=_number)
+
+
+def _number(offender: str) -> int:
+    return int(offender.rsplit(":", 1)[1])
 
 
 def _line_of(text: str) -> int:
@@ -260,7 +280,7 @@ def test_inv44_a_profile_sets_only_the_proxy_downloads_screen_and_the_locality(
 
     # The guard's proxy, no downloads, the profile's screen, the request's locale, and the zone of the machine's
     # declared egress country, else of the locale's region (owner P8); a country of several zones sets none (the
-    # machine's). The browser's own user agent, renamed; no client hints or headers.
+    # machine's). The browser's own user agent, renamed, as an argument; no client hints or headers.
     zoned = {} if zone is None else {"timezone_id": zone}
     assert {k: v for k, v in recorder.launch.items() if k in ("locale", "timezone_id")} == {"locale": "de-DE", **zoned}
     assert set(recorder.launch) == {
@@ -268,7 +288,6 @@ def test_inv44_a_profile_sets_only_the_proxy_downloads_screen_and_the_locality(
         "headless",
         "no_viewport",
         "args",
-        "user_agent",
         "proxy",
         "accept_downloads",
         "locale",
