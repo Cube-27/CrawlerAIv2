@@ -16,7 +16,8 @@ orchestrator made for your PR (`orchestrator.md`), beside the main clone in `../
    Monitor tool, a `/loop`, `sleep` polls or reads of its output file: each wake re-sends your whole context. CI or a
    bot still running is never a reason to end your turn or report `BLOCKED`.
 4. **Batch your pushes.** Push the PR once, then all review fixes together as one commit per round.
-5. **Don't merge `main` into your branch until the orchestrator says you are next to merge.** Never rebase.
+5. **Don't merge `main` into your branch** until the orchestrator says you are next to merge or `pr_ready.sh` reports
+   a conflict with `main`. Never rebase.
 6. Builders never merge, never push to `main`, never force-push. Never ask a bot to re-review, in any form.
 7. **Never wait or kill with `pgrep -f`/`pkill -f`**: the pattern matches your own shell. Wait with
    `run_in_background` on the command itself; kill a PID you looked up.
@@ -80,7 +81,7 @@ Commits: `type(scope): subject` like the history, ending with
 - `gh pr create --base main` from the repo template: summary, plan id, evidence, deviations, follow-ups. End the body
   with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
 - Then run `tools/orchestrator/pr_ready.sh <n>` in the background (`run_in_background`) and act on its last line.
-  It fails a PR that conflicts with `main` (report that; rule 5).
+  On a conflict with `main`, merge `origin/main` into your branch (rule 5), resolve it, push and run it again.
 - **CI red:** fix it in code, never with exclusions or weaker thresholds. A failure in code your PR doesn't touch
   that passed on `main`: rerun only the failed job once (`gh run rerun <run> --failed`) and name it in your report as a
   flaky test.

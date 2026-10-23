@@ -41,74 +41,81 @@ r12 (17 PRs of about 450 changed lines), that cost (about 20 minutes) outweighed
 - A builder's context, not the line count, is the real limit: with a large PR, tell it to use Sonnet subagents for
   exploration.
 
-## Starting a builder
+## Running the queue
 
-1. Pick the next plan PRs whose deps have all merged. Start a PR as soon as its deps merge; keep at most two running,
-   and give the browser to at most one of them.
-2. Write its brief to a file outside the repo (for example `../briefs/<id>.txt`, beside the clone). The protocol holds
-   the standing rules, so a brief holds only:
+The merge queue runs as a script, not as a model: `tools/orchestrator/run_queue.sh` in its own herdr pane starts
+builders, watches them through herdr, checks each READY with `pr_ready.sh`, merges, cleans up and starts the next. It
+costs no tokens while it runs. You (the orchestrator model) do the judgement: write the briefs and the queue file up
+front, then act only when the runner escalates. Never watch builders yourself with the Monitor tool, a `/loop`,
+`sleep` polls or repeated waits: each wake re-sends your whole context, and an unattended night of them costs
+millions of tokens.
+
+1. **Briefs.** For each PR, a file outside the repo (for example `../briefs/<id>.txt`, beside the clone). The protocol
+   holds the standing rules, so a brief holds only:
    - the plan id(s), branch `change/<id>` and the sections of the plan to read (by heading);
    - "Read `docs/agents/builder-protocol.md` first; its HARD RULES override everything";
-   - what earlier PRs changed that this one builds on, and follow-ups they left to it;
-   - this PR's exceptions: whether it may start a browser, a waived C10 run, a public API change the owner approved;
+   - which earlier PRs it builds on (by plan id; the builder reads what they changed on `main`);
+   - this PR's exceptions: whether it may start a browser (one builder at a time), a waived C10 run, a public API
+     change the owner approved;
    - for a high-risk PR (worker/queue concurrency, a public API or schema, auth or secrets): "run the `code-review`
      skill on your diff before the first push and fix what it confirms";
-   - for a running PR: the review points to fix this round;
    - the end-of-turn lines `READY TO MERGE #<n> <sha7>` / `BLOCKED #<n>: <reason>`.
-3. Create the worktree, give the builder its own herdr tab (not a split), start it and send the brief:
+2. **Queue.** `../briefs/queue.txt`, one line per PR in plan order: `id deps brief [owner]` (format in the script's
+   header). Put `owner` on a PR whose merge needs the owner's approval first. Two PRs that both need the browser must
+   depend on each other, so they never run at once.
+3. **Run it** in a herdr pane of its own, from the main checkout:
 
    ```bash
-   wt=$(bash tools/orchestrator/new_worktree.sh <id> change/<id>)   # or check out the existing branch
-   rm -f "$wt/.env"                     # builders never read secrets; keep it only when the brief needs the LLM key
-   herdr tab create --cwd "$wt" --label <id> --no-focus              # note .result.root_pane.pane_id
-   herdr agent start <id> --kind claude --pane <pane id> -- --permission-mode auto
-   herdr agent prompt <id> "$(cat ../briefs/<id>.txt)"
+   herdr tab create --cwd "$PWD" --label queue --no-focus          # note .result.root_pane.pane_id
+   herdr pane run <pane id> "bash tools/orchestrator/run_queue.sh ../briefs/queue.txt --escalate orch"
    ```
 
-   The first start in a new folder may stop at Claude's folder-trust prompt (`agent_not_ready`): check it with
-   `herdr agent read <id> --source visible`, answer with `herdr agent send-keys <id> enter`, wait until the agent is
-   idle, then send the brief.
-4. Watch every builder with one background watcher, re-armed after each event:
-   `bash tools/orchestrator/watch_agents.sh <id> <id>` (run_in_background). It exits with the builder's new
-   `READY TO MERGE` / `BLOCKED` line, `BLOCKED-DIALOG <id>` (read it; ask the owner before answering anything that
-   isn't routine) or `GONE <id>`. Never one wait per agent, and never the Monitor tool, a `/loop` or `sleep` polls
-   to watch: the watcher costs no tokens while it runs and wakes you once per event, while each Monitor line or loop
-   tick is a full-context turn.
-5. Every later prompt to a builder (send-back, update, "continue") ends with the standing line: "builder-protocol.md
-   HARD RULES apply; end with READY TO MERGE #<n> <sha7> or BLOCKED #<n>: <reason>." A builder that reports
-   `BLOCKED` because CI or a bot is still running broke HARD RULE 3: tell it to run `pr_ready.sh` and wait.
+   Name yourself first (`herdr agent rename <your pane> orch`). The runner prompts you once per event that needs
+   judgement (a builder's `BLOCKED`, a permission dialog, a builder gone, an owner-flagged PR ready, a builder that
+   didn't reach an accepted READY after two asks, the queue done or stuck), and shows a herdr notification for each.
+4. **On an escalation**, read the runner's pane (`herdr pane read <pane> --source recent-unwrapped --lines 40`) and the
+   builder's screen, clear the cause, record it in the queue's state file (`<id> running` to resume watching a builder,
+   `<id> merged <pr>` after merging a held PR yourself), and restart the runner if it exited. Ask the owner before
+   answering a dialog that isn't routine or merging an owner-flagged PR. Every prompt you send a builder ends with:
+   "builder-protocol.md HARD RULES apply; end with READY TO MERGE #<n> <sha7> or BLOCKED #<n>: <reason>."
+5. **When the queue is done**, update the plan's status table from the state file, in the plan's last PR or your next
+   tooling PR.
 
-## Merge queue
+The first start of an agent in a new folder may stop at Claude's folder-trust prompt; the runner then holds the PR.
+Answer it with `herdr agent send-keys <id> enter`, send the brief yourself (`herdr agent prompt <id> "$(cat <brief>)"`),
+append `<id> running` to the state file and restart the runner.
 
-Merge in the order PRs become ready, one at a time. On a builder's `READY TO MERGE #<n> <sha7>`:
+### By hand
 
-```bash
-bash tools/orchestrator/pr_ready.sh <n>     # must print READY TO MERGE #<n> <sha7>, the same sha the builder reported
-```
-
-`pr_ready.sh` is the whole check (CI, conflicts, CodeAnt's review, 0 unresolved threads, no new Sonar bug,
-vulnerability or hotspot), the same one the builder ran; re-running it at merge time catches a thread a bot posted
-late. Also skim the builder's report for anything that needs the owner (a contract or public API change not yet
-approved): ask the owner before merging that. If `pr_ready.sh` fails, send the failure back to the builder.
-
-Merge and clean up:
+What the runner does, for a PR it can't run (one you continue on an existing branch):
 
 ```bash
-gh pr merge <n> --squash --match-head-commit <full sha>   # GitHub deletes the remote branch
-herdr pane close <builder pane id>          # from `herdr agent get <id>`; first, so no shell holds the worktree
-bash tools/orchestrator/cleanup_worktree.sh <id> change/<id>   # worktree, branches, its test database
+wt=$(bash tools/orchestrator/new_worktree.sh <id> change/<id>)
+rm -f "$wt/.env"                     # builders never read secrets; keep it only when the brief needs the LLM key
+herdr tab create --cwd "$wt" --label <id> --no-focus                # note .result.root_pane.pane_id
+herdr agent start <id> --kind claude --pane <pane id> -- --permission-mode auto
+herdr agent prompt <id> "$(cat ../briefs/<id>.txt)"
+# on its READY TO MERGE #<n> <sha7>:
+bash tools/orchestrator/pr_ready.sh <n>                    # must print the same READY TO MERGE line
+gh pr merge <n> --squash --match-head-commit <full sha>    # GitHub deletes the remote branch
+herdr pane close <builder pane id>                         # first, so no shell holds the worktree
+bash tools/orchestrator/cleanup_worktree.sh <id> change/<id>
 git pull --ff-only
 ```
 
-Then update the plan's status table and your resume file, and start the next builder.
+`pr_ready.sh` is the whole merge check (CI, conflicts, CodeAnt's review, 0 unresolved threads, no new Sonar bug,
+vulnerability or hotspot), the same one the builder ran; running it again at merge time catches a thread a bot posted
+late.
 
 ### Updating a branch
 
 Only the PR **next in line** updates, its own builder does it, and only when it must: the PR conflicts with main
 (`mergeStateStatus` is `DIRTY`), or main changed code the patch calls, a dependency it uses, or which CI jobs run for
 it. `BEHIND` alone is no reason. Always a merge of `main`, never a rebase (a rebased branch needs a force-push, which
-builders never do): `herdr agent prompt <id> "You're next to merge. Merge origin/main into your branch, resolve every
-conflict, push, and run pr_ready.sh again."` The others keep working on their stale base.
+builders never do). A conflict is caught by `pr_ready.sh`, and the runner sends it back to the builder, which merges
+`main` (HARD RULE 5). For the other cases tell the builder: `herdr agent prompt <id> "You're next to merge. Merge
+origin/main into your branch, resolve every conflict, push, and run pr_ready.sh again."` The others keep working on
+their stale base.
 
 ## Sonar
 
@@ -130,10 +137,10 @@ above), before the first push, so its findings cost no extra CI round.
 
 ## Staying alive
 
-Keep a short resume file outside the repo (beside the briefs: live builders with pane, worktree, branch, PR and
-state; what merged; the next steps) and update it after every start and merge. Name your herdr agent
+The queue's state file is the record of what runs and what merged. Keep a short resume file beside it for what the
+state file can't say (escalations open, decisions taken, next steps). Name your herdr agent
 (`herdr agent rename <your pane> orch`) so a supervisor outside your session can restart you with `claude --continue`
-and point you at that file. Builders keep working if you die, but nothing merges.
+and point you at that file. The runner keeps merging if you die; its escalations wait for you.
 
 ## Evaluation phases
 
@@ -165,6 +172,6 @@ choice under "Deviations".
   `test_output_filter.py`, so only failures and the final summary reach the agent (exit code kept). Put
   `TEST_FILTER=0` in a command to see full output.
 - `.claude/skills/crawlerai-orchestrator/`: `/crawlerai-orchestrator` loads this guide.
-- `tools/orchestrator/`: `new_worktree.sh` and `cleanup_worktree.sh` (worktrees), `test_db.sh` (a test database
-  per worktree), `pr_ready.sh` (the readiness check), `wait_ci.sh` (CI on a head), `unresolved.sh` (open review
-  threads), `watch_agents.sh` (the builder watcher).
+- `tools/orchestrator/`: `run_queue.sh` (the merge queue), `pr_ready.sh` (the readiness check), `new_worktree.sh`
+  and `cleanup_worktree.sh` (worktrees), `test_db.sh` (a test database per worktree), `wait_ci.sh` (CI on a head),
+  `unresolved.sh` (open review threads).

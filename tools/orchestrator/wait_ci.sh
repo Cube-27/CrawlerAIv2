@@ -18,7 +18,7 @@ err() { echo "ERROR $*" >&2; exit 1; }
 check_conflict() {
   local state=$1
   case "$state" in
-    *CONFLICTING*|*DIRTY*) err "PR #$pr conflicts with main: rebase onto origin/main" ;;
+    *CONFLICTING*|*DIRTY*) err "PR #$pr conflicts with main: merge origin/main into the branch" ;;
     *) return 0 ;;
   esac
 }
