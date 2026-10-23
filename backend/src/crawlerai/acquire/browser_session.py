@@ -18,11 +18,12 @@ from pathlib import Path
 from typing import Final, cast
 from urllib.parse import urlsplit, urlunsplit
 
-from patchright._impl._api_structures import ProxySettings, SetCookieParam, ViewportSize
+from patchright._impl._api_structures import ProxySettings, SetCookieParam
 from patchright.async_api import BrowserContext, CDPSession, Frame, Page, Playwright, async_playwright
 from patchright.async_api import Error as PlaywrightError
 
 from crawlerai.acquire.browser_profiles import Profile, discard_profile, open_profile, profile_name
+from crawlerai.acquire.desktop_screen import desktop_screen
 from crawlerai.acquire.locality import Locality, locality
 from crawlerai.acquire.outcome import Exchange, Traffic
 from crawlerai.acquire.public_suffix import default_suffixes
@@ -51,12 +52,10 @@ __all__ = [
 
 # Patchright's documented setup (D-1204, D-1205, owner 2026-10-23): Google Chrome stable (`chrome`, installed with
 # `patchright install chrome`), the build the Patchright README recommends, run headless, with its own client hints and
-# no custom headers. Each browser runs in a persistent profile with Playwright's fixed 1280x720 viewport
-# (owner #50 as amended 2026-10-21: not the README's `no_viewport`, whose headless window is 800x600), and one launch
-# argument, its user agent (`_USER_AGENT_SWITCH`): WebRTC's proxy policy is a profile preference
-# (`acquire.browser_profiles`).
+# no custom headers. Each browser runs in a persistent profile, with the README's `no_viewport`, and two kinds of launch
+# argument: its user agent (`_USER_AGENT_SWITCH`), and the window and screen of the profile (`acquire.desktop_screen`,
+# owner 2026-10-23). WebRTC's proxy policy is a profile preference (`acquire.browser_profiles`).
 _CHANNEL = "chrome"
-_VIEWPORT: Final = ViewportSize(width=1280, height=720)
 # The one change to the browser's identity (owner #71 as amended 2026-10-21 and 2026-10-23, INV-44): its own user
 # agent, read from the browser, with the token headless mode adds (`HeadlessChrome/`) named as a headed browser names
 # it, and its own User-Agent Client Hints. The user agent is Chrome's `--user-agent` switch, its default for every
@@ -458,13 +457,15 @@ async def open_context(
     locale: Locality,
 ) -> _Context:
     """The site profile of `key` (a temporary one without a key, `acquire.browser_profiles`), launched as a persistent
-    context behind a guard of its own, holding the caller's cookies, or, in a temporary profile of the site, the cookies
+    context behind a guard of its own, on the screen of the page's site, pool and endpoint even in a temporary profile
+    (`acquire.desktop_screen`), holding the caller's cookies, or, in a temporary profile of the site, the cookies
     `sessions` give (`SiteSessions.for_browser`; a kept profile holds its own), with the `locale` and `timezone_id`
     of `locale` (`context_locality`). Nothing intercepts its requests: Playwright's request routing
     turns the HTTP cache off, so every request carries `Cache-Control: no-cache` and `Pragma: no-cache`, which no
     user's browser sends on a first load (acquisition spec, "HTTP and browser rungs")."""
     stack = AsyncExitStack()
     traffic = Traffic()
+    site = key or _site_key(url, policy, proxy)
     try:
         profile = open_profile(session.profiles.root, None if key is None else profile_name(*key))
         stack.callback(profile.close)  # after the browser has closed, so its last writes are in the profile
@@ -475,8 +476,8 @@ async def open_context(
             profile.directory,
             channel=_CHANNEL,
             headless=True,
-            viewport=_VIEWPORT,
-            args=[_USER_AGENT_SWITCH + session.identity.agent],
+            no_viewport=True,
+            args=[_USER_AGENT_SWITCH + session.identity.agent, *desktop_screen(profile_name(*site)).launch_args()],
             proxy={"server": guard.url, "bypass": _PROXY_ALL_LOOPBACK},
             accept_downloads=False,
             **locale,
@@ -509,10 +510,14 @@ def context_key(url: str, policy: FetchPolicy, proxy: ProxyEndpoint | None) -> C
     """The profile a page renders in (`acquire.browser_profiles`): the page's site (HTML Standard §7.1.1) and the
     proxy pool and endpoint its guard goes through. None for a fetch with the caller's own cookies, which are no
     site's state (acquisition spec, "Cookies stay inside one fetch"): it gets a temporary profile, never kept."""
-    host = urlsplit(url).hostname
-    if policy.context is not None or host is None:
+    if policy.context is not None or urlsplit(url).hostname is None:
         return None
-    return (default_suffixes().site(host), policy.proxy_pool, proxy)
+    return _site_key(url, policy, proxy)
+
+
+def _site_key(url: str, policy: FetchPolicy, proxy: ProxyEndpoint | None) -> ContextKey:
+    """The site, proxy pool and endpoint of a page: its profile's key, and the screen of a temporary profile."""
+    return (default_suffixes().site(urlsplit(url).hostname or ""), policy.proxy_pool, proxy)
 
 
 def caller_cookies(url: str, context: RequestContext) -> list[SetCookieParam]:

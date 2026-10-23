@@ -26,7 +26,9 @@ from lxml import html as lxml_html
 from patchright.async_api import Error as PlaywrightError
 
 from crawlerai.acquire.browser import fetch_browser
-from crawlerai.acquire.browser_session import BrowserSession, open_browser
+from crawlerai.acquire.browser_profiles import profile_name
+from crawlerai.acquire.browser_session import BrowserSession, context_key, open_browser
+from crawlerai.acquire.desktop_screen import desktop_screen
 from crawlerai.acquire.session import CookieExport
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import FetchPolicy, FetchResult
@@ -123,6 +125,15 @@ _SHARED_WORKER = (
   c.ports[0].onmessage = e => report(e['data']).then(r => c.ports[0].postMessage(r));
 };"""
 )
+# A page that writes down the screen, window and viewport it is laid out in (CSSOM View), at its first rendering
+# opportunity (HTML Standard §8.1.7.3 `requestAnimationFrame`): before it, headless Chrome may still report an
+# `outerWidth` and `outerHeight` of 0 to a new document, with or without a viewport.
+_GEOMETRY = b"""<html><body><p>Geometry page</p><pre id="geometry"></pre><script>
+requestAnimationFrame(() => document.getElementById('geometry').textContent = JSON.stringify({
+  width: screen.width, height: screen.height, availWidth: screen.availWidth, availHeight: screen.availHeight,
+  outerWidth, outerHeight, innerWidth, innerHeight, devicePixelRatio, screenX, screenY,
+}));
+</script></body></html>"""
 _FRAMED = b"<html><body><p>Framed</p><script>fetch('/api/n/8');</script></body></html>"
 
 # A 403 document that stands in for the page and never navigates on within the fetch (a challenge it cannot pass).
@@ -136,7 +147,7 @@ _REFUSAL_PAGE = (
 )
 
 
-# A page three times taller than the browser's viewport, with enough text not to be a shell.
+# A page taller than the browser's viewport on any of its screens, with enough text not to be a shell.
 _TALL = (
     b'<html><body><nav><a href="/">Home</a></nav><p>'
     + b"A paragraph of the tall page that is long enough to be read as content. " * 6
@@ -219,6 +230,7 @@ def server() -> Iterator[Server]:
             "/style.css": Reply(content_type="text/css", body=b"p { color: black }"),
             "/api/big": Reply(content_type=_JSON, body=b"[" + b"0," * 1_100_000 + b"0]"),
             "/tall": Reply(body=_TALL),
+            "/geometry": Reply(body=_GEOMETRY),
             "/many": Reply(body=_MANY),
             "/search": Reply(body=_SEARCH),
             "/api/search": Reply(content_type=_JSON, body=b'{"hits": []}'),
@@ -380,6 +392,25 @@ def test_the_probe_reads_what_every_request_of_a_page_its_frame_and_workers_pres
     assert {name: reported[name] for name in hints} == {name: identity.metadata[name] for name in hints}
     for worker in ("service-worker", "shared-worker"):
         assert json.loads(page.get_element_by_id(worker).text_content()) == [identity.agent, reported]
+
+
+def test_a_page_is_laid_out_in_a_maximised_window_on_the_screen_of_its_profile(
+    browser: Browser, server: Server
+) -> None:
+    """Owner 2026-10-23: the screen is the site profile's (`acquire.desktop_screen`), and what the page reads of it is
+    one desktop's: a work area of the screen less a taskbar, the window filling it, the viewport inside its toolbars."""
+    url = server.url("/geometry")
+    key = context_key(url, FetchPolicy(), None)
+    assert key is not None
+    screen = desktop_screen(profile_name(*key))
+
+    result = browser.fetch(url)
+
+    read = json.loads(lxml_html.fromstring(result.bundle.body).get_element_by_id("geometry").text_content())
+    assert (read["width"], read["height"], read["devicePixelRatio"]) == (screen.width, screen.height, screen.scale)
+    assert (read["availWidth"], read["screenX"], read["screenY"]) == (screen.width, 0, 0)
+    assert screen.height > read["availHeight"] == read["outerHeight"] > read["innerHeight"]
+    assert read["outerWidth"] == read["innerWidth"] == screen.width
 
 
 @pytest.fixture(scope="module")
