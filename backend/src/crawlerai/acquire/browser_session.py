@@ -15,7 +15,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, cast
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from patchright._impl._api_structures import ProxySettings, SetCookieParam, ViewportSize
 from patchright.async_api import BrowserContext, Frame, Page, Playwright, async_playwright
@@ -364,7 +364,9 @@ async def _listening(sent: dict[str, str]) -> AsyncIterator[str]:
 
     server = await asyncio.start_server(serve, _LOOPBACK, 0)
     async with server:
-        yield f"http://{_LOOPBACK}:{server.sockets[0].getsockname()[1]}/"
+        # Plain HTTP to the loopback address: the listener is this process, and a loopback origin is potentially
+        # trustworthy (W3C Secure Contexts §3.2) without TLS.
+        yield urlunsplit(("http", f"{_LOOPBACK}:{server.sockets[0].getsockname()[1]}", "/", "", ""))
 
 
 async def present(page: Page, identity: Identity) -> None:
@@ -372,8 +374,8 @@ async def present(page: Page, identity: Identity) -> None:
     agent override (the CDP Emulation domain's, owner 2026-10-23) with the browser's own client hints, in
     place of those Playwright derives from the user agent string alone (`platformVersion` from the frozen reduced user
     agent, `architecture` x86 unless the string names ARM). A dedicated worker takes its page's. A cross-site frame,
-    which renders in a process of its own, takes it once its navigation is reported, so its first requests may carry
-    Playwright's; a service or shared worker is out of reach (acquisition spec, the known gap)."""
+    which renders in a process of its own, and a popup take it once Playwright reports them, so their first requests
+    may carry Playwright's; a service or shared worker is out of reach (acquisition spec, the known gaps)."""
     await _override(page, identity)
     page.on("framenavigated", lambda frame: _present_frame(frame, identity))
     page.on("popup", lambda popup: _present_popup(popup, identity))

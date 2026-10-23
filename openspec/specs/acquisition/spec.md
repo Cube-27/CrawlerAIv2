@@ -571,7 +571,8 @@ navigates, on each cross-site frame once its navigation is reported, and on each
 Playwright derives from the user agent string alone (`platformVersion` from the frozen reduced user agent,
 `architecture` x86 unless the string names ARM). The page's, its frames' and dedicated workers' `navigator.userAgent`
 and request headers then name `Chrome`, and their client hints are the browser's own. Known gaps, not goals: a
-cross-site frame's first requests, sent before its navigation is reported, carry Playwright's hints; service and
+cross-site frame's first requests, sent before its navigation is reported, and a popup's first navigation, sent before
+Playwright reports the popup, carry Playwright's hints; service and
 shared workers keep `HeadlessChrome` in `navigator.userAgent` and on the request for their script, and a service
 worker's `navigator.userAgentData` reports no brands or full versions, because Playwright applies the override to a
 service worker's later requests only and CDP reaches no worker target from a page. The context's `locale` and
