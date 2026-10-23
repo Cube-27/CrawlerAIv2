@@ -14,13 +14,15 @@ An export carries the release check run on the pages the config was validated on
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import RowMapping, Text, column, func, select
 from sqlalchemy.dialects.postgresql import JSONB, aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.orm import aliased
 
 from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir import corrections
@@ -39,6 +41,7 @@ from crawlerai.config_ir.exporters.configs import ConfigExport, ConfigFormat, ex
 from crawlerai.config_ir.held_out import load_captures, load_held_out
 from crawlerai.config_ir.model import ExtractionConfigIR, SentBy
 from crawlerai.config_ir.progressive import LEARN_AFTER_PAGES, StateKey, lock_state, request_learning
+from crawlerai.config_ir.repair import RecipeChange, changes
 from crawlerai.config_ir.validation import ValidationReport, validate
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.errors import Refusal
@@ -55,7 +58,7 @@ from crawlerai.db.models import (
     SiteId,
 )
 from crawlerai.schemas import registry
-from crawlerai.schemas.types import document_digest
+from crawlerai.schemas.types import Name, document_digest
 from crawlerai.storage.base import ObjectStore
 
 
@@ -80,10 +83,15 @@ class ConfigSummary(_Out):
     custom: bool
     renders: list[str]
     sent_by: SentBy
+    # The fields drift suspended, and a custom recipe's repair waiting for approval (a later version of its shape).
+    drifting: list[Name]
+    pending_repair: ExtractionConfigId | None
 
 
 class ConfigDetail(ConfigSummary):
     ir: ExtractionConfigIR
+    # A recipe's repair waiting for approval: what it changes in the active version of its shape.
+    repair_changes: list[RecipeChange] | None
 
 
 class LearnRequest(_Out):
@@ -116,6 +124,30 @@ _RENDERS = (
     .where(_FIELD.c.value["needs"].astext == "browser")
     .scalar_subquery()
 )
+# The fields drift suspended, by name.
+_STATUS = func.jsonb_each_text(ExtractionConfig.field_status).table_valued(column("key", Text), column("value", Text))
+_DRIFTING = (
+    select(func.coalesce(func.jsonb_agg(aggregate_order_by(_STATUS.c.key, _STATUS.c.key)), func.jsonb_build_array()))
+    .where(_STATUS.c.value == "suspended")
+    .scalar_subquery()
+)
+# A custom recipe's latest repair waiting for approval: a later version of its scope and pattern shape.
+_LATER = aliased(ExtractionConfig)
+_PENDING_REPAIR = (
+    select(_LATER.id)
+    .where(
+        _LATER.site_id == ExtractionConfig.site_id,
+        _LATER.schema_id == ExtractionConfig.schema_id,
+        _LATER.page_kind == ExtractionConfig.page_kind,
+        _LATER.pattern_shape == ExtractionConfig.pattern_shape,
+        _LATER.pattern_shape != "",
+        _LATER.status == "pending_approval",
+        _LATER.version > ExtractionConfig.version,
+    )
+    .order_by(_LATER.version.desc())
+    .limit(1)
+    .scalar_subquery()
+)
 _COLUMNS = (
     ExtractionConfig.id,
     Site.host,
@@ -131,13 +163,15 @@ _COLUMNS = (
     (ExtractionConfig.pattern_shape != "").label("custom"),
     _RENDERS.label("renders"),
     func.coalesce(ExtractionConfig.ir["sent_by"].astext, "http").label("sent_by"),
+    _DRIFTING.label("drifting"),
+    _PENDING_REPAIR.label("pending_repair"),
 )
 # A list leaves out each version's IR, the largest column.
 _SUMMARIES = select(*_COLUMNS).join(Site, Site.id == ExtractionConfig.site_id)
 _DETAILS = _SUMMARIES.add_columns(ExtractionConfig.ir, ExtractionConfig.pattern_shape)
 
 
-def _model[M: ConfigSummary](model: type[M], row: RowMapping) -> M:
+def _model[M: ConfigSummary](model: type[M], row: RowMapping | Mapping[str, Any]) -> M:
     return model.model_validate({name: row["host" if name == "site" else name] for name in model.model_fields})
 
 
@@ -151,7 +185,25 @@ async def list_for_host(conn: AsyncConnection, host: str) -> list[ConfigSummary]
 
 
 async def get(conn: AsyncConnection, config_id: ExtractionConfigId) -> ConfigDetail:
-    return _model(ConfigDetail, await _row(conn, config_id))
+    row = await _row(conn, config_id)
+    return _model(ConfigDetail, {**row, "repair_changes": await _repair_changes(conn, row)})
+
+
+async def _repair_changes(conn: AsyncConnection, row: RowMapping) -> list[RecipeChange] | None:
+    """What a recipe's repair waiting for approval changes in the active version of its shape; None for any other
+    config, or when no version of its shape is active."""
+    if not row["custom"] or row["status"] != "pending_approval":
+        return None
+    configs = ExtractionConfig
+    key = StateKey(row["site_id"], row["schema_id"], row["page_kind"])
+    active = select(configs.ir).where(
+        *key.config_scope(), configs.pattern_shape == row["pattern_shape"], configs.status == "active"
+    )
+    current: dict[str, Any] | None = (await conn.execute(active)).scalar_one_or_none()
+    if current is None:
+        return None
+    before = CustomRecipe.from_ir(ExtractionConfigIR.model_validate(current), key.schema_id)
+    return changes(before, CustomRecipe.from_ir(ExtractionConfigIR.model_validate(row["ir"]), key.schema_id))
 
 
 async def correct(

@@ -80,6 +80,8 @@ function summary(overrides: Partial<ConfigSummary> = {}): ConfigSummary {
     custom: false,
     renders: [],
     sent_by: "http",
+    drifting: [],
+    pending_repair: null,
     ...overrides,
   };
 }
@@ -89,6 +91,7 @@ const v2 = summary();
 
 const detail: ConfigDetail = {
   ...v2,
+  repair_changes: null,
   ir: {
     ir_version: "1",
     site: HOST,

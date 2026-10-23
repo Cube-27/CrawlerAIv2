@@ -236,11 +236,13 @@ async def test_a_sites_configs_are_listed_with_their_status_and_one_config_has_i
                 "custom": False,
                 "renders": [],
                 "sent_by": "http",
+                "drifting": [],
+                "pending_repair": None,
             }
         ]
     }
     assert one.status_code == 200
-    assert one.json() == {**listed.json()["items"][0], "ir": _ir(world.host, world.schema, H2)}
+    assert one.json() == {**listed.json()["items"][0], "ir": _ir(world.host, world.schema, H2), "repair_changes": None}
 
 
 async def test_the_config_api_needs_a_key(client: httpx.AsyncClient, world: World) -> None:
