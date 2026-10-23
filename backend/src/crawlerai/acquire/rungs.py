@@ -90,6 +90,7 @@ class ExportingRung(Protocol):
 # task's budget; the HTTP outcome is kept instead.
 BROWSER_MIN_S: Final = 20.0
 _UNAVAILABLE = 503  # RFC 9110 §15.6.4
+_TOO_MANY = 429  # RFC 6585 §4
 # The HTTP outcomes the browser may pass where HTTP did not: a block, and a shell (a challenge's, or a script-only
 # document's, rendered once per page; acquisition spec, "Browser on block or by field source", owner #72).
 _BROWSER_EVIDENCE: frozenset[BlockClass] = frozenset({"shell", "blocked"})
@@ -425,15 +426,22 @@ async def _browser_retry(url: str, policy: FetchPolicy, rungs: Rungs, result: Fe
 
 
 async def _browser_may_help(result: FetchResult) -> bool:
-    """Whether the HTTP outcome is one the browser retries: a block, a shell, an unanswered request, or a 503
+    """Whether the HTTP outcome is one the browser retries: a block, a shell, an unanswered request, a 429, or a 503
     interstitial (acquisition spec, "Browser on block or by field source")."""
-    return _browser_may_pass(result) or await _interstitial_unavailable(result)
+    return _browser_may_pass(result) or _too_many_requests(result) or await _interstitial_unavailable(result)
+
+
+def _too_many_requests(result: FetchResult) -> bool:
+    """Owner decision 2026-10-23: an HTTP 429 (RFC 6585 §4) is answered once in the browser, after the pause the site
+    asked for (`_paused_by`): a filter may rate a client by its TLS or HTTP/2 fingerprint, which the browser's own
+    network stack does not share. The task does not retry it after that (`worker.handlers.steps`)."""
+    manifest = result.bundle.manifest
+    return manifest.method == "http" and manifest.status_code == _TOO_MANY
 
 
 async def _interstitial_unavailable(result: FetchResult) -> bool:
     """D-1263: a 503 (RFC 9110 §15.6.4) whose document stands in for the page until its script or refresh navigates
-    on (`classify.interstitial`): the browser may pass it, once the site's pause is over (`_paused_by`). A 429 asks
-    for fewer requests and nothing else, so it gets no browser attempt."""
+    on (`classify.interstitial`): the browser may pass it, once the site's pause is over (`_paused_by`)."""
     manifest = result.bundle.manifest
     if manifest.status_code != _UNAVAILABLE or manifest.method != "http":
         return False
@@ -492,7 +500,8 @@ def _unanswered(result: FetchResult) -> bool:
 
 def slow_down(result: FetchResult) -> bool:
     # A 429 or 503 asks for fewer requests (RFC 6585 §4, RFC 9110 §15.6.4): another rung would be one more, inside
-    # the backoff the politeness step is about to apply.
+    # the backoff the politeness step is about to apply; only the browser's one attempt waits that pause out first
+    # (`_too_many_requests`, `_interstitial_unavailable`).
     return result.bundle.manifest.status_code in SLOW_DOWN
 
 

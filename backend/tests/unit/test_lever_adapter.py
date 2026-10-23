@@ -79,3 +79,15 @@ def test_a_postings_description_is_its_body_lists_and_closing_in_page_order() ->
         "<p>Opening of a test fixture.</p><p>Build synthetic systems.</p>\n"
         "<h2>Requirements</h2><li>Write tests</li>\n<p>Closing.</p>"
     )
+
+
+def test_a_postings_creation_timestamp_is_its_date_posted() -> None:
+    posting = json.loads((FIXTURES / "posting.json").read_text())
+    match = AdapterMatch(SITE, "detail", item=POSTING)
+
+    posting["createdAt"] = 1_700_000_000_123  # milliseconds since the Unix epoch
+    found = candidates(ADAPTER, match, json.dumps(posting))
+    assert found[("adapter:lever:$", "date_posted")] == "2023-11-14T22:13:20.123Z"
+    # A value the documentation does not state the timestamp as is no date.
+    posting["createdAt"] = "1700000000123"
+    assert ("adapter:lever:$", "date_posted") not in candidates(ADAPTER, match, json.dumps(posting))

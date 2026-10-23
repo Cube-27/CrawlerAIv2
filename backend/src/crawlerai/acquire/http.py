@@ -20,8 +20,8 @@ from curl_cffi.requests import AsyncSession, BrowserTypeLiteral
 from curl_cffi.requests.exceptions import RequestException
 
 from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_label, count
-from crawlerai.acquire.classify import Redirect
-from crawlerai.acquire.curl_client import Hop, pinned, reason, send
+from crawlerai.acquire.classify import Redirect, unread_media
+from crawlerai.acquire.curl_client import BODY_CAP, Hop, pinned, reason, send
 from crawlerai.acquire.outcome import Content, fetch_result, report_proxy
 from crawlerai.acquire.session import SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector, Target
@@ -77,6 +77,9 @@ async def fetch_http(
             # The document's links resolve against the URL that served it (RFC 3986 §5), the last hop's.
             served = last.exchange.url
             challenge = await asyncio.to_thread(challenge_label, last.status, last.response_headers, text, served)
+    elif sent.error == BODY_CAP and last is not None and unread_media(last.status, last.response_headers):
+        # INV-30 stopped the body, which no page reader would read: its status and media type class the answer.
+        block_class = "unsupported_media"
     count(challenge, "http")
     result = fetch_result(
         url=url,
