@@ -22,7 +22,7 @@ from pydantic import JsonValue, ValidationError
 
 from crawlerai.collect import js_state, jsonld, xhr
 from crawlerai.collect.base import PAGE, Candidate, Entity
-from crawlerai.collect.config import ROW_KIND, Executed
+from crawlerai.collect.config import ROW_KIND, Executed, Refusal
 from crawlerai.collect.json_doc import select
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.network_match import LearnedCalls
@@ -66,7 +66,7 @@ class ConfigMismatch(ValueError):
 
 
 class _Refused(Exception):
-    """A step the engine cannot run here; its message becomes a diagnostic and the next step runs."""
+    """A step the engine cannot run here; its message becomes a refusal and the next step runs."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,7 +121,7 @@ class EngineExecutor:
         if self.ir.listing is not None:
             rows, listed = run.listing(self.ir.listing, document)
             candidates.extend(listed)
-        return Executed(rows=tuple(rows), candidates=tuple(candidates), diagnostics=tuple(run.diagnostics))
+        return Executed(rows=tuple(rows), candidates=tuple(candidates), refusals=tuple(run.refusals))
 
     def _check(self, schema: SchemaDef) -> None:
         # Configs are per schema: a config never runs against another one.
@@ -132,22 +132,13 @@ class EngineExecutor:
             )
 
 
-def field_candidate(
-    page: ParsedPage, schema: SchemaDef, ctx: Context, vocabulary: Vocabulary, name: str, steps: Sequence[Step]
-) -> Candidate | None:
-    """The candidate `EngineExecutor` proposes for the page-level field `name` when it has `steps`: how induction
-    checks a selector by the very rules it will run under."""
-    run = _Run(page, schema, ctx, vocabulary)
-    return run.first_value(name, steps, schema.fields[name], _Scope(page.lxml_tree, in_row=False), PAGE)
-
-
 @dataclass
 class _Run:
     page: ParsedPage
     schema: SchemaDef
     ctx: Context
     vocabulary: Vocabulary
-    diagnostics: list[str] = field(default_factory=list)
+    refusals: list[Refusal] = field(default_factory=list)
     # Each JSON source's documents and the JSON-LD nodes, read once per page however many steps read them.
     _documents: dict[JsonSource, list[JsonValue]] = field(default_factory=dict)
     _nodes: list[tuple[tuple[str, ...], JsonValue]] | None = None
@@ -167,7 +158,9 @@ class _Run:
         for name, steps in fields.items():
             spec = self.schema.fields.get(name)
             if spec is None:
-                self.diagnostics.append(f"config:{name}: not a field of the schema")
+                self.refusals.append(
+                    Refusal(kind="field", source="config", field=name, reason="not a field of the schema")
+                )
             # §8.3: a suspended field falls back to cold-mode resolution
             elif steps.status != "suspended" and (found := self.first_value(name, steps.steps, spec, scope, owner)):
                 yield found
@@ -181,7 +174,7 @@ class _Run:
             try:
                 values = _matches(step, scope, self)
             except _Refused as refused:
-                self.diagnostics.append(f"config:{name}:{index}: {refused}")
+                self.refusals.append(Refusal(kind="step", source="config", field=name, step=index, reason=str(refused)))
                 continue
             if not values:
                 continue
@@ -245,23 +238,26 @@ class _Run:
         if isinstance(step, JsonPathStep):
             return self.json_rows(step)
         if not isinstance(step, (XPathStep, CssStep)):
-            self.diagnostics.append("config:row: a row step selects elements or JSON objects: xpath, css or jsonpath")
+            self.refuse_row("a row step selects elements or JSON objects: xpath, css or jsonpath")
             return []
         try:
             found = _evaluate(step.xpath, self.page.lxml_tree)
         except _Refused as refused:
-            self.diagnostics.append(f"config:row: {refused}")
+            self.refuse_row(str(refused))
             return []
         if not isinstance(found, list):
             return []
         return [_Scope(node, in_row=True) for node in found if isinstance(node, HtmlElement)]
+
+    def refuse_row(self, reason: str) -> None:
+        self.refusals.append(Refusal(kind="row", source="config", reason=reason))
 
     def json_rows(self, step: JsonPathStep) -> list[_Scope]:
         """One row per JSON object the step selects in its source's documents."""
         try:
             found = [value for document in self.documents(step.source) for _, value in select(step.jsonpath, document)]
         except (ValueError, _Refused) as error:
-            self.diagnostics.append(f"config:row: {error}")
+            self.refuse_row(str(error))
             return []
         root = self.page.lxml_tree
         return [_Scope(root, in_row=True, item=item, json_row=True) for item in found if isinstance(item, dict)]

@@ -36,12 +36,13 @@ from lxml import etree
 from lxml.html import HtmlElement
 from pydantic import JsonValue, ValidationError
 
+from crawlerai.collect.base import PAGE
 from crawlerai.collect.induce import induced
 from crawlerai.collect.json_doc import ROOT, scalars, segments
 from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.locator import InvalidLocator, Locator, parse_locator
 from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.executor import documents, field_candidate
+from crawlerai.config_ir.executor import EngineExecutor, documents
 from crawlerai.config_ir.model import (
     FieldSteps,
     JsonLdStep,
@@ -50,6 +51,7 @@ from crawlerai.config_ir.model import (
     Step,
     XPathStep,
 )
+from crawlerai.config_ir.page_run import PageRun, trial_config
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.text import name_test
@@ -229,13 +231,16 @@ def _proposals(locator: Locator, sample: SamplePage, f: _Field) -> list[_Candida
 
 
 def _verified(candidate: _Candidate, f: _Field) -> bool:
-    return all(_selects_published(candidate, sample, f) for sample in f.sample)
+    # The step runs as the engine executor runs a config's field, the run held-out validation judges (`page_run`).
+    fields = {f.name: FieldSteps(steps=[candidate.step], status=_STATUS)}
+    executor = EngineExecutor(trial_config(f.schema, fields), f.vocabulary)
+    return all(_selects_published(candidate, executor, sample, f) for sample in f.sample)
 
 
-def _selects_published(candidate: _Candidate, sample: SamplePage, f: _Field) -> bool:
+def _selects_published(candidate: _Candidate, executor: EngineExecutor, sample: SamplePage, f: _Field) -> bool:
     if candidate.nodes is not None and len(_select(sample.page.lxml_tree, candidate.nodes)) != 1:
         return False
-    found = field_candidate(sample.page, f.schema, sample.ctx, f.vocabulary, f.name, [candidate.step])
+    found = PageRun.of(executor, sample.page, f.schema, sample.ctx).candidate(PAGE, f.name)
     if found is None or not isinstance(found.normalized, Ok):
         return False
     return equal(found.normalized.value, sample.published[f.name].value, f.spec)

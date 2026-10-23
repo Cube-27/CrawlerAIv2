@@ -22,7 +22,6 @@ alike. Site strings exist only in the steps produced, which are IR data (C3).
 
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Final
 
 from lxml import etree
@@ -33,28 +32,23 @@ from crawlerai.collect.induce import induced
 from crawlerai.collect.items.align import Items, align
 from crawlerai.collect.schema_org_map import item_url_fields
 from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.executor import EngineExecutor, row_id
+from crawlerai.config_ir.executor import EngineExecutor
 from crawlerai.config_ir.induction import Published, SamplePage, anchored_paths, anchors, reading
 from crawlerai.config_ir.model import (
     NEXT_PAGE_FIELD,
-    ExtractionConfigIR,
-    Fetch,
     FieldSteps,
     ListingSpec,
-    Provenance,
-    SchemaRef,
     Step,
     XPathStep,
 )
-from crawlerai.config_ir.row_alignment import align as align_rows
+from crawlerai.config_ir.page_run import PageRun, trial_config
 from crawlerai.content.text import name_test, xpath_step
-from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.db.models import FieldStatus
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
 from crawlerai.normalize.strings import collapse
 from crawlerai.normalize.url import canonical_url
-from crawlerai.schemas.types import FieldSpec, SchemaDef, document_digest
+from crawlerai.schemas.types import FieldSpec, SchemaDef
 
 _STATUS: Final[FieldStatus] = "uncorroborated"  # until validation records corroboration
 # HTML Standard §4.12.1, §4.2.6: a script's and a style's contents are not rendered text, so no value is read there.
@@ -225,7 +219,7 @@ class _Trial:
 
     def _verified(self, name: str, step: Step) -> bool:
         listing = ListingSpec(row=self.row, fields={name: FieldSteps(steps=[step], status=_STATUS)})
-        executor = EngineExecutor(_config(self.schema, listing), self.vocabulary)
+        executor = EngineExecutor(trial_config(self.schema, {}, listing), self.vocabulary)
         return all(self._reproduces(executor, page, name) for page in self.pages)
 
     def _reproduces(self, executor: EngineExecutor, page: _Page, name: str) -> bool:
@@ -233,32 +227,14 @@ class _Trial:
         rows aligned as held-out validation aligns them. A published row no block holds (a source that lists more
         items than the page shows) is left to validation, which counts it against the field's yield."""
         sample = page.sample
-        executed = executor.execute(sample.page, self.schema, sample.ctx)
-        found = {c.entity_id: c.normalized for c in executed.candidates if c.field == name}
-        if not all(isinstance(result, Ok) for result in found.values()):
+        run = PageRun.of(executor, sample.page, self.schema, sample.ctx)
+        if not all(isinstance(c.normalized, Ok) for (_, field), c in run.candidates.items() if field == name):
             return False
-        values = [found.get(row_id(n)) for n in range(len(executed.rows))]
-        config = [{name: value.value} if isinstance(value, Ok) else {} for value in values]
         engine = [{name: row[name].value} if name in row else {} for _, row in page.pairs]
-        spec = self.schema.fields[name]
-        aligned = align_rows(engine, config, lambda _, value, published: equal(value, published, spec))
-        return all(n is not None and name in config[n] for n, row in zip(aligned, engine, strict=True) if name in row)
-
-
-def _config(schema: SchemaDef, listing: ListingSpec) -> ExtractionConfigIR:
-    """A config holding `listing` only, for the engine executor to run while induction verifies a step."""
-    return ExtractionConfigIR(
-        ir_version="1",
-        site="induction",
-        schema_=SchemaRef(name=schema.name, digest=document_digest(schema)),
-        page_kind=schema.page_kind,
-        fetch=Fetch(method="http"),
-        fields={},
-        listing=listing,
-        provenance=Provenance(
-            origin="induced", validated_on=[], learned_at=datetime.now(UTC), engine_version=ENGINE_VERSION
-        ),
-    )
+        aligned = run.aligned(engine, self.schema)
+        return all(
+            n is not None and name in run.row_values[n] for n, row in zip(aligned, engine, strict=True) if name in row
+        )
 
 
 def _proposals(block: HtmlElement, published: Published, spec: FieldSpec, ctx: Context) -> Iterator[Step]:
