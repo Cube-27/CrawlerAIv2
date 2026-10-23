@@ -214,7 +214,8 @@ page that renders itself by script is judged as rendered; one that stays a shell
 document that carries its text unrendered (`classify.carries_unrendered`, the content rule's measure: near-empty
 rendered text outside the site's chrome beside an order of magnitude more script or concealed text) is not yet read:
 a page that hydrates from its inline state makes no data call, so the wait goes on, within the same `READY_MAX_S`
-bound, until its script has written the DOM. The browser reads a body's wire size before the body. The JSON rung
+bound, until its script has written the DOM; the measure is linear in the document (nested concealed subtrees told
+apart by node identity), so a large rendered page is judged within one poll. The browser reads a body's wire size before the body. The JSON rung
 (`fetch_json`, method `api`) SHALL send through the HTTP rung's client (`acquire/curl_client.py`: impersonation, guard,
 caps, cookie jar, proxy pools, reasons) the headers a page's `fetch()` sends: Fetch Metadata of a CORS request,
 `Referer`, `Origin`, in a `fetch()`'s order. Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50,
@@ -290,7 +291,10 @@ least 2,000 (the content rule: HTML Standard §4.12.1 script data and §6.1 `hid
 browser renders it once); a 2xx document whose JSON-LD or microdata states an item of a type the task reads the page
 for (`FetchPolicy.target_types`: the schema's row types and their schema.org subtypes), or an OGP product price for a
 Product or Offer, is not a shell by the text rules nor `blocked` for want of links (the reader reads that data; a
-listing is still a shell unless it lists items, and a content-only fetch reads the rendered text alone); a 401 is
+listing is still a shell unless it lists items, a content-only fetch reads the rendered text alone, and a detail page
+whose body carries its text unrendered by the content rule's measure is a shell: what the data leaves out, such as an
+apply link, exists only once rendered, so the browser renders it once, and an HTTP page kept without a browser
+outcome is classed with the task's types and no page kind, so the data it states is still read); a 401 is
 `auth_wall`), and from one kind of site data only: a 2xx HTML document that shows a vendor's stand-in marker
 (`adapters/challenges.py`: a fixed string of the vendor's template, or the pattern of a token the vendor fills in, such
 as an edge's error reference id) is `blocked`. A block needs corroboration and usable content beats it: a 403, or a 2xx
@@ -326,6 +330,11 @@ Enforced by: the site-literal scan (INV-03), classify and challenge tests and re
 #### Scenario: Structured data of the schema's type
 - **WHEN** a job-posting fetch answers 200 with no links and no rendered text, and a JSON-LD JobPosting
 - **THEN** the class is `ok` and the posting's fields are extracted from it, with no browser attempt
+#### Scenario: Structured data of the schema's type beside a script-state body
+- **WHEN** a job-detail fetch answers 200 with a JSON-LD JobPosting, near-empty rendered text and its posting in an
+  inline script's state
+- **THEN** the HTTP class is `shell` and the browser renders the page once; when the browser yields no `ok` page, the
+  HTTP page is kept as `ok` and the posting's fields are extracted from its JSON-LD
 #### Scenario: Content carried by a script
 - **WHEN** a `markdown` fetch answers 200 with a site header of links, an empty application root and its text in an
   inline script's state

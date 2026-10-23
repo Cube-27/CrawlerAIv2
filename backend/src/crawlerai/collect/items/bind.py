@@ -47,7 +47,6 @@ and the resolution spec's evidence rules (a call's value is `network` evidence; 
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from urllib.parse import urlsplit
 
 from lxml.html import HtmlElement
 from pydantic import JsonValue
@@ -58,6 +57,7 @@ from crawlerai.collect.admission import Document, StateKind
 from crawlerai.collect.base import Candidate, Entity, is_visible_amount
 from crawlerai.collect.induce import induced
 from crawlerai.collect.items.align import AMBIGUOUS_IN_BLOCK, Block, Items, field_roles, quorum
+from crawlerai.collect.items.links import Kind, leading_word, url_kind
 from crawlerai.collect.items.spot import Spot
 from crawlerai.collect.js_state import state_documents
 from crawlerai.collect.schema_org_map import candidate, item_url_fields
@@ -187,11 +187,11 @@ def _grid_lists(listing: Listing, chosen: Items, row_urls: _RowUrls) -> tuple[Li
 def _sections(listing: Listing, chosen: Items) -> Items:
     """The chosen group with the listing's other sections, as one group (module docstring): each aligned group of the
     chosen one's fields, or of other fields among which every required field the chosen one aligns and one beyond the
-    item URL, a quorum of whose blocks lead to documents of a kind the chosen one's lead to (`_url_kind`), none of whose
-    blocks is, holds or lies in a block already read, fewer than half of whose blocks lead to items the chosen group
-    lists (`_Index`) and that does not lie past the chosen group's next-page link. Blocks are in document order; a block
-    leading to an item an earlier one leads to, as the page's links name items (`_Index`), is that item again (a
-    featured copy)."""
+    item URL, a quorum of whose blocks lead to documents of a kind the chosen one's lead to (`_Section._alike`), none
+    of whose blocks is, holds or lies in a block already read, fewer than half of whose blocks lead to items the chosen
+    group lists (`_Index`) and that does not lie past the chosen group's next-page link. Blocks are in document order;
+    a block leading to an item an earlier one leads to, as the page's links name items (`_Index`), is that item again
+    (a featured copy)."""
     section = _Section.of(listing, chosen)
     groups = [chosen]
     # Inner groups first: a group whose blocks hold another group's blocks is a list of sections (a department and its
@@ -226,7 +226,8 @@ class _Section:
 
     chosen: Items
     required: set[str]
-    kinds: set[tuple[str, int, str]]
+    kinds: set[Kind]
+    word: str | None  # the leading word a quorum of the chosen group's item URLs share (`leading_word`)
     paths: set[str]
     elements: set[HtmlElement]
     listed: "_Index"
@@ -241,10 +242,12 @@ class _Section:
         position = {element: i for i, element in enumerate(listing.page.lxml_tree.iter())}
         last = max((position.get(block.element, -1) for block in chosen.blocks), default=-1)
         pagers = (position[a] for a in listing.page.lxml_tree.iter("a") if _next_link(a) and position[a] > last)
-        kinds = {_url_kind(block.link) for block in chosen.blocks}
+        kinds = {url_kind(block.link) for block in chosen.blocks}
+        words = Counter(leading_word(block.link) for block in chosen.blocks).most_common(1)
+        word = words[0][0] if words and words[0][1] >= quorum(len(chosen.blocks)) else None
         paths = {_root_path(block.element) for block in chosen.blocks}
         elements = {block.element for block in chosen.blocks}
-        return cls(chosen, required, kinds, paths, elements, listed, position, min(pagers, default=None))
+        return cls(chosen, required, kinds, word, paths, elements, listed, position, min(pagers, default=None))
 
     def admits(self, group: Items) -> bool:
         """Whether `group` is a further section of the chosen group's listing: of its shape, its kind of item URL, apart
@@ -255,11 +258,17 @@ class _Section:
         fields = self.chosen.fields
         shaped = group.fields == fields or (self.required <= group.fields and len(group.fields) > 1)
         needed = quorum(len(group.blocks))
-        alike = sum(_url_kind(block.link) in self.kinds for block in group.blocks) >= needed
+        alike = sum(self._alike(block.link) for block in group.blocks) >= needed
         if not group.main and sum(_root_path(block.element) in self.paths for block in group.blocks) < needed:
             return False
         apart = not any(_overlaps(block.element, self.elements) for block in group.blocks)
         return shaped and alike and apart and not self._copy(group) and not self._past_end(group)
+
+    def _alike(self, link: str) -> bool:
+        """Whether an item URL is of the kind the chosen group's are (`url_kind`) and, when a quorum of theirs start
+        with one word, starts with it too: what repeats across a template's records is the template's (DEPTA), so
+        `/job-7-welder` is not `/jobs-at-acme`'s kind though both are one segment."""
+        return url_kind(link) in self.kinds and (self.word is None or leading_word(link) == self.word)
 
     def _copy(self, group: Items) -> bool:
         """Whether half or more of the group's blocks lead to items the chosen group lists: a featured, trending or
@@ -288,15 +297,6 @@ def _next_link(anchor: HtmlElement) -> bool:
     """Whether a hyperlink names the next document of a series (HTML Standard §4.6.7 `rel=next`; `rel` is a set of
     space-separated tokens, compared ASCII case-insensitively)."""
     return anchor.get("href") is not None and "next" in (anchor.get("rel") or "").lower().split()
-
-
-def _url_kind(url: str) -> tuple[str, int, str]:
-    """The kind of document a URL names, as a site lays its items out: its host, its number of path segments and its
-    first one when it has more (RFC 3986 §3.3: a path's segments are its hierarchy), so `/p/7` is `/p/3`'s kind, while a
-    category page, an article or another site's page is not."""
-    split = urlsplit(url)
-    segments = [segment for segment in split.path.split("/") if segment]
-    return split.netloc, len(segments), segments[0] if len(segments) > 1 else ""
 
 
 def _overlaps(element: HtmlElement, elements: set[HtmlElement]) -> bool:
