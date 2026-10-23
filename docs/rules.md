@@ -11,8 +11,9 @@ CI checks and the contract agents rely on. `CLAUDE.md` holds the full agent text
   (`example.com`, `.test`). CI: `tools/site_literal_scan.py --public`.
 - **C4** Vocabularies come from versioned external data in `backend/data/manifest.json`; no word, selector or regex for one page.
 - **C5** A failing site is fixed by config, a learning re-run or an operator correction; generic code changes only for a class.
-- **C7** No defaults; never rewrite page data's meaning; an unclear currency never drops a price (`$`=USD with no other hint,
-  else URL locale, flagged, else null); a price contested by an unexplained rival is a conflict. Prices/ratings are numbers.
+- **C6** Adapters only for multi-tenant platforms, evaluated on ≥3 tenants; measured in the e2e run, no CI check.
+- **C7** No defaults; never rewrite page data's meaning; an unclear currency never drops a price (page evidence, else URL
+  locale/subdomain/ccTLD, flagged, else null; no host tables); a price contested by an unexplained rival is a conflict. Prices/ratings are numbers.
 - **C8** One module per field type; no second path for existing logic. CI: `lint-imports`.
 - **C9** No test is named after or asserts one site; write property and replay tests.
 - **C10** An extraction change must improve the e2e run without dropping a field type's precision; the PR reports aggregates per
@@ -38,7 +39,7 @@ CI checks and the contract agents rely on. `CLAUDE.md` holds the full agent text
 - Greenfield: a model change edits the one baseline migration; no compatibility shims. An architecture change deletes what it
   supersedes in the same PR.
 - Frontend: visual values only in `frontend/src/app/theme.css`, UI only from `@heroui/react` (`tools/theme_only_check.py`).
-- `make api-client` output (`frontend/openapi.json`, `src/api/schema.d.ts`) is committed; CI fails on a diff.
+- `make api-client` output (`frontend/openapi.json`, `frontend/src/api/schema.d.ts`) is committed; CI fails on a diff.
 - Branch `change/<id>` in a worktree (`tools/orchestrator/new_worktree.sh`); `main` takes PRs only; merge needs green CI and
   every review thread resolved; never merge your own PR.
 - Tests: only files you touched locally; `pytest.raises` blocks hold one call; verification is runtime grounding plus `.claude/skills/verify-*`.
