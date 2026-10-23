@@ -22,7 +22,6 @@ Declines (§9): the currency unresolved, or the period unresolved on a monetary 
 import re
 import unicodedata
 from collections.abc import Callable, Hashable
-from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 
@@ -30,9 +29,7 @@ from pydantic import JsonValue
 
 from crawlerai.normalize import locales, numbers, vocab
 from crawlerai.normalize.base import (
-    BASES,
     Ambiguous,
-    Basis,
     Context,
     Invalid,
     NormalizeResult,
@@ -121,12 +118,8 @@ def _price_range(raw: dict[str, JsonValue], ctx: Context, money: MoneyRules) -> 
     if lo is None or hi is None:
         return Invalid("bound_missing")
     stated: dict[str, JsonValue] = {"priceCurrency": raw["priceCurrency"]} if "priceCurrency" in raw else {}
-
-    def read(at: Context) -> tuple[NormalizeResult, NormalizeResult]:
-        low, high = (money({"price": format(b, "f"), **stated}, at) for b in (lo, hi))
-        return low, high
-
-    return _monetary(*read(ctx), None, ctx, periodic=False, again=read)
+    low, high = (money({"price": format(b, "f"), **stated}, ctx) for b in (lo, hi))
+    return _monetary(low, high, None, periodic=False)
 
 
 def _period(written: str | None, ctx: Context) -> str | None:
@@ -194,11 +187,7 @@ def _from_text(raw: str, ctx: Context, money: MoneyRules) -> NormalizeResult:
     texts = _bound_texts(*bounds)
     if texts is None:
         return Ambiguous("currency_missing", ())
-
-    def read(at: Context) -> tuple[NormalizeResult, NormalizeResult]:
-        return money(texts[0], at), money(texts[1], at)
-
-    return _monetary(*read(ctx), periods.pop() if periods else None, ctx, again=read)
+    return _monetary(money(texts[0], ctx), money(texts[1], ctx), periods.pop() if periods else None)
 
 
 Parts = tuple[str, str, str]
@@ -297,26 +286,19 @@ def _stated_monetary(
     low, high = (money({"price": format(b, "f"), "priceCurrency": currency}, ctx) for b in (lo, hi))
     if any(isinstance(r, Ok) and r.basis is not None for r in (low, high)):
         return Invalid("unknown_currency")
-    return _monetary(low, high, period, ctx)
+    return _monetary(low, high, period)
 
 
 def _monetary(
-    lo: NormalizeResult,
-    hi: NormalizeResult,
-    period: str | None,
-    ctx: Context,
-    *,
-    periodic: bool = True,
-    again: Callable[[Context], tuple[NormalizeResult, NormalizeResult]] | None = None,
+    lo: NormalizeResult, hi: NormalizeResult, period: str | None, *, periodic: bool = True
 ) -> NormalizeResult:
     """Combine the money results of the two bounds: a decline on either is the range's decline (money's reason). A
-    `periodic` range (a salary) needs its period. `again` reads both bounds in another context (`_shared`)."""
+    `periodic` range (a salary) needs its period."""
     match lo, hi:
         case (Invalid() as declined, _) | (_, Invalid() as declined):
             return declined
-        case (Ok(basis="url" | "symbol"), Ok()) | (Ok(), Ok(basis="url" | "symbol")):
-            return _shared(lo, hi, period, ctx, periodic=periodic, again=again)
         case (Ok(basis="url" | "symbol"), _) | (_, Ok(basis="url" | "symbol")):
+            # A range has no basis to flag a currency only its URL or sign names, so it states none.
             return Ambiguous("currency_unknown", ())
         case (Ambiguous(reason=reason), _) | (_, Ambiguous(reason=reason)):
             # Each reading of the range pairs a reading of each bound in the same currency.
@@ -331,33 +313,6 @@ def _monetary(
         case Ok(value=lo_value), Ok(value=hi_value):
             return _bounded_money(_amount(lo_value), _amount(hi_value), period, periodic=periodic)
     raise TypeError("a normalize result is Ok, Ambiguous or Invalid")
-
-
-def _shared(
-    lo: Ok,
-    hi: Ok,
-    period: str | None,
-    ctx: Context,
-    *,
-    periodic: bool,
-    again: Callable[[Context], tuple[NormalizeResult, NormalizeResult]] | None,
-) -> NormalizeResult:
-    """A range one of whose bounds has a currency only its URL or sign names (`Ok.basis`): the bounds' one currency,
-    flagged as a single price is (the weakest basis), unless a bound states its own, which settles the other when its
-    sign can denote it (`$10 - CAD 20` is CAD: the page's currency as that one reads the other bound again); two
-    currencies the bounds cannot share stay unknown."""
-    explicit = {code for r in (lo, hi) if r.basis is None and (code := _amount(r.value)[1]) is not None}
-    weakest: Basis | None = max((r.basis for r in (lo, hi) if r.basis is not None), key=BASES.index)
-    if explicit and again is not None:
-        # The currency a bound states is the page's for the other.
-        low, high = again(ctx.model_copy(update={"page_currencies": tuple(explicit)}))
-        if isinstance(low, Ok) and isinstance(high, Ok):
-            lo, hi = low, high
-            weakest = None
-    if len({_amount(r.value)[1] for r in (lo, hi)}) != 1:
-        return Ambiguous("currency_unknown", ())
-    result = _bounded_money(_amount(lo.value), _amount(hi.value), period, periodic=periodic)
-    return replace(result, basis=weakest) if isinstance(result, Ok) and weakest is not None else result
 
 
 def _bounded_money(
