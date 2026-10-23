@@ -8,45 +8,31 @@ Pages and configs are synthetic (`example.test`); the schema.org vocabulary is t
 import asyncio
 import json
 from collections.abc import Mapping
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from pydantic import JsonValue
 
-from crawlerai.collect.base import Candidate
 from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.executor import EngineExecutor
 from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import FieldStatus, PageKind, SchemaId, SourceKind
-from crawlerai.normalize.base import Ok
 from crawlerai.resolve.pipeline import (
     EngineData,
-    GapReply,
-    GapRequest,
-    ListingGapReply,
-    ListingGapRequest,
     extract_page,
 )
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
-from crawlerai.resolve.types import ExtractionResult, LLMCallRecord
+from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+from crawlerai.storage.capture_bundle import CaptureBundle
+from tests.support.captures import capture
+from tests.support.role_c import PRICE, FakeRoleC
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 PAGE_URL = "https://shop.example.test/p/1"
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
 DATA = EngineData(vocabulary=VOCABULARY, orders=dict.fromkeys(PRECEDENCE_TYPES, ORDER), calibration=None)
-CALL = LLMCallRecord(
-    prompt_kind="c_extract_detail",
-    provider="provider-a",
-    model="model-a",
-    request_hash="0" * 64,
-    tokens_in=9,
-    tokens_out=3,
-)
-PRICE: JsonValue = {"amount": "19.90", "currency": "EUR"}
 
 
 def _schema(page_kind: PageKind = "detail", **fields: FieldSpec) -> SchemaDef:
@@ -109,51 +95,7 @@ def _html(*nodes: Mapping[str, Any], body: str = "") -> str:
 
 def _bundle(body: str, url: str = PAGE_URL) -> CaptureBundle:
     raw = body.encode()
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=url,
-        final_url=url,
-        fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
-        method="http",
-        status_code=200,
-        block_class="ok",
-        headers=Headers(request=(), response=(("Content-Type", "text/html"),)),
-        timings_ms={},
-        html_sha256=sha256_hex(raw),
-        network_bodies=(),
-        fetch_policy={},
-        engine_version="0+cal.0",
-    )
-    return CaptureBundle(manifest=manifest, body=raw, network=())
-
-
-class FakeRoleC:
-    """Answers each asked detail field with a grounded `llm` candidate of the target, and records every request."""
-
-    def __init__(self, listing_reply: ListingGapReply | None = None) -> None:
-        self.requests: list[GapRequest] = []
-        self.listing_requests: list[ListingGapRequest] = []
-        self._listing_reply = listing_reply or ListingGapReply(candidates=(), llm_calls=())
-
-    async def detail(self, request: GapRequest) -> GapReply:
-        self.requests.append(request)
-        candidates = tuple(
-            Candidate(
-                field=name,
-                entity_id=request.target.id,
-                source_kind="llm",
-                raw="19.90 EUR",
-                normalized=Ok(PRICE),
-                locator="text:0-9",
-                independent=True,
-            )
-            for name in request.missing
-        )
-        return GapReply(candidates=candidates, llm_calls=(CALL,))
-
-    async def listing(self, request: ListingGapRequest) -> ListingGapReply:
-        self.listing_requests.append(request)
-        return self._listing_reply
+    return capture(raw, url=url)
 
 
 def _extract(

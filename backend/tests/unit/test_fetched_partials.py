@@ -5,7 +5,6 @@ appended to the page, so its values and rows are read as the page's.
 Captures are synthetic, on `.test` hosts; the browser's responses are stand-ins with the attributes the capture reads.
 """
 
-from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
@@ -13,8 +12,7 @@ from crawlerai.acquire import browser_capture
 from crawlerai.collect.xhr import network_documents
 from crawlerai.content.fragments import is_partial
 from crawlerai.content.page import ParsedPage, prepassed
-from crawlerai.core.ids import uuid7
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, NetworkBody, sha256_hex
+from tests.support.captures import calls, capture
 
 URL = "https://shop.example.test/c/1"
 _PAGE = "<html><body><h1>Tables</h1><p>Shown already</p><template><p>Kept aside</p></template></body></html>"
@@ -41,36 +39,15 @@ def test_the_browser_keeps_same_site_html_answers_of_fetch_and_xhr_calls() -> No
 
 
 def _page(answers: list[tuple[str, str]]) -> ParsedPage:
-    body = _PAGE.encode()
-    data = [markup.encode() for _, markup in answers]
-    entries = tuple(
-        NetworkBody(
-            url=url,
-            status=200,
-            content_type="text/html",
-            sha256=sha256_hex(answer),
-            file=f"network/{i + 1:04d}.json",
-            method="GET",
-            resource_type="fetch",
-        )
-        for i, ((url, _), answer) in enumerate(zip(answers, data, strict=True))
+    network = calls(
+        ((url, markup.encode()) for url, markup in answers),
+        content_type="text/html",
+        method="GET",
+        resource_type="fetch",
     )
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=URL,
-        final_url=URL,
-        fetched_at=datetime(2026, 10, 20, tzinfo=UTC),
-        method="browser",
-        status_code=200,
-        block_class="ok",
-        headers=Headers(request=(), response=(("content-type", "text/html"),)),
-        timings_ms={},
-        html_sha256=sha256_hex(body),
-        network_bodies=entries,
-        fetch_policy={},
-        engine_version="test",
+    return ParsedPage.of(
+        capture(_PAGE.encode(), url=URL, method="browser", headers=(("content-type", "text/html"),), network=network)
     )
-    return ParsedPage.of(CaptureBundle(manifest=manifest, body=body, network=tuple(data)))
 
 
 def test_a_partial_the_page_does_not_show_is_read_as_part_of_the_page() -> None:

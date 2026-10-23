@@ -27,7 +27,8 @@ from crawlerai.core.ids import uuid7
 from crawlerai.db.models import CaptureId, ExtractionConfigId
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.schemas.types import SchemaDef, document_digest
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+from crawlerai.storage.capture_bundle import CaptureBundle
+from tests.support.captures import capture
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 SITE = "https://shop.example.test"
@@ -61,24 +62,7 @@ def _html(page: int, *, state: bool, cards: bool) -> str:
 
 
 def _bundle(page: int, html: str, method: CaptureMethod) -> CaptureBundle:
-    body = html.encode()
-    url = f"{SITE}/list/{page}"
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=url,
-        final_url=url,
-        fetched_at=datetime(2026, 10, 20, tzinfo=UTC),
-        method=method,
-        status_code=200,
-        block_class="ok",
-        headers=Headers(request=(), response=(("content-type", "text/html"),)),
-        timings_ms={},
-        html_sha256=sha256_hex(body),
-        network_bodies=(),
-        fetch_policy={},
-        engine_version="test",
-    )
-    return CaptureBundle(manifest=manifest, body=body, network=())
+    return capture(html.encode(), url=f"{SITE}/list/{page}", method=method, headers=(("content-type", "text/html"),))
 
 
 def _sampled(page: int, *, state: bool) -> Sampled:

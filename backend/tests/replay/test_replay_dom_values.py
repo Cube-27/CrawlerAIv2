@@ -16,7 +16,7 @@ from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.types import FieldOutcome
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import SchemaDef
-from tests.replay.captures import capture
+from tests.support.captures import capture
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "dom", "config", "llm")

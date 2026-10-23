@@ -2,7 +2,6 @@
 the page's record, as resolution decided them."""
 
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,12 +11,10 @@ from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.persist import store_capture
-from crawlerai.acquire.types import AttemptRecord, FetchResult
 from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.core.ids import uuid7
 from crawlerai.db.models import Candidate, Extraction, Job, JobId, Project, Record, Site, SiteId, SourceKind, UsageEvent
 from crawlerai.db.queue import ClaimedTask, insert_claimed
 from crawlerai.llm.client import MeteredClient, ProviderReply
@@ -28,8 +25,8 @@ from crawlerai.resolve.records import entity_key
 from crawlerai.resolve.task import Stored, store_extraction
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 from crawlerai.storage.fs import FsStore
+from tests.support.captures import FETCHED_AT, HTML, fetched
 from tests.support.fake_llm import FakeProvider
 
 pytestmark = pytest.mark.anyio
@@ -99,26 +96,9 @@ class _Setup:
         job_id: JobId | None = None,
     ) -> Stored:
         site_id, schema, task = await self.prepare(document, job_id)
-        raw = body.encode()
-        manifest = CaptureManifest(
-            capture_id=uuid7(),
-            url=PAGE_URL,
-            final_url=PAGE_URL,
-            fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
-            method="http",
-            status_code=200,
-            block_class=block_class,
-            headers=Headers(request=(), response=(("Content-Type", "text/html"),)),
-            timings_ms={},
-            html_sha256=sha256_hex(raw),
-            network_bodies=(),
-            fetch_policy={},
-            engine_version="0+cal.0",
-        )
-        bundle = CaptureBundle(manifest=manifest, body=raw, network=())
-        attempt = AttemptRecord(method="http", status=200, block_class=block_class, duration_ms=1)
-        fetched = FetchResult(bundle=bundle, duration_ms=1, attempts=(attempt,))
-        capture_id = await store_capture(self.conn, self.store, fetched, site_id)
+        page = fetched(PAGE_URL, 200, body.encode(), HTML, block_class=block_class, fetched_at=FETCHED_AT)
+        bundle = page.bundle
+        capture_id = await store_capture(self.conn, self.store, page, site_id)
         self.site_id, self.schema = site_id, schema
         result = await extract_page(bundle, schema, None, role_c, data=DATA)
         return await store_extraction(

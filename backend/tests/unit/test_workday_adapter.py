@@ -26,8 +26,8 @@ from crawlerai.db.models import SchemaId
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from tests.stand_in import StandInApi
 
-StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
 ScriptedApi = Callable[[Callable[[JsonRequest], bytes], list[JsonRequest]], JsonFetcher]  # `scripted_api` (conftest)
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"

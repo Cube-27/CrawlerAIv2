@@ -28,7 +28,8 @@ from crawlerai.core.ids import uuid7
 from crawlerai.db.models import CaptureId, JobId, PageKind
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, NetworkBody, sha256_hex
+from crawlerai.storage.capture_bundle import CaptureBundle
+from tests.support.captures import call, capture
 from tests.support.fake_llm import ScriptedClient
 
 ScriptedApi = Callable[[Callable[[JsonRequest], bytes], list[JsonRequest]], JsonFetcher]
@@ -75,36 +76,12 @@ def _bundle(page_url: str, pages: Sequence[int]) -> CaptureBundle:
     category = page_url.rsplit("/", 1)[1].rsplit("-", 1)[-1]  # `/c/<category>` or `/c/<n>-<category>`
     shown = [_title(category, page, row) for page in pages for row in range(3)]
     body = ("<html><body><ul>" + "".join(f"<li>{text}</li>" for text in shown) + "</ul></body></html>").encode()
-    calls = [(f"{API}?cat={category}&page={page}", _answer(category, page)) for page in pages]
-    entries = tuple(
-        NetworkBody(
-            url=url,
-            status=200,
-            content_type="application/json",
-            sha256=sha256_hex(data),
-            file=f"network/{i + 1:04d}.json",
-            method="GET",
-            request_headers=(("Accept", "application/json"),),
-            action=i,
-        )
-        for i, (url, data) in enumerate(calls)
+    answers = [(f"{API}?cat={category}&page={page}", _answer(category, page)) for page in pages]
+    network = tuple(
+        call(i, url, data, method="GET", request_headers=(("Accept", "application/json"),), action=i)
+        for i, (url, data) in enumerate(answers)
     )
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=page_url,
-        final_url=page_url,
-        fetched_at=datetime(2026, 10, 17, tzinfo=UTC),
-        method="browser",
-        status_code=200,
-        block_class="ok",
-        headers=Headers(request=(), response=()),
-        timings_ms={},
-        html_sha256=sha256_hex(body),
-        network_bodies=entries,
-        fetch_policy={},
-        engine_version="test",
-    )
-    return CaptureBundle(manifest=manifest, body=body, network=tuple(data for _, data in calls))
+    return capture(body, url=page_url, method="browser", headers=(), network=network)
 
 
 def _capture(n: int) -> CaptureId:

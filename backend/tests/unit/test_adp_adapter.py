@@ -4,16 +4,13 @@ module (C3); answers under `tests/fixtures/adp/` are synthetic."""
 
 import asyncio
 import json
-from collections.abc import Callable, Mapping
 from urllib.parse import urlencode
 
-from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.adapters.adp import ADP, API, HOST, PAGE_PATH
 from crawlerai.adapters.base import AdapterMatch
+from tests.stand_in import StandInApi
 from tests.unit.adapter_support import FIXTURES, candidates
-
-StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
 
 ADAPTER = ADP()
 CID = "00000000-0000-4000-8000-0000000000e1"

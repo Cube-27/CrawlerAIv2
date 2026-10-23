@@ -3,18 +3,15 @@ schema.org JobPostings. Hosts come from the adapter module (C3); boards and answ
 synthetic."""
 
 import asyncio
-from collections.abc import Callable, Mapping
 
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.adapters.ashby import API, BOARD_HOST, Ashby
 from crawlerai.adapters.base import AdapterMatch
+from tests.stand_in import StandInApi
 from tests.unit.adapter_support import FIXTURES, candidates
-
-StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
 
 ADAPTER = Ashby()
 BOARD = "example-board"

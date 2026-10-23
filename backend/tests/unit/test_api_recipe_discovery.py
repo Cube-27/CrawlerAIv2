@@ -19,7 +19,8 @@ from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, NetworkBody, sha256_hex
+from crawlerai.storage.capture_bundle import CaptureBundle
+from tests.support.captures import call, capture
 
 SCHEMA = SchemaDef(
     id=SchemaId(uuid7()),
@@ -54,38 +55,19 @@ class Body:
 
 
 def _bundle(page_url: str, html: str, bodies: Sequence[Body]) -> CaptureBundle:
-    body = html.encode()
-    return CaptureBundle(
-        manifest=CaptureManifest(
-            capture_id=UUID(int=1),
-            url=page_url,
-            final_url=page_url,
-            fetched_at=datetime(2026, 10, 14, tzinfo=UTC),
-            method="browser",
-            status_code=200,
-            block_class="ok",
-            headers=Headers(request=(), response=()),
-            timings_ms={},
-            html_sha256=sha256_hex(body),
-            network_bodies=tuple(
-                NetworkBody(
-                    url=b.url,
-                    status=b.status,
-                    content_type="application/json",
-                    sha256=sha256_hex(b.data),
-                    file=f"network/{i + 1:04d}.json",
-                    method=b.method,
-                    request_body=b.request_body,
-                    request_headers=b.request_headers,
-                )
-                for i, b in enumerate(bodies)
-            ),
-            fetch_policy={},
-            engine_version="test",
-        ),
-        body=body,
-        network=tuple(b.data for b in bodies),
+    network = tuple(
+        call(
+            i,
+            b.url,
+            b.data,
+            status=b.status,
+            method=b.method,
+            request_body=b.request_body,
+            request_headers=b.request_headers,
+        )
+        for i, b in enumerate(bodies)
     )
+    return capture(html.encode(), url=page_url, method="browser", headers=(), network=network, capture_id=UUID(int=1))
 
 
 def _sample(slug: str, values: Mapping[str, JsonValue], bodies: Sequence[Body], text: str = "") -> DiscoverySample:

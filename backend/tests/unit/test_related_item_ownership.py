@@ -7,7 +7,6 @@ Pages are synthetic (`example.test`); the schema.org vocabulary is the synthetic
 
 import asyncio
 import json
-from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
 from typing import Any
@@ -22,7 +21,7 @@ from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+from tests.support.captures import capture
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 ORDER: tuple[SourceKind, ...] = ("jsonld", "microdata", "og", "js_state", "xhr")
@@ -41,6 +40,7 @@ SCHEMA = SchemaDef(
         ),
     },
 )
+
 TARGET_PRICE: JsonValue = {"amount": "19.90", "currency": "EUR"}
 TARGET = {"@type": "Product", "name": "Widget One", "url": PAGE_URL}
 
@@ -67,24 +67,7 @@ def _page(*nodes: dict[str, Any], state: JsonValue = None, body: str = "", micro
 
 def _extract(html: str, schema: SchemaDef = SCHEMA) -> ExtractionResult:
     raw = html.encode()
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=PAGE_URL,
-        final_url=PAGE_URL,
-        fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
-        method="http",
-        status_code=200,
-        block_class="ok",
-        headers=Headers(request=(), response=(("Content-Type", "text/html"),)),
-        timings_ms={},
-        html_sha256=sha256_hex(raw),
-        network_bodies=(),
-        fetch_policy={},
-        engine_version="0+cal.0",
-    )
-    return asyncio.run(
-        extract_page(CaptureBundle(manifest=manifest, body=raw, network=()), schema, None, None, data=DATA)
-    )
+    return asyncio.run(extract_page(capture(raw, url=PAGE_URL), schema, None, None, data=DATA))
 
 
 def _price(result: ExtractionResult) -> tuple[str, str | None, JsonValue]:

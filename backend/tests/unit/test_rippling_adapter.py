@@ -3,19 +3,16 @@ schema.org JobPostings. Hosts come from the adapter module (C3); boards and answ
 `tests/fixtures/rippling/` are synthetic."""
 
 import asyncio
-from collections.abc import Callable, Mapping
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.adapters.base import AdapterMatch
 from crawlerai.adapters.rippling import API, BOARD_HOST, Rippling
+from tests.stand_in import StandInApi
 from tests.unit.adapter_support import FIXTURES, candidates
-
-StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
 
 ADAPTER = Rippling()
 BOARD = "example-board"

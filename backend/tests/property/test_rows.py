@@ -7,7 +7,6 @@ Pages are synthetic (`example.test`) and the schema is preset `commerce_detail` 
 import asyncio
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
 from typing import Any
@@ -20,14 +19,14 @@ from crawlerai.collect.base import Entity
 from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId, SourceKind
-from crawlerai.resolve import pipeline
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.rows import linked
 from crawlerai.resolve.types import FieldOutcome
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+from tests.support.captures import capture
+from tests.support.role_c import FakeRoleC
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
@@ -90,22 +89,7 @@ def _outcome(head: str = "", body: str = "") -> FieldOutcome:
 
 def _entity(head: str = "", body: str = "") -> dict[str, FieldOutcome]:
     raw = f"<html><head>{head}</head><body>{body}</body></html>".encode()
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=PAGE_URL,
-        final_url=PAGE_URL,
-        fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
-        method="http",
-        status_code=200,
-        block_class="ok",
-        headers=Headers(request=(), response=(("Content-Type", "text/html"),)),
-        timings_ms={},
-        html_sha256=sha256_hex(raw),
-        network_bodies=(),
-        fetch_policy={},
-        engine_version="0+cal.0",
-    )
-    bundle = CaptureBundle(manifest=manifest, body=raw, network=())
+    bundle = capture(raw, url=PAGE_URL)
     result = asyncio.run(extract_page(bundle, SCHEMA, None, None, data=DATA))
     assert result.entity is not None
     return dict(result.entity)
@@ -274,23 +258,12 @@ def test_each_variant_row_publishes_its_stated_price_and_only_a_one_offer_page_p
 
 def test_role_c_is_never_asked_for_a_row_mapped_field() -> None:
     # A claim is one verbatim span, which cannot hold a row of typed sub-fields.
-    fields = {name: _missing() for name in SCHEMA.fields}
+    node = {"@context": "https://schema.org", "@type": "Product", "sku": "W-10", "url": PAGE_URL}
+    raw = f'<html><head><script type="application/ld+json">{json.dumps(node)}</script></head><body></body></html>'
+    role_c = FakeRoleC(from_text=True)  # the page shows no amount: it answers nothing
 
-    assert "variants" not in pipeline._gaps(SCHEMA, fields, frozenset())
-    assert "title" in pipeline._gaps(SCHEMA, fields, frozenset())
+    asyncio.run(extract_page(capture(raw.encode(), url=PAGE_URL), SCHEMA, None, role_c, data=DATA))
 
-
-def _missing() -> FieldOutcome:
-    return FieldOutcome(
-        status="missing",
-        reason="no_candidates",
-        value=None,
-        evidence=None,
-        confidence=None,
-        calibrated=False,
-        source_kind=None,
-        locator=None,
-        derived_by=None,
-        chosen=None,
-        rejected=(),
-    )
+    (request,) = role_c.requests
+    assert "title" in request.missing
+    assert "variants" not in request.missing

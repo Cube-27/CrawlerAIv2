@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 
 from pydantic import JsonValue
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest
+from crawlerai.acquire.api import JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.config_ir.api_recipe.learn import learn_recipe
 from crawlerai.config_ir.api_recipe.model import ApiRecipe, HeaderValue, Proof
@@ -29,10 +29,11 @@ from crawlerai.core.ids import uuid7
 from crawlerai.db.models import CaptureId, JobId
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, NetworkBody, sha256_hex
+from crawlerai.storage.capture_bundle import CaptureBundle
+from tests.stand_in import StandInApi
+from tests.support.captures import calls, capture
 from tests.support.fake_llm import ScriptedClient
 
-StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
 JOB = JobId(uuid7())
 SITE = "https://shop.example.test"
 ENDPOINT = "https://api.example.test/v1/products"
@@ -70,34 +71,7 @@ def _answer(n: int) -> bytes:
 
 
 def _bundle(page_url: str, html: str, bodies: Sequence[tuple[str, bytes]]) -> CaptureBundle:
-    body = html.encode()
-    entries = tuple(
-        NetworkBody(
-            url=url,
-            status=200,
-            content_type="application/json",
-            sha256=sha256_hex(data),
-            file=f"network/{i + 1:04d}.json",
-            method="GET",
-        )
-        for i, (url, data) in enumerate(bodies)
-    )
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=page_url,
-        final_url=page_url,
-        fetched_at=datetime(2026, 10, 14, tzinfo=UTC),
-        method="browser",
-        status_code=200,
-        block_class="ok",
-        headers=Headers(request=(), response=()),
-        timings_ms={},
-        html_sha256=sha256_hex(body),
-        network_bodies=entries,
-        fetch_policy={},
-        engine_version="test",
-    )
-    return CaptureBundle(manifest=manifest, body=body, network=tuple(data for _, data in bodies))
+    return capture(html.encode(), url=page_url, method="browser", headers=(), network=calls(bodies, method="GET"))
 
 
 def _page(n: int, page_url: str, endpoint: str | None) -> StoredPage:

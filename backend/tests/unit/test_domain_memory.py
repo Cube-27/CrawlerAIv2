@@ -3,16 +3,14 @@ the challenge it named and whether the browser's cookies
 went on to HTTP; and what the contract holds (`site_contract`). The rows themselves are grounded at runtime.
 """
 
-from datetime import UTC, datetime
 from itertools import product
 from typing import Literal
 
 from crawlerai.acquire.memory import lesson, refused
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.core.capture import BlockClass
-from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SiteContract
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+from tests.support.captures import fetched, with_attempts
 
 URL = "https://shop.example.test/item/1"
 BODY = b"<html><body><h1>Item</h1></body></html>"
@@ -28,22 +26,8 @@ HINTS: tuple[Literal["auto", "http", "browser"], ...] = ("auto", "http", "browse
 
 
 def _fetched(policy: FetchPolicy, kept: AttemptRecord, attempts: tuple[AttemptRecord, ...]) -> FetchResult:
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=URL,
-        final_url=URL,
-        fetched_at=datetime.now(UTC),
-        method=kept.method,
-        status_code=kept.status or 0,
-        block_class=kept.block_class,
-        headers=Headers(request=(), response=()),
-        timings_ms={"total": 1},
-        html_sha256=sha256_hex(BODY),
-        network_bodies=(),
-        fetch_policy=policy.model_dump(mode="json"),
-        engine_version="test",
-    )
-    return FetchResult(bundle=CaptureBundle(manifest=manifest, body=BODY, network=()), duration_ms=2, attempts=attempts)
+    result = fetched(URL, kept.status or 0, BODY, method=kept.method, block_class=kept.block_class, policy=policy)
+    return with_attempts(result, attempts)
 
 
 def test_a_contract_is_taught_only_by_an_auto_fetch_that_tried_http_and_a_handoff_only_by_a_passed_block() -> None:

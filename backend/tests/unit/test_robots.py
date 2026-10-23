@@ -1,13 +1,10 @@
 """Robots.txt rules and fetch outcomes (RFC 9309). Synthetic files on RFC 2606 hosts."""
 
-import uuid
-from datetime import UTC, datetime
-
 import pytest
 
 from crawlerai.acquire.robots import Robots, snapshot_of
-from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+from crawlerai.acquire.types import FetchResult
+from tests.support.captures import fetched
 
 URL = "https://shop.example.test/robots.txt"
 
@@ -37,25 +34,7 @@ def test_matching_follows_rfc_9309(rules: list[str], path: str, allowed: bool) -
 
 
 def _fetched(status: int, body: bytes, error: str | None = None) -> FetchResult:
-    block_class: BlockClass = "error" if error else "ok"
-    manifest = CaptureManifest(
-        capture_id=uuid.UUID("0192f0c8-7b1e-7000-8000-000000000003"),
-        url=URL,
-        final_url=URL,
-        fetched_at=datetime(2026, 10, 13, tzinfo=UTC),
-        method="http",
-        status_code=status,
-        block_class=block_class,
-        headers=Headers(request=(), response=()),
-        timings_ms={"total": 1},
-        html_sha256=sha256_hex(body),
-        network_bodies=(),
-        fetch_policy=FetchPolicy().model_dump(mode="json"),
-        engine_version="test",
-    )
-    attempt = AttemptRecord(method="http", status=status or None, block_class=block_class, duration_ms=1, error=error)
-    bundle = CaptureBundle(manifest=manifest, body=body, network=())
-    return FetchResult(bundle=bundle, duration_ms=1, attempts=(attempt,))
+    return fetched(URL, status, body, block_class="error" if error else "ok", error=error)
 
 
 @pytest.mark.parametrize(

@@ -8,12 +8,11 @@ import asyncio
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.acquire.types import AttemptRecord, FetchResult
 from crawlerai.collect.config import Executed
 from crawlerai.collect.network_match import LearnedCalls
 from crawlerai.collect.vocabulary import Vocabulary
@@ -26,7 +25,7 @@ from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.services.page_run import FetchFailure, fetch_failure
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+from tests.support.captures import FETCHED_AT, HTML, fetched, with_attempts
 
 URL = "https://shop.example.test/p/1"
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
@@ -59,25 +58,9 @@ def _fetched(
     block_class: BlockClass = "ok",
     attempts: tuple[AttemptRecord, ...] | None = None,
 ) -> FetchResult:
-    raw = body.encode()
     made = attempts or (AttemptRecord(method=method, status=200, block_class=block_class, duration_ms=1),)
-    policy = {**FetchPolicy().model_dump(mode="json"), "attempts": [a.model_dump(mode="json") for a in made]}
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=URL,
-        final_url=URL,
-        fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
-        method=method,
-        status_code=200,
-        block_class=block_class,
-        headers=Headers(request=(), response=(("Content-Type", "text/html"),)),
-        timings_ms={"total": 1},
-        html_sha256=sha256_hex(raw),
-        network_bodies=(),
-        fetch_policy=policy,
-        engine_version="test",
-    )
-    return FetchResult(bundle=CaptureBundle(manifest=manifest, body=raw, network=()), duration_ms=1, attempts=made)
+    result = fetched(URL, 200, body.encode(), HTML, method=method, block_class=block_class, fetched_at=FETCHED_AT)
+    return with_attempts(result, made)
 
 
 @pytest.mark.parametrize(

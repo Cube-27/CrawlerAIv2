@@ -7,7 +7,6 @@ import asyncio
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -27,26 +26,20 @@ from crawlerai.normalize.base import Ok
 from crawlerai.resolve.evidence import Bucket, Calibration
 from crawlerai.resolve.pipeline import (
     EngineData,
-    GapReply,
-    GapRequest,
     ListingGapReply,
-    ListingGapRequest,
     RoleC,
     extract_page,
 )
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.score import PRECEDENCE_FILE, load_precedence
 from crawlerai.resolve.task import page_records
-from crawlerai.resolve.types import ExtractionResult, LLMCallRecord
+from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import (
     CaptureBundle,
-    CaptureManifest,
-    Headers,
-    NetworkBody,
-    network_file,
-    sha256_hex,
 )
+from tests.support.captures import calls, capture
+from tests.support.role_c import CALL, LISTING_CALL, PRICE, FakeRoleC
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 PAGE_URL = "https://shop.example.test/p/1"
@@ -73,7 +66,6 @@ PRODUCT = _schema(
     price=FieldSpec(type=FieldType.MONEY, description="d", required=True, schema_org="Offer.price+priceCurrency"),
     sku=FieldSpec(type=FieldType.IDENTIFIER, scheme="sku", description="d", schema_org="Product.sku"),
 )
-PRICE: JsonValue = {"amount": "19.90", "currency": "EUR"}
 
 
 def _product(name: str = "Widget One", url: str = PAGE_URL, *, price: str | None = "19.90") -> dict[str, Any]:
@@ -99,23 +91,7 @@ def _bundle(
     url: str = PAGE_URL,
     final_url: str | None = None,
 ) -> CaptureBundle:
-    raw = body.encode()
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=url,
-        final_url=final_url or url,
-        fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
-        method=method,
-        status_code=200,
-        block_class=block_class,
-        headers=Headers(request=(), response=(("Content-Type", "text/html"),)),
-        timings_ms={},
-        html_sha256=sha256_hex(raw),
-        network_bodies=(),
-        fetch_policy={},
-        engine_version="0+cal.0",
-    )
-    return CaptureBundle(manifest=manifest, body=raw, network=())
+    return capture(body.encode(), url=url, final_url=final_url, method=method, block_class=block_class)
 
 
 def _extract(
@@ -217,69 +193,6 @@ def test_a_product_group_whose_variant_offers_agree_publishes_their_price() -> N
 
 
 # --- the LLM hook ---
-
-CALL = LLMCallRecord(
-    prompt_kind="c_extract_detail",
-    provider="provider-a",
-    model="model-a",
-    request_hash="0" * 64,
-    tokens_in=9,
-    tokens_out=3,
-)
-
-
-class FakeRoleC:
-    """On a detail page, answers each missing field with the money value the page text shows, grounded on the target,
-    or with `failure`; on a listing, gives `listing_reply`, or with `fill_blocks` fills each asked field of each block
-    with the block's first line, grounded there. `error` is raised instead of either."""
-
-    def __init__(
-        self,
-        *,
-        failure: str | None = None,
-        listing_reply: ListingGapReply | None = None,
-        fill_blocks: bool = False,
-        error: Exception | None = None,
-    ) -> None:
-        self.requests: list[GapRequest] = []
-        self.listing_requests: list[ListingGapRequest] = []
-        self._failure = failure
-        self._listing_reply = listing_reply or ListingGapReply(candidates=(), llm_calls=())
-        self._fill_blocks = fill_blocks
-        self._error = error
-
-    async def listing(self, request: ListingGapRequest) -> ListingGapReply:
-        self.listing_requests.append(request)
-        if self._error is not None:
-            raise self._error
-        if self._fill_blocks:
-            filled = tuple(
-                _llm(name, block.row, block.text.split("\n")[0], block.start)
-                for block in request.blocks
-                for name in block.fields
-            )
-            return ListingGapReply(candidates=filled, llm_calls=(LISTING_CALL,))
-        return self._listing_reply
-
-    async def detail(self, request: GapRequest) -> GapReply:
-        self.requests.append(request)
-        if self._error is not None:
-            raise self._error
-        if self._failure is not None:
-            return GapReply((), (), failure=self._failure, diagnostics=(f"role C: {self._failure}",))
-        candidates = tuple(
-            Candidate(
-                field=name,
-                entity_id=request.target.id,
-                source_kind="llm",
-                raw="19.90 EUR",
-                normalized=Ok(PRICE),
-                locator="text:0-9",
-                independent=True,
-            )
-            for name in request.missing
-        )
-        return GapReply(candidates=candidates, llm_calls=(CALL,))
 
 
 def test_required_fields_left_missing_go_to_role_c_once() -> None:
@@ -463,9 +376,6 @@ def test_a_grid_in_one_panel_has_no_enclosing_context() -> None:
     assert [block.context for block in request.blocks] == ["", "", ""]
 
 
-LISTING_CALL = CALL.model_copy(update={"prompt_kind": "c_extract_listing"})
-
-
 def _llm(field: str, owner: str, raw: str, start: int) -> Candidate:
     return Candidate(
         field=field,
@@ -538,17 +448,8 @@ def _network_listing(*items: Mapping[str, Any], shown: Sequence[Mapping[str, Any
     cards = "".join(f'<li><a href="{i["href"]}">{i["href"]}</a> <span>{i["price"]}</span></li>' for i in shown or items)
     raw = f'<html lang="en"><body><h1>All widgets</h1><ul>{cards}</ul></body></html>'.encode()
     data = json.dumps({"results": list(items)}).encode()
-    entry = NetworkBody(
-        url="https://api.example.test/widgets?page=1",
-        status=200,
-        content_type="application/json",
-        sha256=sha256_hex(data),
-        file=network_file(0),
-        method="GET",
-    )
-    bundle = _bundle(raw.decode(), method="browser", url=LISTING_URL)
-    manifest = bundle.manifest.model_copy(update={"network_bodies": (entry,)})
-    return CaptureBundle(manifest=manifest, body=bundle.body, network=(data,))
+    network = calls([("https://api.example.test/widgets?page=1", data)], method="GET")
+    return capture(raw, method="browser", url=LISTING_URL, network=network)
 
 
 NETWORK_ITEMS = [

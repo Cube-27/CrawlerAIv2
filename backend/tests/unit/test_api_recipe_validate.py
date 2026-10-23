@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 
 from pydantic import JsonValue
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest
+from crawlerai.acquire.api import JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.config_ir.api_recipe.binding import CapturedRequest, Sample
 from crawlerai.config_ir.api_recipe.headers import Proven
@@ -25,6 +25,7 @@ from crawlerai.core.ids import uuid7
 from crawlerai.db.models import CaptureId
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from tests.stand_in import StandInApi
 
 TYPES = {"title": FieldType.TEXT, "price": FieldType.MONEY}
 SCHEMA = SchemaDef.model_validate(
@@ -51,7 +52,6 @@ SPEC = RequestSpec(
 PROVEN = Proven(SPEC, headers_tried=2)
 
 Answers = Mapping[str, JsonValue]
-StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
 
 
 def _capture(i: int) -> CaptureId:

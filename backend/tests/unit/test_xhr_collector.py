@@ -1,7 +1,6 @@
 """The captured network JSON collector: each captured body is a JSON document, admitted by the same
 rule as embedded JSON state, and addressed by its index in the bundle."""
 
-import hashlib
 import json
 from datetime import UTC, datetime
 
@@ -13,7 +12,8 @@ from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import NetworkBody, network_file
+from crawlerai.storage.capture_bundle import NetworkBody
+from tests.support.captures import call
 
 PAGE_URL = "https://shop.example.test/p/1"
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=PAGE_URL, page_url=PAGE_URL)
@@ -78,16 +78,7 @@ _PRICES = ["€12.50", "€7.25", "€30.00", "€4.10"]
 
 
 def _call(index: int, url: str, body: object) -> tuple[NetworkBody, bytes]:
-    data = json.dumps(body).encode()
-    entry = NetworkBody(
-        url=url,
-        status=200,
-        content_type="application/json",
-        sha256=hashlib.sha256(data).hexdigest(),
-        file=network_file(index),
-        method="GET",
-    )
-    return entry, data
+    return call(index, url, json.dumps(body).encode(), method="GET")
 
 
 def _listing_page(*calls: tuple[NetworkBody, bytes], shown: list[str]) -> ParsedPage:

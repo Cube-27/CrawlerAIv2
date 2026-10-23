@@ -26,8 +26,7 @@ from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.types import ExtractionResult, FieldSet
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.storage.capture_bundle import NetworkBody, sha256_hex
-from tests.replay.captures import capture
+from tests.support.captures import call, capture
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
@@ -51,7 +50,9 @@ LISTING = _preset("commerce_listing")
 
 def _extract(page_url: str, answer: JsonValue, schema: SchemaDef) -> ExtractionResult:
     raw = json.dumps(answer).encode()
-    bundle = capture(raw, url=page_url, final_url=ENDPOINT, api=True, headers=(("X-Shopify-API-Version", API_VERSION),))
+    bundle = capture(
+        raw, url=page_url, final_url=ENDPOINT, method="api", headers=(("X-Shopify-API-Version", API_VERSION),)
+    )
     return asyncio.run(extract_page(bundle, schema, None, None, data=DATA))
 
 
@@ -131,17 +132,11 @@ def test_a_card_price_a_gated_collection_page_shows_contests_the_answers_amount(
         '<div style="display:none">Locked</div></main></body></html>'
     )
     answer = json.dumps(_collection([("10.00", "10.00")] * 3)).encode()
-    call = NetworkBody(
-        url=ENDPOINT,
-        status=200,
-        content_type="application/json",
-        sha256=sha256_hex(answer),
-        file="network/0001.json",
-        response_headers=(("X-Shopify-API-Version", API_VERSION),),
-        data_call=ADAPTER_CALL,
+    network = (
+        call(0, ENDPOINT, answer, response_headers=(("X-Shopify-API-Version", API_VERSION),), data_call=ADAPTER_CALL),
     )
     page = f"{SHOP}/collections/widgets"
-    bundle = capture(html.encode(), url=page, final_url=page, calls=((call, answer),))
+    bundle = capture(html.encode(), url=page, network=network)
 
     # The page's own values rank too (the dev-fitted order holds every source kind).
     data = replace(DATA, orders=dict.fromkeys(PRECEDENCE_TYPES, (*ORDER, "dom", "xhr")))
@@ -166,18 +161,11 @@ def _product_page(
     """A product page at `query` with `markup` in its body, and its Ajax product answer listing `variants`, with the
     `product` members."""
     answer = json.dumps({"title": "Widget", "url": "/products/widget", "variants": variants, **product}).encode()
-    call = NetworkBody(
-        url=f"{SHOP}/products/widget.js",
-        status=200,
-        content_type="application/json",
-        sha256=sha256_hex(answer),
-        file="network/0001.json",
-        data_call="shopify",
-    )
+    network = (call(0, f"{SHOP}/products/widget.js", answer, data_call="shopify"),)
     head = '<script id="shopify-features"></script><script>Shopify.currency = {"active":"EUR"};</script>'
     html = f"<html><head>{head}</head><body>{markup}</body></html>".encode()
     page = f"{SHOP}/products/widget{query}"
-    bundle = capture(html, url=page, final_url=page, calls=((call, answer),))
+    bundle = capture(html, url=page, network=network)
     return asyncio.run(extract_page(bundle, _preset("commerce_detail"), None, None, data=DATA))
 
 

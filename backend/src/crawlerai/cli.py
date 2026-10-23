@@ -123,7 +123,7 @@ async def _schedule() -> None:
         await run_scheduler(settings, entries, _stop_on_signals())
 
 
-async def _fetch(
+async def fetch_to_file(
     url: str,
     out: Path,
     connector: SafeConnector | None = None,
@@ -368,7 +368,7 @@ def _run_fetch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> Non
         check_proxy_pool(options, AcquireSettings().proxy_pools)
     except UnknownProxyPool as e:
         parser.error(str(e))
-    asyncio.run(_fetch(args.url, out, options=options, headful=args.headful))
+    asyncio.run(fetch_to_file(args.url, out, options=options, headful=args.headful))
 
 
 def _add_fetch_options(fetch: argparse.ArgumentParser) -> None:
