@@ -21,12 +21,11 @@ values, so text fields are read too."""
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 
-from crawlerai.acquire.items import MIN_ITEMS
 from crawlerai.collect import json_doc
 from crawlerai.collect.admission import Admitted, Document, FieldAnchors, admit, admits, field_anchors
 from crawlerai.collect.api import read_rows
+from crawlerai.collect.array_rows import Row, Scalar, row_of, row_paths
 from crawlerai.collect.base import Candidate
-from crawlerai.collect.induce import induced
 from crawlerai.collect.network_match import DataCall, LearnedCalls, data_calls, row_series
 from crawlerai.collect.platform_json import data_call_bodies
 from crawlerai.content import rsc
@@ -36,10 +35,6 @@ from crawlerai.normalize.base import Context
 from crawlerai.normalize.url import canonical_url
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import is_flight, is_html, network_json
-
-Scalar = str | int | float
-# One row of a series: the scalars it holds by path relative to the row, in document order.
-_Row = dict[str, Scalar]
 
 
 @dataclass(frozen=True)
@@ -147,51 +142,28 @@ def _row_map(
     anchors: Mapping[str, FieldAnchors],
     links: frozenset[str],
 ) -> dict[str, str]:
-    """Each row field's path in the series' rows: the one whose values are admitted in the most rows, at least
-    `MIN_ITEMS`; ties keep the first row's document order."""
-    rows = list(_rows(series))
-    found: dict[str, str] = {}
-    for name, spec in schema.fields.items():
-        if spec.scope == "row":
-            proposals = _admitted_paths(rows, spec, page, ctx, (anchors.get(name), links))
-            if (path := induced(proposals, MIN_ITEMS)) is not None:
-                found[name] = path
-    return found
+    """Each row field's path in the series' rows (`collect.array_rows`): a path proposed by a row when its value is
+    admitted by the admission rule for the field with its `anchors`, or, for a url field, when one of the item groups'
+    `links` leads to it."""
+    specs = {name: spec for name, spec in schema.fields.items() if spec.scope == "row"}
+    memo: dict[tuple[str, type, Scalar], bool] = {}
 
+    def reads(name: str, _path: str, raw: Scalar) -> bool:
+        key = (name, type(raw), raw)
+        if key not in memo:
+            spec = specs[name]
+            memo[key] = admits(raw, spec, page, ctx, anchors.get(name)) or _linked(raw, spec, ctx, links)
+        return memo[key]
 
-def _admitted_paths(
-    rows: Sequence[_Row],
-    spec: FieldSpec,
-    page: ParsedPage,
-    ctx: Context,
-    proof: tuple[FieldAnchors | None, frozenset[str]],
-) -> list[list[str]]:
-    """For each row, the paths holding a value the admission rule admits for a field of `spec` with the anchors of
-    `proof`, or, for a url field, that one of the item groups' links of `proof` leads to (`collect.induce`'s
-    proposals)."""
-    anchors, links = proof
-    memo: dict[tuple[type, Scalar], bool] = {}
-    proposals: list[list[str]] = []
-    for row in rows:
-        admitted: list[str] = []
-        for path, raw in row.items():
-            if not json_doc.is_query(path):
-                continue
-            key = (type(raw), raw)
-            if key not in memo:
-                memo[key] = admits(raw, spec, page, ctx, anchors) or _linked(raw, spec, ctx, links)
-            if memo[key]:
-                admitted.append(path)
-        proposals.append(admitted)
-    return proposals
+    return row_paths(list(_rows(series)), specs, reads)
 
 
 def _linked(raw: Scalar, spec: FieldSpec, ctx: Context, links: frozenset[str]) -> bool:
     return spec.type is FieldType.URL and isinstance(raw, str) and canonical_url(raw, ctx.base_url) in links
 
 
-def _rows(series: Sequence[DataCall]) -> Iterator[_Row]:
+def _rows(series: Sequence[DataCall]) -> Iterator[Row]:
     for data in series:
         for _, row in json_doc.select(_query(data), data.call.document):
             if isinstance(row, dict):
-                yield dict(json_doc.scalars(row))
+                yield row_of(row)

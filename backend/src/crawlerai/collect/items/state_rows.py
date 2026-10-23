@@ -2,7 +2,7 @@
 embedded state (`collect.js_state`) but whose blocks give no rows still gets one row per item.
 
 A row source is a JSON array of `MIN_ITEMS` or more objects. Each row field is read at one path relative to a row,
-induced across the array's rows (`collect.induce`, quorum `MIN_ITEMS`): a path a row proposes for a field when
+induced across the array's rows (`collect.array_rows`): a path a row proposes for a field when
 - for the item URL (`is_item_url`): its value is the target of one of the rendered hyperlinks of the page's content
   (HTML Standard §4.6.1; `content_links`, the site's navigation, header, footer and menus left out: a state tree of
   the site's menu is grounded by the menu's links, not by any listing), or the path's own member names the field and
@@ -39,8 +39,8 @@ from pydantic import JsonValue
 from crawlerai.acquire.items import MIN_ITEMS
 from crawlerai.collect import json_doc
 from crawlerai.collect.admission import Document
+from crawlerai.collect.array_rows import Scalar, row_of, row_paths
 from crawlerai.collect.base import ARRAY_ROW, Candidate, Entity
-from crawlerai.collect.induce import induced
 from crawlerai.collect.items.align import field_roles
 from crawlerai.collect.schema_org_map import candidate, is_item_url
 from crawlerai.content.page import ParsedPage
@@ -53,7 +53,6 @@ from crawlerai.normalize.url_key import ItemKey, item_key
 from crawlerai.schemas.paths import named_property, parse_paths
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
-Scalar = str | int | float
 _KIND: Final = "js_state"
 # A member name's letters and digits: `product_url`, `productUrl` and `ProductURL` name one thing.
 _FIRST_MEMBER = re.compile(r"\['([^'\\]+)'\]")
@@ -157,12 +156,8 @@ class _Reader:
         self._words = {name: _field_words(name, spec) for name, spec in self.row_fields.items()}
 
     def read(self, number: int, document: Document, objects: Sequence[tuple[str, JsonValue]]) -> StateRows | None:
-        rows = [(path, dict(json_doc.scalars(item))) for path, item in objects]
-        keys = {
-            name: key
-            for name in self.row_fields
-            if (key := induced([list(self._proposed(name, row)) for _, row in rows], MIN_ITEMS)) is not None
-        }
+        rows = [(path, row_of(item)) for path, item in objects]
+        keys = row_paths([row for _, row in rows], self.row_fields, self._reads)
         if self.url_field not in keys:
             return None
         made: list[tuple[Entity, list[Candidate]]] = []
@@ -195,9 +190,6 @@ class _Reader:
             for c in values
         )
         return 2 * led > len(rows)
-
-    def _proposed(self, name: str, row: Mapping[str, Scalar]) -> Iterator[str]:
-        return (path for path, raw in row.items() if json_doc.is_query(path) and self._reads(name, path, raw))
 
     def _reads(self, name: str, path: str, raw: Scalar) -> bool:
         """Whether a row's `raw` at `path` is a grounded value of the field `name` (module docstring)."""

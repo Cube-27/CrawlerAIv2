@@ -25,8 +25,8 @@ handler of the job kind (`worker/handlers/`); `scheduler/loop.py` enqueues sched
    URLs an adapter detects go to the adapter first (`adapters/`: Greenhouse, Lever, Shopify, Workday, … `registry.py`).
 2. **Content** (`content/`). Parse once (`content/page.py`), then markdown/html/links/metadata/chunks for the content formats.
 3. **Collect** (`collect/`). `collect/run.py` runs every collector over the one parse: `jsonld`, `microdata`, `og`, `dom`,
-   `js_state`, `xhr`, `platform_json`, `adapter`, `config`; listing rows via `collect/items/`. Each yields candidates with
-   evidence and a locator.
+   `js_state`, `xhr`, `platform_json`, `adapter`, `config`; listing rows via `collect/items/`, their precedence picked once
+   by `collect/row_sources.py`. Each yields candidates with evidence and a locator.
 4. **Resolve** (`resolve/`). `resolve/pipeline.py:extract_page` is the one function the worker and replay run:
    ownership/intent (`ownership.py`, `intent.py`, `identity.py`), preference (`preference.py`, data in
    `backend/data/source_precedence.yaml`), derivations (`derive.py`), offers (`offers.py`), evidence and confidence

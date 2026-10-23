@@ -6,10 +6,9 @@ and a diagnostic, and the others still run. An `api` capture of an active adapte
 as does the answer a page-scoped adapter joined to the page it serves (`ADAPTER_CALL`), read with that
 adapter's shapes; a platform's documented product JSON that a detail page's HTTP fetch joined after its identity check
 is read as that platform documents it (`collect.platform_json`). Then js_state and xhr admit their values against the
-candidates of the other kinds; on a listing, xhr also reads the rows of the page's captured calls, which resolution
-takes where structured data and the config give none; on a listing none of whose groups aligns
-and with no call rows, the rows of its state JSON are read too (`collect.items.state_rows`), resolution taking them, and
-their candidates, only where no other source gives rows.
+candidates of the other kinds; on a listing, xhr also reads the rows of the page's captured calls. A listing's row
+sources (the call rows, the aligned item groups and, where those are none, the rows of its state JSON) are returned as
+one `RowSources`, which picks the listing's rows (`collect.row_sources`).
 The page's detect-and-report signals (`content.signals`) join the diagnostics.
 """
 
@@ -27,7 +26,7 @@ from crawlerai.collect.base import Candidate, Collector, CollectResult, Entity
 from crawlerai.collect.dom import DomCollector
 from crawlerai.collect.dom_images import stated_images
 from crawlerai.collect.dom_text import DescriptionCollector
-from crawlerai.collect.items.align import Items, align
+from crawlerai.collect.items.align import align
 from crawlerai.collect.items.state_rows import StateRows, state_rows
 from crawlerai.collect.js_state import JsStateCollector, state_documents
 from crawlerai.collect.jsonld import JsonLdCollector
@@ -36,6 +35,7 @@ from crawlerai.collect.network_match import LearnedCalls
 from crawlerai.collect.og import OpenGraphCollector
 from crawlerai.collect.platform_json import PlatformJsonCollector
 from crawlerai.collect.product_scope import product_apart
+from crawlerai.collect.row_sources import RowSources
 from crawlerai.collect.scope import other_items
 from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.collect.xhr import XhrCollector
@@ -58,13 +58,8 @@ class Collected:
     entities: tuple[Entity, ...]
     candidates: tuple[Candidate, ...]
     diagnostics: tuple[str, ...]
-    rows: tuple[Entity, ...] = ()  # a listing's rows from captured calls, also among `entities`
-    # A listing's aligned groups of item blocks (the item layer), best first; their entities and candidates are among
-    # the others.
-    items: tuple[Items, ...] = ()
-    # A listing's rows from its state JSON, read only when no group aligns and no call gives rows; their entities are
-    # among `entities`, their candidates only here.
-    state: StateRows = field(default_factory=StateRows)
+    # A listing's row sources (`collect.row_sources`); their entities are among `entities`.
+    rows: RowSources = field(default_factory=RowSources)
     # The query parameters by which the page's platform selects a variant on a product's own URL
     # (`adapters.platforms.variant_params`); none when the page shows no platform that documents any.
     variant_params: tuple[str, ...] = ()
@@ -114,11 +109,9 @@ def collect_page(
         for c in admitting
         if (a := _isolated(c, partial(c.collect, page, schema, ctx, others), diagnostics)) is not None
     ]
-    rows = tuple(row for result in admitted for row in result.rows)
-    state = StateRows()
-    if schema.page_kind == "listing" and not items and not rows:
-        read = partial(state_rows, page, state_documents(page, []), schema, ctx)
-        state = _isolated(state_rows, read, diagnostics) or StateRows()
+    calls = tuple(row for result in admitted for row in result.rows)
+    sources = RowSources.read(calls, items, partial(_state_rows, page, schema, ctx, diagnostics))
+    state = sources.state
     candidates = (
         *others,
         *(candidate for group in items[1:] for candidate in group.candidates),
@@ -135,12 +128,18 @@ def collect_page(
             *diagnostics,
             *_signals(page, manifest, schema, (*candidates, *state.candidates)),
         ),
-        rows=rows,
-        items=items,
-        state=state,
+        rows=sources,
         variant_params=_variant_params(page, manifest) if schema.page_kind == "detail" else (),
         outside=dom.outside,
     )
+
+
+def _state_rows(page: ParsedPage, schema: SchemaDef, ctx: Context, diagnostics: list[str]) -> StateRows:
+    """A listing's rows from its state JSON (`collect.items.state_rows`); none on a detail page."""
+    if schema.page_kind != "listing":
+        return StateRows()
+    read = partial(state_rows, page, state_documents(page, []), schema, ctx)
+    return _isolated(state_rows, read, diagnostics) or StateRows()
 
 
 def _signals(

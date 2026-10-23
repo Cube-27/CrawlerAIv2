@@ -5,7 +5,8 @@ A page that was not served (`blocked`, `shell`, `not_found`, `error`) yields its
 else. A served page is parsed once; every collector reads that one parse, then resolution runs its
 stages in order: ownership and intent, preference, derivations, evidence and confidence. A detail page's required fields
 still missing after that go to role C once, and its candidates are resolved with the others. A listing's rows are its
-stated rows (structured data's, `resolve.listing`, else the config's, else its captured calls') and the blocks of its
+stated rows (structured data's, `resolve.listing`, else the config's, else its captured calls' or its state JSON's,
+picked once by `collect.row_sources`) and the blocks of its
 repeated items, bound into one row per item by the item layer (`collect.items.bind`); each row resolves
 its row-scoped fields, the page its page-scoped ones, and the next-page candidates are listed. Role C is asked
 once for the row fields a listing's block rows lack and for its missing page fields.
@@ -509,20 +510,12 @@ class _Listing:
         diagnostics = list(page.diagnostics)
         found = next_page_candidate(links, page.schema, page.ctx, diagnostics)
         candidates = (*page.candidates, *(() if found is None else (found,)))
-        # The config's rows serve only where structured data gives none. Its row candidates
+        # The listing's rows are picked once among its sources (`collect.row_sources`). The config's row candidates
         # belong to its own row entities, so structured and config values never meet in one row.
         row_fields = {name for name, spec in page.schema.fields.items() if spec.scope == "row"}
         holders = frozenset(c.entity_id for c in page.collected.candidates if c.field in row_fields)
         structured = listing_rows(page.graph, page.primary, page.target, holders)
-        # Appendix A #59: the rows of the page's captured calls are the stated rows where structured data and the
-        # config give none; the rows of its state JSON where no source, blocks included, gives any: their candidates
-        # join only then.
-        stated = structured or page.config.rows or page.collected.rows
-        # A config's row selector was validated against every item, so its rows stand alone.
-        items = () if not structured and page.config.rows else page.collected.items
-        if not stated and not items and page.collected.state.rows:
-            stated = page.collected.state.rows
-            candidates = (*candidates, *page.collected.state.candidates)
+        picked = page.collected.rows.pick(structured, page.config.rows)
         # The item layer: the blocks of the page's repeated items are the rows
         # where the stated rows are none or stubs, and extend them; state and call array rows bind to the rows by URL.
         bound = bind(
@@ -531,10 +524,10 @@ class _Listing:
                 page.ctx,
                 page.schema,
                 page.page_urls,
-                items,
-                stated,
+                picked.items,
+                picked.stated,
                 tuple(e for e in page.graph.entities.values() if ARRAY_ROW in e.types),
-                candidates,
+                (*candidates, *picked.candidates),
                 partial(_holder, page.graph),
                 row_lists(page.graph, structured),
             )
