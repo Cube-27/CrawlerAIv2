@@ -15,7 +15,9 @@ site is busy or checking the client.
 
 A 2xx document whose structured data states an item of a type the task reads the page for (the policy's
 `target_types`: a JSON-LD node or a microdata item typed so, or an OGP product price for a Product or Offer) is the
-page, however little it shows or links: the reader reads that data, never the rendered page (`_describes`).
+page, however little it shows or links: the reader reads that data (`_describes`). Fetched as a detail page while its
+body carries its content unrendered (`carries_unrendered`, below), it is still a shell for the browser to render: the
+rest of the item is only in the rendered page (`_script_state`); without a browser outcome it is kept as it is.
 
 A page fetched for content formats alone (`content_only`) is read for its rendered text, so it is a shell when that text
 is near-empty while its scripts and concealed subtrees carry an order of magnitude more (`carries_unrendered`): the
@@ -205,9 +207,11 @@ def _document_class(
     base = None if redirect is None else redirect.answered
     if page_kind == "listing" and not structured and not lists_items(text, base):
         return "shell"
+    moved = None
     if redirect is not None and redirect.kind is not None:
-        return _moved(redirect, described=described, lists=lambda: structured or lists_items(text, base)) or "ok"
-    return "ok"
+        moved = _moved(redirect, described=described, lists=lambda: structured or lists_items(text, base))
+    # After the redirect rules: a detail page that a redirect led elsewhere is not the page, however it renders.
+    return moved or (_script_state(tree, page_kind) if described else None) or "ok"
 
 
 def _page_shell(tree: LexborHTMLParser, *, content_only: bool) -> BlockClass | None:
@@ -216,6 +220,14 @@ def _page_shell(tree: LexborHTMLParser, *, content_only: bool) -> BlockClass | N
     if content_only and _carries_unrendered(tree):
         return "shell"
     return _no_site_page(tree)
+
+
+def _script_state(tree: LexborHTMLParser, page_kind: PageKind | None) -> BlockClass | None:
+    """A detail page whose structured data describes its item but whose body carries the rest of it unrendered
+    (`carries_unrendered`) is a shell: what the structured data leaves out (an apply link, a full location list) exists
+    only once the browser runs the scripts. Without a browser outcome, the page is kept for what its data states
+    (`rungs._as_last_page`, which passes no page kind)."""
+    return "shell" if page_kind == "detail" and _carries_unrendered(tree) else None
 
 
 def usable_content(text: str, page_kind: PageKind | None = None, types: tuple[str, ...] = ()) -> bool:
@@ -276,21 +288,20 @@ def _carries_unrendered(tree: LexborHTMLParser) -> bool:
 
 
 def _outermost(nodes: Iterable[LexborNode]) -> Iterator[LexborNode]:
-    """The `nodes` (in document order) inside none of the others, so that a subtree's text is counted once."""
-    kept: list[LexborNode] = []
+    """The `nodes` (in document order) inside none of the others, so that a subtree's text is counted once. Nodes are
+    told apart by identity (`mem_id`): comparing two with `==` serializes them."""
+    kept: set[int] = set()
     for node in nodes:
-        if not any(_inside(node, outer) for outer in kept):
-            kept.append(node)
+        if not any(ancestor.mem_id in kept for ancestor in _ancestors(node)):
+            kept.add(node.mem_id)
             yield node
 
 
-def _inside(node: LexborNode, outer: LexborNode) -> bool:
+def _ancestors(node: LexborNode) -> Iterator[LexborNode]:
     parent = node.parent
     while parent is not None:
-        if parent == outer:
-            return True
+        yield parent
         parent = parent.parent
-    return False
 
 
 def _unshown(element: HtmlElement) -> bool:

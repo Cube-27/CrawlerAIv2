@@ -263,12 +263,24 @@ def test_a_card_linking_its_item_its_author_and_a_shared_vendor_takes_the_item_a
 def test_a_card_whose_item_author_and_more_links_share_one_tag_path_takes_the_first_of_them() -> None:
     # DEPTA alignment: like elements of one template keep their order, so the title link, the author link and the
     # "more" link written into like elements are three places.
+    # Two authors in like elements are one field's values: they share a place, the title's stays its own.
     body = _repeat(
         '<li class="c"><div><div><a href="/p/{i}?r=x">Book {i}</a></div><div>by <a href="/author/{i}">A {i}</a></div>'
+        '<div>and <a href="/author/{i}0">B {i}</a></div>'
         '</div><span>1{i}.50 EUR</span><div><div><a href="/p/{i}/all?r=x">All editions</a></div></div></li>'
     )
 
     assert [row["url"] for row in _rows(body)] == [_url(f"/p/{i}?r=x") for i in range(4)]
+
+
+def test_a_column_of_cards_is_no_item_of_its_first_card() -> None:
+    # Like elements whose links lead to documents of one kind are records: a column holding four cards is not the
+    # first card's item, so the cards, not the columns, are the rows.
+    card = '<div class="c"><div><a href="/p/{c}-{n}">Kettle {c}-{n}</a></div><span>1{n}.50 EUR</span></div>'
+    column = '<div class="col">' + "".join(card.replace("{n}", str(n)) for n in range(4)) + "</div>"
+    body = "<div>" + "".join(column.format(c=c) for c in range(5)) + "</div>"
+
+    assert [len(group.blocks) for group in _groups(body)] == [20]
 
 
 @pytest.mark.parametrize("current", ['href="/search"', 'href="/c/0" aria-current="page"'])

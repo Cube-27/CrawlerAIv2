@@ -22,6 +22,7 @@ import time
 from collections.abc import Awaitable, Callable, Collection, Sequence
 from dataclasses import dataclass, field
 from datetime import timedelta
+from functools import partial
 from typing import Final, Protocol
 from urllib.parse import urlsplit, urlunsplit
 
@@ -316,9 +317,9 @@ async def _page(url: str, policy: FetchPolicy, remembered: Remembered, rungs: Ru
         or not await _admitted(retry.admit_next, after=_paused_by(result))
         or not retry.in_budget()
     ):
-        return await _as_last_page(result), attempts, duration_ms
+        return await _as_last_page(result, policy), attempts, duration_ms
     rendered = await _browser_retry(url, policy, rungs, result)
-    kept = rendered if rendered.block_class == "ok" else await _as_last_page(result)
+    kept = rendered if rendered.block_class == "ok" else await _as_last_page(result, policy)
     return kept, attempts + rendered.attempts, duration_ms + rendered.duration_ms
 
 
@@ -451,17 +452,21 @@ def _paused_by(result: FetchResult) -> timedelta:
     return BACKOFF_MAX if pause is None else pause
 
 
-async def _as_last_page(result: FetchResult) -> FetchResult:
+async def _as_last_page(result: FetchResult, policy: FetchPolicy) -> FetchResult:
     """D-1261: an HTTP page kept with no browser outcome is the last page of the fetch, which is extracted whatever its
     links, as the browser's is (`browser.classified`): a shell by the listing rule alone (a page with site structure
     but no repeated items, `classify`) or by the content rule alone (a page whose text a script carries, read for
-    content formats) becomes `ok`, so the rows role C reads from it, or the text it shows, are kept; one showing a
-    vendor's stand-in marker (`block_class_of`) stays as it is. Its attempt keeps the class HTTP gave it."""
+    content formats) or by the detail rule alone (a page whose structured data describes the item of a `target_types`
+    type while a script carries the rest) becomes `ok`, so the rows role C reads from it, the text it shows, or the
+    item its data states are kept; one showing a vendor's stand-in marker (`block_class_of`) stays as it is. Its
+    attempt keeps the class HTTP gave it."""
     manifest = result.bundle.manifest
     if result.block_class != "shell" or manifest.method != "http":
         return result
     text = result.bundle.text
-    unlisted = await asyncio.to_thread(block_class_of, manifest.status_code, manifest.headers.response, text)
+    unlisted = await asyncio.to_thread(
+        partial(block_class_of, types=policy.target_types), manifest.status_code, manifest.headers.response, text
+    )
     if unlisted != "ok":
         return result
     bundle = result.bundle.model_copy(update={"manifest": manifest.model_copy(update={"block_class": "ok"})})

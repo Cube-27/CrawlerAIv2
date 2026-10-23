@@ -158,3 +158,34 @@ def test_an_amount_equal_to_a_bound_of_the_items_price_range_yields_to_the_shown
 
     assert price("W-2") == ("published", None, {"amount": "20.00", "currency": "EUR"})
     assert price("W-1") == ("published", "offers_disagree", {"amount": "10.00", "currency": "EUR"})
+
+
+def _cards(path: str, n: int, price: str = "") -> str:
+    card = '<li class="card"><img src="/i/{i}.jpg" alt=""><a href="' + path + '">Item {i} name</a>' + price + "</li>"
+    return "<ul>" + "".join(card.format(i=i) for i in range(n)) + "</ul>"
+
+
+def test_a_section_of_another_url_template_is_not_merged_into_the_listing() -> None:
+    # The chosen group's item URLs all start with one word; a strip of company pages beside them is another kind.
+    company = '<div class="co"><a href="/items-at-company{i}/"><img src="/c/{i}.png" alt="">Company {i}</a></div>'
+    body = (
+        _cards("/item-{i}0-blue-kettle/", 8, "<span>{i}9.50 EUR</span>")
+        + "<section>"
+        + "".join(company.format(i=i) for i in range(6))
+        + "</section>"
+    )
+
+    result = _extract("", body, LISTING)
+
+    assert len(result.rows) == 8
+
+
+def test_a_listing_price_takes_the_currency_a_page_wide_data_attribute_declares() -> None:
+    # HTML Standard §3.2.6.6: `data-currency` is the element's `dataset.currency`, a page-wide currency member.
+    body = '<div class="page" data-currency="GBP">' + _cards("/shop/kettle-{i}", 6, "<span>£1{i}.50</span>") + "</div>"
+
+    result = _extract("", body, LISTING)
+
+    assert {json.dumps(row["price"].value) for row in result.rows} >= {
+        json.dumps({"amount": "10.50", "currency": "GBP"})
+    }

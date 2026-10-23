@@ -39,7 +39,10 @@ links lead to, not the page in another state, an image file or an item's own nes
 several, else, at group level, the one document no other block links to at the place where a quorum of the blocks
 link to such a document (a link's place: its tag path, positions aside, and its parent's rank among those of the block's
 links at that path, so a title, an author and a "more" link in like elements are three places, the links of one
-paragraph one), a place whose link holds an image
+paragraph one; links at one path that lead to two or more documents (a query aside) of one kind, as `url_kind` and
+the first path segment's leading word name it, share their first one's place: they are records, as a column of cards
+is, or one field's values, as a book's authors are), a
+place whose link holds an image
 before the first other one: documents two or more blocks
 link to, a vendor's, an author's or a category's page, are the template's), the name (an item link's
 one-line content holding no typed value the block aligns, each such link at its own place, and, where that line runs
@@ -135,7 +138,9 @@ The blocks are those of the group the stated rows name most and of every other s
 of its row shape (or holding every required field it aligns and a field beyond the item URL), inner groups first (a
 department's jobs before the departments holding them), a group past the first eight only where its blocks lie at the
 chosen group's tag path (one template renders both), whose blocks lead, a quorum of them, to
-documents of the kind its blocks lead to (host, path depth, first segment), apart from blocks already read, fewer than
+documents of the kind its blocks lead to (host, path depth, first segment; and, when a quorum of the chosen group's
+item URLs start with one word, the first path segment's first word split at RFC 3986 §2.3's `-`, `.`, `_`, `~`, so a
+board's company cards beside its postings are another kind), apart from blocks already read, fewer than
 half of whose blocks lead to items the chosen group lists (else it is a featured or recently viewed copy) and not
 starting after the chosen group's `rel=next` link (past the listing's end); an item two sections show is one block
 (D-1776). Where one structured list is the page's `mainEntity`, only its entries are stated rows

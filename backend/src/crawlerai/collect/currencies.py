@@ -9,8 +9,11 @@ as evidence the normalizers weigh.
   `window.currencyIsoCode`), its value read by the JS literal reader (`content.js_literal`).
 - Held in the page's decoded state documents (`collect.js_state`, analytics call arguments included): a member named
   `currency`, `currencyCode` or `activeCurrency` (letter case and `_` aside) holding an ISO 4217 code (owner decision
-  of 2026-10-18: generic member names only). Such a member is anonymous: a third party's script config (a tag
-  manager's account currency) writes it as readily as the page, so it weighs below the page's own declarations.
+  of 2026-10-18: generic member names only); and the same members of an element's `dataset` (HTML Standard §3.2.6.6:
+  a custom data attribute, `data-currency` or `data-currency-code`, is the member its name past `data-` names). Such a
+  member is anonymous: a third party's script config (a tag manager's account currency) or widget writes it as readily
+  as the page, so it weighs below the page's own declarations; a page that writes several (a currency switcher's
+  options) settles none.
 - The page's number convention: the CLDR decimal symbol every structured `price` the page writes with a fraction uses
   when only one CLDR convention reads it (`12.50`, `1.234,56`), which settles amounts the conventions read differently
   (`numbers.readings`).
@@ -42,6 +45,10 @@ _LANGUAGE = "inLanguage"
 # Owner decision 2026-10-18: the member names of a page-wide currency in state JSON, compared without letter case or
 # `_` (`currency_code`, `CurrencyCode`).
 _STATE_MEMBERS = frozenset({"currency", "currencycode", "activecurrency"})
+# HTML Standard §3.2.6.6: a custom data attribute's name past `data-` names its `dataset` member, each `-` followed by
+# an ASCII lower alpha removed and the letter uppercased (`data-currency-code` is `currencyCode`).
+_DATA = "data-"
+_DATASET_WORD = re.compile(r"-([a-z])")
 # schema.org `price`, the amount whose written form shows the page's decimal symbol.
 _PRICE = "price"
 
@@ -58,8 +65,28 @@ def declared_currencies(page: ParsedPage) -> tuple[str, ...]:
 
 
 def state_currencies(page: ParsedPage) -> tuple[str, ...]:
-    """The ISO 4217 codes the currency members of the page's state documents hold, each once."""
-    return _codes([value for document in state_documents(page, []) for value in _state_currencies(document.data)])
+    """The ISO 4217 codes the currency members of the page's state documents and its elements' datasets hold, each
+    once."""
+    held = [value for document in state_documents(page, []) for value in _state_currencies(document.data)]
+    return _codes([*held, *_dataset_currencies(page)])
+
+
+def _dataset_currencies(page: ParsedPage) -> Iterator[str]:
+    """The values of the currency members of the page's elements' datasets (module docstring), in document order."""
+    for element in page.lxml_tree.iter():
+        if not isinstance(element.tag, str):  # a comment or processing instruction has no attributes
+            continue
+        for name, value in element.attrib.items():
+            if name.startswith(_DATA) and _currency_member(_DATASET_WORD.sub(_upper, name.removeprefix(_DATA))):
+                yield value
+
+
+def _upper(match: re.Match[str]) -> str:
+    return match.group(1).upper()
+
+
+def _currency_member(name: str) -> bool:
+    return name.replace("_", "").lower() in _STATE_MEMBERS
 
 
 def page_convention(page: ParsedPage) -> str | None:
@@ -144,7 +171,7 @@ def _state_currencies(document: JsonValue) -> Iterator[JsonValue]:
         node = stack.pop()
         if isinstance(node, dict):
             for name, member in node.items():
-                if name.replace("_", "").lower() in _STATE_MEMBERS and isinstance(member, str):
+                if _currency_member(name) and isinstance(member, str):
                     yield member
                 elif isinstance(member, (dict, list)):
                     stack.append(member)
