@@ -21,7 +21,7 @@ from crawlerai.db.models import (
     UrlTask,
     UrlTaskId,
 )
-from crawlerai.resolve.task import storable
+from crawlerai.services.page_store import storable
 
 pytestmark = pytest.mark.anyio
 

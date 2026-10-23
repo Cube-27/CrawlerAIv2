@@ -28,11 +28,10 @@ from crawlerai.db.models import (
     SiteId,
 )
 from crawlerai.db.queue import complete_task, insert_claimed
-from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData, extract_page
-from crawlerai.resolve.task import store_extraction
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument, document_digest
+from crawlerai.services.page_store import store_extraction
 from crawlerai.storage.fs import FsStore
 from tests.db.support import api
 
@@ -122,7 +121,6 @@ class World:
                 site_id=self.site_id,
                 schema=schema,
                 caller_supplied=True,
-                write_records=store_records,
             )
             outcome = stored.outcome
             assert outcome != "failed"

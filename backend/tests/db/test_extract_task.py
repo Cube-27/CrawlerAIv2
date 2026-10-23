@@ -18,13 +18,12 @@ from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.db.models import Candidate, Extraction, Job, JobId, Project, Record, Site, SiteId, SourceKind, UsageEvent
 from crawlerai.db.queue import ClaimedTask, insert_claimed
 from crawlerai.llm.client import MeteredClient, ProviderReply
-from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.records import entity_key
-from crawlerai.resolve.task import Stored, store_extraction
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
+from crawlerai.services.page_store import Stored, store_extraction
 from crawlerai.storage.fs import FsStore
 from tests.support.captures import FETCHED_AT, HTML, fetched
 from tests.support.fake_llm import FakeProvider
@@ -109,7 +108,6 @@ class _Setup:
             site_id=site_id,
             schema=schema,
             caller_supplied=caller_supplied,
-            write_records=store_records,
         )
 
     async def candidates(self, stored: Stored) -> list[tuple[Any, ...]]:

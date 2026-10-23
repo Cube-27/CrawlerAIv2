@@ -13,7 +13,7 @@ from. A draft the LLM could not give (no provider, no budget, an invalid reply) 
 `schema.fields` is drafted from the names before the job starts, so a draft that fails stores nothing.
 
 `records` extracts the page with `extract_page` against the schema named by id, given inline, or
-drafted, and stores the extraction and the records (`resolve.task`: a listing has one per row). A scrape URL is
+drafted, and stores the extraction and the records (`services.page_store`: a listing has one per row). A scrape URL is
 caller-supplied, so a page whose required fields don't all publish keeps its record, `complete=false`, with outcome
 `partial`; a page that states no entity of the schema (a maintenance or error page served 200) is `no_match` with no
 record, as in a batch. A site with an active config for the schema extracts in `config` mode,
