@@ -298,3 +298,24 @@ def test_markdown_fit_is_part_of_markdown_and_empty_only_when_markdown_is(blocks
 
     assert all(block in full for block in fit.split("\n\n"))
     assert bool(fit) == bool(full)
+
+
+@given(st.sampled_from(["aria-expanded", "aria-selected"]), st.sampled_from(["hidden", "style='display:none'"]))
+def test_a_collapsed_disclosure_panel_is_content_but_a_popup_is_not(state: str, hiding: str) -> None:
+    # WAI-ARIA 1.2 Disclosure and Tabs patterns: a panel a collapsed control names in `aria-controls` is content;
+    # HTML Standard §6.1 `hidden="until-found"` too. A popup a control opens, and an unnamed hidden block, are not.
+    page = (
+        "<html><body><main><h1>Help</h1>"
+        f"<p>{'Visible guidance for readers of this page. ' * 12}</p>"
+        f"<button {state}='false' aria-controls='a1'>Question</button><div id='a1' {hiding}><p>Answer one.</p></div>"
+        "<div hidden='until-found'><p>Answer two.</p></div>"
+        "<button aria-expanded='false' aria-haspopup='dialog' aria-controls='m1'>Open</button>"
+        "<div id='m1' hidden><p>Modal text.</p></div><div hidden><p>Template text.</p></div></main></body></html>"
+    )
+
+    made = markdown(ParsedPage(page), FINAL_URL)
+
+    assert "Answer one." in made
+    assert "Answer two." in made
+    assert "Modal text." not in made
+    assert "Template text." not in made
