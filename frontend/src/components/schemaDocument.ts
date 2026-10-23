@@ -223,6 +223,18 @@ function isPageKind(value: unknown): value is SchemaPageKind {
   return PAGE_KIND_OPTIONS.some(([kind]) => kind === value);
 }
 
+/** A schema document in the generated `NewSchema` shape, as written: only the shape is checked; the schema rules are
+ * the server's. */
+export function isNewSchema(value: unknown): value is NewSchema {
+  return (
+    isJsonObject(value) &&
+    typeof value.name === "string" &&
+    isPageKind(value.page_kind) &&
+    (value.required_groups === undefined || isGroups(value.required_groups)) &&
+    isFieldSpecs(value.fields)
+  );
+}
+
 type ParsedForm = { kind: "ok"; form: SchemaFormState } | { kind: "invalid"; reason: string };
 
 function invalid(reason: string): ParsedForm {
