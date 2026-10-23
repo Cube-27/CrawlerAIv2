@@ -1,7 +1,8 @@
 """Content-format properties (rest-api spec): `links` are absolute canonical http(s) URLs, cleaned `html` runs no
-script, `metadata.language` is `<html lang>`, else `og:locale`, else absent, and a wrapper named after furniture that
-holds the page's longest block is kept. Examples pin the markdown of an article, of a page with furniture and of a
-listing, and that two canonical links name none (RFC 6596 §3); all read the shared `ParsedPage`."""
+script, `metadata.language` is `<html lang>`, else `og:locale`, else absent, a wrapper named after furniture that
+holds the page's longest block is kept, and so is every slide of a carousel. Examples pin the markdown of an
+article, of a page with furniture and of a listing, and that two canonical links name none (RFC 6596 §3); all read
+the shared `ParsedPage`."""
 
 from html import escape
 from urllib.parse import urlsplit
@@ -176,6 +177,43 @@ def test_a_wrapper_named_after_furniture_that_holds_the_longest_block_is_kept(
 
     assert ("Long running text. " * longest).strip() in made
     assert "Menu entry" not in made
+
+
+def test_a_header_or_footer_in_main_is_the_main_contents_unless_it_holds_navigation() -> None:
+    # HTML-AAM §4.1: a `header` or `footer` in `main` is no banner or contentinfo landmark; a page that wraps its whole
+    # layout in `main` puts the site's navigation in its own.
+    article = (
+        "<html><body><header><nav><a href='/'>Home</a></nav></header><main><header><p>Summary of the study.</p>"
+        "</header><article><h1>Study</h1><p>Findings.</p></article><footer><p>Cite as: Study, 2026.</p></footer>"
+        "</main></body></html>"
+    )
+    wrapped = (
+        "<html><body><main><header><nav><a href='/'>Home</a></nav></header><article><h1>Study</h1>"
+        "<p>Findings.</p></article><footer><nav><a href='/imprint'>Imprint</a></nav><p>Street 1, Town.</p></footer>"
+        "</main></body></html>"
+    )
+
+    assert markdown(ParsedPage(article), FINAL_URL) == (
+        "Summary of the study.\n\n# Study\n\nFindings.\n\nCite as: Study, 2026."
+    )
+    assert markdown(ParsedPage(wrapped), FINAL_URL) == "# Study\n\nFindings."
+
+
+@given(st.integers(min_value=1, max_value=4), st.sampled_from(["aria-hidden='true'", "hidden"]))
+def test_every_slide_of_a_carousel_is_content(shown: int, hiding: str) -> None:
+    # WAI-ARIA Authoring Practices, Carousel and Tabs: the panels not shown are hidden, each the page's in its turn.
+    slides = "".join(
+        f"<div class='slide' {'' if i == shown else hiding}><p>Caption {i}.</p></div>" for i in range(1, 5)
+    )
+    page = (
+        f"<html><body><main><h1>Gallery</h1><div class='slides'>{slides}</div>"
+        "<div hidden>Later</div></main></body></html>"
+    )
+
+    made = markdown(ParsedPage(page), FINAL_URL)
+
+    assert all(f"Caption {i}." in made for i in range(1, 5))
+    assert "Later" not in made
 
 
 def test_a_page_that_shows_nothing_with_scripts_is_read_without_them() -> None:
