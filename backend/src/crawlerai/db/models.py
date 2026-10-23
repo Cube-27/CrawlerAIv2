@@ -111,8 +111,8 @@ WebhookStatus = Literal["pending", "delivered", "failed"]
 WebhookEventType = Literal[
     "page", "record", "record_changed", "url_gone", "job_completed", "job_failed", "job_cancelled"
 ]
-# The job kinds a schedule submits (`crawlerai.services.schedules`): those the queue runs; a scheduled scrape is stored
-# as the batch of its one URL.
+# The job kinds a schedule submits (`crawlerai.services.schedules`): those with `queued_tasks` (`db.jobs.KindTraits`); a
+# scheduled scrape is stored as the batch of its one URL.
 ScheduledKind = Literal["batch_scrape", "crawl", "extract"]
 
 

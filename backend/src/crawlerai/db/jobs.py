@@ -1,11 +1,12 @@
-"""The job and url_task state machines, and job run events.
+"""The job and url_task state machines, what each job kind's runs share, and job run events.
 
 The transition tables are the authority: `transition_job` and `transition_task` only move a row along an edge of
 its table, with a compare-and-set update, so two workers racing on one row cannot both win.
 """
 
 import uuid
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final
 
@@ -14,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.orm import InstrumentedAttribute
 
 from crawlerai.core.redaction import has_secrets, redacted_request
-from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, TaskStatus, UrlTask, UrlTaskId
+from crawlerai.db.models import Job, JobEvent, JobId, JobKind, JobStatus, TaskStatus, UrlTask, UrlTaskId
 from crawlerai.db.webhook_outbox import emit_job_event
 
 JOB_TRANSITIONS: Final[Mapping[JobStatus, frozenset[JobStatus]]] = {
@@ -33,6 +34,39 @@ TASK_TRANSITIONS: Final[Mapping[TaskStatus, frozenset[TaskStatus]]] = {
     "failed": frozenset(),
     "cancelled": frozenset(),
 }
+
+
+@dataclass(frozen=True, slots=True)
+class KindTraits:
+    """What every run of a job kind shares; each test of a kind's behaviour reads it here."""
+
+    # Its tasks are queued for the workers, each run by the worker's handler of the kind (`worker/handlers/table`).
+    queued_tasks: bool = False
+    # A process runs it while its caller waits, with no task for a while or ever: failed once it has none for longer
+    # than a lease (`db.queue.fail_stalled_jobs`).
+    inline: bool = False
+    # It has no tasks: a started run ends itself on `cancel_requested`, so a cancel never settles it.
+    ends_itself: bool = False
+    # Its completed run's listing is diffed against the earlier runs of its request (`recurring/listing_diff`).
+    diffs_listing: bool = False
+
+
+KIND_TRAITS: Final[Mapping[JobKind, KindTraits]] = {
+    # Its process runs its one task, inserted claimed (`services/scrape`).
+    "scrape": KindTraits(),
+    "batch_scrape": KindTraits(queued_tasks=True),
+    "map": KindTraits(inline=True),
+    "crawl": KindTraits(queued_tasks=True, diffs_listing=True),
+    # Its prompt's schema is drafted inline before its tasks are queued.
+    "extract": KindTraits(queued_tasks=True, inline=True),
+    # The learner runs it (`config_ir/learn_job`).
+    "learn": KindTraits(ends_itself=True),
+}
+
+
+def kinds_with(trait: Callable[[KindTraits], bool]) -> tuple[JobKind, ...]:
+    """The job kinds whose traits have `trait`, in the table's order."""
+    return tuple(kind for kind, traits in KIND_TRAITS.items() if trait(traits))
 
 
 class InvalidTransition(Exception):

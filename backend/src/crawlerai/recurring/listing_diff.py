@@ -38,11 +38,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.collect.schema_org_map import item_url_fields
-from crawlerai.db.jobs import record_event
+from crawlerai.db.jobs import KIND_TRAITS, record_event
 from crawlerai.db.models import (
     Job,
     JobEvent,
     JobId,
+    JobKind,
     JobStatus,
     Record,
     SchemaId,
@@ -83,7 +84,7 @@ _UNREACHED: Final[frozenset[TaskOutcome]] = frozenset(
     }
 )
 
-_JobRow = Row[str, SchemaId | None, dict[str, Any], str | None, dict[str, Any] | None]
+_JobRow = Row[JobKind, SchemaId | None, dict[str, Any], str | None, dict[str, Any] | None]
 
 
 @dataclass(frozen=True)
@@ -102,7 +103,7 @@ async def close_run(conn: AsyncConnection, job_id: JobId, status: JobStatus) -> 
         return
     columns = (Job.kind, Job.schema_id, Job.request, Job.start_location, Job.pinned)
     job: _JobRow = (await conn.execute(select(*columns).where(Job.id == job_id))).one()
-    if job.kind != "crawl" or job.schema_id is None:
+    if not KIND_TRAITS[job.kind].diffs_listing or job.schema_id is None:
         return
     # The host the crawl's scope followed the start page to, else the start URL's.
     host = urlsplit(job.start_location or job.request["url"]).hostname
@@ -177,7 +178,7 @@ async def _missed(conn: AsyncConnection, site_id: SiteId, job_id: JobId, job: _J
             UrlState.gone_at.is_(None),
             UrlState.last_seen_job_id == Job.id,
             Job.id != job_id,
-            Job.kind == "crawl",
+            Job.kind == job.kind,
             Job.schema_id == job.schema_id,
             *(Job.request[member] == literal(job.request[member], JSONB) for member in _SCOPE),
         )
