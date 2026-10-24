@@ -1,13 +1,18 @@
-"""Block classification from HTTP status and document structure only.
+"""Block classification from HTTP status and document structure, and from standard text in two cases.
 
 Every rule reads the body as text, decoded once at acquisition by HTML encoding sniffing
 (`storage.capture_bundle.decode_html`): a parser handed the raw bytes of a page in a legacy encoding would read its
 attributes as UTF-8 and fail on them.
 
-This module compares no body text with a string: vendor strings are site data (C3/C4), so a vendor's stand-in marker on
-a 200 page is read in `acquire.challenge` from the adapter package's signature data, the one exception to the
-structure-only rule. Other challenge pages served with 200 mostly present as shells and get a browser retry. An error or
-challenge page served with 200 that has text enough not to be a shell is told by its shape instead: it links nowhere. A
+This module compares no body text with a string of its own: vendor strings are site data (C3/C4), so a vendor's
+stand-in marker on a 200 page is read in `acquire.challenge` from the adapter package's signature data, one exception
+to the structure-only rule. The other is the HTTP Status Code Registry's description of 404 (RFC 9110 §15.5.5,
+versioned IANA data): a 2xx document that states no item of a type the task reads it for, renders less than an article
+and whose title or top-level heading states that description stands in for a 404 page (`soft_404`,
+`_states_not_found`).
+
+Other challenge pages served with 200 mostly present as shells and get a browser retry. An error or challenge page
+served with 200 that has text enough not to be a shell is told by its shape instead: it links nowhere. A
 site's pages are connected by hyperlinks (HTML Standard §4.6), so a page without one, whatever scripts, images or forms
 it holds, is not one of them, unless it renders an order of magnitude more text than a shell (`_CARRIED_MIN_CHARS`):
 a stand-in states a line or two, and a page whose navigation a script drives still shows its article. Nor is a
@@ -49,11 +54,14 @@ navigation would follow the same redirect. A redirect to a page whose query carr
 thing: an interstitial that sends the client back once passed (`_returns_to`), a block the browser may pass.
 """
 
+import csv
 import re
 from base64 import urlsafe_b64decode
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import suppress
-from typing import NamedTuple
+from functools import cache
+from pathlib import Path
+from typing import Final, NamedTuple
 from urllib.parse import SplitResult, parse_qsl, unquote, urldefrag, urljoin, urlsplit
 
 from lxml.html import HtmlElement
@@ -71,6 +79,7 @@ from crawlerai.acquire.items import (
 )
 from crawlerai.acquire.types import BlockClass
 from crawlerai.core import json_text
+from crawlerai.core.engine_version import engine_data_dir
 from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import HeaderList
 
@@ -144,6 +153,12 @@ _WEB_SCHEMES = ("http", "https")
 # HTML Standard §4.12.1: `script` elements; script is the only other way a document navigates itself (the `Location`
 # interface, or a form it submits).
 _SCRIPT = "script"
+# The IANA HTTP Status Code Registry (`backend/data/manifest.json`): each status code's description (RFC 9110 §15), the
+# reason phrase a server states for it; 404 (RFC 9110 §15.5.5) is the status a server answers for what it does not have.
+STATUS_REGISTRY: Final = Path("iana") / "http-status-codes-1.csv"
+_NOT_FOUND_CODE = "404"
+# HTML Standard §4.2.2: the document's title; §4.3.6: `h1`, the top-ranked heading, which names the page's content.
+_TITLES = "title, h1"
 
 
 def classify(
@@ -201,6 +216,10 @@ def _document_class(
     # A content-only fetch reads the rendered text, whatever structured data the page states.
     described = not content_only and _describes(tree, documents, types)
     unstructured = None if described else _page_shell(tree, content_only=content_only)
+    # After the shell rule strips the invisible elements, before its return: a short page that says it is not found
+    # is answered for good, not rendered again.
+    if not described and _states_not_found(tree):
+        return "soft_404"
     # Before the shell return: a short document that refreshes and links only to mail or phone is a stand-in too.
     if unstructured == "blocked" or (_refreshes(tree, headers) and _offers_no_web_page(tree)):
         return "blocked"
@@ -214,6 +233,36 @@ def _document_class(
         moved = _moved(redirect, described=described, lists=lambda: structured or lists_items(text, base))
     # After the redirect rules: a detail page that a redirect led elsewhere is not the page, however it renders.
     return moved or (_script_state(tree, page_kind) if described else None) or "ok"
+
+
+def _states_not_found(tree: LexborHTMLParser) -> bool:
+    """Whether a document stands in for a 404 page (module docstring): it renders less than an article
+    (`_CARRIED_MIN_CHARS`, as `_no_site_page` counts it) and its title or a shown `h1` (`_TITLES`) holds the registry's
+    description of 404 as whole words, compared caselessly with its white space collapsed (HTML rendering collapses
+    it). Without the registry file nothing is read as one."""
+    phrase = _not_found_phrase()
+    if phrase is None or _unconcealed_chars(tree) >= _CARRIED_MIN_CHARS:
+        return False
+    words = re.compile(rf"(?<!\w){re.escape(phrase)}(?!\w)")
+    return any(
+        words.search(" ".join(node.text().split()).casefold()) is not None
+        for node in tree.css(_TITLES)
+        if not any(_concealed(n.attributes) for n in (node, *_ancestors(node)))
+    )
+
+
+@cache
+def _not_found_phrase() -> str | None:
+    """The registry's description of 404, casefolded and its white space collapsed; None without the registry file."""
+    data = engine_data_dir()
+    path = None if data is None else data / STATUS_REGISTRY
+    if path is None or not path.is_file():
+        return None
+    with path.open(encoding="utf-8", newline="") as registry:
+        for row in csv.DictReader(registry):
+            if row.get("Value") == _NOT_FOUND_CODE:
+                return " ".join((row.get("Description") or "").split()).casefold() or None
+    return None
 
 
 def _page_shell(tree: LexborHTMLParser, *, content_only: bool) -> BlockClass | None:
