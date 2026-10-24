@@ -83,7 +83,7 @@ def has_surrogate(s: str) -> bool:
 # HTML Standard §13.1.4 character references, each closed by `;`: named, decimal and hexadecimal (any leading zeros),
 # its `&` itself written escaped any number of times (`&amp;amp;`, `&#38;#39;`).
 _REFERENCE = re.compile(
-    r"&(?:amp;|#(?:0*38|[xX]0*26);)*((?:[A-Za-z][A-Za-z\d]{1,31}|#(?:0*\d{1,7}|[xX]0*[\dA-Fa-f]{1,6}));)", re.ASCII
+    r"&(?:amp;|#0*38;|#[xX]0*26;)*([A-Za-z][A-Za-z\d]{1,31};|#0*\d{1,7};|#[xX]0*[\dA-Fa-f]{1,6};)", re.ASCII
 )
 
 
