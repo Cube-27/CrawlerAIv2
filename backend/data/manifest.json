@@ -10,6 +10,15 @@
       "justification": "Top-level domains for the C3 site-literal scan hostname pattern."
     },
     {
+      "path": "iana/http-status-codes-1.csv",
+      "url": "https://www.iana.org/assignments/http-status-codes/http-status-codes-1.csv",
+      "version": "2025-09-15",
+      "retrieved": "2026-10-24",
+      "sha256": "6098f56a5f25ca050313838886090a5e58a40ca72c2b44eb19d5ac7c9f6b4896",
+      "license": "No license stated by IANA; public registry data",
+      "justification": "The HTTP Status Code Registry's descriptions (RFC 9110 §15): a 2xx page whose title or top-level heading states the 404 description stands in for a 404 (`acquire.classify`, soft_404)."
+    },
+    {
       "path": "schemaorg/schemaorg-all-https.jsonld",
       "url": "https://raw.githubusercontent.com/schemaorg/schemaorg/8adb51c91fc12adb271fc787a26cfab204e9d105/data/releases/30.1/schemaorg-all-https.jsonld",
       "version": "30.1",
