@@ -10,11 +10,11 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.config_ir import synthesis
-from crawlerai.config_ir.api_recipe import role_d
-from crawlerai.llm.client import closed_object
-from crawlerai.llm.roles import c_extract, s_schema
-from crawlerai.schemas.types import NAME_PATTERN
+from snowcrawl.config_ir import synthesis
+from snowcrawl.config_ir.api_recipe import role_d
+from snowcrawl.llm.client import closed_object
+from snowcrawl.llm.roles import c_extract, s_schema
+from snowcrawl.schemas.types import NAME_PATTERN
 from tests.support.schema_subset import SUBSET_FILES, SchemaSubset, violations
 
 _DATA = Path(__file__).parents[2] / "data"

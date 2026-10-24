@@ -6,9 +6,9 @@ empty value is dropped, and a claimed element is grounded in the element its id 
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
-from crawlerai.collect.locator import Locator, parse_locator
-from crawlerai.content.text import Mark
-from crawlerai.llm.grounding import GroundedElement, SpanClaim, align, bounded, ground_element
+from snowcrawl.collect.locator import Locator, parse_locator
+from snowcrawl.content.text import Mark
+from snowcrawl.llm.grounding import GroundedElement, SpanClaim, align, bounded, ground_element
 
 _text = st.text(st.characters(codec="utf-8", exclude_categories=["Cs"]), max_size=200)
 _offset = st.integers(min_value=-1_000, max_value=1_000)

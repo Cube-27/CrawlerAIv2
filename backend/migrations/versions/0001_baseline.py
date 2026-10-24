@@ -1,4 +1,4 @@
-"""Baseline: the whole main database, from the models in `crawlerai.db.models`.
+"""Baseline: the whole main database, from the models in `snowcrawl.db.models`.
 
 The project is greenfield (CLAUDE.md): a schema change edits this revision, and databases are recreated, never
 migrated with data steps. Besides the tables it holds the `default` project and the trigger that stamps a record's
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-from crawlerai.core.ids import uuid7
+from snowcrawl.core.ids import uuid7
 
 revision: str = "0001"
 down_revision: str | None = None
@@ -29,10 +29,10 @@ depends_on: str | Sequence[str] | None = None
 _RECORD_COMMITTED = """
     CREATE FUNCTION record_committed() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
-        IF current_setting('crawlerai.records_committed', true) = 'on' THEN
+        IF current_setting('snowcrawl.records_committed', true) = 'on' THEN
             RETURN NULL;
         END IF;
-        PERFORM set_config('crawlerai.records_committed', 'on', true);
+        PERFORM set_config('snowcrawl.records_committed', 'on', true);
         PERFORM pg_advisory_xact_lock_shared(-7838622165994782610);
         UPDATE record SET created_at = clock_timestamp() WHERE created_at = now();
         RETURN NULL;

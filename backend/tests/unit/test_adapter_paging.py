@@ -7,9 +7,9 @@ from collections.abc import Callable, Sequence
 
 from pydantic import JsonValue
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.paging import BUDGET_S, fetch_pages
+from snowcrawl.acquire.api import JsonFetcher, JsonRequest
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.adapters.paging import BUDGET_S, fetch_pages
 
 ScriptedApi = Callable[[Callable[[JsonRequest], bytes], list[JsonRequest]], JsonFetcher]  # `scripted_api` (conftest)
 

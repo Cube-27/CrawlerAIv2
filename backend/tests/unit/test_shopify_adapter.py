@@ -18,11 +18,11 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest, fetch_json
-from crawlerai.acquire.ssrf import SafeConnector
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import NOT_SERVED, AdapterMatch, PageRefs
-from crawlerai.adapters.shopify import API_VERSION, Shopify
+from snowcrawl.acquire.api import JsonFetcher, JsonRequest, fetch_json
+from snowcrawl.acquire.ssrf import SafeConnector
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.adapters.base import NOT_SERVED, AdapterMatch, PageRefs
+from snowcrawl.adapters.shopify import API_VERSION, Shopify
 from tests.stand_in import IMPERSONATE, handler_transport
 
 ADAPTER = Shopify()

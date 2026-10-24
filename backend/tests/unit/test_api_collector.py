@@ -10,14 +10,14 @@ from datetime import UTC, datetime
 
 from pydantic import JsonValue
 
-from crawlerai.collect.api import ApiCollector
-from crawlerai.collect.base import PAGE
-from crawlerai.collect.config import Executed
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import PageKind, SchemaId
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.collect.api import ApiCollector
+from snowcrawl.collect.base import PAGE
+from snowcrawl.collect.config import Executed
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import PageKind, SchemaId
+from snowcrawl.normalize.base import Context, Ok
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 CTX = Context(captured_at=datetime(2026, 10, 14, tzinfo=UTC), base_url="https://shop.example.test/p/1")
 DETAIL_MAP = {"title": "$['data']['name']", "price": "$['data']['price']+$['data']['currency']"}

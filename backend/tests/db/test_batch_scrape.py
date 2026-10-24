@@ -13,27 +13,27 @@ from pydantic import SecretStr
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.core.capture import CaptureMethod
-from crawlerai.core.settings import Settings
-from crawlerai.db.models import (
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.core.capture import CaptureMethod
+from snowcrawl.core.settings import Settings
+from snowcrawl.db.models import (
     Job,
     JobId,
     UrlTask,
 )
-from crawlerai.db.queue import MAX_ATTEMPTS, ClaimedTask
-from crawlerai.llm.client import NO_LLM, LLMClient
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.services import jobs
-from crawlerai.services.batch import BatchScrapeRequest, submit_batch
-from crawlerai.services.fetching import Fetching, TargetsRejected
-from crawlerai.services.jobs import PageOutputPage, ResultsQuery
-from crawlerai.services.page_run import Page
-from crawlerai.services.page_task import NotReached
-from crawlerai.worker.handlers import scrape as scrape_handler
-from crawlerai.worker.handlers import steps
-from crawlerai.worker.handlers.table import task_handlers
-from crawlerai.worker.loop import run_worker
+from snowcrawl.db.queue import MAX_ATTEMPTS, ClaimedTask
+from snowcrawl.llm.client import NO_LLM, LLMClient
+from snowcrawl.resolve.pipeline import EngineData
+from snowcrawl.services import jobs
+from snowcrawl.services.batch import BatchScrapeRequest, submit_batch
+from snowcrawl.services.fetching import Fetching, TargetsRejected
+from snowcrawl.services.jobs import PageOutputPage, ResultsQuery
+from snowcrawl.services.page_run import Page
+from snowcrawl.services.page_task import NotReached
+from snowcrawl.worker.handlers import scrape as scrape_handler
+from snowcrawl.worker.handlers import steps
+from snowcrawl.worker.handlers.table import task_handlers
+from snowcrawl.worker.loop import run_worker
 from tests.db.support import PRIVATE_HOST
 from tests.db.support import Web as SharedWeb
 

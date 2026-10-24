@@ -3636,7 +3636,7 @@ export interface components {
          * @description A task of a job without a schema, with the content formats the job asked for. The formats
          *     are members only when the task reached its page and its capture is still kept. `last_error` is why the task
          *     failed, or why it ended with its outcome when the outcome alone does not say (a `blocked` task's `robots`), as the
-         *     worker recorded it: URLs redacted under `CRAWLERAI_LOG_REDACT_URLS`.
+         *     worker recorded it: URLs redacted under `SNOWCRAWL_LOG_REDACT_URLS`.
          */
         PageOutput: {
             /** Capture Id */

@@ -1,4 +1,4 @@
-# CrawlerAI v2
+# Snowcrawl v2
 
 Clean, normalized, typed records from any website, for any schema, plus an executable per-site extraction config
 that a deterministic crawler can run.
@@ -70,16 +70,16 @@ docker compose up
 
 This builds the images and starts Postgres, applies the migrations, and runs the API, a worker, the scheduler and
 the web UI. Open http://localhost:8080; the API is on http://localhost:8000 (`GET /healthz`). The web UI makes and
-uses its own API key; make one for your own clients with `docker compose exec api crawlerai apikey create --label me`.
+uses its own API key; make one for your own clients with `docker compose exec api snowcrawl apikey create --label me`.
 `docker compose down` stops everything and keeps the data (the database, captures and browser profiles live in Docker
 volumes); `docker compose down -v` deletes it too. After pulling, `docker compose up --build`.
 
-- **Headful browser.** The browser rung runs headless. Set `CRAWLERAI_BROWSER_HEADLESS=false` in `.env` to run it
+- **Headful browser.** The browser rung runs headless. Set `SNOWCRAWL_BROWSER_HEADLESS=false` in `.env` to run it
   headful under Xvfb inside the container: no window appears on the host, so this is the hidden-window option on
   Windows and macOS.
 - **amd64 only.** Google Chrome has no Linux arm64 build, so the images are `linux/amd64`. Apple Silicon runs them
   under emulation, slowly.
-- **Engine version.** The image names its commit in the engine version: `CRAWLERAI_GIT_SHA=$(git rev-parse HEAD)
+- **Engine version.** The image names its commit in the engine version: `SNOWCRAWL_GIT_SHA=$(git rev-parse HEAD)
   docker compose up --build` sets it; without it the build uses `0000000`.
 
 Development tooling runs on the host with `uv` and `pnpm`: the tests (`docker compose up -d postgres` starts the
@@ -90,8 +90,8 @@ against the API on :8000. The rest is in [CLAUDE.md](CLAUDE.md).
 ## Repository layout
 
 ```
-backend/                Python package `crawlerai` (src/crawlerai/), tests, alembic migrations
-  src/crawlerai/adapters/   the only source directory allowed to contain hostnames (C3)
+backend/                Python package `snowcrawl` (src/snowcrawl/), tests, alembic migrations
+  src/snowcrawl/adapters/   the only source directory allowed to contain hostnames (C3)
   data/manifest.json        pinned external data; every file under data/ is listed here (C4)
   .importlinter             one-module-per-field-type and layering contracts (C8)
 sdk/                    Python (pure httpx, pydantic) and TypeScript clients, generated from frontend/openapi.json

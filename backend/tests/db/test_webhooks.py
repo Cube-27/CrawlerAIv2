@@ -17,11 +17,11 @@ import pytest
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector
-from crawlerai.api.webhooks import MAX_ATTEMPTS, Poster, deliver_webhooks, poster
-from crawlerai.db.jobs import transition_job
-from crawlerai.db.keys import CreatedKey, create_key
-from crawlerai.db.models import (
+from snowcrawl.acquire.ssrf import IPAddress, SafeConnector
+from snowcrawl.api.webhooks import MAX_ATTEMPTS, Poster, deliver_webhooks, poster
+from snowcrawl.db.jobs import transition_job
+from snowcrawl.db.keys import CreatedKey, create_key
+from snowcrawl.db.models import (
     ApiKeyId,
     Job,
     JobId,
@@ -31,7 +31,7 @@ from crawlerai.db.models import (
     WebhookDelivery,
     WebhookEventType,
 )
-from crawlerai.db.webhook_outbox import FORM_BATCH, JOB_END_EVENTS, form_deliveries
+from snowcrawl.db.webhook_outbox import FORM_BATCH, JOB_END_EVENTS, form_deliveries
 
 pytestmark = pytest.mark.anyio
 
@@ -129,10 +129,10 @@ async def test_a_job_end_delivery_carries_the_jobs_summary_signed_with_the_keys_
 
     [(url, body, headers)] = post.sent
     expected = "sha256=" + hmac.new(key.webhook_secret.encode(), body, hashlib.sha256).hexdigest()
-    assert (url, headers["X-CrawlerAI-Signature"], headers["Content-Type"]) == (HOOK, expected, "application/json")
+    assert (url, headers["X-Snowcrawl-Signature"], headers["Content-Type"]) == (HOOK, expected, "application/json")
     delivery = json.loads(body)
     assert (delivery["job_id"], delivery["attempt"]) == (str(job_id), 1)
-    assert headers["X-CrawlerAI-Delivery"] == delivery["delivery_id"]
+    assert headers["X-Snowcrawl-Delivery"] == delivery["delivery_id"]
     [event] = delivery["events"]
     assert (event["type"], event["data"]["job_id"]) == ("job_completed", str(job_id))
     summary = event["data"]["job"]
@@ -161,7 +161,7 @@ async def test_a_refused_delivery_is_retried_with_backoff_then_given_up(engine: 
         await _deliver(engine, post)
     assert (await _delivery(engine, job_id))[:3] == ("failed", MAX_ATTEMPTS, "status 503")
     assert [body["attempt"] for body in post.bodies()] == [1, 2, 3, 4, 5]
-    assert len({headers["X-CrawlerAI-Delivery"] for _, _, headers in post.sent}) == 1
+    assert len({headers["X-Snowcrawl-Delivery"] for _, _, headers in post.sent}) == 1
     assert await _deliver(engine, Receiver([])) == 0
 
 

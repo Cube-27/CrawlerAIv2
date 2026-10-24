@@ -7,14 +7,14 @@ from pathlib import Path
 
 from pydantic import JsonValue
 
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId, SourceKind
-from crawlerai.normalize.base import Ok
-from crawlerai.resolve.pipeline import EngineData, extract_page
-from crawlerai.resolve.preference import PRECEDENCE_TYPES
-from crawlerai.resolve.types import ExtractionResult
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId, SourceKind
+from snowcrawl.normalize.base import Ok
+from snowcrawl.resolve.pipeline import EngineData, extract_page
+from snowcrawl.resolve.preference import PRECEDENCE_TYPES
+from snowcrawl.resolve.types import ExtractionResult
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 from tests.support.captures import PAGE_URL, capture
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")

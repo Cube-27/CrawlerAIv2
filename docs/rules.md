@@ -16,7 +16,7 @@ CI checks and the contract agents rely on. `CLAUDE.md` holds the full agent text
 - **C1** Accuracy claims come only from the e2e run over the eval set (kept outside the repo); a fresh batch's first score is
   the only generalization number. Never look at a fresh batch before it is scored.
 - **C2** Every generic rule names its standard (schema.org, ISO, CLDR, RFC, HTML) or structural property in a comment.
-- **C3** Hostnames, brand names and page strings only in `backend/src/crawlerai/adapters/` and DB rows. Fixtures are synthetic
+- **C3** Hostnames, brand names and page strings only in `backend/src/snowcrawl/adapters/` and DB rows. Fixtures are synthetic
   (`example.com`, `.test`). CI: `tools/site_literal_scan.py --public`.
 - **C4** Vocabularies come from versioned external data in `backend/data/manifest.json`; no word, selector or regex for one page.
 - **C5** A failing site is fixed by config, a learning re-run or an operator correction; generic code changes only for a class.
@@ -29,7 +29,7 @@ CI checks and the contract agents rely on. `CLAUDE.md` holds the full agent text
   field type, never per page or site; a gain from <3 hosts is flagged.
 - **C11** Cognitive complexity ≤ 15 per function (`complexipy`, Oxlint); files over 800 lines only warn; no other size/coverage
   gate (`tools/no_size_gates.py`).
-- **C12** Nothing from the Invoro or CrawlerAI v1 repos. **C13** Candidates are built only when the owner admits them.
+- **C12** Nothing from the Invoro or Snowcrawl v1 repos. **C13** Candidates are built only when the owner admits them.
 
 ## Product rules
 

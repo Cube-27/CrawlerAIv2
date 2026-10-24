@@ -7,13 +7,13 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.collect import vocabulary
-from crawlerai.collect.vocabulary import Vocabulary, reference_errors
-from crawlerai.core.engine_version import engine_data_dir
-from crawlerai.schemas.registry import load_presets
-from crawlerai.schemas.types import FieldSpec, FieldType
-from crawlerai.services import schemas as schemas_service
-from crawlerai.services.schemas import InvalidSchema, NewSchema
+from snowcrawl.collect import vocabulary
+from snowcrawl.collect.vocabulary import Vocabulary, reference_errors
+from snowcrawl.core.engine_version import engine_data_dir
+from snowcrawl.schemas.registry import load_presets
+from snowcrawl.schemas.types import FieldSpec, FieldType
+from snowcrawl.services import schemas as schemas_service
+from snowcrawl.services.schemas import InvalidSchema, NewSchema
 
 
 def _cls(name: str, parent: str | None = None) -> dict[str, JsonValue]:
@@ -91,7 +91,7 @@ def test_the_presets_name_only_terms_of_the_pinned_vocabulary() -> None:
     data = engine_data_dir()
     path = None if data is None else Path(data) / "schemaorg" / "schemaorg-all-https.jsonld"
     if path is None or not path.is_file():
-        pytest.skip("the schema.org file is not fetched: run `crawlerai data fetch`")
+        pytest.skip("the schema.org file is not fetched: run `snowcrawl data fetch`")
     pinned = Vocabulary.read(path)
 
     assert {p.name: reference_errors(p.fields, pinned) for p in load_presets()} == {p.name: [] for p in load_presets()}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { APIError, CrawlerAI, JobTimeout, parseEvents, signWebhook, verifyWebhook, parseWebhook } from "../src/index.js";
+import { APIError, Snowcrawl, JobTimeout, parseEvents, signWebhook, verifyWebhook, parseWebhook } from "../src/index.js";
 
 const JOB = "0192a000-0000-7000-8000-0000000000aa";
 
@@ -11,7 +11,7 @@ interface Seen {
   body: unknown;
 }
 
-function api(reply: (seen: Seen) => Response): { client: CrawlerAI; seen: Seen[] } {
+function api(reply: (seen: Seen) => Response): { client: Snowcrawl; seen: Seen[] } {
   const seen: Seen[] = [];
   const fake: typeof fetch = (input, init) => {
     const request: Seen = {
@@ -23,7 +23,7 @@ function api(reply: (seen: Seen) => Response): { client: CrawlerAI; seen: Seen[]
     seen.push(request);
     return Promise.resolve(reply(request));
   };
-  return { client: new CrawlerAI("key-1", { baseUrl: "https://api.example.test/", fetch: fake }), seen };
+  return { client: new Snowcrawl("key-1", { baseUrl: "https://api.example.test/", fetch: fake }), seen };
 }
 
 const summary = (status: string) => ({ id: JOB, kind: "crawl", status });

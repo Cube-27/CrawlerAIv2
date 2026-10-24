@@ -13,8 +13,8 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from crawlerai.acquire.socks_guard import SocksGuard
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector, Target
+from snowcrawl.acquire.socks_guard import SocksGuard
+from snowcrawl.acquire.ssrf import IPAddress, SafeConnector, Target
 
 _DNS = {"internal.example.com": "10.0.0.1", "public.example.com": "93.184.215.14"}
 

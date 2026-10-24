@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from crawlerai.acquire import browser_tab
+from snowcrawl.acquire import browser_tab
 
 
 class _Page:

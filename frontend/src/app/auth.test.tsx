@@ -71,7 +71,7 @@ describe("API access", () => {
     const main = screen.getByRole("main");
     expect(await screen.findByText(SETUP_NOTICE)).toBeInTheDocument();
     expect(main).toHaveTextContent(SETUP_NOTICE);
-    expect(main).toHaveTextContent("Set CRAWLERAI_UI_API_KEY in .env");
+    expect(main).toHaveTextContent("Set SNOWCRAWL_UI_API_KEY in .env");
     expect(screen.queryByRole("button", { name: "Call API" })).not.toBeInTheDocument();
   });
 });

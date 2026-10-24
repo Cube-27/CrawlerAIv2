@@ -121,7 +121,7 @@ function ApiKey() {
     <section aria-label="API key">
       <Typography.Paragraph size="sm" color="muted">
         The snippets read your API key from <Typography.Code>${KEY_VARIABLE}</Typography.Code>.
-        Create one with <Typography.Code>crawlerai apikey create</Typography.Code>; this page never
+        Create one with <Typography.Code>snowcrawl apikey create</Typography.Code>; this page never
         holds or shows a key.
       </Typography.Paragraph>
     </section>

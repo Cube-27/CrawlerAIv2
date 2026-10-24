@@ -7,13 +7,13 @@ from html import escape
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.collect.base import Candidate, CollectResult, Entity
-from crawlerai.collect.og import OpenGraphCollector
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.collect.base import Candidate, CollectResult, Entity
+from snowcrawl.collect.og import OpenGraphCollector
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.normalize.base import Context, Ok
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 PAGE_URL = "https://shop.example.test/p/1"
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=PAGE_URL, page_url=PAGE_URL)

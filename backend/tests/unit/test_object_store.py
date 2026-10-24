@@ -8,8 +8,8 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from crawlerai.storage import open_store
-from crawlerai.storage.base import ObjectStore
+from snowcrawl.storage import open_store
+from snowcrawl.storage.base import ObjectStore
 
 _BUCKET = "objects"
 

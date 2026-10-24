@@ -29,7 +29,7 @@ def run(*args: str, stdin: str = "") -> str:
             f"backend=false\nbackend_static=false\nfrontend=false\napi_client=false\nlicenses=false\n{NO_MODEL}{NO_MONEY}{NO_SDK}",
         ),
         (
-            "backend/src/crawlerai/normalize/money.py\n",
+            "backend/src/snowcrawl/normalize/money.py\n",
             "backend=true\nbackend_static=true\nfrontend=false\napi_client=true\nlicenses=false\n"
             + NO_MODEL
             + MONEY
@@ -40,7 +40,7 @@ def run(*args: str, stdin: str = "") -> str:
             f"backend=true\nbackend_static=true\nfrontend=false\napi_client=true\nlicenses=true\n{NO_MODEL}{MONEY}{NO_SDK}",
         ),
         (
-            "backend/src/crawlerai/db/queue.py\n",
+            "backend/src/snowcrawl/db/queue.py\n",
             f"backend=true\nbackend_static=true\nfrontend=false\napi_client=true\nlicenses=false\n{MODEL}{NO_MONEY}{NO_SDK}",
         ),
         (
@@ -63,7 +63,7 @@ def run(*args: str, stdin: str = "") -> str:
             f"backend=false\nbackend_static=false\nfrontend=true\napi_client=true\nlicenses=false\n{NO_MODEL}{NO_MONEY}{SDK}",
         ),
         (
-            "sdk/python/src/crawlerai_sdk/client.py\n",
+            "sdk/python/src/snowcrawl_sdk/client.py\n",
             f"backend=false\nbackend_static=false\nfrontend=false\napi_client=false\nlicenses=false\n{NO_MODEL}{NO_MONEY}{SDK}",
         ),
         (

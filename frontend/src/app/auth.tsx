@@ -46,9 +46,9 @@ export function RequireAccess() {
   if (!useAccess().rejected) return <Outlet />;
   return (
     <EmptyView title="The API rejected the request.">
-      Set <Typography.Code>CRAWLERAI_UI_API_KEY</Typography.Code> in{" "}
+      Set <Typography.Code>SNOWCRAWL_UI_API_KEY</Typography.Code> in{" "}
       <Typography.Code>.env</Typography.Code> to a key from{" "}
-      <Typography.Code>crawlerai apikey create</Typography.Code>, then restart{" "}
+      <Typography.Code>snowcrawl apikey create</Typography.Code>, then restart{" "}
       <Typography.Code>pnpm dev</Typography.Code>.
     </EmptyView>
   );

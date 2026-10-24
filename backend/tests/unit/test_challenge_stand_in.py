@@ -4,8 +4,8 @@ adapter package's data, never from this file (C3)."""
 
 import pytest
 
-from crawlerai.acquire.challenge import block_class_of, challenge_label
-from crawlerai.adapters.challenges import SIGNATURES, ChallengeSignature, stand_in_vendor
+from snowcrawl.acquire.challenge import block_class_of, challenge_label
+from snowcrawl.adapters.challenges import SIGNATURES, ChallengeSignature, stand_in_vendor
 
 _HTML = (("content-type", "text/html"),)
 _LINKS = "".join(f'<a href="/item/{i}">Item {i}</a>' for i in range(8))

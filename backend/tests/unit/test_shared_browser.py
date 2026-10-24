@@ -9,9 +9,9 @@ from typing import cast
 
 import pytest
 
-from crawlerai.acquire.session import CookieExport
-from crawlerai.acquire.shared_browser import SharedBrowser
-from crawlerai.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.acquire.session import CookieExport
+from snowcrawl.acquire.shared_browser import SharedBrowser
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
 
 pytestmark = pytest.mark.anyio
 

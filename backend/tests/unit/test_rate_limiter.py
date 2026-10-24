@@ -3,7 +3,7 @@ second, per bucket key."""
 
 import pytest
 
-from crawlerai.api.auth import RateLimiter
+from snowcrawl.api.auth import RateLimiter
 
 
 class Clock:

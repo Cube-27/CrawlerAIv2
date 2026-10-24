@@ -67,7 +67,7 @@ jobs:
         with:
           version: "0.11.28"
       # Installed as in the backend job: dependency wheels only, the project built from this repo's source.
-      - run: uv sync --frozen --no-build --no-binary-package crawlerai --no-editable
+      - run: uv sync --frozen --no-build --no-binary-package snowcrawl --no-editable
       # mypy's incremental cache, per lockfile: each run saves its own, and restores the newest for the same lockfile
       # (a pull request also reads main's). mypy re-checks every module whose source changed, so a stale cache only
       # costs time.
@@ -104,9 +104,9 @@ jobs:
         with:
           version: "0.11.28"
       # Dependencies install from the lockfile's wheels only (`--no-build`), so no third-party build script runs.
-      # The project alone is built from this repo's source (`--no-binary-package crawlerai`) and installed
+      # The project alone is built from this repo's source (`--no-binary-package snowcrawl`) and installed
       # non-editable, and every later step runs without re-syncing.
-      - run: uv sync --frozen --no-build --no-binary-package crawlerai --no-editable
+      - run: uv sync --frozen --no-build --no-binary-package snowcrawl --no-editable
       # Google Chrome stable, run headless, for the `browser`-marked tests, installed as the Patchright
       # README sets it up (the browser rung's `chrome` channel).
       - run: uv run --no-sync --no-build patchright install --with-deps chrome
@@ -135,7 +135,7 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "0.11.28"
-      - run: uv sync --frozen --no-build --no-binary-package crawlerai --no-editable
+      - run: uv sync --frozen --no-build --no-binary-package snowcrawl --no-editable
       - run: python3 ../tools/dev.py check-verify-money
 
   frontend:
@@ -181,7 +181,7 @@ jobs:
       # Installed as in the backend job: dependency wheels only, the project built from this repo's source.
       - name: Install backend
         working-directory: backend
-        run: uv sync --frozen --no-build --no-binary-package crawlerai --no-editable
+        run: uv sync --frozen --no-build --no-binary-package snowcrawl --no-editable
       - run: python3 tools/dev.py check-api-client
 
   # The SDKs (`tools/dev.py check-sdk`, rest-api "SDKs"): both regenerated from frontend/openapi.json and compared with the

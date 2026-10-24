@@ -7,12 +7,12 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.config_ir.progressive import StateKey
-from crawlerai.db.models import ExtractionConfig, ProgressiveState
-from crawlerai.schemas import registry
-from crawlerai.schemas.registry import PresetConflict, load_presets
-from crawlerai.schemas.types import SchemaChanges, SchemaContent, SchemaDef, SchemaDocument, document_digest
-from crawlerai.services import schemas
+from snowcrawl.config_ir.progressive import StateKey
+from snowcrawl.db.models import ExtractionConfig, ProgressiveState
+from snowcrawl.schemas import registry
+from snowcrawl.schemas.registry import PresetConflict, load_presets
+from snowcrawl.schemas.types import SchemaChanges, SchemaContent, SchemaDef, SchemaDocument, document_digest
+from snowcrawl.services import schemas
 from tests.db.conftest import learned_site
 
 pytestmark = pytest.mark.anyio

@@ -12,19 +12,19 @@ from pathlib import Path
 
 import pytest
 
-from crawlerai.acquire.types import AttemptRecord, FetchResult
-from crawlerai.collect.config import Executed
-from crawlerai.collect.network_match import LearnedCalls
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.capture import BlockClass, CaptureMethod
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import FieldStatus, SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.resolve.pipeline import EngineData, extract_page
-from crawlerai.resolve.preference import PRECEDENCE_TYPES
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.services.page_run import FetchFailure, fetch_failure
+from snowcrawl.acquire.types import AttemptRecord, FetchResult
+from snowcrawl.collect.config import Executed
+from snowcrawl.collect.network_match import LearnedCalls
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.capture import BlockClass, CaptureMethod
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import FieldStatus, SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.resolve.pipeline import EngineData, extract_page
+from snowcrawl.resolve.preference import PRECEDENCE_TYPES
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.services.page_run import FetchFailure, fetch_failure
 from tests.support.captures import FETCHED_AT, HTML, fetched, with_attempts
 
 URL = "https://shop.example.test/p/1"

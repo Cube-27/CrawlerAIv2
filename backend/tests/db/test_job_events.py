@@ -11,8 +11,8 @@ import pytest
 from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.db.jobs import record_event, transition_job
-from crawlerai.db.models import (
+from snowcrawl.db.jobs import record_event, transition_job
+from snowcrawl.db.models import (
     Capture,
     Extraction,
     Job,
@@ -25,9 +25,9 @@ from crawlerai.db.models import (
     TaskRecord,
     UrlTask,
 )
-from crawlerai.db.queue import claim_tasks, complete_task
-from crawlerai.schemas import registry
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument, document_digest
+from snowcrawl.db.queue import claim_tasks, complete_task
+from snowcrawl.schemas import registry
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDocument, document_digest
 from tests.db.support import api
 
 pytestmark = pytest.mark.anyio
@@ -176,7 +176,7 @@ PROGRESS = {
 @pytest.fixture
 async def client(app_env: pytest.MonkeyPatch, engine: AsyncEngine) -> AsyncIterator[httpx.AsyncClient]:
     """The app with no LLM provider key."""
-    app_env.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
+    app_env.setenv("SNOWCRAWL_LLM_PROVIDERS", "anthropic")
     async with api(engine) as (_, client):
         yield client
 

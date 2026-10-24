@@ -7,9 +7,9 @@ from cryptography.fernet import Fernet
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.cookie_store import CookieStore
-from crawlerai.acquire.session import ENGINE, SessionCookie
-from crawlerai.db.models import SiteCookieState
+from snowcrawl.acquire.cookie_store import CookieStore
+from snowcrawl.acquire.session import ENGINE, SessionCookie
+from snowcrawl.db.models import SiteCookieState
 
 NOW = 2_000_000_000.0
 DOMAIN = "cookie-state.example.test"

@@ -6,12 +6,12 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.collect.items.align import AMBIGUOUS_IN_BLOCK, Items, align
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Ambiguous, Context, Ok
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.collect.items.align import AMBIGUOUS_IN_BLOCK, Items, align
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.normalize.base import Ambiguous, Context, Ok
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 PAGE_URL = "https://jobs.example.test/search"
 CTX = Context(html_lang="en", captured_at=datetime(2026, 10, 18, tzinfo=UTC), base_url=PAGE_URL, page_url=PAGE_URL)

@@ -37,6 +37,6 @@ const cognitiveComplexity = defineRule({
 });
 
 export default definePlugin({
-  meta: { name: "crawlerai" },
+  meta: { name: "snowcrawl" },
   rules: { "cognitive-complexity": cognitiveComplexity },
 });

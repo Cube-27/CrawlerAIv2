@@ -7,8 +7,8 @@ import pytest
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.db.models import Job, JobId, Project, UsageEvent
-from crawlerai.db.usage import budget_remaining, record_usage
+from snowcrawl.db.models import Job, JobId, Project, UsageEvent
+from snowcrawl.db.usage import budget_remaining, record_usage
 
 pytestmark = pytest.mark.anyio
 

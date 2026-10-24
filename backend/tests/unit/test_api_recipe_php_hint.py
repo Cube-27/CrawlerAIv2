@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-from crawlerai.config_ir.api_recipe.model import ApiRecipe
-from crawlerai.config_ir.exporters.php_hint import php_hint
-from crawlerai.core.ids import uuid7
+from snowcrawl.config_ir.api_recipe.model import ApiRecipe
+from snowcrawl.config_ir.exporters.php_hint import php_hint
+from snowcrawl.core.ids import uuid7
 
 
 def _recipe(**changes: Any) -> ApiRecipe:

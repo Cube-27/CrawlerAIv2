@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.schemas.types import SchemaDocument
+from snowcrawl.schemas.types import SchemaDocument
 
 
 def _document(fields: dict[str, Any], **top: Any) -> dict[str, Any]:

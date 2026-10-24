@@ -8,8 +8,8 @@ import string
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.content.page import ParsedPage
-from crawlerai.resolve.pagination import next_page_candidates
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.resolve.pagination import next_page_candidates
 
 BASE = "https://shop.example.test"
 

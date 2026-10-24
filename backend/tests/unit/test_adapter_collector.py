@@ -12,20 +12,20 @@ from pathlib import Path
 
 from pydantic import JsonValue
 
-from crawlerai.acquire.api import JsonFetcher
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import Adapter, AdapterMatch, Shape
-from crawlerai.adapters.greenhouse import Greenhouse
-from crawlerai.adapters.lever import Lever
-from crawlerai.collect.adapter import AdapterCollector
-from crawlerai.collect.base import CollectResult, Entity
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import PageKind, SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.registry import load_presets
-from crawlerai.schemas.types import FieldSpec, SchemaDef
+from snowcrawl.acquire.api import JsonFetcher
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.adapters.base import Adapter, AdapterMatch, Shape
+from snowcrawl.adapters.greenhouse import Greenhouse
+from snowcrawl.adapters.lever import Lever
+from snowcrawl.collect.adapter import AdapterCollector
+from snowcrawl.collect.base import CollectResult, Entity
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import PageKind, SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.registry import load_presets
+from snowcrawl.schemas.types import FieldSpec, SchemaDef
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC))

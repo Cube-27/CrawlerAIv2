@@ -12,9 +12,9 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.types import FetchPolicy
-from crawlerai.adapters.base import AdapterMatch
-from crawlerai.adapters.lever import JOB_SITE_APIS, Lever
+from snowcrawl.acquire.types import FetchPolicy
+from snowcrawl.adapters.base import AdapterMatch
+from snowcrawl.adapters.lever import JOB_SITE_APIS, Lever
 from tests.stand_in import StandInApi
 from tests.unit.adapter_support import candidates
 

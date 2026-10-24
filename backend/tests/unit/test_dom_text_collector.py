@@ -7,15 +7,15 @@ from datetime import UTC, datetime
 
 import pytest
 
-from crawlerai.collect.base import PAGE, Candidate
-from crawlerai.collect.dom_text import DescriptionCollector
-from crawlerai.collect.locator import format_locator
-from crawlerai.collect.schema_org_map import candidate
-from crawlerai.content.page import ParsedPage, node_xpath
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import PageKind, SchemaId, SourceKind
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.collect.base import PAGE, Candidate
+from snowcrawl.collect.dom_text import DescriptionCollector
+from snowcrawl.collect.locator import format_locator
+from snowcrawl.collect.schema_org_map import candidate
+from snowcrawl.content.page import ParsedPage, node_xpath
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import PageKind, SchemaId, SourceKind
+from snowcrawl.normalize.base import Context, Ok
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 PAGE_URL = "https://shop.example.test/p/1"
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=PAGE_URL, page_url=PAGE_URL, html_lang="en")

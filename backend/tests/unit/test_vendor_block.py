@@ -7,16 +7,16 @@ from datetime import UTC, datetime
 
 import pytest
 
-from crawlerai.acquire.challenge import LEGAL, STRUCTURAL, challenge_label, vendor_block
-from crawlerai.acquire.outcome import Content, Exchange, fetch_result
-from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
-from crawlerai.adapters.challenges import SIGNATURES
-from crawlerai.core.capture import CaptureMethod
-from crawlerai.core.ids import uuid7
-from crawlerai.core.retry import FIRST_BACKOFF
-from crawlerai.db.models import CaptureId, JobId, UrlTaskId
-from crawlerai.db.queue import ClaimedTask, Failed, Finished
-from crawlerai.services.page_run import unreached
+from snowcrawl.acquire.challenge import LEGAL, STRUCTURAL, challenge_label, vendor_block
+from snowcrawl.acquire.outcome import Content, Exchange, fetch_result
+from snowcrawl.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
+from snowcrawl.adapters.challenges import SIGNATURES
+from snowcrawl.core.capture import CaptureMethod
+from snowcrawl.core.ids import uuid7
+from snowcrawl.core.retry import FIRST_BACKOFF
+from snowcrawl.db.models import CaptureId, JobId, UrlTaskId
+from snowcrawl.db.queue import ClaimedTask, Failed, Finished
+from snowcrawl.services.page_run import unreached
 
 URL = "https://shop.example.test/item/1"
 # Vendor labels come from the adapter package's signature data (C3).

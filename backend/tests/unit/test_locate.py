@@ -17,25 +17,25 @@ from pathlib import Path
 import httpx
 from pydantic import SecretStr
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest, fetch_json
-from crawlerai.acquire.rungs import FetchPlan
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector
-from crawlerai.acquire.types import CallEndpoint, FetchPolicy, FetchResult, RequestContext
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.active import fetch_plan
-from crawlerai.config_ir.api_recipe.model import ContextHeader
-from crawlerai.config_ir.executor import EngineExecutor
-from crawlerai.config_ir.held_out import StoredPage, read_bundle
-from crawlerai.config_ir.induction import SamplePage, source_steps
-from crawlerai.config_ir.locate import Calls, Located, Sampled, locate, located_config
-from crawlerai.config_ir.model import ExtractionConfigIR, Fetch, FieldSteps, JsonPathStep, Provenance, SchemaRef
-from crawlerai.config_ir.validation import Facts, HeldOutPage, Validated, ValidationReport
-from crawlerai.core.capture import CaptureMethod
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import CaptureId, ExtractionConfigId, JobId
-from crawlerai.resolve.task import ActiveConfig
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, document_digest
-from crawlerai.storage.capture_bundle import CaptureBundle
+from snowcrawl.acquire.api import JsonFetcher, JsonRequest, fetch_json
+from snowcrawl.acquire.rungs import FetchPlan
+from snowcrawl.acquire.ssrf import IPAddress, SafeConnector
+from snowcrawl.acquire.types import CallEndpoint, FetchPolicy, FetchResult, RequestContext
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.config_ir.active import fetch_plan
+from snowcrawl.config_ir.api_recipe.model import ContextHeader
+from snowcrawl.config_ir.executor import EngineExecutor
+from snowcrawl.config_ir.held_out import StoredPage, read_bundle
+from snowcrawl.config_ir.induction import SamplePage, source_steps
+from snowcrawl.config_ir.locate import Calls, Located, Sampled, locate, located_config
+from snowcrawl.config_ir.model import ExtractionConfigIR, Fetch, FieldSteps, JsonPathStep, Provenance, SchemaRef
+from snowcrawl.config_ir.validation import Facts, HeldOutPage, Validated, ValidationReport
+from snowcrawl.core.capture import CaptureMethod
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import CaptureId, ExtractionConfigId, JobId
+from snowcrawl.resolve.task import ActiveConfig
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef, document_digest
+from snowcrawl.storage.capture_bundle import CaptureBundle
 from tests.stand_in import IMPERSONATE, handler_transport
 from tests.support.captures import calls, capture
 from tests.support.fake_llm import ScriptedClient

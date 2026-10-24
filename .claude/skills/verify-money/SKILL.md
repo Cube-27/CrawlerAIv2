@@ -1,6 +1,6 @@
 ---
 name: verify-money
-description: Hypothesis property checks of money on the real code. Use when a diff touches backend/src/crawlerai/normalize/money.py, backend/src/crawlerai/normalize/numbers.py, backend/src/crawlerai/llm/grounding.py, or backend/tests/property/test_money_properties.py, or changes how a price, its currency (page, locale or URL), a percentage or a CLDR compact unit is read.
+description: Hypothesis property checks of money on the real code. Use when a diff touches backend/src/snowcrawl/normalize/money.py, backend/src/snowcrawl/normalize/numbers.py, backend/src/snowcrawl/llm/grounding.py, or backend/tests/property/test_money_properties.py, or changes how a price, its currency (page, locale or URL), a percentage or a CLDR compact unit is read.
 ---
 
 # verify-money
@@ -13,13 +13,13 @@ outcomes on generated inputs, against the real code (no mocks).
 
 The diff touches any of these (the CI job `verify-money` is filtered on the same paths, `tools/ci_changes.py`):
 
-- `backend/src/crawlerai/normalize/money.py`: `normalize`, `_text`, `_structured`, `_currency_of`, `_unwritten`,
+- `backend/src/snowcrawl/normalize/money.py`: `normalize`, `_text`, `_structured`, `_currency_of`, `_unwritten`,
   `_narrowed`, `url_currency`, `_money`, `_sign_forms` (bidi controls, trailing full stop), the minor-unit filter;
-- `backend/src/crawlerai/normalize/numbers.py`: `stated`, `_percentage`, `compact_unit`, `readings`, `locale_set`,
+- `backend/src/snowcrawl/normalize/numbers.py`: `stated`, `_percentage`, `compact_unit`, `readings`, `locale_set`,
   `_conventions` (CLDR `latn`/`arab`/`arabext` symbols, group-symbol fallbacks, page convention);
-- `backend/src/crawlerai/llm/grounding.py`: `align`, `_sign_spaced` (money claims);
-- `backend/src/crawlerai/normalize/units.py`: `per_suffix` (an amount per a CLDR unit or period);
-- `backend/src/crawlerai/normalize/base.py` (`Context`), `backend/tests/property/test_money_properties.py`,
+- `backend/src/snowcrawl/llm/grounding.py`: `align`, `_sign_spaced` (money claims);
+- `backend/src/snowcrawl/normalize/units.py`: `per_suffix` (an amount per a CLDR unit or period);
+- `backend/src/snowcrawl/normalize/base.py` (`Context`), `backend/tests/property/test_money_properties.py`,
   `backend/tests/conftest.py` (the `verify` profile), `backend/pyproject.toml` / `backend/uv.lock` (Babel, CLDR data,
   price-parser, Hypothesis).
 
@@ -60,8 +60,8 @@ Hypothesis prints the shrunk input (`Failing test case: ...`) and replays it fir
 (its example database). Replay it by hand too:
 
 ```
-cd backend && uv run python -c "from datetime import UTC, datetime; from crawlerai.normalize import money; \
-from crawlerai.normalize.base import Context; from crawlerai.schemas.types import FieldSpec; \
+cd backend && uv run python -c "from datetime import UTC, datetime; from snowcrawl.normalize import money; \
+from snowcrawl.normalize.base import Context; from snowcrawl.schemas.types import FieldSpec; \
 print(money.normalize('USD 0.01 1%', FieldSpec(type='money'), Context(captured_at=datetime(2026, 1, 1, tzinfo=UTC), html_lang='en-US')))"
 ```
 

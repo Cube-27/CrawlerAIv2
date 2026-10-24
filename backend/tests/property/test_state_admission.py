@@ -10,14 +10,14 @@ from datetime import UTC, datetime
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.collect.base import Candidate
-from crawlerai.collect.js_state import JsStateCollector
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.normalize.dispatch import checkable, equal, normalize
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.collect.base import Candidate
+from snowcrawl.collect.js_state import JsStateCollector
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.normalize.base import Context, Ok
+from snowcrawl.normalize.dispatch import checkable, equal, normalize
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url="https://example.test/", page_url=None)
 NAME = FieldSpec(type=FieldType.TEXT, description="d", schema_org="Product.name")

@@ -1,7 +1,7 @@
 """Induction's one rule (`collect.induce`): a reading enough instances propose and that holds, the most proposed first,
 then the first proposed."""
 
-from crawlerai.collect.induce import induced
+from snowcrawl.collect.induce import induced
 
 
 def test_a_reading_needs_its_quorum_of_instances_each_counted_once() -> None:

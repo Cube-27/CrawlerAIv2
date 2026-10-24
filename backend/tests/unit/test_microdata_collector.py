@@ -5,14 +5,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from crawlerai.collect.base import Candidate, CollectResult, Entity
-from crawlerai.collect.microdata import MicrodataCollector
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.collect.base import Candidate, CollectResult, Entity
+from snowcrawl.collect.microdata import MicrodataCollector
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.normalize.base import Context, Ok
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 PAGE_URL = "https://shop.example.test/p/1"

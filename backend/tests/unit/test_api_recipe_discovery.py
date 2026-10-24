@@ -13,13 +13,13 @@ from uuid import UUID
 
 from pydantic import JsonValue
 
-from crawlerai.config_ir.api_recipe.binding import CapturedRequest
-from crawlerai.config_ir.api_recipe.discovery import DiscoverySample, EndpointCandidate, discover
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle
+from snowcrawl.config_ir.api_recipe.binding import CapturedRequest
+from snowcrawl.config_ir.api_recipe.discovery import DiscoverySample, EndpointCandidate, discover
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.storage.capture_bundle import CaptureBundle
 from tests.support.captures import call, capture
 
 SCHEMA = SchemaDef(

@@ -9,9 +9,9 @@ import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
-from crawlerai.normalize import enum, vocab
-from crawlerai.normalize.base import Ambiguous, Context, Invalid, Ok
-from crawlerai.schemas.types import FieldSpec, FieldType
+from snowcrawl.normalize import enum, vocab
+from snowcrawl.normalize.base import Ambiguous, Context, Invalid, Ok
+from snowcrawl.schemas.types import FieldSpec, FieldType
 
 CTX = Context(captured_at=datetime(2026, 1, 1, tzinfo=UTC))
 SCHEMA = FieldSpec(type=FieldType.ENUM, vocab="schema:ItemAvailability")

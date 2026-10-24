@@ -1,9 +1,9 @@
-/** Verifying a completion webhook: `X-CrawlerAI-Signature: sha256=<hex>`, the HMAC-SHA256 (RFC 2104) of the request
+/** Verifying a completion webhook: `X-Snowcrawl-Signature: sha256=<hex>`, the HMAC-SHA256 (RFC 2104) of the request
  * body keyed with the UTF-8 bytes of the API key's webhook secret. Uses Web Crypto, so it runs in Node, Deno, Bun,
  * browsers and edge runtimes. */
 import type { components } from "./schema.js";
 
-export const SIGNATURE_HEADER = "X-CrawlerAI-Signature";
+export const SIGNATURE_HEADER = "X-Snowcrawl-Signature";
 
 const encoder = new TextEncoder();
 

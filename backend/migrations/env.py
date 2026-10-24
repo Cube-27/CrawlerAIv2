@@ -1,4 +1,4 @@
-"""Alembic environment: runs migrations online over the async engine, on `CRAWLERAI_DATABASE_URL`. A caller may name
+"""Alembic environment: runs migrations online over the async engine, on `SNOWCRAWL_DATABASE_URL`. A caller may name
 another database on the Config (`attributes["database_url"]`), as the DB tests do.
 """
 
@@ -9,8 +9,8 @@ from alembic import context
 from sqlalchemy import Connection, MetaData, pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from crawlerai.core.settings import DatabaseSettings
-from crawlerai.db.models import Base
+from snowcrawl.core.settings import DatabaseSettings
+from snowcrawl.db.models import Base
 
 if context.config.config_file_name is not None:
     # Migrations also run inside a process that logs (the test session): its loggers stay enabled.

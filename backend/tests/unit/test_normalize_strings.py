@@ -2,7 +2,7 @@
 
 import pytest
 
-from crawlerai.normalize.strings import collapse, compose, fold_words, is_cut_of, sentences, uncut
+from snowcrawl.normalize.strings import collapse, compose, fold_words, is_cut_of, sentences, uncut
 
 
 @pytest.mark.parametrize(

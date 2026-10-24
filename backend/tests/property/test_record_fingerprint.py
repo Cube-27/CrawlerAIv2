@@ -9,8 +9,8 @@ from hypothesis import assume, given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.recurring.record_fp import changed_fields, record_fingerprint
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument
+from snowcrawl.recurring.record_fp import changed_fields, record_fingerprint
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDocument
 
 _TEXT = FieldSpec(type=FieldType.TEXT, description="d")
 _REQUIRED = FieldSpec(type=FieldType.TEXT, description="d", required=True)

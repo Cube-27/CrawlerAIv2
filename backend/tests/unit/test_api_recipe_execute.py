@@ -17,26 +17,26 @@ from ipaddress import ip_address
 
 import httpx
 
-from crawlerai.acquire.api import JsonFetcher, fetch_json
-from crawlerai.acquire.memory import Remembered
-from crawlerai.acquire.rungs import Rungs, acquire
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.collect.base import PAGE
-from crawlerai.config_ir.api_recipe.execute import Custom, RecipeRung, recipe_collector
-from crawlerai.config_ir.api_recipe.model import (
+from snowcrawl.acquire.api import JsonFetcher, fetch_json
+from snowcrawl.acquire.memory import Remembered
+from snowcrawl.acquire.rungs import Rungs, acquire
+from snowcrawl.acquire.ssrf import IPAddress, SafeConnector
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.collect.base import PAGE
+from snowcrawl.config_ir.api_recipe.execute import Custom, RecipeRung, recipe_collector
+from snowcrawl.config_ir.api_recipe.model import (
     ApiRecipe,
     CursorPagination,
     HeaderValue,
     Pagination,
     Proof,
 )
-from crawlerai.config_ir.model import WarmUp
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import CaptureId, PageKind, SchemaId
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.config_ir.model import WarmUp
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import CaptureId, PageKind, SchemaId
+from snowcrawl.normalize.base import Context, Ok
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 from tests.stand_in import IMPERSONATE, handler_transport
 from tests.support.captures import ScriptedRung
 

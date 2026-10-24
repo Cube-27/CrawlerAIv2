@@ -49,7 +49,7 @@ TLD_LIST = REPO / "backend/data/iana/tlds-alpha-by-domain.txt"
 DEFAULT_ALLOWLIST = PurePosixPath("tools/site_literal_allowlist.txt")
 
 # Documentation is exempt: `docs/`.
-EXEMPT_DIRS = ("backend/src/crawlerai/adapters/", "docs/", ".github/")
+EXEMPT_DIRS = ("backend/src/snowcrawl/adapters/", "docs/", ".github/")
 EXEMPT_NAMES = frozenset({"pnpm-lock.yaml", "package.json", "pyproject.toml", "LICENSE", "NOTICE"})
 EXEMPT_SUFFIXES = (".lock",)
 DATA_MANIFEST = "backend/data/manifest.json"

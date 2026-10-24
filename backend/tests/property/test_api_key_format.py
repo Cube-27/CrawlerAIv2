@@ -2,7 +2,7 @@
 
 import string
 
-from crawlerai.db.keys import generate_key, hash_key
+from snowcrawl.db.keys import generate_key, hash_key
 
 BASE62 = set(string.digits + string.ascii_letters)
 

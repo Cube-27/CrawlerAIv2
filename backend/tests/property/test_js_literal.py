@@ -8,7 +8,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.content.js_literal import read_literal
+from snowcrawl.content.js_literal import read_literal
 
 _json_values: st.SearchStrategy[JsonValue] = st.recursive(
     st.none() | st.booleans() | st.integers() | st.floats(allow_nan=False, allow_infinity=False) | st.text(),

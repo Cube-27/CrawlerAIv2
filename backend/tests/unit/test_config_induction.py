@@ -3,14 +3,14 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.induction import Induction, Published, SamplePage, induce
-from crawlerai.config_ir.model import JsonLdStep, JsonPathStep, XPathStep
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import SchemaDef
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.config_ir.induction import Induction, Published, SamplePage, induce
+from snowcrawl.config_ir.model import JsonLdStep, JsonPathStep, XPathStep
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import SchemaDef
 
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC))
 VOCABULARY = Vocabulary({})

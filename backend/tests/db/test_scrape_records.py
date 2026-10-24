@@ -16,11 +16,11 @@ from pydantic import JsonValue
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.types import FetchResult
-from crawlerai.config_ir.held_out import load_pages
-from crawlerai.content.page import ParsedPage
-from crawlerai.db.models import (
+from snowcrawl.acquire.rungs import Rungs
+from snowcrawl.acquire.types import FetchResult
+from snowcrawl.config_ir.held_out import load_pages
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.db.models import (
     Capture,
     Extraction,
     ExtractionConfig,
@@ -32,18 +32,18 @@ from crawlerai.db.models import (
     Site,
     UrlTask,
 )
-from crawlerai.db.models import SchemaDef as SchemaRow
-from crawlerai.llm.client import MeteredClient, ProviderRefused, ProviderReply
-from crawlerai.llm.roles.s_wire import to_wire
-from crawlerai.resolve import pipeline
-from crawlerai.resolve.evidence import Bucket, Calibration
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.resolve.score import PRECEDENCE_FILE, load_precedence
-from crawlerai.schemas import registry
-from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument, document_digest
-from crawlerai.services.fetching import Fetching
-from crawlerai.services.scrape import ScrapeRequest, scrape
-from crawlerai.services.scrape_request import SchemaUnusable
+from snowcrawl.db.models import SchemaDef as SchemaRow
+from snowcrawl.llm.client import MeteredClient, ProviderRefused, ProviderReply
+from snowcrawl.llm.roles.s_wire import to_wire
+from snowcrawl.resolve import pipeline
+from snowcrawl.resolve.evidence import Bucket, Calibration
+from snowcrawl.resolve.pipeline import EngineData
+from snowcrawl.resolve.score import PRECEDENCE_FILE, load_precedence
+from snowcrawl.schemas import registry
+from snowcrawl.schemas.types import SchemaChanges, SchemaDef, SchemaDocument, document_digest
+from snowcrawl.services.fetching import Fetching
+from snowcrawl.services.scrape import ScrapeRequest, scrape
+from snowcrawl.services.scrape_request import SchemaUnusable
 from tests.db.conftest import LISTING_FIELDS
 from tests.db.support import PRICE, TITLE, Web, fetching_from
 from tests.support.fake_llm import FakeProvider

@@ -7,11 +7,11 @@ from typing import Any
 
 import pytest
 
-from crawlerai.config_ir.corrections import Correction, InvalidCorrection, correct
-from crawlerai.config_ir.model import ExtractionConfigIR
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.config_ir.corrections import Correction, InvalidCorrection, correct
+from snowcrawl.config_ir.model import ExtractionConfigIR
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 NOW = datetime(2026, 10, 14, 12, tzinfo=UTC)
 TEXT = FieldSpec(type=FieldType.TEXT, description="d")

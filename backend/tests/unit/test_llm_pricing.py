@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from crawlerai.llm.pricing import PriceList, Pricing
+from snowcrawl.llm.pricing import PriceList, Pricing
 
 D1 = date(2030, 1, 1)
 D2 = date(2030, 6, 1)

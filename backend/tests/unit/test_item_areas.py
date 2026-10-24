@@ -7,8 +7,8 @@ from typing import cast
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import Page
 
-from crawlerai.acquire.browser_capture import AREAS_JS, item_areas
-from crawlerai.acquire.items import element_path, item_groups, lxml_root
+from snowcrawl.acquire.browser_capture import AREAS_JS, item_areas
+from snowcrawl.acquire.items import element_path, item_groups, lxml_root
 
 BODY = (
     "<html><body><h1>Kettles</h1><ul>"

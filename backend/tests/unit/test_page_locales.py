@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from crawlerai.normalize import locales
-from crawlerai.normalize.base import Context
+from snowcrawl.normalize import locales
+from snowcrawl.normalize.base import Context
 
 AT = datetime(2026, 1, 1, tzinfo=UTC)
 

@@ -11,11 +11,11 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas.types import SchemaDef
-from crawlerai.services.fetching import Fetching
-from crawlerai.storage.capture_bundle import NetworkBody
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.resolve.pipeline import EngineData
+from snowcrawl.schemas.types import SchemaDef
+from snowcrawl.services.fetching import Fetching
+from snowcrawl.storage.capture_bundle import NetworkBody
 from tests.db.support import Web, api
 from tests.support.captures import call, fetched
 

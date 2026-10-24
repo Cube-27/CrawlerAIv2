@@ -11,10 +11,10 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.config_ir.exporters.records import clean_record, export_records
-from crawlerai.resolve.records import FieldMeta, RecordContent
-from crawlerai.resolve.types import FieldStatus
-from crawlerai.schemas.types import NAME_PATTERN, FieldSpec, FieldType, SchemaDocument
+from snowcrawl.config_ir.exporters.records import clean_record, export_records
+from snowcrawl.resolve.records import FieldMeta, RecordContent
+from snowcrawl.resolve.types import FieldStatus
+from snowcrawl.schemas.types import NAME_PATTERN, FieldSpec, FieldType, SchemaDocument
 
 _TEXT = FieldSpec(type=FieldType.TEXT, description="d")
 # Declared out of name order: columns follow the names, not the declaration (or JSONB's storage order).

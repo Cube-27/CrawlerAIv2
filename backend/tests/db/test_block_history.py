@@ -7,9 +7,9 @@ import pytest
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.memory import learn_fetch, remembered
-from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
-from crawlerai.db.models import Project, Site, SiteId
+from snowcrawl.acquire.memory import learn_fetch, remembered
+from snowcrawl.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
+from snowcrawl.db.models import Project, Site, SiteId
 
 pytestmark = pytest.mark.anyio
 

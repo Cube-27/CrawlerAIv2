@@ -6,11 +6,11 @@ import asyncio
 import time
 from datetime import UTC, datetime
 
-from crawlerai.acquire.outcome import Content, Exchange, fetch_result
-from crawlerai.acquire.politeness import Admit, HostLimiter
-from crawlerai.acquire.robots import Robots
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.services.polite import (
+from snowcrawl.acquire.outcome import Content, Exchange, fetch_result
+from snowcrawl.acquire.politeness import Admit, HostLimiter
+from snowcrawl.acquire.robots import Robots
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.services.polite import (
     IN_PLACE,
     ROBOTS,
     ROBOTS_UNREACHABLE,
@@ -21,7 +21,7 @@ from crawlerai.services.polite import (
     Waiting,
     polite_fetch,
 )
-from crawlerai.storage.capture_bundle import HeaderList
+from snowcrawl.storage.capture_bundle import HeaderList
 
 HOST = "shop.example.test"
 URL = f"https://{HOST}/item/1"

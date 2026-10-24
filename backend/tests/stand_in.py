@@ -7,11 +7,11 @@ from collections.abc import Callable, Mapping
 
 import httpx
 
-from crawlerai.acquire.api import JsonFetcher
-from crawlerai.acquire.curl_client import Failed, Hop, Transport, Wire
-from crawlerai.acquire.impersonate import Impersonation
-from crawlerai.acquire.ssrf import Target
-from crawlerai.core.settings import IMPERSONATE_DEFAULT
+from snowcrawl.acquire.api import JsonFetcher
+from snowcrawl.acquire.curl_client import Failed, Hop, Transport, Wire
+from snowcrawl.acquire.impersonate import Impersonation
+from snowcrawl.acquire.ssrf import Target
+from snowcrawl.core.settings import IMPERSONATE_DEFAULT
 
 __all__ = ["CONNECT_FAILED", "IMPERSONATE", "STAND_IN_BROWSER", "StandInApi", "handler_transport"]
 

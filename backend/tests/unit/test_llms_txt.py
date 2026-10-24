@@ -1,6 +1,6 @@
 """`llms.txt` and `llms-full.txt` (`content.llms`, llmstxt.org): the opening, the sections and the links."""
 
-from crawlerai.content.llms import LlmsPage, llms_full_txt, llms_txt
+from snowcrawl.content.llms import LlmsPage, llms_full_txt, llms_txt
 
 PAGES = [
     LlmsPage("https://docs.example.test/guide/", "Guide home", "How to use it.\nIn short."),

@@ -1,6 +1,6 @@
 """Hypothesis profiles: CI runs every property test with a fixed `max_examples=200`; local runs keep
 the Hypothesis default; the verify-* skills run theirs with the `verify` profile. GitHub Actions sets `CI`. Every test
-runs without the process's `CRAWLERAI_*` variables. Counters of HTML parser constructions. For API adapters
+runs without the process's `SNOWCRAWL_*` variables. Counters of HTML parser constructions. For API adapters
 and recipes, a stand-in API."""
 
 import os
@@ -15,11 +15,11 @@ from hypothesis import settings
 from lxml import html as lxml_html
 from selectolax import lexbor
 
-from crawlerai.acquire import impersonate
-from crawlerai.acquire.api import JsonFetcher, JsonRequest, fetch_json
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.storage.capture_bundle import HeaderList
+from snowcrawl.acquire import impersonate
+from snowcrawl.acquire.api import JsonFetcher, JsonRequest, fetch_json
+from snowcrawl.acquire.ssrf import IPAddress, SafeConnector
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.storage.capture_bundle import HeaderList
 from tests.stand_in import IMPERSONATE, STAND_IN_BROWSER, StandInApi, handler_transport
 
 settings.register_profile("ci", max_examples=200)
@@ -29,18 +29,18 @@ settings.register_profile("verify", max_examples=2000, deadline=None)
 settings.load_profile("ci" if os.environ.get("CI") else "default")
 
 # The test databases' variables, which name where DB tests may write (`tests/db/conftest.py`).
-_TEST_DATABASE_PREFIX = "CRAWLERAI_TEST_"
+_TEST_DATABASE_PREFIX = "SNOWCRAWL_TEST_"
 
 
 @pytest.fixture(autouse=True)
 def _hermetic_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Every `CRAWLERAI_*` variable of the process is removed while a test runs: `make check` exports the developer's
+    """Every `SNOWCRAWL_*` variable of the process is removed while a test runs: `make check` exports the developer's
     `.env` (keys, model ids), and settings a test builds read the environment. A test sets what it needs. No Chrome
     starts to read the browser rung's headers (`acquire.impersonate`): the rungs send a stand-in Chrome's user agent
     over the default target."""
     for name in list(os.environ):
         upper = name.upper()
-        if upper.startswith("CRAWLERAI_") and not upper.startswith(_TEST_DATABASE_PREFIX):
+        if upper.startswith("SNOWCRAWL_") and not upper.startswith(_TEST_DATABASE_PREFIX):
             monkeypatch.delenv(name)
     monkeypatch.setattr(impersonate, "_read_headers", _no_browser)
 

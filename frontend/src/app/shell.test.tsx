@@ -13,7 +13,7 @@ describe("app shell", () => {
   it("renders the sidebar, the navigation and the Scrape playground at /, with no key prompt", () => {
     renderApp();
 
-    expect(screen.getByRole("complementary", { name: "Sidebar" })).toHaveTextContent("CrawlerAI");
+    expect(screen.getByRole("complementary", { name: "Sidebar" })).toHaveTextContent("Snowcrawl");
     expect(screen.getByRole("link", { name: "Scrape" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("main")).toContainElement(
       screen.getByRole("heading", { level: 1, name: "Playground" }),
@@ -43,10 +43,10 @@ describe("theme", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Dark theme" }));
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
-    expect(localStorage.getItem("crawlerai.theme")).toBe("dark");
+    expect(localStorage.getItem("snowcrawl.theme")).toBe("dark");
 
     await userEvent.click(screen.getByRole("button", { name: "Dark theme" }));
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
-    expect(localStorage.getItem("crawlerai.theme")).toBe("light");
+    expect(localStorage.getItem("snowcrawl.theme")).toBe("light");
   });
 });

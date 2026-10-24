@@ -10,12 +10,12 @@ import pytest
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.api import JsonRequest
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import Job, JobId, Project, UsageEvent
-from crawlerai.services.fetching import Fetching, learning_replay
+from snowcrawl.acquire.api import JsonRequest
+from snowcrawl.acquire.rungs import Rungs
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import Job, JobId, Project, UsageEvent
+from snowcrawl.services.fetching import Fetching, learning_replay
 from tests.db.support import fetching_from
 
 pytestmark = pytest.mark.anyio

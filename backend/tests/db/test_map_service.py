@@ -9,10 +9,10 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.types import FetchResult
-from crawlerai.db.models import Job
-from crawlerai.services.fetching import Fetching, TargetRejected
-from crawlerai.services.map import MapRequest, map_urls
+from snowcrawl.acquire.types import FetchResult
+from snowcrawl.db.models import Job
+from snowcrawl.services.fetching import Fetching, TargetRejected
+from snowcrawl.services.map import MapRequest, map_urls
 from tests.db.support import PRIVATE_HOST, Page, Web, fetching_from, unpaced
 
 pytestmark = pytest.mark.anyio

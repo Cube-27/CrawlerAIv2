@@ -9,12 +9,12 @@ from typing import Any
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.browser_tab import Drive
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.types import ActionsReport, FetchPolicy, FetchResult, PagedFetch
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.services.fetching import Fetching
-from crawlerai.services.scrape import ScrapeRequest, scrape
+from snowcrawl.acquire.browser_tab import Drive
+from snowcrawl.acquire.rungs import Rungs
+from snowcrawl.acquire.types import ActionsReport, FetchPolicy, FetchResult, PagedFetch
+from snowcrawl.resolve.pipeline import EngineData
+from snowcrawl.services.fetching import Fetching
+from snowcrawl.services.scrape import ScrapeRequest, scrape
 from tests.db.conftest import listing_schema
 from tests.db.support import fetching_from
 

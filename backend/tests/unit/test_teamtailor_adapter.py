@@ -5,8 +5,8 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.adapters.base import AdapterMatch
-from crawlerai.adapters.teamtailor import DOMAIN, Teamtailor
+from snowcrawl.adapters.base import AdapterMatch
+from snowcrawl.adapters.teamtailor import DOMAIN, Teamtailor
 from tests.unit.adapter_support import FIXTURES, candidates
 
 ADAPTER = Teamtailor()

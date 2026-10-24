@@ -2,7 +2,7 @@
 
 import pytest
 
-from crawlerai.collect.locator import InvalidLocator, Locator, parse_locator
+from snowcrawl.collect.locator import InvalidLocator, Locator, parse_locator
 
 
 @pytest.mark.parametrize(

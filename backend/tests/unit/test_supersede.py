@@ -3,11 +3,11 @@
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.collect.base import Candidate
-from crawlerai.db.models import SourceKind
-from crawlerai.normalize.base import Ok
-from crawlerai.resolve.supersede import superseded
-from crawlerai.schemas.types import FieldSpec, FieldType
+from snowcrawl.collect.base import Candidate
+from snowcrawl.db.models import SourceKind
+from snowcrawl.normalize.base import Ok
+from snowcrawl.resolve.supersede import superseded
+from snowcrawl.schemas.types import FieldSpec, FieldType
 
 LONG = "The role owns the example service end to end. It reviews designs, ships changes and answers pages."
 

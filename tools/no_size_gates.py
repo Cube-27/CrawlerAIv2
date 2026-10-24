@@ -69,7 +69,7 @@ GATES = re.compile(
 # included, still matches GATES: the limit is set in one place per language.
 ALLOWED = re.compile(
     r"max-complexity-allowed\s*=\s*15(?![\w.])"
-    r'|"crawlerai/cognitive-complexity"\s*:\s*\[\s*"error"\s*,\s*\{\s*max\s*:\s*15\s*\}\s*\]'
+    r'|"snowcrawl/cognitive-complexity"\s*:\s*\[\s*"error"\s*,\s*\{\s*max\s*:\s*15\s*\}\s*\]'
 )
 
 

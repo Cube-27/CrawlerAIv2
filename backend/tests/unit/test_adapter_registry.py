@@ -12,10 +12,10 @@ from urllib.parse import urlsplit
 
 from pydantic import JsonValue
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import NOT_PLATFORM, AdapterMatch, Shape
-from crawlerai.adapters.registry import DECLINE_FOR, Registry
+from snowcrawl.acquire.api import JsonFetcher, JsonRequest
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.adapters.base import NOT_PLATFORM, AdapterMatch, Shape
+from snowcrawl.adapters.registry import DECLINE_FOR, Registry
 from tests.support.captures import ScriptedRung
 
 BOARD = "https://board.example.test/tenant"

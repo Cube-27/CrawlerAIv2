@@ -10,13 +10,13 @@ import pytest
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.politeness import Admit, HostLimiter
-from crawlerai.acquire.robots import RobotsSnapshot
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.db.models import Job, JobId, Project, Site, SiteId, UrlTask
-from crawlerai.db.queue import ClaimedTask, Failed, Finished, TaskResult, claim_tasks
-from crawlerai.services.page_task import queued_end
-from crawlerai.services.polite import QUEUED, HostRules, PageFetch, Turns, polite_fetch, rules_of
+from snowcrawl.acquire.politeness import Admit, HostLimiter
+from snowcrawl.acquire.robots import RobotsSnapshot
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.db.models import Job, JobId, Project, Site, SiteId, UrlTask
+from snowcrawl.db.queue import ClaimedTask, Failed, Finished, TaskResult, claim_tasks
+from snowcrawl.services.page_task import queued_end
+from snowcrawl.services.polite import QUEUED, HostRules, PageFetch, Turns, polite_fetch, rules_of
 from tests.db.support import Web as SharedWeb
 
 pytestmark = pytest.mark.anyio

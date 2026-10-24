@@ -1,6 +1,6 @@
 """An adapter's requests go as politely as a page's: only where the endpoint host's robots.txt
 allows them, at that host's rate, the first one on the turn the caller was admitted for; and the processes that
-fetch run every adapter `CRAWLERAI_DISABLED_ADAPTERS` does not name.
+fetch run every adapter `SNOWCRAWL_DISABLED_ADAPTERS` does not name.
 
 Hosts are synthetic (`example.test`, C3); nothing goes to the network.
 """
@@ -10,17 +10,17 @@ import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from crawlerai.acquire.api import JsonRequest
-from crawlerai.acquire.outcome import Content, Exchange, fetch_result
-from crawlerai.acquire.politeness import HostLimiter
-from crawlerai.acquire.robots import Robots
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import SafeConnector
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.services.fetching import Fetching, adapter_send
-from crawlerai.services.polite import HostRules
-from crawlerai.storage.capture_bundle import HeaderList
-from crawlerai.storage.fs import FsStore
+from snowcrawl.acquire.api import JsonRequest
+from snowcrawl.acquire.outcome import Content, Exchange, fetch_result
+from snowcrawl.acquire.politeness import HostLimiter
+from snowcrawl.acquire.robots import Robots
+from snowcrawl.acquire.rungs import Rungs
+from snowcrawl.acquire.ssrf import SafeConnector
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.services.fetching import Fetching, adapter_send
+from snowcrawl.services.polite import HostRules
+from snowcrawl.storage.capture_bundle import HeaderList
+from snowcrawl.storage.fs import FsStore
 
 PAGE_HOST = "shop.example.test"
 

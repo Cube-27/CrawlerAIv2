@@ -4,9 +4,9 @@ and images the fields asked can claim, only for links to another resource, and o
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.content.page import ParsedPage
-from crawlerai.content.text import CleanedText, Mark, MarkKind
-from crawlerai.llm.marked import marked, scoped
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.content.text import CleanedText, Mark, MarkKind
+from snowcrawl.llm.marked import marked, scoped
 
 BASE = "https://jobs.example.test/postings/7"
 BOTH: frozenset[MarkKind] = frozenset({"link", "image"})

@@ -1,8 +1,8 @@
 """`markdown_fit` (`content.fit`): the page's content pruned of furniture by structure, and kept to the blocks relevant
 to a query. Synthetic pages under RFC 2606 names."""
 
-from crawlerai.content.fit import FitOptions, markdown_fit
-from crawlerai.content.page import ParsedPage
+from snowcrawl.content.fit import FitOptions, markdown_fit
+from snowcrawl.content.page import ParsedPage
 
 URL = "https://site.example.test/guide"
 PROSE = "Bees keep a colony through the winter by clustering around the queen and sharing the warmth they make."

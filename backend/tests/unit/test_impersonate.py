@@ -13,12 +13,12 @@ import pytest
 from curl_cffi.requests import BrowserTypeLiteral
 from patchright.async_api import Error as PlaywrightError
 
-from crawlerai.acquire import impersonate
-from crawlerai.acquire.curl_client import Hop, Limits, curl_transport
-from crawlerai.acquire.impersonate import BrowserUnread, Impersonation, nearest_target, rung_impersonation
-from crawlerai.acquire.outcome import Traffic
-from crawlerai.core.settings import AcquireSettings
-from crawlerai.storage.capture_bundle import HeaderList
+from snowcrawl.acquire import impersonate
+from snowcrawl.acquire.curl_client import Hop, Limits, curl_transport
+from snowcrawl.acquire.impersonate import BrowserUnread, Impersonation, nearest_target, rung_impersonation
+from snowcrawl.acquire.outcome import Traffic
+from snowcrawl.core.settings import AcquireSettings
+from snowcrawl.storage.capture_bundle import HeaderList
 from tests.local_server import LoopbackConnector, Reply, Server, serving
 
 _PROFILES = sorted(
@@ -55,7 +55,7 @@ def test_an_explicit_target_is_kept_with_its_own_headers_and_starts_no_browser(m
         raise AssertionError("no browser starts for an explicit target")
 
     monkeypatch.setattr(impersonate, "_read_headers", unread)
-    monkeypatch.setenv("CRAWLERAI_IMPERSONATE", f"chrome{_PROFILES[0]}")
+    monkeypatch.setenv("SNOWCRAWL_IMPERSONATE", f"chrome{_PROFILES[0]}")
 
     chosen = asyncio.run(rung_impersonation(AcquireSettings(), browser_rung=True))
 

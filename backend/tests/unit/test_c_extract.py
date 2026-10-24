@@ -8,15 +8,15 @@ from datetime import UTC, datetime
 
 from pydantic import JsonValue
 
-from crawlerai.collect.base import Entity
-from crawlerai.collect.product_scope import product_apart
-from crawlerai.config_ir.role_c import role_c
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import JobId
-from crawlerai.normalize.base import Context
-from crawlerai.resolve.pipeline import UNVERIFIED, GapRequest
-from crawlerai.schemas.types import FieldSpec, FieldType
+from snowcrawl.collect.base import Entity
+from snowcrawl.collect.product_scope import product_apart
+from snowcrawl.config_ir.role_c import role_c
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import JobId
+from snowcrawl.normalize.base import Context
+from snowcrawl.resolve.pipeline import UNVERIFIED, GapRequest
+from snowcrawl.schemas.types import FieldSpec, FieldType
 from tests.support.fake_llm import ScriptedClient
 from tests.unit.test_pipeline import PRODUCT, _bundle, _extract, _html, _product
 

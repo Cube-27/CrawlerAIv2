@@ -1,6 +1,6 @@
 """The headers a capture records (`acquire.headers.recorded`): the header fields sent or received, in order."""
 
-from crawlerai.acquire.headers import recorded
+from snowcrawl.acquire.headers import recorded
 
 
 def test_a_capture_records_header_fields_but_no_credentials_or_pseudo_headers() -> None:

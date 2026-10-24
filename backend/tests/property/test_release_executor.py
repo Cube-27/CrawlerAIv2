@@ -13,17 +13,17 @@ from typing import Any
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from crawlerai.collect.base import PAGE
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.executor import EngineExecutor, row_id
-from crawlerai.config_ir.model import ExtractionConfigIR
-from crawlerai.config_ir.release_executor import FieldRule, Released, ReleasePage, Value, release_run
-from crawlerai.config_ir.release_rules import release_rules
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.collect.base import PAGE
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.config_ir.executor import EngineExecutor, row_id
+from snowcrawl.config_ir.model import ExtractionConfigIR
+from snowcrawl.config_ir.release_executor import FieldRule, Released, ReleasePage, Value, release_run
+from snowcrawl.config_ir.release_rules import release_rules
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.normalize.base import Context, Ok
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 PAGE_URL = "https://shop.example.test/p/1"

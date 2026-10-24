@@ -129,7 +129,7 @@ function Sidebar() {
         <span className="brand-mark" aria-hidden="true">
           <ListUl />
         </span>
-        <Typography.Paragraph weight="semibold">CrawlerAI</Typography.Paragraph>
+        <Typography.Paragraph weight="semibold">Snowcrawl</Typography.Paragraph>
       </div>
       <MainNav />
       <SidebarFooter />

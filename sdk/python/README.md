@@ -1,20 +1,20 @@
-# crawlerai-sdk (Python)
+# snowcrawl-sdk (Python)
 
-A typed client for the CrawlerAI API over `httpx`, with pydantic models generated from the API's OpenAPI document
-(`src/crawlerai_sdk/models.py`; `./generate.sh` regenerates it; a test fails when the API document changed and the SDKs were not regenerated). Python 3.12 or later.
+A typed client for the Snowcrawl API over `httpx`, with pydantic models generated from the API's OpenAPI document
+(`src/snowcrawl_sdk/models.py`; `./generate.sh` regenerates it; a test fails when the API document changed and the SDKs were not regenerated). Python 3.12 or later.
 
 ```sh
 pip install ./sdk/python        # from a checkout; the package is not published yet
-export CRAWLERAI_API_KEY=ck_...   # from `crawlerai apikey create --label me`
+export SNOWCRAWL_API_KEY=ck_...   # from `snowcrawl apikey create --label me`
 ```
 
 ## Usage
 
 ```python
 import os
-from crawlerai_sdk import APIError, CrawlerAI
+from snowcrawl_sdk import APIError, Snowcrawl
 
-with CrawlerAI(os.environ["CRAWLERAI_API_KEY"], "http://localhost:8000") as client:
+with Snowcrawl(os.environ["SNOWCRAWL_API_KEY"], "http://localhost:8000") as client:
     # One page, fetched while you wait.
     page = client.scrape(url="https://example.com/", formats=["markdown", "links"])
     print(page.markdown)
@@ -51,20 +51,20 @@ with CrawlerAI(os.environ["CRAWLERAI_API_KEY"], "http://localhost:8000") as clie
 A request is the endpoint's model (`models.CrawlRequestInput`) or its members as keyword arguments. Members are validated
 before anything is sent, and only the ones you give are sent, so the server's defaults apply to the rest. Every
 failure answered by the API is an `APIError` with `status`, `type` (`validation`, `ssrf_rejected`,
-`search_unavailable`, ...), `detail` and, for a 422, `errors`. `AsyncCrawlerAI` has the same methods, awaited
+`search_unavailable`, ...), `detail` and, for a 422, `errors`. `AsyncSnowcrawl` has the same methods, awaited
 (`async for event in client.events(job_id)`).
 
 ## Webhooks
 
 A job with a `webhook_url` is POSTed its summary when it ends, signed with the webhook secret of the key that
-submitted it (`X-CrawlerAI-Signature: sha256=<hex>`, the HMAC-SHA256 of the raw body). Verify before you parse:
+submitted it (`X-Snowcrawl-Signature: sha256=<hex>`, the HMAC-SHA256 of the raw body). Verify before you parse:
 
 ```python
-from crawlerai_sdk import InvalidSignature, parse_webhook
+from snowcrawl_sdk import InvalidSignature, parse_webhook
 
 def handle(body: bytes, signature_header: str | None) -> None:
     try:
-        summary = parse_webhook(os.environ["CRAWLERAI_WEBHOOK_SECRET"], body, signature_header)
+        summary = parse_webhook(os.environ["SNOWCRAWL_WEBHOOK_SECRET"], body, signature_header)
     except InvalidSignature:
         return  # not from the API
     print(summary.id, summary.status)

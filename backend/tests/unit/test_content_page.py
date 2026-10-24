@@ -3,8 +3,8 @@ capture; the script blocks; the lazy lxml tree."""
 
 import pytest
 
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.capture import CaptureMethod
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.capture import CaptureMethod
 from tests.support.captures import calls, capture
 
 

@@ -28,7 +28,7 @@ for data in schemaorg publicsuffix; do
   [[ -d $main/backend/data/$data ]] && cp -r "$main/backend/data/$data" "$dir/backend/data/$data"
 done
 # Dependencies from the lockfile's wheels only, as CI installs them; the project itself is built (editable).
-if [[ -f $dir/backend/pyproject.toml ]] && ! (cd "$dir/backend" && uv sync -q --no-build --no-binary-package crawlerai) >&2; then
+if [[ -f $dir/backend/pyproject.toml ]] && ! (cd "$dir/backend" && uv sync -q --no-build --no-binary-package snowcrawl) >&2; then
   # Leave nothing behind, so a retry with the same NAME and BRANCH can succeed.
   git -C "$main" worktree remove --force "$dir" && git -C "$main" branch -q -D "$branch"
   err "uv sync failed in $dir/backend"

@@ -3,9 +3,9 @@
 import httpx
 import pytest
 
-from crawlerai.acquire import cookies
-from crawlerai.acquire.api import JsonRequest
-from crawlerai.acquire.public_suffix import PublicSuffixes
+from snowcrawl.acquire import cookies
+from snowcrawl.acquire.api import JsonRequest
+from snowcrawl.acquire.public_suffix import PublicSuffixes
 from tests.unit.test_api_fetch import PAGE, fetch, json_reply
 
 LIST = """// a synthetic list in the file's format

@@ -6,8 +6,8 @@ import pytest
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, Project, UrlTask, UrlTaskId
-from crawlerai.db.queue import (
+from snowcrawl.db.models import Job, JobEvent, JobId, JobStatus, Project, UrlTask, UrlTaskId
+from snowcrawl.db.queue import (
     ClaimedTask,
     LeaseLost,
     claim_tasks,

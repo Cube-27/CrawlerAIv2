@@ -9,8 +9,8 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.types import FetchResult
-from crawlerai.services.fetching import Fetching
+from snowcrawl.acquire.types import FetchResult
+from snowcrawl.services.fetching import Fetching
 from tests.db.support import PRIVATE_HOST, Web, api
 
 pytestmark = pytest.mark.anyio

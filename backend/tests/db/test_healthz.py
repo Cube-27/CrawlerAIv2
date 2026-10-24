@@ -4,15 +4,15 @@
 import httpx
 import pytest
 
-from crawlerai.api.app import create_app
+from snowcrawl.api.app import create_app
 
 pytestmark = pytest.mark.anyio
 
 
 async def test_healthz_is_ok_when_the_database_answers(app_env: pytest.MonkeyPatch) -> None:
     # A listed provider without its key: the setup check reports it without asking any provider.
-    app_env.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
-    app_env.delenv("CRAWLERAI_LLM_API_KEY_ANTHROPIC", raising=False)
+    app_env.setenv("SNOWCRAWL_LLM_PROVIDERS", "anthropic")
+    app_env.delenv("SNOWCRAWL_LLM_API_KEY_ANTHROPIC", raising=False)
     app = create_app()
 
     async with (

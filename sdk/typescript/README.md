@@ -1,20 +1,20 @@
-# @crawlerai/sdk (TypeScript)
+# @snowcrawl/sdk (TypeScript)
 
-A typed client for the CrawlerAI API over `fetch`, with no runtime dependencies. Its types are generated from the
+A typed client for the Snowcrawl API over `fetch`, with no runtime dependencies. Its types are generated from the
 API's OpenAPI document (`src/schema.d.ts` by `pnpm gen`; a test fails when the API document changed and this was not regenerated). Node 20 or later, and any runtime
 with `fetch` and Web Crypto.
 
 ```sh
 cd sdk/typescript && pnpm install && pnpm build   # the package is not published yet
-export CRAWLERAI_API_KEY=ck_...                   # from `crawlerai apikey create --label me`
+export SNOWCRAWL_API_KEY=ck_...                   # from `snowcrawl apikey create --label me`
 ```
 
 ## Usage
 
 ```ts
-import { APIError, CrawlerAI } from "@crawlerai/sdk";
+import { APIError, Snowcrawl } from "@snowcrawl/sdk";
 
-const client = new CrawlerAI(process.env.CRAWLERAI_API_KEY!, { baseUrl: "http://localhost:8000" });
+const client = new Snowcrawl(process.env.SNOWCRAWL_API_KEY!, { baseUrl: "http://localhost:8000" });
 
 // One page, fetched while you wait.
 const page = await client.scrape({ url: "https://example.com/", formats: ["markdown", "links"] });
@@ -50,13 +50,13 @@ resumes a stream after the last id seen.
 ## Webhooks
 
 A job with a `webhook_url` is POSTed its summary when it ends, signed with the webhook secret of the key that submitted
-it (`X-CrawlerAI-Signature: sha256=<hex>`, the HMAC-SHA256 of the raw body). Verify the raw body before you parse it:
+it (`X-Snowcrawl-Signature: sha256=<hex>`, the HMAC-SHA256 of the raw body). Verify the raw body before you parse it:
 
 ```ts
-import { parseWebhook, SIGNATURE_HEADER } from "@crawlerai/sdk";
+import { parseWebhook, SIGNATURE_HEADER } from "@snowcrawl/sdk";
 
 // In a request handler: `body` is the raw text or bytes, never a re-serialised object.
-const summary = await parseWebhook(process.env.CRAWLERAI_WEBHOOK_SECRET!, body, request.headers.get(SIGNATURE_HEADER));
+const summary = await parseWebhook(process.env.SNOWCRAWL_WEBHOOK_SECRET!, body, request.headers.get(SIGNATURE_HEADER));
 console.log(summary.id, summary.status); // parseWebhook throws for a body not signed with the secret
 ```
 

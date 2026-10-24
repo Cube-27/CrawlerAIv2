@@ -50,7 +50,7 @@ def test_checks_without_gates_pass(tmp_path: Path) -> None:
         ("backend/pyproject.toml", "max-complexity-allowed = 20"),
         ("Makefile", "\tcd backend && uv run complexipy --max-complexity-allowed 16"),
         ("Makefile", "\tcd backend && uv run complexipy --ignore-complexity"),
-        ("frontend/vite.config.ts", '      "crawlerai/cognitive-complexity": ["error", { max: 25 }],'),
+        ("frontend/vite.config.ts", '      "snowcrawl/cognitive-complexity": ["error", { max: 25 }],'),
     ],
 )
 def test_size_complexity_or_coverage_gate_fails_with_path_and_line(tmp_path: Path, path: str, line: str) -> None:

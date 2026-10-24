@@ -15,19 +15,19 @@ import httpx
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.politeness import HostLimiter
-from crawlerai.acquire.rungs import Rung, Rungs
-from crawlerai.acquire.ssrf import IPAddress, Resolver, SafeConnector
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.api.app import create_app
-from crawlerai.core.capture import BlockClass, CaptureMethod
-from crawlerai.core.egress import Egresses
-from crawlerai.db.keys import create_key
-from crawlerai.services.fetching import Fetching
-from crawlerai.storage.artifacts import SCREENSHOT
-from crawlerai.storage.base import ObjectStore
-from crawlerai.storage.capture_bundle import HeaderList
-from crawlerai.storage.fs import FsStore
+from snowcrawl.acquire.politeness import HostLimiter
+from snowcrawl.acquire.rungs import Rung, Rungs
+from snowcrawl.acquire.ssrf import IPAddress, Resolver, SafeConnector
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.api.app import create_app
+from snowcrawl.core.capture import BlockClass, CaptureMethod
+from snowcrawl.core.egress import Egresses
+from snowcrawl.db.keys import create_key
+from snowcrawl.services.fetching import Fetching
+from snowcrawl.storage.artifacts import SCREENSHOT
+from snowcrawl.storage.base import ObjectStore
+from snowcrawl.storage.capture_bundle import HeaderList
+from snowcrawl.storage.fs import FsStore
 
 # A detail schema's fields: the product's name and its price (the schema.org properties `Product.name` and
 # `Offer.price` with `priceCurrency`).

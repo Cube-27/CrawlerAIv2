@@ -7,8 +7,8 @@ import json
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.adapters.base import AdapterMatch
-from crawlerai.adapters.ukg import HOSTS, UltiPro
+from snowcrawl.adapters.base import AdapterMatch
+from snowcrawl.adapters.ukg import HOSTS, UltiPro
 from tests.unit.adapter_support import candidates
 
 ADAPTER = UltiPro()

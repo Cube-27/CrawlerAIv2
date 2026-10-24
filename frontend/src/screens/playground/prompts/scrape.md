@@ -1,8 +1,8 @@
 # call-scrape
 
-Call the CrawlerAI scrape endpoint to read one web page.
+Call the Snowcrawl scrape endpoint to read one web page.
 
-- Send `POST /v1/scrape` with `Authorization: Bearer $CRAWLERAI_API_KEY` and a JSON body.
+- Send `POST /v1/scrape` with `Authorization: Bearer $SNOWCRAWL_API_KEY` and a JSON body.
 - Required: `url` (the page) and `formats`, a non-empty list of `markdown`, `html`, `raw_html`, `links`, `metadata`
   and `records`. The answer has a member only for each format asked for.
 - For structured data, set `schema` to `{"id": "<schema id>"}` (a stored schema), an inline schema, or
@@ -17,9 +17,9 @@ Call the CrawlerAI scrape endpoint to read one web page.
 
 # integrate-scrape
 
-Build an integration on the CrawlerAI scrape endpoint (`POST /v1/scrape`).
+Build an integration on the Snowcrawl scrape endpoint (`POST /v1/scrape`).
 
-- Read the base URL and the API key from configuration (`CRAWLERAI_API_KEY`); never hard-code a key.
+- Read the base URL and the API key from configuration (`SNOWCRAWL_API_KEY`); never hard-code a key.
 - Wrap the call in one function that takes the URL, the formats and an optional schema and returns a typed result.
   Generate the types from the OpenAPI document at `/v1/openapi.json` rather than writing them by hand.
 - Treat a field with no value as unknown, not as empty: keep its status and reason next to the value.

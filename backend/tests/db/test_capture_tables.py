@@ -6,7 +6,7 @@ from sqlalchemy import insert, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import (
+from snowcrawl.db.models import (
     Candidate,
     Extraction,
     ExtractionConfig,
@@ -21,7 +21,7 @@ from crawlerai.db.models import (
     UrlTask,
     UrlTaskId,
 )
-from crawlerai.services.page_store import storable
+from snowcrawl.services.page_store import storable
 
 pytestmark = pytest.mark.anyio
 

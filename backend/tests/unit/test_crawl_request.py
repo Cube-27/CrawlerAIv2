@@ -6,8 +6,8 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.services.crawl import CrawlRequest
-from crawlerai.services.map import MAX_LIMIT
+from snowcrawl.services.crawl import CrawlRequest
+from snowcrawl.services.map import MAX_LIMIT
 
 URL = "https://shop.example.test/"
 SCHEMA = {"id": str(uuid.UUID(int=1))}

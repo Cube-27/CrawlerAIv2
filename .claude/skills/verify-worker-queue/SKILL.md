@@ -1,6 +1,6 @@
 ---
 name: verify-worker-queue
-description: Model-check the worker/queue concurrency (claim, lease, deadline, retry, lease release, job settling, per-host pacing, the shared browser's context cap) with TLA+/TLC. Use for any change to backend/src/crawlerai/worker/loop.py, services/page_task.py (queued_end), db/queue.py, db/jobs.py, db/usage.py, crawl/frontier.py, worker/handlers/ (count_fetch and the frontier lock the job row), scheduler/loop.py, services/polite.py, acquire/politeness.py, acquire/shared_browser.py, or tools/verify/; and when asked whether tasks can get stuck, run twice, or overload a host.
+description: Model-check the worker/queue concurrency (claim, lease, deadline, retry, lease release, job settling, per-host pacing, the shared browser's context cap) with TLA+/TLC. Use for any change to backend/src/snowcrawl/worker/loop.py, services/page_task.py (queued_end), db/queue.py, db/jobs.py, db/usage.py, crawl/frontier.py, worker/handlers/ (count_fetch and the frontier lock the job row), scheduler/loop.py, services/polite.py, acquire/politeness.py, acquire/shared_browser.py, or tools/verify/; and when asked whether tasks can get stuck, run twice, or overload a host.
 ---
 
 # Verify the worker and queue
@@ -13,7 +13,7 @@ after its cancellation.
 - Model: `tools/verify/worker_queue/WorkerQueue.tla` (every action cites its code), instances in `MC.tla`, shared
   constants in `base.cfg`.
 - Runner: `tools/verify/worker_queue.py` (standard library; pinned `tla2tools.jar` v1.7.4, sha256 `936a2620...`; a
-  pinned Temurin 21 JRE is fetched when no `java` 11+ is on PATH; cache and TLC logs in `~/.cache/crawlerai-tla/`).
+  pinned Temurin 21 JRE is fetched when no `java` 11+ is on PATH; cache and TLC logs in `~/.cache/snowcrawl-tla/`).
 - CI: the `verify-worker-queue` job in `.github/workflows/ci.yml`, run when a changed path is one of its inputs in
   `tools/ci_changes.py` (`verify_worker_queue`), as three parallel shards (`--shard 1/3` .. `3/3`) that together run
   every check, finding and mutant.

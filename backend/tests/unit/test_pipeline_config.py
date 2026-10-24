@@ -13,19 +13,19 @@ from typing import Any
 
 from pydantic import JsonValue
 
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.executor import EngineExecutor
-from crawlerai.config_ir.model import ExtractionConfigIR
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import FieldStatus, PageKind, SchemaId, SourceKind
-from crawlerai.resolve.pipeline import (
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.config_ir.executor import EngineExecutor
+from snowcrawl.config_ir.model import ExtractionConfigIR
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import FieldStatus, PageKind, SchemaId, SourceKind
+from snowcrawl.resolve.pipeline import (
     EngineData,
     extract_page,
 )
-from crawlerai.resolve.preference import PRECEDENCE_TYPES
-from crawlerai.resolve.types import ExtractionResult
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle
+from snowcrawl.resolve.preference import PRECEDENCE_TYPES
+from snowcrawl.resolve.types import ExtractionResult
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.storage.capture_bundle import CaptureBundle
 from tests.support.captures import capture
 from tests.support.role_c import PRICE, FakeRoleC
 

@@ -63,7 +63,7 @@ on every push, in parallel, in a few minutes: local runs are for what CI can't t
   or two that exercise the changed code most directly. CI runs the rest.
 - **`verify-*` skills:** CI runs every one whose paths your diff touches. Run one locally only when you change its
   model or runner (`tools/verify/`), or to reproduce a CI failure.
-- **Runtime grounding** (the `crawlerai` CLI or the worker on public pages or a local fixture server, output read):
+- **Runtime grounding** (the `snowcrawl` CLI or the worker on public pages or a local fixture server, output read):
   for a change in behaviour, as the main evidence. A refactor that keeps behaviour needs none; its evidence is the
   tests and CI.
 - **Generated files:** `uv run tools/dev.py api-client` when a route or response model changes, and

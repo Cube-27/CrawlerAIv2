@@ -6,9 +6,9 @@ import json
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.mcp_server.output import InvalidCursor, MarkdownCursor, records_summary, tool_result
-from crawlerai.resolve.types import FieldStatus
-from crawlerai.services.records import ExtractedRecord, RecordField
+from snowcrawl.mcp_server.output import InvalidCursor, MarkdownCursor, records_summary, tool_result
+from snowcrawl.resolve.types import FieldStatus
+from snowcrawl.services.records import ExtractedRecord, RecordField
 
 
 def _field(status: FieldStatus, value: JsonValue, confidence: float | None) -> RecordField:

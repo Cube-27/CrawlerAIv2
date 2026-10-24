@@ -6,20 +6,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from crawlerai.collect.base import Candidate, Entity
-from crawlerai.collect.config import Executed
-from crawlerai.collect.jsonld import JsonLdCollector
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.executor import EngineExecutor
-from crawlerai.config_ir.model import ExtractionConfigIR
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.resolve.evidence import assess_fields
-from crawlerai.resolve.ownership import EntityGraph
-from crawlerai.resolve.preference import PRECEDENCE_TYPES, PageFacts, Resolver
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.collect.base import Candidate, Entity
+from snowcrawl.collect.config import Executed
+from snowcrawl.collect.jsonld import JsonLdCollector
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.config_ir.executor import EngineExecutor
+from snowcrawl.config_ir.model import ExtractionConfigIR
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.normalize.base import Context, Ok
+from snowcrawl.resolve.evidence import assess_fields
+from snowcrawl.resolve.ownership import EntityGraph
+from snowcrawl.resolve.preference import PRECEDENCE_TYPES, PageFacts, Resolver
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 PAGE_URL = "https://shop.example.test/p/1"
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=PAGE_URL, page_url=PAGE_URL)

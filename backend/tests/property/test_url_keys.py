@@ -4,7 +4,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.normalize.url_key import document_key, item_key
+from snowcrawl.normalize.url_key import document_key, item_key
 
 
 @pytest.mark.parametrize(

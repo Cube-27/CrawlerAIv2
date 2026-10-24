@@ -13,7 +13,7 @@ import httpx2
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from crawlerai.llm.client import (
+from snowcrawl.llm.client import (
     LLMRequest,
     MeteredClient,
     ModelClass,
@@ -22,8 +22,8 @@ from crawlerai.llm.client import (
     ProviderRefused,
     ProviderReply,
 )
-from crawlerai.llm.providers.anthropic import AnthropicProvider
-from crawlerai.llm.providers.gemini import GeminiProvider
+from snowcrawl.llm.providers.anthropic import AnthropicProvider
+from snowcrawl.llm.providers.gemini import GeminiProvider
 
 MODELS: dict[ModelClass, str] = {"fast": "fast-model", "strong": "strong-model"}
 

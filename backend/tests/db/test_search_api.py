@@ -8,8 +8,8 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from crawlerai.search.providers import SearchFailed
-from crawlerai.search.results import Hit
+from snowcrawl.search.providers import SearchFailed
+from snowcrawl.search.results import Hit
 from tests.db.support import PRIVATE_HOST
 
 pytestmark = pytest.mark.anyio

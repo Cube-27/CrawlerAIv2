@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-from crawlerai.config_ir.executability import class_counts, config_classes, step_class
-from crawlerai.config_ir.model import ExtractionConfigIR, FieldSteps
+from snowcrawl.config_ir.executability import class_counts, config_classes, step_class
+from snowcrawl.config_ir.model import ExtractionConfigIR, FieldSteps
 
 HTML = {"xpath": "normalize-space(//h1)"}
 JSONLD = {"jsonld": "$['name']"}

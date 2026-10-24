@@ -10,19 +10,19 @@ import pytest
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.activation import activate, store_recipe
-from crawlerai.config_ir.custom_recipe import CustomRecipe
-from crawlerai.config_ir.executor import ConfigMismatch
-from crawlerai.config_ir.model import ExtractionConfigIR
-from crawlerai.config_ir.progressive import StateKey, request_learning
-from crawlerai.config_ir.validation import Facts, HeldOutPage, Validated, validate
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import CaptureId, ExtractionConfig, ProgressiveState, Project, SchemaDef, Site
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import SchemaDef as SchemaDefinition
-from crawlerai.schemas.types import SchemaDocument, document_digest
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.config_ir.activation import activate, store_recipe
+from snowcrawl.config_ir.custom_recipe import CustomRecipe
+from snowcrawl.config_ir.executor import ConfigMismatch
+from snowcrawl.config_ir.model import ExtractionConfigIR
+from snowcrawl.config_ir.progressive import StateKey, request_learning
+from snowcrawl.config_ir.validation import Facts, HeldOutPage, Validated, validate
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import CaptureId, ExtractionConfig, ProgressiveState, Project, SchemaDef, Site
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import SchemaDef as SchemaDefinition
+from snowcrawl.schemas.types import SchemaDocument, document_digest
 
 pytestmark = pytest.mark.anyio
 

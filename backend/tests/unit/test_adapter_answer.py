@@ -4,9 +4,9 @@ body is UTF-8 JSON text, so it decodes as that, whatever charset the platform's 
 import time
 from datetime import UTC, datetime
 
-from crawlerai.acquire.outcome import Content, Exchange, fetch_result
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.answer import recorded
+from snowcrawl.acquire.outcome import Content, Exchange, fetch_result
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.adapters.answer import recorded
 
 
 def _answer(content_type: str) -> FetchResult:

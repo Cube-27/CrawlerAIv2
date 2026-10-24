@@ -7,16 +7,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir import step_wire
-from crawlerai.config_ir.induction import Published, SamplePage
-from crawlerai.config_ir.model import CssStep, ExtractionConfigIR, XPathStep
-from crawlerai.config_ir.synthesis import Synthesis, synthesize
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import JobId, SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.config_ir import step_wire
+from snowcrawl.config_ir.induction import Published, SamplePage
+from snowcrawl.config_ir.model import CssStep, ExtractionConfigIR, XPathStep
+from snowcrawl.config_ir.synthesis import Synthesis, synthesize
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import JobId, SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 from tests.support.fake_llm import ScriptedClient
 
 JOB = JobId(uuid7())

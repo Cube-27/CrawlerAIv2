@@ -5,7 +5,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.config_ir.row_alignment import align
+from snowcrawl.config_ir.row_alignment import align
 
 
 def _equal(_name: str, config: JsonValue, engine: JsonValue) -> bool:

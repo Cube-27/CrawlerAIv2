@@ -13,18 +13,18 @@ from datetime import UTC, datetime
 
 from pydantic import JsonValue
 
-from crawlerai.acquire.api import JsonRequest
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.config_ir.api_recipe.binding import CapturedRequest, Sample
-from crawlerai.config_ir.api_recipe.headers import Proven
-from crawlerai.config_ir.api_recipe.model import ApiRecipe, HeaderValue, Proof, RequestSpec
-from crawlerai.config_ir.api_recipe.replay import ReplayPage
-from crawlerai.config_ir.api_recipe.validate import HeldOutReplay, RecipeValidated, validate_recipe
-from crawlerai.config_ir.validation import RecipeFieldReport, RecipeReport
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import CaptureId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.acquire.api import JsonRequest
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.config_ir.api_recipe.binding import CapturedRequest, Sample
+from snowcrawl.config_ir.api_recipe.headers import Proven
+from snowcrawl.config_ir.api_recipe.model import ApiRecipe, HeaderValue, Proof, RequestSpec
+from snowcrawl.config_ir.api_recipe.replay import ReplayPage
+from snowcrawl.config_ir.api_recipe.validate import HeldOutReplay, RecipeValidated, validate_recipe
+from snowcrawl.config_ir.validation import RecipeFieldReport, RecipeReport
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import CaptureId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 from tests.stand_in import StandInApi
 
 TYPES = {"title": FieldType.TEXT, "price": FieldType.MONEY}

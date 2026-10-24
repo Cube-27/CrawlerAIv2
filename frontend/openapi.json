@@ -7021,7 +7021,7 @@
         "type": "object"
       },
       "PageOutput": {
-        "description": "A task of a job without a schema, with the content formats the job asked for. The formats\nare members only when the task reached its page and its capture is still kept. `last_error` is why the task\nfailed, or why it ended with its outcome when the outcome alone does not say (a `blocked` task's `robots`), as the\nworker recorded it: URLs redacted under `CRAWLERAI_LOG_REDACT_URLS`.",
+        "description": "A task of a job without a schema, with the content formats the job asked for. The formats\nare members only when the task reached its page and its capture is still kept. `last_error` is why the task\nfailed, or why it ended with its outcome when the outcome alone does not say (a `blocked` task's `robots`), as the\nworker recorded it: URLs redacted under `SNOWCRAWL_LOG_REDACT_URLS`.",
         "properties": {
           "capture_id": {
             "anyOf": [
@@ -10846,7 +10846,7 @@
     }
   },
   "info": {
-    "title": "CrawlerAI",
+    "title": "Snowcrawl",
     "version": "0.1.0"
   },
   "openapi": "3.1.0",

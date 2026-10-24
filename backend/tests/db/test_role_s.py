@@ -11,9 +11,9 @@ import pytest
 from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.db.models import Job, JobId, Project, UsageEvent
-from crawlerai.db.models import SchemaDef as SchemaRow
-from crawlerai.llm.client import (
+from snowcrawl.db.models import Job, JobId, Project, UsageEvent
+from snowcrawl.db.models import SchemaDef as SchemaRow
+from snowcrawl.llm.client import (
     NO_LLM,
     LLMRequest,
     LLMResponse,
@@ -22,11 +22,11 @@ from crawlerai.llm.client import (
     ProviderReply,
     ReplyCheck,
 )
-from crawlerai.llm.roles.s_labels import draft_labels, with_labels
-from crawlerai.llm.roles.s_schema import draft_name, draft_schema
-from crawlerai.llm.roles.s_wire import to_wire
-from crawlerai.schemas import registry
-from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument
+from snowcrawl.llm.roles.s_labels import draft_labels, with_labels
+from snowcrawl.llm.roles.s_schema import draft_name, draft_schema
+from snowcrawl.llm.roles.s_wire import to_wire
+from snowcrawl.schemas import registry
+from snowcrawl.schemas.types import SchemaChanges, SchemaDef, SchemaDocument
 from tests.support.fake_llm import FakeProvider
 
 pytestmark = pytest.mark.anyio

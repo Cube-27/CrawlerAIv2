@@ -29,10 +29,10 @@ from hypothesis import assume, given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.llm.grounding import SpanClaim, align
-from crawlerai.normalize import locales, money, numbers, units
-from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok
-from crawlerai.schemas.types import FieldSpec, FieldType
+from snowcrawl.llm.grounding import SpanClaim, align
+from snowcrawl.normalize import locales, money, numbers, units
+from snowcrawl.normalize.base import Context, Invalid, NormalizeResult, Ok
+from snowcrawl.schemas.types import FieldSpec, FieldType
 
 # The CLDR tables read across every locale are built once here, not inside the first example's deadline.
 money.warm()

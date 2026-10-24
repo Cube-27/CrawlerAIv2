@@ -1,7 +1,7 @@
 {
-  "name": "@crawlerai/sdk",
+  "name": "@snowcrawl/sdk",
   "version": "0.1.0",
-  "description": "A typed TypeScript client for the CrawlerAI API: scrape, map, crawl, batch, extract and search, with job polling, event streaming and webhook verification.",
+  "description": "A typed TypeScript client for the Snowcrawl API: scrape, map, crawl, batch, extract and search, with job polling, event streaming and webhook verification.",
   "license": "AGPL-3.0-only",
   "type": "module",
   "packageManager": "pnpm@12.14.0",

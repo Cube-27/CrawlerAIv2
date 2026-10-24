@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.db.models import UrlTask
+from snowcrawl.db.models import UrlTask
 
 pytestmark = pytest.mark.anyio
 

@@ -4,7 +4,7 @@ when it closes, and a discarded profile deleted. No browser runs."""
 import json
 from pathlib import Path
 
-from crawlerai.acquire.browser_profiles import discard_profile, open_profile, profile_name
+from snowcrawl.acquire.browser_profiles import discard_profile, open_profile, profile_name
 
 
 def test_a_held_profile_gives_the_next_holder_a_temporary_one_and_a_discard_waits_for_its_release(

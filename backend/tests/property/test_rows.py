@@ -15,16 +15,16 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.collect.base import Entity
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId, SourceKind
-from crawlerai.resolve.pipeline import EngineData, extract_page
-from crawlerai.resolve.preference import PRECEDENCE_TYPES
-from crawlerai.resolve.rows import linked
-from crawlerai.resolve.types import FieldOutcome
-from crawlerai.schemas.registry import load_presets
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.collect.base import Entity
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId, SourceKind
+from snowcrawl.resolve.pipeline import EngineData, extract_page
+from snowcrawl.resolve.preference import PRECEDENCE_TYPES
+from snowcrawl.resolve.rows import linked
+from snowcrawl.resolve.types import FieldOutcome
+from snowcrawl.schemas.registry import load_presets
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 from tests.support.captures import capture
 from tests.support.role_c import FakeRoleC
 

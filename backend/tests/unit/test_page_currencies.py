@@ -7,18 +7,18 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from crawlerai.collect.currencies import (
+from snowcrawl.collect.currencies import (
     declared_currencies,
     state_currencies,
     stated_currencies,
     stated_languages,
     with_page_declarations,
 )
-from crawlerai.content.page import ParsedPage
-from crawlerai.normalize import money
-from crawlerai.normalize.base import Ambiguous, Context, Ok
-from crawlerai.normalize.dispatch import normalize
-from crawlerai.schemas.types import FieldSpec, FieldType
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.normalize import money
+from snowcrawl.normalize.base import Ambiguous, Context, Ok
+from snowcrawl.normalize.dispatch import normalize
+from snowcrawl.schemas.types import FieldSpec, FieldType
 
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC))
 

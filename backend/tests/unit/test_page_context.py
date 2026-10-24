@@ -2,11 +2,11 @@
 
 from datetime import UTC, datetime
 
-from crawlerai.content.context import page_context
-from crawlerai.content.page import ParsedPage
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.normalize.dispatch import normalize
-from crawlerai.schemas.types import FieldSpec, FieldType
+from snowcrawl.content.context import page_context
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.normalize.base import Context, Ok
+from snowcrawl.normalize.dispatch import normalize
+from snowcrawl.schemas.types import FieldSpec, FieldType
 
 FINAL_URL = "https://shop.example.test/p/1?colour=red"
 AT = datetime(2026, 10, 1, tzinfo=UTC)

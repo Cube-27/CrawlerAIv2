@@ -9,7 +9,7 @@ from urllib.parse import quote
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.config_ir.url_pattern import generalize, match, most_specific, parse, shape
+from snowcrawl.config_ir.url_pattern import generalize, match, most_specific, parse, shape
 
 _HOST = "shop.example.test"
 # Literal segments are lower-case words and values hold upper case, so a value never equals a literal; values hold

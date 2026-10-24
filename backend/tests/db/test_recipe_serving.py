@@ -19,23 +19,23 @@ import pytest
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import AdapterMatch, Shape
-from crawlerai.adapters.registry import Registry
-from crawlerai.config_ir.activation import store_recipe
-from crawlerai.config_ir.custom_recipe import CustomRecipe
-from crawlerai.config_ir.progressive import StateKey
-from crawlerai.db.models import (
+from snowcrawl.acquire.api import JsonFetcher, JsonRequest
+from snowcrawl.acquire.rungs import Rungs
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.adapters.base import AdapterMatch, Shape
+from snowcrawl.adapters.registry import Registry
+from snowcrawl.config_ir.activation import store_recipe
+from snowcrawl.config_ir.custom_recipe import CustomRecipe
+from snowcrawl.config_ir.progressive import StateKey
+from snowcrawl.db.models import (
     ExtractionConfig,
     ExtractionConfigId,
     SiteId,
 )
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas.types import SchemaDef, document_digest
-from crawlerai.services.fetching import Fetching
-from crawlerai.services.scrape import ScrapeRequest, scrape
+from snowcrawl.resolve.pipeline import EngineData
+from snowcrawl.schemas.types import SchemaDef, document_digest
+from snowcrawl.services.fetching import Fetching
+from snowcrawl.services.scrape import ScrapeRequest, scrape
 from tests.db.support import Web as SharedWeb
 
 pytestmark = pytest.mark.anyio

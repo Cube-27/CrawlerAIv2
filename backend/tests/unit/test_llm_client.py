@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from crawlerai.llm.client import (
+from snowcrawl.llm.client import (
     AnsweredCall,
     LLMRequest,
     LLMResponse,

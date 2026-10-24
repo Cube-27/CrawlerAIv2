@@ -1,9 +1,9 @@
 // Search, crawl best-first, and follow the jobs: run `pnpm build` first, then
-// CRAWLERAI_API_KEY=... node examples/quickstart.mjs (and CRAWLERAI_URL for another server).
-import { APIError, CrawlerAI } from "../dist/index.js";
+// SNOWCRAWL_API_KEY=... node examples/quickstart.mjs (and SNOWCRAWL_URL for another server).
+import { APIError, Snowcrawl } from "../dist/index.js";
 
-const client = new CrawlerAI(process.env.CRAWLERAI_API_KEY, {
-  baseUrl: process.env.CRAWLERAI_URL ?? "http://localhost:8000",
+const client = new Snowcrawl(process.env.SNOWCRAWL_API_KEY, {
+  baseUrl: process.env.SNOWCRAWL_URL ?? "http://localhost:8000",
 });
 
 // Search the web, and scrape the results in a batch job.

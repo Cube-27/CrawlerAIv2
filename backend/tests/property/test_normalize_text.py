@@ -6,9 +6,9 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.normalize import text
-from crawlerai.normalize.base import Context, Invalid, Ok
-from crawlerai.schemas.types import FieldSpec, FieldType
+from snowcrawl.normalize import text
+from snowcrawl.normalize.base import Context, Invalid, Ok
+from snowcrawl.schemas.types import FieldSpec, FieldType
 
 CTX = Context(captured_at=datetime(2026, 1, 1, tzinfo=UTC))
 TEXT = FieldSpec(type=FieldType.TEXT)

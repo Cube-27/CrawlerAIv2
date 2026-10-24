@@ -19,17 +19,17 @@ import httpx
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.acquire.api import JsonRequest, fetch_json
-from crawlerai.acquire.ssrf import SafeConnector, Target
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.config_ir.api_recipe.binding import CapturedRequest, Sample
-from crawlerai.config_ir.api_recipe.headers import NotLearnable, Proven, minimize
-from crawlerai.config_ir.api_recipe.model import RequestSpec
-from crawlerai.config_ir.api_recipe.replay import ReplayPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.acquire.api import JsonRequest, fetch_json
+from snowcrawl.acquire.ssrf import SafeConnector, Target
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.config_ir.api_recipe.binding import CapturedRequest, Sample
+from snowcrawl.config_ir.api_recipe.headers import NotLearnable, Proven, minimize
+from snowcrawl.config_ir.api_recipe.model import RequestSpec
+from snowcrawl.config_ir.api_recipe.replay import ReplayPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 from tests.stand_in import IMPERSONATE
 
 SCHEMA = SchemaDef(

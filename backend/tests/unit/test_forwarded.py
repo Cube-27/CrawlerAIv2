@@ -6,7 +6,7 @@ from ipaddress import ip_network
 
 import pytest
 
-from crawlerai.api.forwarded import client_address
+from snowcrawl.api.forwarded import client_address
 
 PROXIES = (ip_network("10.0.0.0/8"), ip_network("2001:db8:ffff::/48"))
 

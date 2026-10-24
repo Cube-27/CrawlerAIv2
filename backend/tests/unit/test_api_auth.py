@@ -9,9 +9,9 @@ import httpx
 import pytest
 from fastapi import APIRouter, Depends, FastAPI
 
-from crawlerai.api.app import create_app
-from crawlerai.api.auth import require_api_key
-from crawlerai.db.models import ApiKeyId
+from snowcrawl.api.app import create_app
+from snowcrawl.api.auth import require_api_key
+from snowcrawl.db.models import ApiKeyId
 
 UNTRUSTED_PEER = "192.0.2.1"
 
@@ -28,9 +28,9 @@ class UnreachableDatabase:
 
 
 def _app(monkeypatch: pytest.MonkeyPatch, *, burst: int, trusted: str = "[]") -> FastAPI:
-    monkeypatch.setenv("CRAWLERAI_API_RATE_PER_S", "0.1")  # one token per 10 s: no refill within a test
-    monkeypatch.setenv("CRAWLERAI_API_RATE_BURST", str(burst))
-    monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", trusted)
+    monkeypatch.setenv("SNOWCRAWL_API_RATE_PER_S", "0.1")  # one token per 10 s: no refill within a test
+    monkeypatch.setenv("SNOWCRAWL_API_RATE_BURST", str(burst))
+    monkeypatch.setenv("SNOWCRAWL_TRUSTED_PROXIES", trusted)
     app = create_app()
     router = APIRouter()
 
@@ -95,7 +95,7 @@ def test_every_api_operation_but_healthz_refuses_a_request_without_a_key(monkeyp
     # Every route takes the API key, which also rate-limits it; `/healthz` alone is
     # public. A router added without the key dependency fails here. The burst covers every operation from
     # one client, so the rate limit answers none of them.
-    monkeypatch.setenv("CRAWLERAI_API_RATE_BURST", "1000")
+    monkeypatch.setenv("SNOWCRAWL_API_RATE_BURST", "1000")
     app = create_app()
     operations = [
         (method.upper(), path.replace("{", "").replace("}", ""))

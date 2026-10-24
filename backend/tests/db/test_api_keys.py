@@ -14,11 +14,11 @@ from fastapi import APIRouter, Depends, FastAPI
 from sqlalchemy import Row, func, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.api.app import create_app
-from crawlerai.api.auth import require_api_key
-from crawlerai.cli import main
-from crawlerai.db.keys import hash_key
-from crawlerai.db.models import ApiKey, ApiKeyId
+from snowcrawl.api.app import create_app
+from snowcrawl.api.auth import require_api_key
+from snowcrawl.cli import main
+from snowcrawl.db.keys import hash_key
+from snowcrawl.db.models import ApiKey, ApiKeyId
 
 pytestmark = pytest.mark.anyio
 

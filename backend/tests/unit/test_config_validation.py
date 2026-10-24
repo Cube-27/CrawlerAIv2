@@ -6,19 +6,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.model import ExtractionConfigIR, XPathStep
-from crawlerai.config_ir.validation import (
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.config_ir.model import ExtractionConfigIR, XPathStep
+from snowcrawl.config_ir.validation import (
     Facts,
     HeldOutPage,
     Validated,
     validate,
 )
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import CaptureId, SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import CaptureId, SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 PAGE_URL = "https://shop.example.test/p/1"
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=PAGE_URL, page_url=PAGE_URL)

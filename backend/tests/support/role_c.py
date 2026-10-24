@@ -4,10 +4,10 @@ import re
 
 from pydantic import JsonValue
 
-from crawlerai.collect.base import Candidate
-from crawlerai.normalize.base import Ok
-from crawlerai.resolve.pipeline import GapReply, GapRequest, ListingGapReply, ListingGapRequest
-from crawlerai.resolve.types import LLMCallRecord
+from snowcrawl.collect.base import Candidate
+from snowcrawl.normalize.base import Ok
+from snowcrawl.resolve.pipeline import GapReply, GapRequest, ListingGapReply, ListingGapRequest
+from snowcrawl.resolve.types import LLMCallRecord
 
 __all__ = ["CALL", "LISTING_CALL", "PRICE", "FakeRoleC"]
 

@@ -6,9 +6,9 @@ import asyncio
 import json
 from urllib.parse import urlencode
 
-from crawlerai.acquire.types import FetchPolicy
-from crawlerai.adapters.adp import ADP, API, HOST, PAGE_PATH
-from crawlerai.adapters.base import AdapterMatch
+from snowcrawl.acquire.types import FetchPolicy
+from snowcrawl.adapters.adp import ADP, API, HOST, PAGE_PATH
+from snowcrawl.adapters.base import AdapterMatch
 from tests.stand_in import StandInApi
 from tests.unit.adapter_support import FIXTURES, candidates
 

@@ -6,10 +6,10 @@ went on to HTTP; and what the contract holds (`site_contract`). The rows themsel
 from itertools import product
 from typing import Literal
 
-from crawlerai.acquire.memory import lesson, refused
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
-from crawlerai.core.capture import BlockClass
-from crawlerai.db.models import SiteContract
+from snowcrawl.acquire.memory import lesson, refused
+from snowcrawl.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from snowcrawl.core.capture import BlockClass
+from snowcrawl.db.models import SiteContract
 from tests.support.captures import fetched, with_attempts
 
 URL = "https://shop.example.test/item/1"

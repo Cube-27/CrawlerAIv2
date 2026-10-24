@@ -10,10 +10,10 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.types import FetchPolicy
-from crawlerai.adapters.base import AdapterMatch
-from crawlerai.adapters.smartrecruiters import API, PAGE_SIZE, SITE_HOST, SITE_HOSTS, SmartRecruiters
+from snowcrawl.acquire.api import JsonFetcher, JsonRequest
+from snowcrawl.acquire.types import FetchPolicy
+from snowcrawl.adapters.base import AdapterMatch
+from snowcrawl.adapters.smartrecruiters import API, PAGE_SIZE, SITE_HOST, SITE_HOSTS, SmartRecruiters
 from tests.unit.adapter_support import FIXTURES, candidates
 
 ScriptedApi = Callable[[Callable[[JsonRequest], bytes], list[JsonRequest]], JsonFetcher]  # `scripted_api` (conftest)

@@ -4,8 +4,8 @@ only, ranked by rendered area when measured, else by what the blocks show. Pages
 
 from lxml import html
 
-from crawlerai.acquire.items import element_path, item_groups, shows_more
-from crawlerai.content.page import ParsedPage
+from snowcrawl.acquire.items import element_path, item_groups, shows_more
+from snowcrawl.content.page import ParsedPage
 
 
 def _page(content: str) -> ParsedPage:

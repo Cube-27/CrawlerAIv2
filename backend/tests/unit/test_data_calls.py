@@ -12,23 +12,23 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.acquire.identity import NOT_THE_PRODUCT, identified, joined
-from crawlerai.acquire.types import FetchResult
-from crawlerai.collect.base import Entity
-from crawlerai.collect.currencies import with_page_declarations
-from crawlerai.collect.jsonld import JsonLdCollector
-from crawlerai.collect.platform_json import PlatformJsonCollector
-from crawlerai.collect.run import page_urls
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.capture import CaptureMethod
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.resolve.intent import primary_types, select_target
-from crawlerai.resolve.ownership import EntityGraph
-from crawlerai.schemas.registry import load_presets
-from crawlerai.schemas.types import SchemaDef
+from snowcrawl.acquire.identity import NOT_THE_PRODUCT, identified, joined
+from snowcrawl.acquire.types import FetchResult
+from snowcrawl.collect.base import Entity
+from snowcrawl.collect.currencies import with_page_declarations
+from snowcrawl.collect.jsonld import JsonLdCollector
+from snowcrawl.collect.platform_json import PlatformJsonCollector
+from snowcrawl.collect.run import page_urls
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.capture import CaptureMethod
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.normalize.base import Context, Ok
+from snowcrawl.resolve.intent import primary_types, select_target
+from snowcrawl.resolve.ownership import EntityGraph
+from snowcrawl.schemas.registry import load_presets
+from snowcrawl.schemas.types import SchemaDef
 from tests.support.captures import calls, fetched
 
 HOST = "https://shop.example.test"

@@ -1,4 +1,4 @@
-"""`crawlerai data fetch`: the manifest's fetched entries are downloaded, checked against their
+"""`snowcrawl data fetch`: the manifest's fetched entries are downloaded, checked against their
 pinned sha256 and written under the data directory; nothing else is written."""
 
 import hashlib
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from crawlerai.core.data import DataReport, fetch_data
+from snowcrawl.core.data import DataReport, fetch_data
 
 CONTENT = b"geonameid\tname\n"
 

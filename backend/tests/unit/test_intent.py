@@ -7,16 +7,16 @@ from typing import Any
 
 import pytest
 
-from crawlerai.collect.base import Entity
-from crawlerai.collect.jsonld import JsonLdCollector
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import PageKind, SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
-from crawlerai.resolve.ownership import EntityGraph
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.collect.base import Entity
+from snowcrawl.collect.jsonld import JsonLdCollector
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import PageKind, SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.resolve.intent import AmbiguousTarget, primary_types, select_target
+from snowcrawl.resolve.ownership import EntityGraph
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 PAGE_URL = "https://shop.example.test/p/1"

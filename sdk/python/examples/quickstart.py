@@ -1,10 +1,10 @@
-"""Search, crawl best-first, and follow the jobs: run with CRAWLERAI_API_KEY (and CRAWLERAI_URL) set."""
+"""Search, crawl best-first, and follow the jobs: run with SNOWCRAWL_API_KEY (and SNOWCRAWL_URL) set."""
 
 import os
 
-from crawlerai_sdk import APIError, CrawlerAI
+from snowcrawl_sdk import APIError, Snowcrawl
 
-with CrawlerAI(os.environ["CRAWLERAI_API_KEY"], os.environ.get("CRAWLERAI_URL", "http://localhost:8000")) as client:
+with Snowcrawl(os.environ["SNOWCRAWL_API_KEY"], os.environ.get("SNOWCRAWL_URL", "http://localhost:8000")) as client:
     # Search the web, and scrape the results in a batch job.
     try:
         found = client.search(query="python asyncio event loop", limit=3, scrape={"formats": ["markdown"]})

@@ -13,29 +13,29 @@ from typing import Any
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.acquire.api import JsonFetcher
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import AdapterMatch, Shape
-from crawlerai.adapters.registry import Registry
-from crawlerai.collect.base import Candidate
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.core.capture import BlockClass, CaptureMethod
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import PageKind, SchemaId, SiteId, SourceKind
-from crawlerai.normalize.base import Ok
-from crawlerai.resolve.evidence import Bucket, Calibration
-from crawlerai.resolve.pipeline import (
+from snowcrawl.acquire.api import JsonFetcher
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.adapters.base import AdapterMatch, Shape
+from snowcrawl.adapters.registry import Registry
+from snowcrawl.collect.base import Candidate
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.core.capture import BlockClass, CaptureMethod
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import PageKind, SchemaId, SiteId, SourceKind
+from snowcrawl.normalize.base import Ok
+from snowcrawl.resolve.evidence import Bucket, Calibration
+from snowcrawl.resolve.pipeline import (
     EngineData,
     ListingGapReply,
     RoleC,
     extract_page,
 )
-from crawlerai.resolve.preference import PRECEDENCE_TYPES
-from crawlerai.resolve.score import PRECEDENCE_FILE, load_precedence
-from crawlerai.resolve.task import page_records
-from crawlerai.resolve.types import ExtractionResult
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import (
+from snowcrawl.resolve.preference import PRECEDENCE_TYPES
+from snowcrawl.resolve.score import PRECEDENCE_FILE, load_precedence
+from snowcrawl.resolve.task import page_records
+from snowcrawl.resolve.types import ExtractionResult
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.storage.capture_bundle import (
     CaptureBundle,
 )
 from tests.support.captures import calls, capture

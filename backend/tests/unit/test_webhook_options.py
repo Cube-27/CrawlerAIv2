@@ -6,9 +6,9 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.services.batch import BatchScrapeRequest
-from crawlerai.services.crawl import CrawlRequest
-from crawlerai.services.extract import ExtractRequest
+from snowcrawl.services.batch import BatchScrapeRequest
+from snowcrawl.services.crawl import CrawlRequest
+from snowcrawl.services.extract import ExtractRequest
 
 URL = "https://shop.example.test/kettles/blue"
 HOOK = "https://hooks.example.test/in"

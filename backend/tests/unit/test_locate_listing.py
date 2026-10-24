@@ -11,23 +11,23 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.active import fetch_plan
-from crawlerai.config_ir.api_recipe.validate import RecipeValidated, refused
-from crawlerai.config_ir.executor import EngineExecutor
-from crawlerai.config_ir.held_out import StoredPage, read_bundle
-from crawlerai.config_ir.induction import SamplePage
-from crawlerai.config_ir.locate import Located, Sampled, locate, located_config
-from crawlerai.config_ir.model import ExtractionConfigIR, Fetch, JsonPathStep, Provenance, SchemaRef
-from crawlerai.config_ir.release_executor import ReleasePage, release_run
-from crawlerai.config_ir.release_rules import release_rules
-from crawlerai.config_ir.validation import Facts, HeldOutPage, Validated, ValidationReport
-from crawlerai.core.capture import CaptureMethod
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import CaptureId, ExtractionConfigId
-from crawlerai.resolve.task import ActiveConfig
-from crawlerai.schemas.types import SchemaDef, document_digest
-from crawlerai.storage.capture_bundle import CaptureBundle
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.config_ir.active import fetch_plan
+from snowcrawl.config_ir.api_recipe.validate import RecipeValidated, refused
+from snowcrawl.config_ir.executor import EngineExecutor
+from snowcrawl.config_ir.held_out import StoredPage, read_bundle
+from snowcrawl.config_ir.induction import SamplePage
+from snowcrawl.config_ir.locate import Located, Sampled, locate, located_config
+from snowcrawl.config_ir.model import ExtractionConfigIR, Fetch, JsonPathStep, Provenance, SchemaRef
+from snowcrawl.config_ir.release_executor import ReleasePage, release_run
+from snowcrawl.config_ir.release_rules import release_rules
+from snowcrawl.config_ir.validation import Facts, HeldOutPage, Validated, ValidationReport
+from snowcrawl.core.capture import CaptureMethod
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import CaptureId, ExtractionConfigId
+from snowcrawl.resolve.task import ActiveConfig
+from snowcrawl.schemas.types import SchemaDef, document_digest
+from snowcrawl.storage.capture_bundle import CaptureBundle
 from tests.support.captures import capture
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")

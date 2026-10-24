@@ -3,7 +3,7 @@ says otherwise, `include` globs over the canonical URL, and `exclude`, which win
 
 import pytest
 
-from crawlerai.crawl.rules import PageKindRule, Scope, UrlGlob, located, page_kind_for, url_glob
+from snowcrawl.crawl.rules import PageKindRule, Scope, UrlGlob, located, page_kind_for, url_glob
 
 HOST = "shop.example.test"
 

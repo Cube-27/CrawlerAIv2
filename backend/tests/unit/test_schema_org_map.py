@@ -9,14 +9,14 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.collect.schema_org_map import Selected, Typed, Value, field_candidates, select
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.paths import parse_paths, target_types
-from crawlerai.schemas.registry import load_presets
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaContent, SchemaDef
+from snowcrawl.collect.schema_org_map import Selected, Typed, Value, field_candidates, select
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.paths import parse_paths, target_types
+from snowcrawl.schemas.registry import load_presets
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaContent, SchemaDef
 
 VOCABULARY_FILE = Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld"
 

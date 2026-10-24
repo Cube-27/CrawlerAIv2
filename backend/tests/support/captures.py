@@ -14,12 +14,12 @@ from uuid import UUID
 
 from pydantic import JsonValue
 
-from crawlerai.acquire.outcome import Content, Exchange, as_error, fetch_result
-from crawlerai.acquire.stored_fetch import policy_with_attempts
-from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
-from crawlerai.core.capture import CaptureMethod
-from crawlerai.core.ids import uuid7
-from crawlerai.storage.capture_bundle import (
+from snowcrawl.acquire.outcome import Content, Exchange, as_error, fetch_result
+from snowcrawl.acquire.stored_fetch import policy_with_attempts
+from snowcrawl.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
+from snowcrawl.core.capture import CaptureMethod
+from snowcrawl.core.ids import uuid7
+from snowcrawl.storage.capture_bundle import (
     CaptureBundle,
     CaptureManifest,
     HeaderList,

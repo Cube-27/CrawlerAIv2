@@ -1,8 +1,8 @@
 # call-map
 
-Call the CrawlerAI map endpoint to list a site's URLs without fetching every page.
+Call the Snowcrawl map endpoint to list a site's URLs without fetching every page.
 
-- Send `POST /v1/map` with `Authorization: Bearer $CRAWLERAI_API_KEY` and a JSON body.
+- Send `POST /v1/map` with `Authorization: Bearer $SNOWCRAWL_API_KEY` and a JSON body.
 - Required: `url`. Optional: `include` and `exclude` URL globs, `limit`, `use_sitemaps`, `use_links`.
 - The URLs come from the site's sitemaps and the start page's links, canonical and in scope: the exact host of `url`,
   or the `include` globs, less the `exclude` globs.
@@ -13,9 +13,9 @@ Call the CrawlerAI map endpoint to list a site's URLs without fetching every pag
 
 # integrate-map
 
-Build an integration on the CrawlerAI map endpoint (`POST /v1/map`).
+Build an integration on the Snowcrawl map endpoint (`POST /v1/map`).
 
-- Read the base URL and the API key from configuration (`CRAWLERAI_API_KEY`); never hard-code a key.
+- Read the base URL and the API key from configuration (`SNOWCRAWL_API_KEY`); never hard-code a key.
 - Use a map to choose pages, then scrape the ones you need with `POST /v1/batch/scrape`.
 - Check `truncated`: when it is true the list is partial; narrow the scope with `include` globs rather than raising
   `limit` without bound.

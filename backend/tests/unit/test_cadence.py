@@ -1,4 +1,4 @@
-"""When a schedule runs (`crawlerai.core.cadence`): 5-field cron expressions in an IANA zone, intervals that keep their
+"""When a schedule runs (`snowcrawl.core.cadence`): 5-field cron expressions in an IANA zone, intervals that keep their
 phase, and missed runs made up once."""
 
 from datetime import UTC, datetime, timedelta
@@ -8,7 +8,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.core.cadence import Cadence, InvalidCadence, next_run
+from snowcrawl.core.cadence import Cadence, InvalidCadence, next_run
 
 START = datetime(2026, 1, 1, tzinfo=UTC)
 

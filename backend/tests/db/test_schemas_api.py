@@ -9,8 +9,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.db.models import ExtractionConfig, ProgressiveState, SchemaId
-from crawlerai.schemas import registry
+from snowcrawl.db.models import ExtractionConfig, ProgressiveState, SchemaId
+from snowcrawl.schemas import registry
 from tests.db.conftest import learned_site
 
 pytestmark = pytest.mark.anyio

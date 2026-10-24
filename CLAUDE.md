@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-CrawlerAI v2 is a schema-driven web extraction engine; see `README.md`.
+Snowcrawl v2 is a schema-driven web extraction engine; see `README.md`.
 
 ## Project charter
 
@@ -13,7 +13,7 @@ CrawlerAI v2 is a schema-driven web extraction engine; see `README.md`.
 
 ## Layout
 
-- `backend/` (Python, `src/crawlerai/`, `tests/`, `migrations/`), `frontend/` (Vite+, React), `sdk/`, `infra/`,
+- `backend/` (Python, `src/snowcrawl/`, `tests/`, `migrations/`), `frontend/` (Vite+, React), `sdk/`, `infra/`,
   `tools/` (repo checks and `tools/orchestrator/` worktree/CI scripts).
 - `docs/architecture.md`: what the code does and where. `docs/rules.md`: the rules CI and agents enforce.
   `docs/decisions.md`: the important decisions in force. Code is the source of truth. Delete a plan or spec once it's
@@ -25,7 +25,7 @@ CrawlerAI v2 is a schema-driven web extraction engine; see `README.md`.
 ## Agent workflow
 
 One orchestrator and at most two builders, each a Claude session in its own herdr tab:
-`docs/agents/orchestrator.md` (the orchestrator, `/crawlerai-orchestrator`), `docs/agents/builder-protocol.md` (every
+`docs/agents/orchestrator.md` (the orchestrator, `/snowcrawl-orchestrator`), `docs/agents/builder-protocol.md` (every
 builder; its HARD RULES override the rest). Test output is cut to failures and the summary by `.claude/hooks/test_output_hook.py` (`TEST_FILTER=0` shows it all).
 
 ## Commands
@@ -41,8 +41,8 @@ uv run tools/dev.py check         # every CI check locally (`check-backend`, ...
 
 - `uv run mypy src tests migrations` (in `backend/`) must pass.
 - `browser` tests need Google Chrome stable: `uv run patchright install chrome` once.
-- DB tests need `docker compose up -d postgres` and `CRAWLERAI_DATABASE_URL` (`.env.example`); `tests/db` also need
-  `CRAWLERAI_TEST_DATABASE_URL`, a database they own, never the dev one. `tools/orchestrator/test_db.sh up|drop`
+- DB tests need `docker compose up -d postgres` and `SNOWCRAWL_DATABASE_URL` (`.env.example`); `tests/db` also need
+  `SNOWCRAWL_TEST_DATABASE_URL`, a database they own, never the dev one. `tools/orchestrator/test_db.sh up|drop`
   manages one per worktree.
 - Run only the test files you touched, one at a time; never the full suite or `pytest -n` locally.
 
@@ -68,7 +68,7 @@ unpublished. No site-specific steps, no speculative layers, no second path for e
 - **C2.** Every generic rule names its standard (schema.org, ISO, CLDR, RFC, HTML) or structural property in a
   comment. "Site X does Y" is never a justification.
 - **C3.** Hostnames, site, retailer and brand names, and strings copied from pages live only in
-  `backend/src/crawlerai/adapters/` and database rows. Fixtures are synthetic, with RFC 2606 names (`example.com`,
+  `backend/src/snowcrawl/adapters/` and database rows. Fixtures are synthetic, with RFC 2606 names (`example.com`,
   `.test`).
 - **C4.** Vocabularies come from versioned external data in `backend/data/manifest.json`. No word, selector or regex
   added because one page failed.
@@ -84,7 +84,7 @@ unpublished. No site-specific steps, no speculative layers, no second path for e
   is flagged. Claims that the engine generalizes come only from a fresh batch's first score.
 - **C11.** Cognitive complexity at most 15 per function (hard check); files over 800 lines only warn. Add no other
   LOC, complexity, coverage or ratchet gate.
-- **C12.** Never read, copy or port from the `Invoro` or CrawlerAI v1 repositories.
+- **C12.** Never read, copy or port from the `Invoro` or Snowcrawl v1 repositories.
 - **C13.** Nothing in the candidates register (owner's candidates list) is built until the owner admits it.
 
 ## Other rules

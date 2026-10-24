@@ -6,12 +6,12 @@ import os
 import subprocess
 import sys
 
-from crawlerai.acquire import desktop_screen as module
-from crawlerai.acquire.desktop_screen import desktop_screen
+from snowcrawl.acquire import desktop_screen as module
+from snowcrawl.acquire.desktop_screen import desktop_screen
 
 _COUNT = 500
 # The draws of `_COUNT` profile names, as another process prints them.
-_DRAW = f"""from crawlerai.acquire.desktop_screen import desktop_screen
+_DRAW = f"""from snowcrawl.acquire.desktop_screen import desktop_screen
 print([desktop_screen(f"profile-{{i}}") for i in range({_COUNT})])"""
 
 

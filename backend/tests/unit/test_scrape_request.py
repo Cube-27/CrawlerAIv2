@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.services.scrape import ScrapeRequest
+from snowcrawl.services.scrape import ScrapeRequest
 
 URL = "https://shop.example.test/kettles/blue"
 

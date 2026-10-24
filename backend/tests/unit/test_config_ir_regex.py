@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-from crawlerai.config_ir.portable_regex import RegexError, check_pattern, check_replacement
+from snowcrawl.config_ir.portable_regex import RegexError, check_pattern, check_replacement
 
 ACCEPTED = [
     r"^\d{3}-\d{2,}$",

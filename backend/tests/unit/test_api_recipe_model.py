@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from crawlerai.config_ir.api_recipe.model import ApiRecipe, Binder, ContextHeader, parse_binder
+from snowcrawl.config_ir.api_recipe.model import ApiRecipe, Binder, ContextHeader, parse_binder
 
 _CAPTURE = str(uuid.UUID(int=1))
 

@@ -13,23 +13,23 @@ from pydantic import SecretStr
 from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.core.capture import CaptureMethod
-from crawlerai.core.settings import Settings
-from crawlerai.crawl.frontier import Frontier
-from crawlerai.crawl.rules import PageKindRule, Scope
-from crawlerai.db.models import Extraction, Job, JobEvent, JobId, JobKind, Project, Site, UrlState, UrlTask
-from crawlerai.llm.client import NO_LLM, LLMClient
-from crawlerai.recurring.listing_diff import close_run
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas.types import SchemaDef
-from crawlerai.services import jobs
-from crawlerai.services.crawl import CrawlRequest, submit_crawl
-from crawlerai.services.fetching import Fetching, TargetsRejected
-from crawlerai.services.jobs import ResultsQuery
-from crawlerai.services.records import RecordPage
-from crawlerai.worker.handlers.crawl import crawl_handler
-from crawlerai.worker.loop import TaskHandler, run_worker
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.core.capture import CaptureMethod
+from snowcrawl.core.settings import Settings
+from snowcrawl.crawl.frontier import Frontier
+from snowcrawl.crawl.rules import PageKindRule, Scope
+from snowcrawl.db.models import Extraction, Job, JobEvent, JobId, JobKind, Project, Site, UrlState, UrlTask
+from snowcrawl.llm.client import NO_LLM, LLMClient
+from snowcrawl.recurring.listing_diff import close_run
+from snowcrawl.resolve.pipeline import EngineData
+from snowcrawl.schemas.types import SchemaDef
+from snowcrawl.services import jobs
+from snowcrawl.services.crawl import CrawlRequest, submit_crawl
+from snowcrawl.services.fetching import Fetching, TargetsRejected
+from snowcrawl.services.jobs import ResultsQuery
+from snowcrawl.services.records import RecordPage
+from snowcrawl.worker.handlers.crawl import crawl_handler
+from snowcrawl.worker.loop import TaskHandler, run_worker
 from tests.db.support import PRIVATE_HOST, Page
 from tests.db.support import Web as SharedWeb
 

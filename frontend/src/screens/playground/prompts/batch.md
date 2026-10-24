@@ -1,8 +1,8 @@
 # call-batch
 
-Call the CrawlerAI batch endpoint to scrape many web pages in one job.
+Call the Snowcrawl batch endpoint to scrape many web pages in one job.
 
-- Send `POST /v1/batch/scrape` with `Authorization: Bearer $CRAWLERAI_API_KEY` and a JSON body.
+- Send `POST /v1/batch/scrape` with `Authorization: Bearer $SNOWCRAWL_API_KEY` and a JSON body.
 - Required: `urls` (a URL given twice is scraped once) and `formats`, a non-empty list of `markdown`, `html`,
   `raw_html`, `links`, `metadata` and `records`.
 - For structured data, set `schema` to `{"id": "<schema id>"}`, an inline schema or `{"prompt": "<what to extract>"}`,
@@ -16,9 +16,9 @@ Call the CrawlerAI batch endpoint to scrape many web pages in one job.
 
 # integrate-batch
 
-Build an integration on the CrawlerAI batch endpoint (`POST /v1/batch/scrape`).
+Build an integration on the Snowcrawl batch endpoint (`POST /v1/batch/scrape`).
 
-- Read the base URL and the API key from configuration (`CRAWLERAI_API_KEY`); never hard-code a key.
+- Read the base URL and the API key from configuration (`SNOWCRAWL_API_KEY`); never hard-code a key.
 - Submit, keep the `job_id`, then wait: prefer `webhook_url` or the event stream (resume it with `Last-Event-ID`
   after a disconnect) over polling `GET /v1/jobs/{job_id}`.
 - Page through `GET /v1/jobs/{job_id}/results?format=json_values` with `cursor` until `next_cursor` is null.

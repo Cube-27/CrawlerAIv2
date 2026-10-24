@@ -1,4 +1,4 @@
-CrawlerAI v2
+Snowcrawl v2
 Licensed under the GNU Affero General Public License v3.0 (see LICENSE).
 
 This project includes material adapted from third-party works:
@@ -31,7 +31,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ------------------------------------------------------------------------
 
-This project uses third-party data, fetched by `crawlerai data fetch` and not
+This project uses third-party data, fetched by `snowcrawl data fetch` and not
 redistributed in this repository (pinned in backend/data/manifest.json):
 
 ------------------------------------------------------------------------
@@ -44,9 +44,9 @@ Licensed under the Creative Commons Attribution-ShareAlike 3.0 License
 ------------------------------------------------------------------------
 Public Suffix List — https://publicsuffix.org/
 File: public_suffix_list.dat
-Used in: backend/src/crawlerai/acquire/public_suffix.py (cookie domains)
+Used in: backend/src/snowcrawl/acquire/public_suffix.py (cookie domains)
 
 Licensed under the Mozilla Public License 2.0
-(https://mozilla.org/MPL/2.0/). Fetched unmodified by `crawlerai data fetch`;
+(https://mozilla.org/MPL/2.0/). Fetched unmodified by `snowcrawl data fetch`;
 its source is https://github.com/publicsuffix/list.
 ------------------------------------------------------------------------
