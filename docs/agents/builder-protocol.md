@@ -1,7 +1,7 @@
 # Builder protocol
 
 Every builder agent follows this file. You are a Claude agent in your own herdr tab, in a git worktree the
-orchestrator made for your PR (`orchestrator.md`), beside the main clone in `../CrawlerAIv2-worktrees/<id>`, on branch
+orchestrator made for your PR (`orchestrator.md`), beside the main clone in `../Snowcrawl-worktrees/<id>`, on branch
 `change/<id>`. The brief names your PR; the rules are `CLAUDE.md` and `docs/rules.md`; what the code does is in
 `docs/architecture.md`; the decisions in force are in `docs/decisions.md`. Read only what your PR needs.
 
