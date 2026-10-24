@@ -69,3 +69,9 @@ def test_declarative_shadow_root_is_no_closed_root() -> None:
     # The pre-pass flattens the declarative root into its host; the host's own light DOM holds no text either way.
     html = _body('<price-tag><template shadowrootmode="open"><span></span></template></price-tag>')
     assert page_signals(_page(html), None, ()) == ()
+
+
+def test_comment_is_no_closed_root() -> None:
+    # The parser names a comment node `-comment`: no custom element, though it has a hyphen and no text.
+    html = _body("<!-- cart --><star-rating>4.5</star-rating>")
+    assert page_signals(_page(html), None, ()) == ()
