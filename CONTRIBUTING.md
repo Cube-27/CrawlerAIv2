@@ -1,6 +1,6 @@
 # Contributing
 
-Snowcrawl v2 is built mostly by coding agents, and the same rules apply to every
+Snowcrawl is built mostly by coding agents, and the same rules apply to every
 contributor. Read `CLAUDE.md` before changing anything: the generalization contract C1–C13
 (`docs/rules.md`, applied in `CLAUDE.md`) is binding on every change, and breaking it is a defect even when
 it fixes a site.

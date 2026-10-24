@@ -1,6 +1,6 @@
 # Orchestrator guide
 
-Snowcrawl v2 is built by one orchestrator agent and up to two builder agents, all Claude, each in its own
+Snowcrawl is built by one orchestrator agent and up to two builder agents, all Claude, each in its own
 [herdr](https://herdr.dev) tab on one Linux machine (WSL2 on Windows). This file is the orchestrator's job description.
 Builders follow `builder-protocol.md`. A plan in flight is kept at `docs/agents/plan.md` (absent between plans); its status
 table is yours to update when you open or merge a PR, and its last PR deletes it.

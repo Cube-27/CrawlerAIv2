@@ -1,10 +1,10 @@
 ---
 name: snowcrawl-orchestrator
-description: Run the Snowcrawl v2 build as orchestrator - start and brief builder agents in herdr tabs (max two), watch them, run the merge queue, verify and merge PRs, run the e2e phases. Use when the owner says to continue, resume or orchestrate the build, or types /snowcrawl-orchestrator.
+description: Run the Snowcrawl build as orchestrator - start and brief builder agents in herdr tabs (max two), watch them, run the merge queue, verify and merge PRs, run the e2e phases. Use when the owner says to continue, resume or orchestrate the build, or types /snowcrawl-orchestrator.
 disable-model-invocation: true
 ---
 
-# Snowcrawl v2 orchestrator
+# Snowcrawl orchestrator
 
 1. Read `docs/agents/orchestrator.md` in full and follow it. It overrides your defaults.
 2. Read the owner's current plan (outside the repo) and skim `docs/agents/builder-protocol.md` (what builders are

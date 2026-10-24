@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Snowcrawl v2 is a schema-driven web extraction engine; see `README.md`.
+Snowcrawl is a schema-driven web extraction engine; see `README.md`.
 
 ## Project charter
 
@@ -84,7 +84,7 @@ unpublished. No site-specific steps, no speculative layers, no second path for e
   is flagged. Claims that the engine generalizes come only from a fresh batch's first score.
 - **C11.** Cognitive complexity at most 15 per function (hard check); files over 800 lines only warn. Add no other
   LOC, complexity, coverage or ratchet gate.
-- **C12.** Never read, copy or port from the `Invoro` or Snowcrawl v1 repositories.
+- **C12.** Never read, copy or port from the owner's earlier repositories.
 - **C13.** Nothing in the candidates register (owner's candidates list) is built until the owner admits it.
 
 ## Other rules

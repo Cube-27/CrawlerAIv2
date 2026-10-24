@@ -29,7 +29,7 @@ CI checks and the contract agents rely on. `CLAUDE.md` holds the full agent text
   field type, never per page or site; a gain from <3 hosts is flagged.
 - **C11** Cognitive complexity ≤ 15 per function (`complexipy`, Oxlint); files over 800 lines only warn; no other size/coverage
   gate (`tools/no_size_gates.py`).
-- **C12** Nothing from the Invoro or Snowcrawl v1 repos. **C13** Candidates are built only when the owner admits them.
+- **C12** Nothing from the owner's earlier repositories. **C13** Candidates are built only when the owner admits them.
 
 ## Product rules
 
