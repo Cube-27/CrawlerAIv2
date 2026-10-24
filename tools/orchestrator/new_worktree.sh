@@ -1,5 +1,5 @@
 #!/bin/bash
-# new_worktree.sh NAME BRANCH — fetch origin, then create the worktree <main>/../CrawlerAIv2-worktrees/NAME on a new
+# new_worktree.sh NAME BRANCH — fetch origin, then create the worktree <main>/../Snowcrawl-worktrees/NAME on a new
 # BRANCH off origin/main, give it the main checkout's untracked inputs (`.env`, the data files the backend fetches)
 # and a synced backend environment, and print its path. <main> is the main checkout (the first entry of `git worktree list`,
 # which git prints in C:/... form), so the worktree sits beside the repo, never inside it.

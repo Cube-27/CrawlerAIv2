@@ -22,7 +22,7 @@ table is yours to update when you open or merge a PR, and its last PR deletes it
 The machine needs Docker, `uv`, `pnpm`, `gh` (logged in) and herdr; everything else is in this repo
 (`CLAUDE.md`, Commands).
 
-1. In herdr, open the `CrawlerAIv2` clone, run `claude --permission-mode auto`, and type `/snowcrawl-orchestrator`.
+1. In herdr, open the `Snowcrawl` clone, run `claude --permission-mode auto`, and type `/snowcrawl-orchestrator`.
 2. Rebuild state from GitHub, not memory: `gh pr list --state open`, `git worktree list`, `herdr agent list`, and the
    plan's status table. An open PR whose builder isn't running gets a fresh builder on its existing branch (the brief
    says "continue PR #n").
@@ -126,7 +126,7 @@ bug, vulnerability or security hotspot (`pr_ready.sh`); code smells are batched:
 
 - After every 20 merged PRs, or at the end of a plan, whichever comes first (`pr_ready.sh` says when one is due),
   start one builder on `chore(sonar): ...`: fix the open issues on `main` that are real, in code
-  (`https://sonarcloud.io/api/issues/search?componentKeys=Cube-27_CrawlerAIv2&branch=main&resolved=false`).
+  (`https://sonarcloud.io/api/issues/search?componentKeys=Cube-27_Snowcrawl&branch=main&resolved=false`).
 - A false positive is listed in that PR's body for the owner to mark in SonarCloud; a recurring one gets a narrow
   ignore (rule key and path) in `.sonarcloud.properties` with the evidence in the PR. Never `NOSONAR`, never an ignore
   for a bug, security or complexity rule.

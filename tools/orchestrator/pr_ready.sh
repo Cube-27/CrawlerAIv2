@@ -18,7 +18,7 @@ set -u
 pr=$1
 here=$(dirname "${BASH_SOURCE[0]}")
 sonar="https://sonarcloud.io/api"
-project="Cube-27_CrawlerAIv2"
+project="Cube-27_Snowcrawl"
 no() { echo "NOT READY #$pr: $*"; exit 1; }
 
 # The first "total" of a SonarCloud search answer: the issue count, or the hotspot count under "paging".
