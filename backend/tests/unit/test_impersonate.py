@@ -35,18 +35,30 @@ _BROWSER = (
 )
 
 
-def test_unset_the_target_follows_the_browser_and_sends_its_headers(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+def _of(major: int) -> HeaderList:
+    return tuple((name, value.replace(str(_NEWER), str(major))) for name, value in _BROWSER)
+
+
+@pytest.mark.parametrize("major", [_PROFILES[-1], _NEWER])
+def test_unset_the_target_follows_the_browser_and_names_the_major_of_its_handshake(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, major: int
 ) -> None:
     async def read(_headless: bool) -> HeaderList:
-        return _BROWSER
+        return _of(major)
 
     monkeypatch.setattr(impersonate, "_read_headers", read)
 
     with caplog.at_level(logging.WARNING):
         chosen = asyncio.run(rung_impersonation(AcquireSettings(), browser_rung=True))
 
-    assert chosen == Impersonation(nearest_target(_PROFILES[-1]), _BROWSER)
+    assert chosen.target == nearest_target(major)
+    # Cookies the browser earned go with its own headers.
+    assert chosen.replaying(True).headers == _of(major)
+    if major == _PROFILES[-1]:  # a profile of the browser's major: its own headers
+        assert chosen.headers == _of(major)
+        return
+    # Else the profile's own, but for the browser's platform, under the profile's major.
+    assert chosen.headers == (("user-agent", _of(_PROFILES[-1])[0][1]), _BROWSER[3])
     assert f"Chrome {_NEWER}" in caplog.text
 
 
