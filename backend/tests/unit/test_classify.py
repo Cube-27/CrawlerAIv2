@@ -153,6 +153,9 @@ def test_a_document_stating_an_item_of_a_read_type_is_the_page_unless_a_detail_s
     assert classify(200, _HTML, body, "detail", home, types=("JobPosting",)) == "soft_404"
 
 
+_ITEMS = '<script type="application/ld+json">{"@type": "ItemList", "itemListElement": [{"@type": "ListItem"}]}</script>'
+
+
 def _stating(title: str, heading: str, text_chars: int = 100) -> str:
     links = "".join(f'<a href="/p/{i}">p{i}</a>' for i in range(6))
     return f"<html><head><title>{title}</title></head><body>{heading}<p>{'x' * text_chars}</p>{links}</body></html>"
@@ -170,6 +173,8 @@ def _stating(title: str, heading: str, text_chars: int = 100) -> str:
         pytest.param(_stating("Not Found", "", 2_000), (), "ok", id="article"),
         # A page that states an item of a type the task reads it for is the page, whatever it is titled.
         pytest.param(_stating("Not Found", _POSTING), ("JobPosting",), "ok", id="described"),
+        # Nor is a page whose structured data lists items.
+        pytest.param(_stating("Not Found", _ITEMS), (), "ok", id="lists-items"),
     ],
 )
 def test_a_short_page_titled_with_the_404_description_stands_in_for_a_404(

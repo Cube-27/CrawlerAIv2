@@ -7,9 +7,9 @@ attributes as UTF-8 and fail on them.
 This module compares no body text with a string of its own: vendor strings are site data (C3/C4), so a vendor's
 stand-in marker on a 200 page is read in `acquire.challenge` from the adapter package's signature data, one exception
 to the structure-only rule. The other is the HTTP Status Code Registry's description of 404 (RFC 9110 §15.5.5,
-versioned IANA data): a 2xx document that states no item of a type the task reads it for, renders less than an article
-and whose title or top-level heading states that description stands in for a 404 page (`soft_404`,
-`_states_not_found`).
+versioned IANA data): a 2xx document whose structured data neither states an item of a type the task reads it for
+nor lists items, that renders less than an article and whose title or top-level heading states that description stands
+in for a 404 page (`soft_404`, `_states_not_found`).
 
 Other challenge pages served with 200 mostly present as shells and get a browser retry. An error or challenge page
 served with 200 that has text enough not to be a shell is told by its shape instead: it links nowhere. A
@@ -216,9 +216,9 @@ def _document_class(
     # A content-only fetch reads the rendered text, whatever structured data the page states.
     described = not content_only and _describes(tree, documents, types)
     unstructured = None if described else _page_shell(tree, content_only=content_only)
-    # After the shell rule strips the invisible elements, before its return: a short page that says it is not found
-    # is answered for good, not rendered again.
-    if not described and _states_not_found(tree):
+    # After the shell rule strips the invisible elements, before its return: a short page that says it is not found,
+    # and whose structured data neither states an item nor lists any, is answered for good, not rendered again.
+    if not (described or structured) and _states_not_found(tree):
         return "soft_404"
     # Before the shell return: a short document that refreshes and links only to mail or phone is a stand-in too.
     if unstructured == "blocked" or (_refreshes(tree, headers) and _offers_no_web_page(tree)):
