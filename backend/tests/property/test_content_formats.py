@@ -190,6 +190,26 @@ def test_a_wrapper_named_after_furniture_that_holds_the_longest_block_is_kept(
     assert "Cookie notice" not in made
 
 
+@given(st.sampled_from(["sidebar", "menu", "social", "newsletter"]), st.sampled_from(["has", "with"]), st.booleans())
+def test_a_block_in_a_layout_named_as_holding_furniture_is_judged_by_its_text_not_its_name(
+    word: str, qualifier: str, compound: bool
+) -> None:
+    # A wrapper named as a layout that has a slot (`page-with-sidebar`) holds that slot's column and its body column;
+    # the word in the names inside it names a part of the layout. The body's class is a style-sheet switch for the
+    # whole document, which names no region.
+    layout = f"page-{qualifier}-{word}"
+    block = f"{layout}-{word}" if compound else f"{word}-text"
+    content = f"<div>{'<p>' + 'Long running text. ' * 40 + '</p>'}</div>" * 3
+    placed = f"<div class='{block}'><p>Placed words in the layout.</p></div>"
+
+    def page(body: str, wrapper: str) -> str:
+        return f"<html><body class='{body}'>{content}<div class='{wrapper}'><div>{placed}</div></div></body></html>"
+
+    assert "Placed words" in markdown(ParsedPage(page("", layout)), FINAL_URL)
+    if not compound:
+        assert "Placed words" not in markdown(ParsedPage(page(f"{qualifier}-{word}", "page")), FINAL_URL)
+
+
 def test_a_header_or_footer_in_main_is_the_main_contents_unless_it_holds_navigation() -> None:
     # HTML-AAM §4.1: a `header` or `footer` in `main` is no banner or contentinfo landmark; a page that wraps its whole
     # layout in `main` puts the site's navigation in its own.

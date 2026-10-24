@@ -18,7 +18,10 @@ Furniture is what a page shows around its content on every page of its site, or 
   `onlyMainContent` (`excludeNonMainTags`) and Mozilla Readability (`unlikelyCandidates`) read class and id names: a
   word that is a whole token or one of its parts (split at `-`, `_` and camelCase boundaries), or, for the words that
   name a layout slot rather than furniture alone (`ad`, `widget`), only a whole token. A word after a part that makes
-  it something the element has or lacks (`has-no-sidebar`, `page-with-sidebar`) names a layout, not furniture. A
+  it something the element has or lacks (`has-no-sidebar`, `page-with-sidebar-sidebar`) names a slot of a layout, not
+  furniture, and so does the word in the names of what a wrapper so named as having it holds (`page-with-sidebar`
+  holds its body column and the blocks placed there, `sidebar-text`), which the text and landmark signs judge; the
+  root's and body's classes switch the style sheet for the whole document and name no region. A
   header or footer class counts only where the element would be the page's (page-level, as for the elements); an
   `id` is unique in the document (HTML Standard §3.2.6), so one naming a header or footer names the page's whatever
   its scope.
@@ -51,6 +54,7 @@ none when the page has several. The DOM collectors read the main region, else th
 """
 
 from collections.abc import Iterator
+from itertools import pairwise
 from typing import Literal
 
 from lxml.html import HtmlElement
@@ -101,6 +105,10 @@ _FURNITURE_TOKENS = frozenset({"ad", "ads", "advert", "widget", "overlay"})
 # A part that makes the word after it something the element has or lacks rather than what it is: `has-no-sidebar`,
 # `page-with-sidebar`, `without-header` name a layout with or without that furniture, not the furniture.
 _QUALIFIERS = frozenset({"has", "with", "without", "no", "non", "not"})
+# The qualifiers that make the word a slot a wrapper holds: `page-with-sidebar` wraps a sidebar column and a body.
+_HOLDING = frozenset({"has", "with"})
+# HTML Standard §4.1.1, §4.3.1: the document's root and its body, which wrap the whole page rather than a region.
+_DOCUMENT = frozenset({"html", "body"})
 # Above this share of the page's text outside hyperlinks an element is the page's content, whatever it is named; above
 # it, the weak signs together name the page's layout.
 _MAX_SHARE = 0.4
@@ -258,21 +266,43 @@ def _role(element: HtmlElement) -> str:
 def _furniture_names(element: HtmlElement) -> set[str]:
     """The element's class and id names that call it furniture (module docstring), as written."""
     classes, ids = tokens(element.get("class")), tokens(element.get("id"))
-    found = {name for name in (*classes, *ids) if name.lower() in _FURNITURE_TOKENS or _words([name]) - _PAGE_LEVEL}
-    found.update(name for name in ids if _words([name]))
-    page_level = [name for name in classes if _words([name]) & _PAGE_LEVEL]
+    if not any(name.lower() in _FURNITURE_TOKENS or _words(name, frozenset()) for name in (*classes, *ids)):
+        return set()
+    slots = _slots(element)
+    found = {
+        name for name in (*classes, *ids) if name.lower() in _FURNITURE_TOKENS or _words(name, slots) - _PAGE_LEVEL
+    }
+    found.update(name for name in ids if _words(name, slots))
+    page_level = [name for name in classes if _words(name, slots) & _PAGE_LEVEL]
     if page_level and _page_level(element):
         found.update(page_level)
     return found
 
 
-def _words(names: list[str]) -> set[str]:
-    """The furniture words among the names' parts, but for one a qualifier precedes (`_QUALIFIERS`)."""
-    found: set[str] = set()
-    for name in names:
-        parts = name_parts(name)
-        found.update(word for before, word in zip(("", *parts), parts, strict=False) if before not in _QUALIFIERS)
-    return found & _FURNITURE_WORDS
+def _words(name: str, slots: frozenset[str]) -> set[str]:
+    """The furniture words among the name's parts, but for those that name a slot of a layout (`_slots`)."""
+    return set(name_parts(name)) & _FURNITURE_WORDS - slots
+
+
+def _slots(element: HtmlElement) -> frozenset[str]:
+    """The furniture words that name a slot of a layout for the element's names: a word a qualifier precedes
+    (`_QUALIFIERS`) in one of its own names (`page-with-sidebar-sidebar` names a column of a layout with a sidebar),
+    and one a holding qualifier (`_HOLDING`) precedes in a name of a wrapper it sits in (`page-with-sidebar-body`
+    holds the layout's columns and the blocks placed in them, `sidebar-text`). The root's and the body's classes
+    are the document's switches for its style sheet (a page that has a sidebar somewhere), not a wrapper's name."""
+    words = {word for name in _names(element) for before, word in _pairs(name) if before in _QUALIFIERS}
+    for wrapper in element.iterancestors():
+        if wrapper.tag not in _DOCUMENT:
+            words.update(word for name in _names(wrapper) for before, word in _pairs(name) if before in _HOLDING)
+    return frozenset(words & _FURNITURE_WORDS)
+
+
+def _names(element: HtmlElement) -> list[str]:
+    return [*tokens(element.get("class")), *tokens(element.get("id"))]
+
+
+def _pairs(name: str) -> Iterator[tuple[str, str]]:
+    return pairwise(name_parts(name))
 
 
 def _page_level(element: HtmlElement) -> bool:
