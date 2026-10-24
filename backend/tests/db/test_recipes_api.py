@@ -13,16 +13,16 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.api import JsonRequest
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.config_ir.api_recipe.model import ApiRecipe
-from crawlerai.config_ir.api_recipe.replay import request_for
-from crawlerai.db.models import Capture, Extraction, ExtractionConfig, Job, Record, Site, SiteContract, UrlTask
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas.types import SchemaDef
-from crawlerai.services.fetching import Fetching
-from crawlerai.storage.capture_bundle import NetworkBody
+from snowcrawl.acquire.api import JsonRequest
+from snowcrawl.acquire.rungs import Rungs
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.config_ir.api_recipe.model import ApiRecipe
+from snowcrawl.config_ir.api_recipe.replay import request_for
+from snowcrawl.db.models import Capture, Extraction, ExtractionConfig, Job, Record, Site, SiteContract, UrlTask
+from snowcrawl.resolve.pipeline import EngineData
+from snowcrawl.schemas.types import SchemaDef
+from snowcrawl.services.fetching import Fetching
+from snowcrawl.storage.capture_bundle import NetworkBody
 from tests.db.support import Web as SharedWeb
 from tests.db.support import api
 from tests.support.captures import call, fetched

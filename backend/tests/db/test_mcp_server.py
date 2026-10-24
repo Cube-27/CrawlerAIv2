@@ -1,5 +1,5 @@
 """The MCP server: the SDK's client calls each of the twenty-one tools over streamable HTTP at `/mcp` in
-the API app, and over stdio from `python -m crawlerai.mcp_server`. What each tool does is its service's, tested with the
+the API app, and over stdio from `python -m snowcrawl.mcp_server`. What each tool does is its service's, tested with the
 service; here, that a tool reaches it with the caller's key, and answers by the output rules.
 
 The app runs as the REST tests run it: real settings against the test database, its fetching a stub web of synthetic
@@ -26,11 +26,11 @@ from pydantic import TypeAdapter
 from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.types import FetchResult
-from crawlerai.api.app import create_app
-from crawlerai.core.capture import BlockClass
-from crawlerai.db.keys import CreatedKey, create_key, revoke_key
-from crawlerai.db.models import (
+from snowcrawl.acquire.types import FetchResult
+from snowcrawl.api.app import create_app
+from snowcrawl.core.capture import BlockClass
+from snowcrawl.db.keys import CreatedKey, create_key, revoke_key
+from snowcrawl.db.models import (
     ApiKey,
     ExtractionConfig,
     ExtractionConfigId,
@@ -40,16 +40,16 @@ from crawlerai.db.models import (
     SiteId,
     WebhookDelivery,
 )
-from crawlerai.llm.client import LLMRequest, MeteredClient, ProviderError, ProviderUnavailable, Unconfigured
-from crawlerai.llm.setup import LLMSetup
-from crawlerai.mcp_server.output import MARKDOWN_PAGE_CHARS
-from crawlerai.mcp_server.server import UNTRUSTED, AnyContext, build_server
-from crawlerai.mcp_server.stdio import key_bind
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas.types import SchemaDef
-from crawlerai.services import schemas
-from crawlerai.services.fetching import Fetching
-from crawlerai.services.runtime import Runtime
+from snowcrawl.llm.client import LLMRequest, MeteredClient, ProviderError, ProviderUnavailable, Unconfigured
+from snowcrawl.llm.setup import LLMSetup
+from snowcrawl.mcp_server.output import MARKDOWN_PAGE_CHARS
+from snowcrawl.mcp_server.server import UNTRUSTED, AnyContext, build_server
+from snowcrawl.mcp_server.stdio import key_bind
+from snowcrawl.resolve.pipeline import EngineData
+from snowcrawl.schemas.types import SchemaDef
+from snowcrawl.services import schemas
+from snowcrawl.services.fetching import Fetching
+from snowcrawl.services.runtime import Runtime
 from tests.db.support import PRIVATE_HOST, TITLE, Page
 from tests.db.support import Web as SharedWeb
 from tests.support.fake_llm import FakeProvider
@@ -365,11 +365,11 @@ async def test_the_stdio_server_acts_with_the_key_in_its_environment(
 ) -> None:
     environment = {
         **os.environ,
-        "CRAWLERAI_DATABASE_URL": database_url,
-        "CRAWLERAI_OBJECT_STORE": "fs:///" + tmp_path.as_posix().lstrip("/"),
-        "CRAWLERAI_API_KEY": key.key,
+        "SNOWCRAWL_DATABASE_URL": database_url,
+        "SNOWCRAWL_OBJECT_STORE": "fs:///" + tmp_path.as_posix().lstrip("/"),
+        "SNOWCRAWL_API_KEY": key.key,
     }
-    server = StdioServerParameters(command=sys.executable, args=["-m", "crawlerai.mcp_server"], env=environment)
+    server = StdioServerParameters(command=sys.executable, args=["-m", "snowcrawl.mcp_server"], env=environment)
 
     async with stdio_client(server) as (read, write), ClientSession(read, write) as client:
         await client.initialize()
@@ -393,7 +393,7 @@ async def test_a_revoked_key_stops_the_stdio_server_at_its_next_call(
 
     assert not before.isError
     assert after.isError
-    assert _texts(after) == ["Error executing tool list_schemas: CRAWLERAI_API_KEY is unknown or revoked"]
+    assert _texts(after) == ["Error executing tool list_schemas: SNOWCRAWL_API_KEY is unknown or revoked"]
 
 
 async def test_an_uncharged_llm_call_over_stdio_counts_against_the_keys_draft_cap(

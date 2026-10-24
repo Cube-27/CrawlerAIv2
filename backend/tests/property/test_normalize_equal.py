@@ -5,8 +5,8 @@ way."""
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.normalize.dispatch import equal, equality_key
-from crawlerai.schemas.types import FieldSpec, FieldType
+from snowcrawl.normalize.dispatch import equal, equality_key
+from snowcrawl.schemas.types import FieldSpec, FieldType
 
 _PARAMETERS: dict[FieldType, dict[str, object]] = {
     FieldType.ENUM: {"vocab": "schema:ItemAvailability"},

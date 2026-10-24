@@ -15,15 +15,15 @@ from jsonschema import Draft202012Validator
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.api import JsonRequest
-from crawlerai.acquire.persist import store_capture
-from crawlerai.acquire.types import FetchResult
-from crawlerai.config_ir.activation import store_recipe
-from crawlerai.config_ir.active import active_config, pinned_config, recipe_of
-from crawlerai.config_ir.api_recipe.model import ApiRecipe
-from crawlerai.config_ir.api_recipe.replay import Replays
-from crawlerai.config_ir.custom_recipe import CustomRecipe
-from crawlerai.config_ir.learn_job import (
+from snowcrawl.acquire.api import JsonRequest
+from snowcrawl.acquire.persist import store_capture
+from snowcrawl.acquire.types import FetchResult
+from snowcrawl.config_ir.activation import store_recipe
+from snowcrawl.config_ir.active import active_config, pinned_config, recipe_of
+from snowcrawl.config_ir.api_recipe.model import ApiRecipe
+from snowcrawl.config_ir.api_recipe.replay import Replays
+from snowcrawl.config_ir.custom_recipe import CustomRecipe
+from snowcrawl.config_ir.learn_job import (
     LEARN_RUN_TIMEOUT,
     LEARNING_FINISHED,
     Learned,
@@ -31,9 +31,9 @@ from crawlerai.config_ir.learn_job import (
     next_learn_job,
     run_learn_job,
 )
-from crawlerai.config_ir.learning import Hooks
-from crawlerai.config_ir.progressive import StateKey, operator_activated, request_learning, trigger_learning
-from crawlerai.db.models import (
+from snowcrawl.config_ir.learning import Hooks
+from snowcrawl.config_ir.progressive import StateKey, operator_activated, request_learning, trigger_learning
+from snowcrawl.db.models import (
     Capture,
     Extraction,
     ExtractionConfig,
@@ -47,18 +47,18 @@ from crawlerai.db.models import (
     Site,
     SiteId,
 )
-from crawlerai.db.queue import complete_task, insert_claimed
-from crawlerai.llm.client import LLMRequest, LLMResponse, ReplyCheck, request_hash
-from crawlerai.resolve.pipeline import (
+from snowcrawl.db.queue import complete_task, insert_claimed
+from snowcrawl.llm.client import LLMRequest, LLMResponse, ReplyCheck, request_hash
+from snowcrawl.resolve.pipeline import (
     EngineData,
     extract_page,
 )
-from crawlerai.schemas import registry
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument, document_digest
-from crawlerai.services import configs as configs_service
-from crawlerai.services.page_store import Stored, store_extraction
-from crawlerai.storage.capture_bundle import CaptureBundle
-from crawlerai.storage.fs import FsStore
+from snowcrawl.schemas import registry
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument, document_digest
+from snowcrawl.services import configs as configs_service
+from snowcrawl.services.page_store import Stored, store_extraction
+from snowcrawl.storage.capture_bundle import CaptureBundle
+from snowcrawl.storage.fs import FsStore
 from tests.support.captures import call
 from tests.support.role_c import FakeRoleC
 

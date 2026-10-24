@@ -4,14 +4,14 @@ steps in order as XPath, regex or JSONPath, marked `draft`, with the fields the 
 from datetime import UTC, datetime
 from typing import Any
 
-from crawlerai.config_ir.exporters.configs import export_config
-from crawlerai.config_ir.model import CssStep, ExtractionConfigIR
-from crawlerai.config_ir.validation import Facts, HeldOutPage
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import CaptureId, SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import SchemaDef
+from snowcrawl.config_ir.exporters.configs import export_config
+from snowcrawl.config_ir.model import CssStep, ExtractionConfigIR
+from snowcrawl.config_ir.validation import Facts, HeldOutPage
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import CaptureId, SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import SchemaDef
 
 URL = "https://catalog.example.test/list"
 CTX = Context(captured_at=datetime(2026, 10, 3, tzinfo=UTC), base_url=URL, page_url=URL)

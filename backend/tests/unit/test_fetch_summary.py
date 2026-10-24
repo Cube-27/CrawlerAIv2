@@ -6,12 +6,12 @@ from urllib.parse import urlsplit
 
 from pydantic import JsonValue
 
-from crawlerai.acquire.api import JsonFetcher
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
-from crawlerai.adapters.base import AdapterMatch, Shape
-from crawlerai.adapters.registry import Registry
-from crawlerai.core.capture import CaptureMethod
-from crawlerai.services.page_formats import fetch_summary
+from snowcrawl.acquire.api import JsonFetcher
+from snowcrawl.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from snowcrawl.adapters.base import AdapterMatch, Shape
+from snowcrawl.adapters.registry import Registry
+from snowcrawl.core.capture import CaptureMethod
+from snowcrawl.services.page_formats import fetch_summary
 
 PAGE = "https://board.example.test/tenant/jobs"
 ENDPOINT = "https://board.example.test/api/tenant/jobs"

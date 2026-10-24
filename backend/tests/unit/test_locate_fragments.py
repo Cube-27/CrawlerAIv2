@@ -13,17 +13,17 @@ from pathlib import Path
 
 from pydantic import JsonValue
 
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.held_out import StoredPage, read_bundle
-from crawlerai.config_ir.induction import SamplePage
-from crawlerai.config_ir.locate import Located, Sampled, locate
-from crawlerai.config_ir.model import ExtractionConfigIR, Fetch, Provenance, SchemaRef
-from crawlerai.config_ir.validation import Facts, HeldOutPage
-from crawlerai.core.capture import CaptureMethod
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import CaptureId, PageKind
-from crawlerai.schemas.types import SchemaDef, document_digest
-from crawlerai.storage.capture_bundle import CaptureBundle
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.config_ir.held_out import StoredPage, read_bundle
+from snowcrawl.config_ir.induction import SamplePage
+from snowcrawl.config_ir.locate import Located, Sampled, locate
+from snowcrawl.config_ir.model import ExtractionConfigIR, Fetch, Provenance, SchemaRef
+from snowcrawl.config_ir.validation import Facts, HeldOutPage
+from snowcrawl.core.capture import CaptureMethod
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import CaptureId, PageKind
+from snowcrawl.schemas.types import SchemaDef, document_digest
+from snowcrawl.storage.capture_bundle import CaptureBundle
 from tests.support.captures import calls, capture
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")

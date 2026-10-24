@@ -21,7 +21,7 @@ Reasoning for a single change goes in its PR body.
 - **Jobs.** A page holding its own application form is its `apply_url`.
 - **Canonical link wins** for a detail page's own URL.
 - **Adapters** only for multi-tenant platforms, measured on at least 3 tenants; all on by default
-  (`CRAWLERAI_DISABLED_ADAPTERS` opts out); a page-stated value outranks an adapter's fallback.
+  (`SNOWCRAWL_DISABLED_ADAPTERS` opts out); a page-stated value outranks an adapter's fallback.
 - **Greenfield.** No versioning or compatibility shims; one baseline migration; a schema edit sends its configs to relearning.
 - **No in-repo evaluation.** The e2e run and its eval set live outside the repo, scored by one scorer (C1, C10).
 - **Custom recipes are engineer-driven.** An engineer picks the calls a site's pages make; the system proposes, never
@@ -44,7 +44,7 @@ Reasoning for a single change goes in its PR body.
   the user agent through `--user-agent`, so service and shared workers present the same identity. Startup refuses a
   browser that still names headless mode.
 - **Headless by default** (with the client-hint override and one common desktop screen per site profile). **Headful
-  option** (`CRAWLERAI_BROWSER_HEADLESS=false`) per the Patchright README's best practice exactly: no user agent, header,
+  option** (`SNOWCRAWL_BROWSER_HEADLESS=false`) per the Patchright README's best practice exactly: no user agent, header,
   screen or override of ours. Xvfb on Linux without a display. Why: owner 2026-10-23, the user chooses.
 - **Cookies are plain cookies.** Earned clearance cookies are kept and replayed like any other, in the site profile and session.
 - **Proxy framework built, not live-tested.** Our own runs go without proxies; no CAPTCHA solving.

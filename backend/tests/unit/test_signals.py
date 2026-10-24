@@ -2,9 +2,9 @@
 
 import pytest
 
-from crawlerai.content.page import ParsedPage
-from crawlerai.content.signals import SIGNALS, Signal, page_signals
-from crawlerai.storage.capture_bundle import NetworkBody
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.content.signals import SIGNALS, Signal, page_signals
+from snowcrawl.storage.capture_bundle import NetworkBody
 
 _PLAIN = (
     '<html><head><link rel="canonical" href="/p/1"><script src="/static/app.js"></script></head>'

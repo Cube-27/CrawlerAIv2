@@ -7,19 +7,19 @@ import asyncio
 import time
 from datetime import UTC, datetime
 
-from crawlerai.acquire.api import JsonRequest
-from crawlerai.acquire.memory import Remembered
-from crawlerai.acquire.outcome import Content, Exchange, fetch_result
-from crawlerai.acquire.rungs import Rungs, acquire
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.collect.dom import DomCollector
-from crawlerai.collect.locator import parse_locator
-from crawlerai.content.fragments import Frame, eager_frames
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.acquire.api import JsonRequest
+from snowcrawl.acquire.memory import Remembered
+from snowcrawl.acquire.outcome import Content, Exchange, fetch_result
+from snowcrawl.acquire.rungs import Rungs, acquire
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.collect.dom import DomCollector
+from snowcrawl.collect.locator import parse_locator
+from snowcrawl.content.fragments import Frame, eager_frames
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 URL = "https://shop.example.test/p/1"
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=URL, page_url=URL, html_lang="en")

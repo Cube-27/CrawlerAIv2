@@ -7,8 +7,8 @@ from collections.abc import Callable
 import httpx
 import pytest
 
-from crawlerai_sdk import APIError, CrawlerAI, JobTimeout, models
-from crawlerai_sdk.webhooks import InvalidSignature, parse_webhook, sign, verify_signature
+from snowcrawl_sdk import APIError, JobTimeout, Snowcrawl, models
+from snowcrawl_sdk.webhooks import InvalidSignature, parse_webhook, sign, verify_signature
 
 JOB_ID = "0192a000-0000-7000-8000-0000000000aa"
 
@@ -27,8 +27,8 @@ def summary(status: str) -> dict[str, object]:
     }
 
 
-def client(handler: Callable[[httpx.Request], httpx.Response]) -> CrawlerAI:
-    return CrawlerAI("key-1", "https://api.example.test/", transport=httpx.MockTransport(handler))
+def client(handler: Callable[[httpx.Request], httpx.Response]) -> Snowcrawl:
+    return Snowcrawl("key-1", "https://api.example.test/", transport=httpx.MockTransport(handler))
 
 
 def test_a_request_is_validated_and_sent_with_only_the_members_given() -> None:

@@ -2,7 +2,7 @@ import { useLayoutEffect, useState, useSyncExternalStore } from "react";
 
 export type Theme = "light" | "dark";
 
-const STORAGE_KEY = "crawlerai.theme";
+const STORAGE_KEY = "snowcrawl.theme";
 
 // Storage can be missing or throw (private windows, blocked site data); the theme is only a convenience.
 function rememberedTheme(): Theme | null {

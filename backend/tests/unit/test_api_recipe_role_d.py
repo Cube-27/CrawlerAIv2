@@ -13,17 +13,17 @@ from datetime import UTC, datetime
 
 from pydantic import JsonValue
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.config_ir.api_recipe.binding import Ambiguous, CapturedRequest, PageData, Sample, bind
-from crawlerai.config_ir.api_recipe.headers import NotLearnable, Proven
-from crawlerai.config_ir.api_recipe.model import HeaderValue, RequestSpec
-from crawlerai.config_ir.api_recipe.replay import ReplayPage
-from crawlerai.config_ir.api_recipe.role_d import REPAIR_SYSTEM, SYSTEM, Rejected, bind_by_role_d
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import JobId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.acquire.api import JsonFetcher, JsonRequest
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.config_ir.api_recipe.binding import Ambiguous, CapturedRequest, PageData, Sample, bind
+from snowcrawl.config_ir.api_recipe.headers import NotLearnable, Proven
+from snowcrawl.config_ir.api_recipe.model import HeaderValue, RequestSpec
+from snowcrawl.config_ir.api_recipe.replay import ReplayPage
+from snowcrawl.config_ir.api_recipe.role_d import REPAIR_SYSTEM, SYSTEM, Rejected, bind_by_role_d
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import JobId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 from tests.stand_in import StandInApi
 from tests.support.fake_llm import ScriptedClient
 

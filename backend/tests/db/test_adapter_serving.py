@@ -13,14 +13,14 @@ from typing import Any
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.api import JsonRequest
-from crawlerai.acquire.rungs import Rungs, adapter_registry
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas import registry
-from crawlerai.schemas.types import SchemaDef, SchemaDocument
-from crawlerai.services.fetching import Fetching
-from crawlerai.services.scrape import ScrapeRequest, scrape
+from snowcrawl.acquire.api import JsonRequest
+from snowcrawl.acquire.rungs import Rungs, adapter_registry
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.resolve.pipeline import EngineData
+from snowcrawl.schemas import registry
+from snowcrawl.schemas.types import SchemaDef, SchemaDocument
+from snowcrawl.services.fetching import Fetching
+from snowcrawl.services.scrape import ScrapeRequest, scrape
 from tests.db.support import PRICE, TITLE
 from tests.db.support import Web as SharedWeb
 

@@ -5,22 +5,22 @@ no longer runs."""
 from datetime import UTC, datetime
 from typing import Any
 
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.drift import (
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.config_ir.drift import (
     DriftMargins,
     Observation,
     drifted,
     observe,
     relocated,
 )
-from crawlerai.config_ir.executor import EngineExecutor
-from crawlerai.config_ir.model import ExtractionConfigIR
-from crawlerai.config_ir.progressive import LocateRequest
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import JobId, SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.config_ir.executor import EngineExecutor
+from snowcrawl.config_ir.model import ExtractionConfigIR
+from snowcrawl.config_ir.progressive import LocateRequest
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import JobId, SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 CTX_TIME = datetime(2026, 10, 1, tzinfo=UTC)
 MARGINS = DriftMargins.model_validate({"yield": 0.25, "validity": 0.25, "source_split": "dev", "fit": "test"})

@@ -16,9 +16,9 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.normalize import range as range_
-from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw
-from crawlerai.schemas.types import FieldSpec, FieldType
+from snowcrawl.normalize import range as range_
+from snowcrawl.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw
+from snowcrawl.schemas.types import FieldSpec, FieldType
 
 AT = datetime(2026, 1, 1, tzinfo=UTC)
 CTX = Context(captured_at=AT)

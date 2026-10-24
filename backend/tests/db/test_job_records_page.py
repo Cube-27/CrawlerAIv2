@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import (
+from snowcrawl.db.models import (
     Extraction,
     Job,
     JobId,
@@ -23,9 +23,9 @@ from crawlerai.db.models import (
     UrlTask,
     UrlTaskId,
 )
-from crawlerai.schemas import registry
-from crawlerai.schemas.types import SchemaDocument
-from crawlerai.services.records import RecordFilter, list_records
+from snowcrawl.schemas import registry
+from snowcrawl.schemas.types import SchemaDocument
+from snowcrawl.services.records import RecordFilter, list_records
 from tests.db.support import TITLE
 
 pytestmark = pytest.mark.anyio

@@ -12,18 +12,18 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.ssrf import SafeConnector
-from crawlerai.acquire.types import FetchResult
-from crawlerai.core.egress import Egresses
-from crawlerai.core.proxy import ProxyPool
-from crawlerai.core.redaction import REDACTED
-from crawlerai.db.models import Capture, Job
-from crawlerai.services.batch import BatchScrapeRequest, submit_batch
-from crawlerai.services.fetch_options import UnknownProxyPool
-from crawlerai.services.fetching import Fetching
-from crawlerai.services.job_request import job_request
-from crawlerai.services.scrape import ScrapeRequest, scrape
-from crawlerai.services.stored_captures import NotCached
+from snowcrawl.acquire.ssrf import SafeConnector
+from snowcrawl.acquire.types import FetchResult
+from snowcrawl.core.egress import Egresses
+from snowcrawl.core.proxy import ProxyPool
+from snowcrawl.core.redaction import REDACTED
+from snowcrawl.db.models import Capture, Job
+from snowcrawl.services.batch import BatchScrapeRequest, submit_batch
+from snowcrawl.services.fetch_options import UnknownProxyPool
+from snowcrawl.services.fetching import Fetching
+from snowcrawl.services.job_request import job_request
+from snowcrawl.services.scrape import ScrapeRequest, scrape
+from snowcrawl.services.stored_captures import NotCached
 from tests.db.support import Web, fetching_from, resolve
 
 pytestmark = pytest.mark.anyio

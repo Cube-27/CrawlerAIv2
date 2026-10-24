@@ -8,14 +8,14 @@ from sqlalchemy import insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.config_ir.progressive import (
+from snowcrawl.config_ir.progressive import (
     StateKey,
     learning_activated,
     learning_failed,
     request_learning,
     trigger_learning,
 )
-from crawlerai.db.models import (
+from snowcrawl.db.models import (
     ExtractionConfig,
     ExtractionConfigId,
     Job,

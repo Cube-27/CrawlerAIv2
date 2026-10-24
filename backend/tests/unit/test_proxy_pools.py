@@ -24,16 +24,16 @@ from socketserver import BaseRequestHandler, TCPServer, ThreadingTCPServer
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.acquire.api import JsonRequest, fetch_json
-from crawlerai.acquire.browser_session import context_key
-from crawlerai.acquire.http import fetch_http
-from crawlerai.acquire.locality import check_places
-from crawlerai.acquire.session import CookieExport, SessionCookie, SiteSessions
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.core.egress import UNKNOWN, Egress, Egresses
-from crawlerai.core.proxy import SESSION_TTL, ExitPlace, PoolMode, ProxyEndpoint, ProxyPool, SiteExits
-from crawlerai.core.settings import AcquireSettings
+from snowcrawl.acquire.api import JsonRequest, fetch_json
+from snowcrawl.acquire.browser_session import context_key
+from snowcrawl.acquire.http import fetch_http
+from snowcrawl.acquire.locality import check_places
+from snowcrawl.acquire.session import CookieExport, SessionCookie, SiteSessions
+from snowcrawl.acquire.ssrf import IPAddress, SafeConnector
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.core.egress import UNKNOWN, Egress, Egresses
+from snowcrawl.core.proxy import SESSION_TTL, ExitPlace, PoolMode, ProxyEndpoint, ProxyPool, SiteExits
+from snowcrawl.core.settings import AcquireSettings
 from tests.stand_in import IMPERSONATE
 
 _LINKS = "".join(f'<a href="/item/{i}">Item {i}</a>' for i in range(8))
@@ -227,7 +227,7 @@ def _outcome(result: FetchResult) -> tuple[int, str, str | None]:
 
 
 def test_pools_are_read_from_json_with_credentials_percent_decoded(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CRAWLERAI_PROXY_POOLS", '{"dc": "http://pool%20user:p%40ss%3Aword@proxy.example.com:3128"}')
+    monkeypatch.setenv("SNOWCRAWL_PROXY_POOLS", '{"dc": "http://pool%20user:p%40ss%3Aword@proxy.example.com:3128"}')
 
     (name, pool), *rest = AcquireSettings().proxy_pools.items()
 
@@ -263,7 +263,7 @@ def test_pools_are_read_from_json_with_credentials_percent_decoded(monkeypatch: 
 def test_a_proxy_url_other_than_http_host_port_is_refused_without_echoing_it(
     monkeypatch: pytest.MonkeyPatch, value: str
 ) -> None:
-    monkeypatch.setenv("CRAWLERAI_PROXY_POOLS", f'{{"dc": {value}}}')
+    monkeypatch.setenv("SNOWCRAWL_PROXY_POOLS", f'{{"dc": {value}}}')
 
     with pytest.raises(ValidationError) as refused:
         AcquireSettings()
@@ -289,7 +289,7 @@ def test_an_exit_of_a_country_of_several_zones_declaring_none_is_logged_once_at_
     us = {"endpoints": ["http://a.example.com:1"], "mode": "rotate", "country": "US"}
     pools = {"us": ProxyPool.parse(us), "chicago": ProxyPool.parse(us | {"timezone": "America/Chicago"})}
 
-    with caplog.at_level(logging.WARNING, logger="crawlerai.acquire.locality"):
+    with caplog.at_level(logging.WARNING, logger="snowcrawl.acquire.locality"):
         check_places(pools, ExitPlace("JP"))
 
     # A zone declared for a country of several zones is the zone; the tz database names it, or startup stops.
@@ -431,8 +431,8 @@ def _fetch_json(url: str, pools: dict[str, ProxyPool], pool: str | None = "dc") 
 def test_a_browser_fetch_naming_a_pool_goes_through_its_proxy(origin: Origin, proxy: StubProxy) -> None:
     from patchright.async_api import Error as PlaywrightError
 
-    from crawlerai.acquire.browser import fetch_browser
-    from crawlerai.acquire.browser_session import open_browser
+    from snowcrawl.acquire.browser import fetch_browser
+    from snowcrawl.acquire.browser_session import open_browser
 
     async def run() -> tuple[FetchResult, FetchResult]:
         async with open_browser() as session:

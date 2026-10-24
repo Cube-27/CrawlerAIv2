@@ -5,8 +5,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from crawlerai.search.providers import SearchFailed, SearxngProvider, TemplateProvider, configured, http_get
-from crawlerai.search.results import Hit, parse
+from snowcrawl.search.providers import SearchFailed, SearxngProvider, TemplateProvider, configured, http_get
+from snowcrawl.search.results import Hit, parse
 
 pytestmark = pytest.mark.anyio
 

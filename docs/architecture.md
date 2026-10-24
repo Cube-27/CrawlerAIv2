@@ -1,6 +1,6 @@
 # Architecture
 
-What the code does today. One Docker image (linux/amd64 only: Google Chrome has no arm64 build), three roles (`crawlerai api|worker|scheduler`, `crawlerai/cli.py`,
+What the code does today. One Docker image (linux/amd64 only: Google Chrome has no arm64 build), three roles (`snowcrawl api|worker|scheduler`, `snowcrawl/cli.py`,
 which only parses and dispatches); each role runs on one `services/runtime.py` runtime, whose `open_rungs` is the one
 builder of the fetching rungs (the `fetch` command's too);
 PostgreSQL is the store and the queue, an object store (`storage/`, fs or S3) holds captures.
@@ -21,7 +21,7 @@ handler of the job kind (`worker/handlers/`); `scheduler/loop.py` enqueues sched
    `impersonate.py`), the Patchright Chrome browser (`browser.py`, `shared_browser.py`, `browser_profiles.py`) when blocked,
    a JS shell, or `render.mode` asks. The browser is headless by default, with the client-hint override and a per-profile
    screen (`browser_session.py`, `desktop_screen.py`), or headful per the Patchright README
-   (`CRAWLERAI_BROWSER_HEADLESS=false`; Xvfb on Linux without a display, `display.py`). `classify.py`/`challenge.py` set the block class (`ok|blocked|shell|not_found|error`).
+   (`SNOWCRAWL_BROWSER_HEADLESS=false`; Xvfb on Linux without a display, `display.py`). `classify.py`/`challenge.py` set the block class (`ok|blocked|shell|not_found|error`).
    Politeness, robots (off by default), SSRF guard and redirects: `politeness.py`, `robots.py`, `ssrf.py`, `redirects.py`.
    Site memory (the rung a site's pages start with): `memory.py`. The result is a capture bundle (`core/capture.py`,
    `storage/capture_bundle.py`); every record can be replayed from it (`POST /v1/captures/{id}/replay`).
@@ -61,9 +61,9 @@ handler of the job kind (`worker/handlers/`); `scheduler/loop.py` enqueues sched
 
 ## Proxies
 
-`CRAWLERAI_PROXY_POOLS` (`core/proxy.py`) maps a pool name to a proxy URL or to
+`SNOWCRAWL_PROXY_POOLS` (`core/proxy.py`) maps a pool name to a proxy URL or to
 `{"endpoints": [url, ...], "mode": "rotate"|"sticky", "country"?, "timezone"?, "locale"?}`; a request's
-`fetch.proxy_pool` names one, else the fetch is direct, from the place `CRAWLERAI_EGRESS_COUNTRY`, `_TIMEZONE` and
+`fetch.proxy_pool` names one, else the fetch is direct, from the place `SNOWCRAWL_EGRESS_COUNTRY`, `_TIMEZONE` and
 `_LOCALE` declare. `rotate` takes endpoints in turn, `sticky` keeps a site on one endpoint. An endpoint whose username or
 password holds `{session}` is a provider gateway with sticky exits: each site (registrable domain) gets a session id
 there, so its HTTP, JSON and browser fetches leave from one address; the exit ends after `SESSION_TTL` or
@@ -114,7 +114,7 @@ screen only. The recipe builder's helpers persist nothing: `POST /v1/recipes/cal
 (`services/recipe_propose.py`: `binding.propose` leaves an unbound value literal and reports it, `headers.proposed`,
 `pagination.infer`, `url_pattern.generalize`), and `POST /v1/recipes/test` serves URLs of a recipe's patterns with it
 and with the normal extraction side by side (`services/recipe_trial.py`: a `scrape` job whose trial fetches store no
-capture, record or site memory; `PageTask.trial`). Bearer API keys (`crawlerai apikey create`). Schemas (presets in `schemas/presets/*.json`) are data.
+capture, record or site memory; `PageTask.trial`). Bearer API keys (`snowcrawl apikey create`). Schemas (presets in `schemas/presets/*.json`) are data.
 SDKs in `sdk/python`, `sdk/typescript` (`tools/dev.py sdk`); web UI in `frontend/`. The Recipes screen
 (`frontend/src/screens/recipes/`, a site's recipes) builds a custom recipe from samples, their calls and the server's
 draft, which the engineer's edits lie over (`draft.ts`), tests it, saves it, edits a saved one (`GET /v1/configs/{id}`

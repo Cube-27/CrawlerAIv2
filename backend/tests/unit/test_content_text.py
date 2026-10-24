@@ -3,8 +3,8 @@ tree."""
 
 import pytest
 
-from crawlerai.content.page import ParsedPage
-from crawlerai.content.text import TextRun
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.content.text import TextRun
 
 
 def _text(body: str) -> str:

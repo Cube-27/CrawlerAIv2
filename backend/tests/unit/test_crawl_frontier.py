@@ -4,8 +4,8 @@ host and its subdomains, and where a page's links and next pages come from."""
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.crawl.frontier import Frontier
-from crawlerai.crawl.rules import Scope
+from snowcrawl.crawl.frontier import Frontier
+from snowcrawl.crawl.rules import Scope
 
 HOST = "shop.example.test"
 

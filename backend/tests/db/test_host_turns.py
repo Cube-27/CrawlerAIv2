@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.host_turns import HostTurns, expire_host_turns
+from snowcrawl.acquire.host_turns import HostTurns, expire_host_turns
 
 ZERO = timedelta(0)
 SPACING = timedelta(milliseconds=200)

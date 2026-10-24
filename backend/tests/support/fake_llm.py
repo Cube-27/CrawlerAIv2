@@ -11,7 +11,7 @@ from collections.abc import Iterable, Mapping
 from jsonschema import Draft202012Validator
 from pydantic import JsonValue
 
-from crawlerai.llm.client import (
+from snowcrawl.llm.client import (
     LLMRequest,
     LLMResponse,
     OutputInvalid,

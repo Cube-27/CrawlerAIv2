@@ -10,21 +10,21 @@ import pytest
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.persist import store_capture
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.role_c import role_c
-from crawlerai.core.capture import BlockClass
-from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.db.models import Candidate, Extraction, Job, JobId, Project, Record, Site, SiteId, SourceKind, UsageEvent
-from crawlerai.db.queue import ClaimedTask, insert_claimed
-from crawlerai.llm.client import MeteredClient, ProviderReply
-from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
-from crawlerai.resolve.preference import PRECEDENCE_TYPES
-from crawlerai.resolve.records import entity_key
-from crawlerai.schemas import registry
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
-from crawlerai.services.page_store import Stored, store_extraction
-from crawlerai.storage.fs import FsStore
+from snowcrawl.acquire.persist import store_capture
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.config_ir.role_c import role_c
+from snowcrawl.core.capture import BlockClass
+from snowcrawl.core.engine_version import ENGINE_VERSION
+from snowcrawl.db.models import Candidate, Extraction, Job, JobId, Project, Record, Site, SiteId, SourceKind, UsageEvent
+from snowcrawl.db.queue import ClaimedTask, insert_claimed
+from snowcrawl.llm.client import MeteredClient, ProviderReply
+from snowcrawl.resolve.pipeline import EngineData, RoleC, extract_page
+from snowcrawl.resolve.preference import PRECEDENCE_TYPES
+from snowcrawl.resolve.records import entity_key
+from snowcrawl.schemas import registry
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
+from snowcrawl.services.page_store import Stored, store_extraction
+from snowcrawl.storage.fs import FsStore
 from tests.support.captures import FETCHED_AT, HTML, fetched
 from tests.support.fake_llm import FakeProvider
 

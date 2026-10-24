@@ -11,11 +11,11 @@ from pydantic import SecretStr
 from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.core.settings import Settings
-from crawlerai.db.models import Job, JobEvent, JobId, JobKind, JobStatus, Project, UrlTask, UrlTaskId
-from crawlerai.db.queue import MAX_ATTEMPTS, ClaimedTask, Failed, Finished, TaskResult, claim_tasks
-from crawlerai.worker import loop
-from crawlerai.worker.loop import Settle, TaskHandler, run_worker
+from snowcrawl.core.settings import Settings
+from snowcrawl.db.models import Job, JobEvent, JobId, JobKind, JobStatus, Project, UrlTask, UrlTaskId
+from snowcrawl.db.queue import MAX_ATTEMPTS, ClaimedTask, Failed, Finished, TaskResult, claim_tasks
+from snowcrawl.worker import loop
+from snowcrawl.worker.loop import Settle, TaskHandler, run_worker
 
 pytestmark = pytest.mark.anyio
 

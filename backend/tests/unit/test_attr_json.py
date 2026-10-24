@@ -6,11 +6,11 @@ from html import escape
 
 from pydantic import JsonValue
 
-from crawlerai.collect import json_doc
-from crawlerai.collect.js_state import attribute_documents, state_documents
-from crawlerai.collect.locator import parse_locator
-from crawlerai.config_ir.executor import documents
-from crawlerai.content.page import ParsedPage
+from snowcrawl.collect import json_doc
+from snowcrawl.collect.js_state import attribute_documents, state_documents
+from snowcrawl.collect.locator import parse_locator
+from snowcrawl.config_ir.executor import documents
+from snowcrawl.content.page import ParsedPage
 
 INERTIA: JsonValue = {
     "component": "Products/Show",

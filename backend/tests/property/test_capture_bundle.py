@@ -15,8 +15,8 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
-from crawlerai.core.capture import BlockClass, CaptureMethod
-from crawlerai.storage.capture_bundle import (
+from snowcrawl.core.capture import BlockClass, CaptureMethod
+from snowcrawl.storage.capture_bundle import (
     CaptureBundle,
     CaptureManifest,
     CorruptBundle,

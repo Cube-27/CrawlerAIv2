@@ -1,5 +1,5 @@
 """Recurring schedules (§22 "Recurring schedule storage", admitted 2026-10-17): `/v1/schedules` over HTTP, and the
-scheduler entry that submits due runs exactly once (`run_due_schedules` of `crawlerai.services.schedules`)."""
+scheduler entry that submits due runs exactly once (`run_due_schedules` of `snowcrawl.services.schedules`)."""
 
 import asyncio
 from datetime import datetime, timedelta
@@ -11,14 +11,14 @@ import pytest
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.db.models import Job, JobId, Schedule, ScheduleId
-from crawlerai.llm.client import NO_LLM
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.services import schedules
-from crawlerai.services.fetching import TargetsRejected
-from crawlerai.services.schedules import NewBatchSchedule, Submitting
+from snowcrawl.acquire.rungs import Rungs
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.db.models import Job, JobId, Schedule, ScheduleId
+from snowcrawl.llm.client import NO_LLM
+from snowcrawl.resolve.pipeline import EngineData
+from snowcrawl.services import schedules
+from snowcrawl.services.fetching import TargetsRejected
+from snowcrawl.services.schedules import NewBatchSchedule, Submitting
 from tests.db.support import PRIVATE_HOST, fetching_from
 
 pytestmark = pytest.mark.anyio

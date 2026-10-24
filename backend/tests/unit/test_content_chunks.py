@@ -4,7 +4,7 @@ headings above it."""
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.content.chunks import ChunkOptions, chunks
+from snowcrawl.content.chunks import ChunkOptions, chunks
 
 DOC = (
     "Intro paragraph before any heading. It has two sentences.\n\n"

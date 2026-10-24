@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from crawlerai.core import event_loop
-from crawlerai.core.event_loop import quiet_peer_resets
+from snowcrawl.core import event_loop
+from snowcrawl.core.event_loop import quiet_peer_resets
 
 
 @pytest.fixture(autouse=True)
@@ -51,7 +51,7 @@ def test_a_reset_while_a_proactor_transport_closes_is_not_an_error(caplog: pytes
     _run_callback(close, _closing_transport(), None)
 
     assert _errors(caplog) == []
-    assert [r.getMessage() for r in caplog.records if r.name == "crawlerai.core.event_loop"] == [
+    assert [r.getMessage() for r in caplog.records if r.name == "snowcrawl.core.event_loop"] == [
         "a peer reset a connection being closed: [Errno 10054] An existing connection was forcibly closed by the remote"
         " host"
     ]

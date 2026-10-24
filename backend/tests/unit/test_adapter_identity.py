@@ -6,14 +6,14 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from crawlerai.adapters.base import AdapterMatch
-from crawlerai.adapters.rippling import Rippling
-from crawlerai.collect.adapter import AdapterCollector
-from crawlerai.collect.base import CollectResult
-from crawlerai.collect.jsonld import JsonLdCollector
-from crawlerai.content.page import ParsedPage
-from crawlerai.normalize.base import Context
-from crawlerai.resolve.ownership import EntityGraph
+from snowcrawl.adapters.base import AdapterMatch
+from snowcrawl.adapters.rippling import Rippling
+from snowcrawl.collect.adapter import AdapterCollector
+from snowcrawl.collect.base import CollectResult
+from snowcrawl.collect.jsonld import JsonLdCollector
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.normalize.base import Context
+from snowcrawl.resolve.ownership import EntityGraph
 from tests.unit.adapter_support import FIXTURES, JOB_FIELDS, VOCABULARY
 from tests.unit.test_adapter_collector import _schema
 

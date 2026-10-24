@@ -8,16 +8,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from crawlerai.collect.base import Entity
-from crawlerai.collect.jsonld import JsonLdCollector
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId, SourceKind
-from crawlerai.normalize.base import Context
-from crawlerai.resolve.intent import primary_types, select_target
-from crawlerai.resolve.ownership import EntityGraph
-from crawlerai.resolve.preference import (
+from snowcrawl.collect.base import Entity
+from snowcrawl.collect.jsonld import JsonLdCollector
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId, SourceKind
+from snowcrawl.normalize.base import Context
+from snowcrawl.resolve.intent import primary_types, select_target
+from snowcrawl.resolve.ownership import EntityGraph
+from snowcrawl.resolve.preference import (
     PRECEDENCE_TYPES,
     Chosen,
     PageFacts,
@@ -25,7 +25,7 @@ from crawlerai.resolve.preference import (
     Resolver,
     Unpublished,
 )
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")

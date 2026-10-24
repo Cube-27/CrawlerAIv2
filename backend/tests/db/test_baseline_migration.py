@@ -10,7 +10,7 @@ from alembic.config import Config
 from sqlalchemy import CheckConstraint, text
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
-from crawlerai.db.models import Base
+from snowcrawl.db.models import Base
 
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 

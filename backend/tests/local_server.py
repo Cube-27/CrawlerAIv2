@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import IPv4Address, ip_address
 from urllib.parse import urlsplit
 
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector, Target
+from snowcrawl.acquire.ssrf import IPAddress, SafeConnector, Target
 
 __all__ = ["LoopbackConnector", "Reply", "Server", "serving"]
 

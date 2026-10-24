@@ -10,9 +10,9 @@ import pytest
 from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import Candidate, Capture, CaptureId, Extraction, ExtractionId, Job, Project, Site, UrlTask
-from crawlerai.scheduler.retention import RETENTION_BATCH, expire_candidates, expire_captures
-from crawlerai.storage.fs import FsStore
+from snowcrawl.db.models import Candidate, Capture, CaptureId, Extraction, ExtractionId, Job, Project, Site, UrlTask
+from snowcrawl.scheduler.retention import RETENTION_BATCH, expire_candidates, expire_captures
+from snowcrawl.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio
 

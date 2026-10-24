@@ -8,10 +8,10 @@ Captures are synthetic, on `.test` hosts; the browser's responses are stand-ins 
 from types import SimpleNamespace
 from typing import Any
 
-from crawlerai.acquire import browser_capture
-from crawlerai.collect.xhr import network_documents
-from crawlerai.content.fragments import is_partial
-from crawlerai.content.page import ParsedPage, prepassed
+from snowcrawl.acquire import browser_capture
+from snowcrawl.collect.xhr import network_documents
+from snowcrawl.content.fragments import is_partial
+from snowcrawl.content.page import ParsedPage, prepassed
 from tests.support.captures import calls, capture
 
 URL = "https://shop.example.test/c/1"

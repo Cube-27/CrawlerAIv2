@@ -9,14 +9,14 @@ from uuid import UUID
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from crawlerai.config_ir.validation import Facts, HeldOutPage
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import CaptureId, SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.services.recipe_calls import Endpoint, listed
-from crawlerai.storage.capture_bundle import NetworkBody
+from snowcrawl.config_ir.validation import Facts, HeldOutPage
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import CaptureId, SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.services.recipe_calls import Endpoint, listed
+from snowcrawl.storage.capture_bundle import NetworkBody
 from tests.support.captures import call, capture
 
 SCHEMA = SchemaDef(

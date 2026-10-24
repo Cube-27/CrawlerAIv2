@@ -1,8 +1,8 @@
 #!/bin/bash
 # test_db.sh up|drop [NAME] — the one shared local Postgres for DB tests, so agents don't start a container each.
-# The container is `crawlerai-test-pg` (postgres:16) on 127.0.0.1 (never localhost: asyncpg can hang resolving it on
+# The container is `snowcrawl-test-pg` (postgres:16) on 127.0.0.1 (never localhost: asyncpg can hang resolving it on
 # Windows), port $TEST_PG_PORT (default 55432, beside the dev database's 5432). NAME (default: the current worktree's
-# directory name) owns one database in it, crawlerai_test_<name>.
+# directory name) owns one database in it, snowcrawl_test_<name>.
 #   up    starts the container if it is absent or stopped (a new one gets the roles and databases of
 #         infra/postgres/init.sql), recreates NAME's database empty, owned by `app`, and prints the variable that
 #         points tests/db at it: eval "$(tools/orchestrator/test_db.sh up)"
@@ -19,9 +19,9 @@ name=${2:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null)")}
 # A Postgres identifier: lower case, anything but letters and digits becomes `_` (spec-03-pr-8 -> spec_03_pr_8).
 slug=$(tr '[:upper:]' '[:lower:]' <<< "$name" | tr -c 'a-z0-9\n' '_')
 [[ -n $slug ]] || usage
-container=crawlerai-test-pg
+container=snowcrawl-test-pg
 port=${TEST_PG_PORT:-55432}
-main_db=crawlerai_test_$slug
+main_db=snowcrawl_test_$slug
 init_sql="$(dirname "${BASH_SOURCE[0]}")/../../infra/postgres/init.sql"
 
 running() {
@@ -66,4 +66,4 @@ fi
 
 start
 psql_admin "${drop_sql[@]}" -c "CREATE DATABASE $main_db OWNER app" || err "could not create the database of $name"
-echo "export CRAWLERAI_TEST_DATABASE_URL=postgresql+asyncpg://app:app@127.0.0.1:$port/$main_db"
+echo "export SNOWCRAWL_TEST_DATABASE_URL=postgresql+asyncpg://app:app@127.0.0.1:$port/$main_db"

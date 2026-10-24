@@ -6,8 +6,8 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.adapters.base import AdapterMatch
-from crawlerai.adapters.workable import BOARD_HOST, Workable
+from snowcrawl.adapters.base import AdapterMatch
+from snowcrawl.adapters.workable import BOARD_HOST, Workable
 from tests.unit.adapter_support import FIXTURES, candidates
 
 ADAPTER = Workable()

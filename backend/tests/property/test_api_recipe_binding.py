@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl, quote
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.config_ir.api_recipe.binding import (
+from snowcrawl.config_ir.api_recipe.binding import (
     Ambiguous,
     CapturedRequest,
     PageData,
@@ -23,7 +23,7 @@ from crawlerai.config_ir.api_recipe.binding import (
     resolve_params,
     withhold_tokens,
 )
-from crawlerai.config_ir.api_recipe.model import Binder, RequestSpec
+from snowcrawl.config_ir.api_recipe.model import Binder, RequestSpec
 
 _PAGE = "https://shop.example.test"
 _API = "https://api.example.test"

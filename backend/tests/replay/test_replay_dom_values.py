@@ -8,14 +8,14 @@ import asyncio
 import json
 from pathlib import Path
 
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId, SourceKind
-from crawlerai.resolve.pipeline import EngineData, extract_page
-from crawlerai.resolve.preference import PRECEDENCE_TYPES
-from crawlerai.resolve.types import FieldOutcome
-from crawlerai.schemas.registry import load_presets
-from crawlerai.schemas.types import SchemaDef
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId, SourceKind
+from snowcrawl.resolve.pipeline import EngineData, extract_page
+from snowcrawl.resolve.preference import PRECEDENCE_TYPES
+from snowcrawl.resolve.types import FieldOutcome
+from snowcrawl.schemas.registry import load_presets
+from snowcrawl.schemas.types import SchemaDef
 from tests.support.captures import capture
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")

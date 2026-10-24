@@ -11,10 +11,10 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.normalize import number, numbers
-from crawlerai.normalize.base import Ambiguous, Context, Invalid, Ok
-from crawlerai.normalize.dispatch import normalize
-from crawlerai.schemas.types import FieldSpec, FieldType
+from snowcrawl.normalize import number, numbers
+from snowcrawl.normalize.base import Ambiguous, Context, Invalid, Ok
+from snowcrawl.normalize.dispatch import normalize
+from snowcrawl.schemas.types import FieldSpec, FieldType
 
 CTX = Context(captured_at=datetime(2026, 1, 1, tzinfo=UTC))
 EN = CTX.model_copy(update={"html_lang": "en-US"})

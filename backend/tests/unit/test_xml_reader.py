@@ -3,7 +3,7 @@ the parse or reach outside it is refused."""
 
 import pytest
 
-from crawlerai.adapters.xml_reader import read_xml
+from snowcrawl.adapters.xml_reader import read_xml
 
 
 def test_children_are_arrays_by_name_and_leaves_are_trimmed_text() -> None:

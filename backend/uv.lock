@@ -317,7 +317,7 @@ wheels = [
 ]
 
 [[package]]
-name = "crawlerai"
+name = "snowcrawl"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

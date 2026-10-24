@@ -4,7 +4,7 @@ normalized path."""
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.collect.json_doc import select
+from snowcrawl.collect.json_doc import select
 
 DOCUMENT: JsonValue = {
     "jobs": [{"title": "A", "location": {"name": "Remote"}}, {"title": "B"}, "not an object"],

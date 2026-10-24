@@ -4,16 +4,16 @@ derivation, and the value says which."""
 from datetime import UTC, datetime
 from pathlib import Path
 
-from crawlerai.collect.base import Candidate, Entity
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import PageKind, SchemaId, SourceKind
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.normalize.url import RELATIVE_WITHOUT_BASE
-from crawlerai.resolve.derive import Derived, fill, is_application_field, is_page_url_field
-from crawlerai.resolve.ownership import EntityGraph
-from crawlerai.resolve.preference import PRECEDENCE_TYPES, Chosen, PageFacts, Preference, Resolver
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.collect.base import Candidate, Entity
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import PageKind, SchemaId, SourceKind
+from snowcrawl.normalize.base import Context, Ok
+from snowcrawl.normalize.url import RELATIVE_WITHOUT_BASE
+from snowcrawl.resolve.derive import Derived, fill, is_application_field, is_page_url_field
+from snowcrawl.resolve.ownership import EntityGraph
+from snowcrawl.resolve.preference import PRECEDENCE_TYPES, Chosen, PageFacts, Preference, Resolver
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 FINAL_URL = "https://shop.example.test/p/1?colour=red"

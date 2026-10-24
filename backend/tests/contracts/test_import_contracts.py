@@ -25,26 +25,26 @@ def lint_imports(src: Path) -> subprocess.CompletedProcess[str]:
 
 @pytest.fixture
 def package_copy(tmp_path: Path) -> Path:
-    shutil.copytree(BACKEND / "src" / "crawlerai", tmp_path / "crawlerai", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(BACKEND / "src" / "snowcrawl", tmp_path / "snowcrawl", ignore=shutil.ignore_patterns("__pycache__"))
     return tmp_path
 
 
 def plant(src: Path, files: dict[str, str]) -> None:
     for relative, code in files.items():
-        (src / "crawlerai" / relative).write_text(code, encoding="utf-8")
+        (src / "snowcrawl" / relative).write_text(code, encoding="utf-8")
 
 
 @pytest.mark.parametrize(
     ("files", "broken_contract"),
     [
         ({"collect/probe.py": "import babel\n"}, "Only normalizers import normalization libraries"),
-        ({"normalize/url.py": "from crawlerai.normalize import text\n"}, "One module per field type"),
+        ({"normalize/url.py": "from snowcrawl.normalize import text\n"}, "One module per field type"),
         (
-            {"normalize/dispatch.py": "", "normalize/money.py": "from crawlerai.normalize import dispatch\n"},
+            {"normalize/dispatch.py": "", "normalize/money.py": "from snowcrawl.normalize import dispatch\n"},
             "Normalizer internals",
         ),
-        ({"resolve/probe.py": "from crawlerai import adapters\n"}, "Nothing outside adapters imports adapters"),
-        ({"core/probe.py": "from crawlerai import db\n"}, "Layering"),
+        ({"resolve/probe.py": "from snowcrawl import adapters\n"}, "Nothing outside adapters imports adapters"),
+        ({"core/probe.py": "from snowcrawl import db\n"}, "Layering"),
     ],
 )
 def test_planted_violation_breaks_its_contract(package_copy: Path, files: dict[str, str], broken_contract: str) -> None:
@@ -62,8 +62,8 @@ def test_planted_violation_breaks_its_contract(package_copy: Path, files: dict[s
     [
         {},
         {"normalize/probe.py": "import babel\nimport dateparser\n"},
-        {"collect/probe.py": "from crawlerai import adapters\n"},
-        {"api/probe.py": "from crawlerai import services\n", "services/probe.py": "from crawlerai import schemas\n"},
+        {"collect/probe.py": "from snowcrawl import adapters\n"},
+        {"api/probe.py": "from snowcrawl import services\n", "services/probe.py": "from snowcrawl import schemas\n"},
     ],
 )
 def test_permitted_imports_keep_every_contract(package_copy: Path, files: dict[str, str]) -> None:

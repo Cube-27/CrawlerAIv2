@@ -1,8 +1,8 @@
 # call-crawl
 
-Call the CrawlerAI crawl endpoint to crawl a site from a start URL.
+Call the Snowcrawl crawl endpoint to crawl a site from a start URL.
 
-- Send `POST /v1/crawl` with `Authorization: Bearer $CRAWLERAI_API_KEY` and a JSON body.
+- Send `POST /v1/crawl` with `Authorization: Bearer $SNOWCRAWL_API_KEY` and a JSON body.
 - Required: `url` (the start page) and `formats`, a non-empty list of `markdown`, `html`, `raw_html`, `links`,
   `metadata` and `records`.
 - Scope: `include` and `exclude` URL globs, `max_depth` and `limit`. The crawl stays on the start URL's host (and the
@@ -19,9 +19,9 @@ Call the CrawlerAI crawl endpoint to crawl a site from a start URL.
 
 # integrate-crawl
 
-Build an integration on the CrawlerAI crawl endpoint (`POST /v1/crawl`).
+Build an integration on the Snowcrawl crawl endpoint (`POST /v1/crawl`).
 
-- Read the base URL and the API key from configuration (`CRAWLERAI_API_KEY`); never hard-code a key.
+- Read the base URL and the API key from configuration (`SNOWCRAWL_API_KEY`); never hard-code a key.
 - Keep crawls bounded: always set `limit`, and narrow them with `include` and `exclude` globs. To read only what
   matters on a large site, use `strategy: best_first` with a `query`.
 - Use `page_kind_rules` so only the pages you need are extracted; the others are read for links only.

@@ -6,8 +6,8 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.collect.base import Candidate, Entity
-from crawlerai.normalize.base import Ok
+from snowcrawl.collect.base import Candidate, Entity
+from snowcrawl.normalize.base import Ok
 
 PRODUCT = Entity(id="jsonld:0:$['@graph'][0]", types=("Product",), urls=("https://shop.example.test/p/1",), parent=None)
 

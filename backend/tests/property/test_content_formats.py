@@ -11,14 +11,14 @@ from hypothesis import given
 from hypothesis import strategies as st
 from selectolax.lexbor import LexborHTMLParser
 
-from crawlerai.content.fit import markdown_fit
-from crawlerai.content.html import cleaned_html, is_javascript_url
-from crawlerai.content.links import links
-from crawlerai.content.markdown import markdown
-from crawlerai.content.metadata import canonical_link
-from crawlerai.content.page import ParsedPage
-from crawlerai.normalize.base import Ok
-from crawlerai.normalize.url import canonical
+from snowcrawl.content.fit import markdown_fit
+from snowcrawl.content.html import cleaned_html, is_javascript_url
+from snowcrawl.content.links import links
+from snowcrawl.content.markdown import markdown
+from snowcrawl.content.metadata import canonical_link
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.normalize.base import Ok
+from snowcrawl.normalize.url import canonical
 
 FINAL_URL = "https://shop.example.test/catalog/chairs?page=2"
 ARTICLE = (

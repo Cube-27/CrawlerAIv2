@@ -1,5 +1,5 @@
 """The webhook's signature and backoff, and the SSRF-guarded POST that sends it (`post` in
-`crawlerai.acquire.http`).
+`snowcrawl.acquire.http`).
 
 A local server on 127.0.0.1 takes the POSTs under a `.test` host, admitted by a connector that pins that host to it;
 every other URL goes through the real guard with a stub resolver. No live network.
@@ -15,9 +15,9 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from crawlerai.acquire.http import post
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector, SsrfRejected, Target
-from crawlerai.api.webhooks import signature
+from snowcrawl.acquire.http import post
+from snowcrawl.acquire.ssrf import IPAddress, SafeConnector, SsrfRejected, Target
+from snowcrawl.api.webhooks import signature
 
 
 def test_the_signature_is_the_hex_hmac_sha256_of_the_body() -> None:
@@ -85,7 +85,7 @@ class LoopbackConnector(SafeConnector):
 
 
 def _post(server: Server, url: str) -> int:
-    headers = {"Content-Type": "application/json", "X-CrawlerAI-Signature": "sha256=00"}
+    headers = {"Content-Type": "application/json", "X-Snowcrawl-Signature": "sha256=00"}
     return asyncio.run(post(url, b'{"id": 1}', headers, connector=LoopbackConnector(server.port), timeout_s=5))
 
 

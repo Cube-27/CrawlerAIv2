@@ -10,15 +10,15 @@ import pytest
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.drift import DriftMargins, record_run
-from crawlerai.config_ir.executor import EngineExecutor
-from crawlerai.config_ir.model import ExtractionConfigIR
-from crawlerai.config_ir.progressive import StateKey, learning_activated, request_learning
-from crawlerai.config_ir.url_pattern import patterns_shape
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import (
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.config_ir.drift import DriftMargins, record_run
+from snowcrawl.config_ir.executor import EngineExecutor
+from snowcrawl.config_ir.model import ExtractionConfigIR
+from snowcrawl.config_ir.progressive import StateKey, learning_activated, request_learning
+from snowcrawl.config_ir.url_pattern import patterns_shape
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import (
     ExtractionConfig,
     ExtractionConfigId,
     Job,
@@ -30,9 +30,9 @@ from crawlerai.db.models import (
     SchemaId,
     Site,
 )
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import FieldSpec, FieldType
-from crawlerai.schemas.types import SchemaDef as Schema
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import FieldSpec, FieldType
+from snowcrawl.schemas.types import SchemaDef as Schema
 
 pytestmark = pytest.mark.anyio
 

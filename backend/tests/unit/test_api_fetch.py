@@ -14,10 +14,10 @@ from ipaddress import ip_address
 import httpx
 import pytest
 
-from crawlerai.acquire.api import JsonRequest, fetch_json
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.storage.capture_bundle import decode, encode
+from snowcrawl.acquire.api import JsonRequest, fetch_json
+from snowcrawl.acquire.ssrf import IPAddress, SafeConnector
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.storage.capture_bundle import decode, encode
 from tests.local_server import LoopbackConnector, Reply, Server, serving
 from tests.stand_in import IMPERSONATE, handler_transport
 

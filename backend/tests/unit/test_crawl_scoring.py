@@ -1,7 +1,7 @@
-"""How a crawl orders its frontier (`crawlerai.crawl.scoring`): best first ranks the links that match the
+"""How a crawl orders its frontier (`snowcrawl.crawl.scoring`): best first ranks the links that match the
 query above the rest, shallower and sitemap-preferred first among equals; depth first leases the deepest."""
 
-from crawlerai.crawl.scoring import best_first_scores, page_relevance, query_terms
+from snowcrawl.crawl.scoring import best_first_scores, page_relevance, query_terms
 
 BASE = "https://docs.example.test"
 

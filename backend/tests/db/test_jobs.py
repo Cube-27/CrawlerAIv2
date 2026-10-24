@@ -15,8 +15,8 @@ import pytest
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import (
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import (
     Capture,
     CaptureId,
     Extraction,
@@ -33,19 +33,19 @@ from crawlerai.db.models import (
     UrlTask,
     UrlTaskId,
 )
-from crawlerai.recurring.versions import link_records
-from crawlerai.schemas import registry
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument, document_digest
-from crawlerai.services import jobs
-from crawlerai.services.job_outcomes import job_outcomes
-from crawlerai.services.jobs import (
+from snowcrawl.recurring.versions import link_records
+from snowcrawl.schemas import registry
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument, document_digest
+from snowcrawl.services import jobs
+from snowcrawl.services.job_outcomes import job_outcomes
+from snowcrawl.services.jobs import (
     ExportPage,
     JsonValuesPage,
     PageOutputPage,
     ResultsQuery,
 )
-from crawlerai.services.records import RecordPage
-from crawlerai.storage.fs import FsStore
+from snowcrawl.services.records import RecordPage
+from snowcrawl.storage.fs import FsStore
 from tests.db.support import api
 
 pytestmark = pytest.mark.anyio
@@ -393,7 +393,7 @@ async def test_results_export_the_records_in_the_schemas_columns(world: World) -
 @pytest.fixture
 async def client(app_env: pytest.MonkeyPatch, world: World) -> AsyncIterator[httpx.AsyncClient]:
     """The app with no LLM provider key."""
-    app_env.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
+    app_env.setenv("SNOWCRAWL_LLM_PROVIDERS", "anthropic")
     async with api(world.engine) as (_, client):
         yield client
 

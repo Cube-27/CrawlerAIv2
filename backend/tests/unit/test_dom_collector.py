@@ -9,16 +9,16 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.collect.base import PAGE, Candidate
-from crawlerai.collect.dom import DomCollector
-from crawlerai.collect.dom_images import stated_images
-from crawlerai.collect.locator import parse_locator
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import PageKind, SchemaId
-from crawlerai.normalize.base import Context, Invalid, Ok
-from crawlerai.schemas.registry import load_presets
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.collect.base import PAGE, Candidate
+from snowcrawl.collect.dom import DomCollector
+from snowcrawl.collect.dom_images import stated_images
+from snowcrawl.collect.locator import parse_locator
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import PageKind, SchemaId
+from snowcrawl.normalize.base import Context, Invalid, Ok
+from snowcrawl.schemas.registry import load_presets
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 PAGE_URL = "https://shop.example.test/p/1"
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=PAGE_URL, page_url=PAGE_URL, html_lang="en")

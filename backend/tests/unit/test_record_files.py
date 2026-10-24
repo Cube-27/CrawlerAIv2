@@ -7,11 +7,11 @@ from typing import Any
 
 import openpyxl
 
-from crawlerai.config_ir.exporters.files import export_file
-from crawlerai.config_ir.exporters.records import export_records
-from crawlerai.resolve.records import FieldMeta, RecordContent
-from crawlerai.resolve.types import FieldStatus
-from crawlerai.schemas.types import SchemaDocument
+from snowcrawl.config_ir.exporters.files import export_file
+from snowcrawl.config_ir.exporters.records import export_records
+from snowcrawl.resolve.records import FieldMeta, RecordContent
+from snowcrawl.resolve.types import FieldStatus
+from snowcrawl.schemas.types import SchemaDocument
 
 SCHEMA = SchemaDocument.model_validate(
     {

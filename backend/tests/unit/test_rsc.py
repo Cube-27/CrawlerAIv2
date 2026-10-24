@@ -8,11 +8,11 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.collect.js_state import state_documents
-from crawlerai.collect.xhr import network_documents
-from crawlerai.content.page import ParsedPage, ScriptBlock
-from crawlerai.content.rsc import read_rows
-from crawlerai.content.state import flight_rows
+from snowcrawl.collect.js_state import state_documents
+from snowcrawl.collect.xhr import network_documents
+from snowcrawl.content.page import ParsedPage, ScriptBlock
+from snowcrawl.content.rsc import read_rows
+from snowcrawl.content.state import flight_rows
 from tests.support.captures import call
 
 _TEXT = "line one\nlíne twö — €\n"

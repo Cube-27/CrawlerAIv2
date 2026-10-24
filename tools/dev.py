@@ -26,8 +26,8 @@ UV_RUN = shlex.split(os.environ.get("UV_RUN") or "uv run")
 
 # The scratch databases the backend checks recreate each run, so the dev database keeps its data: the tests run in
 # parallel (`PYTEST_WORKERS`, default one per CPU), each xdist worker in its own copy of the migrated
-# `crawlerai_check` (`_gw0`, ...). 127.0.0.1, not localhost: asyncpg can hang resolving localhost on Windows.
-CHECK_DATABASE_URL = "postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai_check"
+# `snowcrawl_check` (`_gw0`, ...). 127.0.0.1, not localhost: asyncpg can hang resolving localhost on Windows.
+CHECK_DATABASE_URL = "postgresql+asyncpg://app:app@127.0.0.1:5432/snowcrawl_check"
 
 
 def run(cwd: Path, *argv: str, env: dict[str, str] | None = None, stdin: str | None = None) -> None:
@@ -94,7 +94,7 @@ def api_limits(openapi: dict[str, Any]) -> str:
 def api_client() -> None:
     """Regenerate frontend/openapi.json, the TS client types and the members' bounds from the backend. CI fails on a
     diff."""
-    argv = [*UV_RUN, "crawlerai", "openapi"]
+    argv = [*UV_RUN, "snowcrawl", "openapi"]
     done = subprocess.run(argv, cwd=BACKEND, capture_output=True, text=True, check=False)  # noqa: S603
     if done.returncode != 0:
         sys.exit(done.stderr)
@@ -166,18 +166,18 @@ def check_backend() -> None:
     Chrome is not installed (`uv run patchright install chrome` once); `--durations=20` lists the slowest tests."""
     if not os.environ.get("PSQL"):
         run(ROOT, "docker", "compose", "up", "-d", "--wait", "postgres")
-    env = {"CRAWLERAI_DATABASE_URL": CHECK_DATABASE_URL}
-    psql("DROP DATABASE IF EXISTS crawlerai_check;\nCREATE DATABASE crawlerai_check OWNER app;\n")
+    env = {"SNOWCRAWL_DATABASE_URL": CHECK_DATABASE_URL}
+    psql("DROP DATABASE IF EXISTS snowcrawl_check;\nCREATE DATABASE snowcrawl_check OWNER app;\n")
     for target in ("head", "base", "head"):
         verb = "upgrade" if target == "head" else "downgrade"
         uv(BACKEND, "alembic", verb, target, env=env)
     workers = int(os.environ.get("PYTEST_WORKERS") or os.cpu_count() or 1)
     psql("".join(
-        f"DROP DATABASE IF EXISTS crawlerai_check_gw{i}; "
-        f"CREATE DATABASE crawlerai_check_gw{i} TEMPLATE crawlerai_check OWNER app;\n"
+        f"DROP DATABASE IF EXISTS snowcrawl_check_gw{i}; "
+        f"CREATE DATABASE snowcrawl_check_gw{i} TEMPLATE snowcrawl_check OWNER app;\n"
         for i in range(workers)
     ))  # fmt: skip
-    test_env = {"CRAWLERAI_TEST_DATABASE_URL": CHECK_DATABASE_URL}
+    test_env = {"SNOWCRAWL_TEST_DATABASE_URL": CHECK_DATABASE_URL}
     uv(BACKEND, "pytest", "-n", str(workers), "--durations=20", env=test_env)
 
 
@@ -218,7 +218,7 @@ def check_sdk() -> None:
     run(SDK / "typescript", "pnpm", "check")
     run(SDK / "typescript", "pnpm", "test")
     python = SDK / "python"
-    run(python, "uv", "sync", "--frozen", "--no-build", "--no-binary-package", "crawlerai-sdk", "--extra", "dev", "-q")
+    run(python, "uv", "sync", "--frozen", "--no-build", "--no-binary-package", "snowcrawl-sdk", "--extra", "dev", "-q")
     for step in (("ruff", "check", "src", "tests"), ("mypy", "src", "tests"), ("pytest", "-q")):
         run(python, "uv", "run", "--no-sync", *step)
 

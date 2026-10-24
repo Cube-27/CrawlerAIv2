@@ -6,11 +6,11 @@ candidates serve only where no other source gives any. Entities are synthetic (C
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.collect.base import ARRAY_ROW, Candidate, Entity
-from crawlerai.collect.items.align import Items
-from crawlerai.collect.items.state_rows import StateRows
-from crawlerai.collect.row_sources import RowSources
-from crawlerai.normalize.base import Ok
+from snowcrawl.collect.base import ARRAY_ROW, Candidate, Entity
+from snowcrawl.collect.items.align import Items
+from snowcrawl.collect.items.state_rows import StateRows
+from snowcrawl.collect.row_sources import RowSources
+from snowcrawl.normalize.base import Ok
 
 
 def _rows(kind: str, count: int) -> tuple[Entity, ...]:

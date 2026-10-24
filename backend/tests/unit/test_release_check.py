@@ -5,14 +5,14 @@ and on at least 95% from 10 on, is marked `manual`."""
 from datetime import UTC, datetime
 from typing import Any
 
-from crawlerai.config_ir.model import ExtractionConfigIR
-from crawlerai.config_ir.release_check import ReleaseField, ReleaseReport, release_check
-from crawlerai.config_ir.validation import Facts, HeldOutPage
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import CaptureId, SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import FieldType, SchemaDef
+from snowcrawl.config_ir.model import ExtractionConfigIR
+from snowcrawl.config_ir.release_check import ReleaseField, ReleaseReport, release_check
+from snowcrawl.config_ir.validation import Facts, HeldOutPage
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import CaptureId, SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import FieldType, SchemaDef
 
 BASE = "https://shop.example.test/c/1"
 CTX = Context(captured_at=datetime(2026, 10, 2, tzinfo=UTC), base_url=BASE, page_url=BASE)

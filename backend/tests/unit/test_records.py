@@ -6,17 +6,17 @@ import hashlib
 import uuid
 from typing import Any
 
-from crawlerai.collect.base import Candidate
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId, SiteId
-from crawlerai.normalize.base import Ok
-from crawlerai.resolve.records import (
+from snowcrawl.collect.base import Candidate
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId, SiteId
+from snowcrawl.normalize.base import Ok
+from snowcrawl.resolve.records import (
     assemble,
     assemble_listing,
     entity_key,
 )
-from crawlerai.resolve.types import FieldOutcome
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.resolve.types import FieldOutcome
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 SITE = SiteId(uuid.UUID("01900000-0000-7000-8000-0000000000aa"))
 URL = "https://shop.example.test/p/1"

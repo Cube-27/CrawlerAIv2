@@ -8,16 +8,16 @@ from typing import cast
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.collect import vocabulary
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.db.models import JobId
-from crawlerai.llm.roles import s_schema
-from crawlerai.llm.roles.s_schema import (
+from snowcrawl.collect import vocabulary
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.db.models import JobId
+from snowcrawl.llm.roles import s_schema
+from snowcrawl.llm.roles.s_schema import (
     draft_request,
     output_schema,
 )
-from crawlerai.llm.roles.s_wire import from_wire, to_wire
-from crawlerai.schemas.types import FieldType
+from snowcrawl.llm.roles.s_wire import from_wire, to_wire
+from snowcrawl.schemas.types import FieldType
 
 JOB = JobId(uuid.UUID(int=1))
 

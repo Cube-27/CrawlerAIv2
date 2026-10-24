@@ -3,7 +3,7 @@ our own validators' message without pydantic's "Value error, " prefix."""
 
 from pydantic import BaseModel, ValidationError, field_validator
 
-from crawlerai.core.validation import field_error
+from snowcrawl.core.validation import field_error
 
 
 class _Row(BaseModel):

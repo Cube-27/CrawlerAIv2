@@ -17,13 +17,13 @@ from pydantic import SecretStr
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.api import JsonRequest
-from crawlerai.acquire.browser_tab import Drive
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import SSRF_REJECTED
-from crawlerai.acquire.types import FetchPolicy, FetchResult, PagedFetch
-from crawlerai.core.settings import Settings
-from crawlerai.db.models import (
+from snowcrawl.acquire.api import JsonRequest
+from snowcrawl.acquire.browser_tab import Drive
+from snowcrawl.acquire.rungs import Rungs
+from snowcrawl.acquire.ssrf import SSRF_REJECTED
+from snowcrawl.acquire.types import FetchPolicy, FetchResult, PagedFetch
+from snowcrawl.core.settings import Settings
+from snowcrawl.db.models import (
     Capture,
     Extraction,
     ExtractionConfig,
@@ -34,17 +34,17 @@ from crawlerai.db.models import (
     SiteId,
     UrlTask,
 )
-from crawlerai.llm.client import NO_LLM
-from crawlerai.recurring.listing_diff import close_run
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas.types import SchemaDef, document_digest
-from crawlerai.services.batch import BatchScrapeRequest, submit_batch
-from crawlerai.services.crawl import CrawlRequest, submit_crawl
-from crawlerai.services.fetching import Fetching
-from crawlerai.services.scrape import ScrapeRequest, scrape
-from crawlerai.worker.handlers.crawl import crawl_handler
-from crawlerai.worker.handlers.scrape import scrape_handler
-from crawlerai.worker.loop import TaskHandler, run_worker
+from snowcrawl.llm.client import NO_LLM
+from snowcrawl.recurring.listing_diff import close_run
+from snowcrawl.resolve.pipeline import EngineData
+from snowcrawl.schemas.types import SchemaDef, document_digest
+from snowcrawl.services.batch import BatchScrapeRequest, submit_batch
+from snowcrawl.services.crawl import CrawlRequest, submit_crawl
+from snowcrawl.services.fetching import Fetching
+from snowcrawl.services.scrape import ScrapeRequest, scrape
+from snowcrawl.worker.handlers.crawl import crawl_handler
+from snowcrawl.worker.handlers.scrape import scrape_handler
+from snowcrawl.worker.loop import TaskHandler, run_worker
 from tests.db.conftest import listing_page, listing_schema
 from tests.db.support import fetching_from
 

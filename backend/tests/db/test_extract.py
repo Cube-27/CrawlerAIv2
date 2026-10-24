@@ -16,12 +16,12 @@ from pydantic import JsonValue, SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.capture import CaptureMethod
-from crawlerai.core.settings import Settings
-from crawlerai.db.models import Job, JobId, ProgressiveState, Record, UrlTask
-from crawlerai.llm.client import (
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.capture import CaptureMethod
+from snowcrawl.core.settings import Settings
+from snowcrawl.db.models import Job, JobId, ProgressiveState, Record, UrlTask
+from snowcrawl.llm.client import (
     BudgetExhausted,
     LLMClient,
     MeteredClient,
@@ -29,17 +29,17 @@ from crawlerai.llm.client import (
     ProviderReply,
     Unconfigured,
 )
-from crawlerai.llm.roles.s_schema import draft_name
-from crawlerai.llm.roles.s_wire import to_wire
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas.types import SchemaDef
-from crawlerai.services import jobs
-from crawlerai.services.extract import DraftTimedOut, ExtractRequest, NoSamplePage, NothingToExtract, submit_extract
-from crawlerai.services.fetching import Fetching, TargetsRejected
-from crawlerai.services.scrape import RecordsUnavailable
-from crawlerai.services.scrape_request import SchemaUnusable
-from crawlerai.worker.handlers.scrape import scrape_handler
-from crawlerai.worker.loop import run_worker
+from snowcrawl.llm.roles.s_schema import draft_name
+from snowcrawl.llm.roles.s_wire import to_wire
+from snowcrawl.resolve.pipeline import EngineData
+from snowcrawl.schemas.types import SchemaDef
+from snowcrawl.services import jobs
+from snowcrawl.services.extract import DraftTimedOut, ExtractRequest, NoSamplePage, NothingToExtract, submit_extract
+from snowcrawl.services.fetching import Fetching, TargetsRejected
+from snowcrawl.services.scrape import RecordsUnavailable
+from snowcrawl.services.scrape_request import SchemaUnusable
+from snowcrawl.worker.handlers.scrape import scrape_handler
+from snowcrawl.worker.loop import run_worker
 from tests.db.support import PRICE, PRIVATE_HOST, TITLE
 from tests.db.support import Web as SharedWeb
 from tests.support.fake_llm import FakeProvider

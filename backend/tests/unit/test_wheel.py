@@ -25,11 +25,11 @@ def _project(root: Path) -> Path:
     root.mkdir()
     shutil.copy(BACKEND / "pyproject.toml", root)
     shutil.copy(BACKEND / "hatch_build.py", root)
-    core = root / "src" / "crawlerai" / "core"
+    core = root / "src" / "snowcrawl" / "core"
     core.mkdir(parents=True)
-    (root / "src" / "crawlerai" / "__init__.py").write_text("")
+    (root / "src" / "snowcrawl" / "__init__.py").write_text("")
     (core / "__init__.py").write_text("")
-    shutil.copy(BACKEND / "src" / "crawlerai" / "core" / "engine_version.py", core)
+    shutil.copy(BACKEND / "src" / "snowcrawl" / "core" / "engine_version.py", core)
     data = root / "data"
     (data / "listed").mkdir(parents=True)
     (data / "listed" / "words.txt").write_text("synthetic\n")
@@ -47,18 +47,18 @@ def _build(root: Path, out: Path) -> zipfile.ZipFile:
 
 
 def test_the_wheel_holds_the_version_and_the_listed_data_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CRAWLERAI_GIT_SHA", SHA)
+    monkeypatch.setenv("SNOWCRAWL_GIT_SHA", SHA)
     root = _project(tmp_path / "project")
 
     with _build(root, tmp_path / "dist") as wheel:
-        packaged = sorted(name for name in wheel.namelist() if name.startswith("crawlerai/_engine/"))
-        version = wheel.read("crawlerai/_engine/VERSION")
+        packaged = sorted(name for name in wheel.namelist() if name.startswith("snowcrawl/_engine/"))
+        version = wheel.read("snowcrawl/_engine/VERSION")
 
     assert packaged == [
-        "crawlerai/_engine/VERSION",
-        "crawlerai/_engine/data/calibration.json",
-        "crawlerai/_engine/data/drift_margins.json",
-        "crawlerai/_engine/data/listed/words.txt",
-        "crawlerai/_engine/data/manifest.json",
+        "snowcrawl/_engine/VERSION",
+        "snowcrawl/_engine/data/calibration.json",
+        "snowcrawl/_engine/data/drift_margins.json",
+        "snowcrawl/_engine/data/listed/words.txt",
+        "snowcrawl/_engine/data/manifest.json",
     ]
     assert version == f"{SHA}\n".encode()

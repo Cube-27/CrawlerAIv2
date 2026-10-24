@@ -1,7 +1,7 @@
 [project]
-name = "crawlerai-sdk"
+name = "snowcrawl-sdk"
 version = "0.1.0"
-description = "A typed Python client for the CrawlerAI API: scrape, map, crawl, batch, extract and search, with job polling, event streaming and webhook verification."
+description = "A typed Python client for the Snowcrawl API: scrape, map, crawl, batch, extract and search, with job polling, event streaming and webhook verification."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "AGPL-3.0-only"
@@ -15,19 +15,19 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/crawlerai_sdk"]
+packages = ["src/snowcrawl_sdk"]
 
 [tool.mypy]
 strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = "crawlerai_sdk.models"
+module = "snowcrawl_sdk.models"
 ignore_errors = true
 
 [tool.ruff]
 line-length = 120
-extend-exclude = ["src/crawlerai_sdk/models.py"]
+extend-exclude = ["src/snowcrawl_sdk/models.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

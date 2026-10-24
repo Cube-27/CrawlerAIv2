@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from crawlerai import cli
-from crawlerai.cli import main
-from crawlerai.core.data import DataReport
+from snowcrawl import cli
+from snowcrawl.cli import main
+from snowcrawl.core.data import DataReport
 
 
 def test_openapi_prints_the_app_schema_as_sorted_json_with_trailing_newline(
@@ -16,7 +16,7 @@ def test_openapi_prints_the_app_schema_as_sorted_json_with_trailing_newline(
     out = capsys.readouterr().out
     document = json.loads(out)
     assert document["openapi"].startswith("3.")
-    assert document["info"]["title"] == "CrawlerAI"
+    assert document["info"]["title"] == "Snowcrawl"
     assert {"/healthz", "/v1/scrape"} <= set(document["paths"])
     assert out == json.dumps(document, indent=2, sort_keys=True) + "\n"
 
@@ -55,6 +55,6 @@ def test_data_fetch_reports_every_entry_then_exits_2_on_a_refused_one(
     assert exit_info.value.code == 2
     assert capsys.readouterr() == (
         "fetched schemaorg/vocabulary.jsonld\n",
-        "crawlerai data fetch: publicsuffix/list.dat: sha256 0 does not match the manifest\n"
-        "crawlerai data fetch: other.txt: download failed: x\n",
+        "snowcrawl data fetch: publicsuffix/list.dat: sha256 0 does not match the manifest\n"
+        "snowcrawl data fetch: other.txt: download failed: x\n",
     )

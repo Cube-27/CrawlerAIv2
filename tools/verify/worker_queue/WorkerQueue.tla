@@ -1,6 +1,6 @@
 ---------------------------- MODULE WorkerQueue ----------------------------
 (***************************************************************************)
-(* The worker and queue concurrency of backend/src/crawlerai:               *)
+(* The worker and queue concurrency of backend/src/snowcrawl:               *)
 (*   worker/loop.py        run_worker, _run_within_deadline, _run, _execute *)
 (*   db/queue.py           claim_tasks, fail_task, release_task,            *)
 (*                         release_expired_leases, _move (the fence),       *)

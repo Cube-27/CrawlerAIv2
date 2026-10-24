@@ -1,8 +1,8 @@
 """Build hook: writes `VERSION` and puts it, with the data files the manifest lists, inside the wheel's package.
 
-An installed wheel has no backend source tree, so `crawlerai.core.engine_version.engine_dir` reads `VERSION` and
-`data/` from `crawlerai/_engine/` instead. Only the files `data/manifest.json` lists, its
-dev-fitted files and the manifest itself go in (C4); a fetched file that `crawlerai data fetch` has not
+An installed wheel has no backend source tree, so `snowcrawl.core.engine_version.engine_dir` reads `VERSION` and
+`data/` from `snowcrawl/_engine/` instead. Only the files `data/manifest.json` lists, its
+dev-fitted files and the manifest itself go in (C4); a fetched file that `snowcrawl data fetch` has not
 downloaded is left out, and the engine then reports it missing. An editable install runs from the source tree and gets
 nothing.
 
@@ -20,9 +20,9 @@ from typing import Any
 
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
-PACKAGED = "crawlerai/_engine"
-SHA_VARIABLE = "CRAWLERAI_GIT_SHA"
-# A git object name, as `crawlerai.core.engine_version` reads it: 7 to 40 hex digits (SHA-1) or 64 (SHA-256).
+PACKAGED = "snowcrawl/_engine"
+SHA_VARIABLE = "SNOWCRAWL_GIT_SHA"
+# A git object name, as `snowcrawl.core.engine_version` reads it: 7 to 40 hex digits (SHA-1) or 64 (SHA-256).
 _GIT_SHA = re.compile(r"[0-9a-f]{7,40}|[0-9a-f]{64}")
 # The dev-fitted files under data/ that carry a `source_split: dev` stamp instead of a manifest entry: the
 # precedence and calibration and the drift margins.
@@ -30,7 +30,7 @@ _DEV_FITTED = ("source_precedence.yaml", "calibration.json", "drift_margins.json
 
 
 def git_sha(root: Path) -> str | None:
-    """The commit being built: `CRAWLERAI_GIT_SHA` (a build without a checkout, such as the image), else the `VERSION`
+    """The commit being built: `SNOWCRAWL_GIT_SHA` (a build without a checkout, such as the image), else the `VERSION`
     of an unpacked sdist (it has `PKG-INFO`), else `git rev-parse HEAD` in `root`; None when none gives one. In a
     checkout, `VERSION` is an earlier build's output, so git names the commit."""
     sha = os.environ.get(SHA_VARIABLE, "").strip()

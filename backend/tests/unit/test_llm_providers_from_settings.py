@@ -1,11 +1,11 @@
-"""The configured providers: `CRAWLERAI_LLM_PROVIDERS` sets which providers and their failover order;
+"""The configured providers: `SNOWCRAWL_LLM_PROVIDERS` sets which providers and their failover order;
 a listed provider without an API key stops the client from being built, and the log says so."""
 
 import pytest
 from pydantic import SecretStr
 
-from crawlerai.core.settings import LLMSettings
-from crawlerai.llm.providers.from_settings import providers_from_settings
+from snowcrawl.core.settings import LLMSettings
+from snowcrawl.llm.providers.from_settings import providers_from_settings
 
 KEYS = {"llm_api_key_anthropic": SecretStr("a-key"), "llm_api_key_gemini": SecretStr("g-key")}
 
@@ -31,5 +31,5 @@ def test_each_provider_gets_its_model_per_class() -> None:
 def test_a_listed_provider_without_a_key_is_refused(missing: str) -> None:
     keys = {name: key for name, key in KEYS.items() if not name.endswith(missing)}
     settings = LLMSettings.model_validate({"llm_providers": ("anthropic", "gemini")} | keys)
-    with pytest.raises(ValueError, match=f"CRAWLERAI_LLM_API_KEY_{missing.upper()} is not set"):
+    with pytest.raises(ValueError, match=f"SNOWCRAWL_LLM_API_KEY_{missing.upper()} is not set"):
         providers_from_settings(settings)

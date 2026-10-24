@@ -15,17 +15,17 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.adapters.base import ADAPTER_CALL
-from crawlerai.adapters.registry import Registry
-from crawlerai.adapters.shopify import API_VERSION, Shopify
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId, SourceKind
-from crawlerai.resolve.pipeline import EngineData, extract_page
-from crawlerai.resolve.preference import PRECEDENCE_TYPES
-from crawlerai.resolve.types import ExtractionResult, FieldSet
-from crawlerai.schemas.registry import load_presets
-from crawlerai.schemas.types import SchemaDef
+from snowcrawl.adapters.base import ADAPTER_CALL
+from snowcrawl.adapters.registry import Registry
+from snowcrawl.adapters.shopify import API_VERSION, Shopify
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId, SourceKind
+from snowcrawl.resolve.pipeline import EngineData, extract_page
+from snowcrawl.resolve.preference import PRECEDENCE_TYPES
+from snowcrawl.resolve.types import ExtractionResult, FieldSet
+from snowcrawl.schemas.registry import load_presets
+from snowcrawl.schemas.types import SchemaDef
 from tests.support.captures import call, capture
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")

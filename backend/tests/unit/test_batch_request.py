@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.services.batch import BatchScrapeRequest
+from snowcrawl.services.batch import BatchScrapeRequest
 
 URL = "https://shop.example.test/kettles/blue"
 SCHEMA = {"id": str(uuid.UUID(int=1))}

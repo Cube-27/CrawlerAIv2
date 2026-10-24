@@ -26,18 +26,18 @@ from lxml import html as lxml_html
 from patchright.async_api import Error as PlaywrightError
 from pydantic import TypeAdapter
 
-from crawlerai.acquire.browser import fetch_browser
-from crawlerai.acquire.browser_capture import CAPS, Caps
-from crawlerai.acquire.browser_profiles import profile_name
-from crawlerai.acquire.browser_session import BrowserSession, context_key, open_browser
-from crawlerai.acquire.desktop_screen import desktop_screen
-from crawlerai.acquire.session import CookieExport, SiteSessions
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector, SsrfRejected, Target
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.config_ir.page_actions import Action, to_steps
-from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.core.proxy import ProxyPool
-from crawlerai.storage.capture_bundle import decode, encode
+from snowcrawl.acquire.browser import fetch_browser
+from snowcrawl.acquire.browser_capture import CAPS, Caps
+from snowcrawl.acquire.browser_profiles import profile_name
+from snowcrawl.acquire.browser_session import BrowserSession, context_key, open_browser
+from snowcrawl.acquire.desktop_screen import desktop_screen
+from snowcrawl.acquire.session import CookieExport, SiteSessions
+from snowcrawl.acquire.ssrf import IPAddress, SafeConnector, SsrfRejected, Target
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.config_ir.page_actions import Action, to_steps
+from snowcrawl.core.engine_version import ENGINE_VERSION
+from snowcrawl.core.proxy import ProxyPool
+from snowcrawl.storage.capture_bundle import decode, encode
 
 pytestmark = pytest.mark.browser
 
@@ -354,7 +354,7 @@ def browser(server: Server) -> Iterator[Browser]:
 
 @pytest.fixture(scope="module", params=[True, False], ids=["headless", "headful"])
 def each_mode(request: pytest.FixtureRequest, server: Server) -> Iterator[Browser]:
-    """The module's headless browser, then a headful one (`CRAWLERAI_BROWSER_HEADLESS=false`), on a virtual display
+    """The module's headless browser, then a headful one (`SNOWCRAWL_BROWSER_HEADLESS=false`), on a virtual display
     where the machine has none."""
     if request.param:
         yield request.getfixturevalue("browser")

@@ -7,17 +7,17 @@ from typing import Any, cast
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.config_ir.absent import absent_fields
-from crawlerai.config_ir.held_out import StoredPage
-from crawlerai.config_ir.induction import SamplePage
-from crawlerai.config_ir.model import ExtractionConfigIR
-from crawlerai.config_ir.validation import Facts, HeldOutPage
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import CaptureId, PageKind, SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle
+from snowcrawl.config_ir.absent import absent_fields
+from snowcrawl.config_ir.held_out import StoredPage
+from snowcrawl.config_ir.induction import SamplePage
+from snowcrawl.config_ir.model import ExtractionConfigIR
+from snowcrawl.config_ir.validation import Facts, HeldOutPage
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import CaptureId, PageKind, SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.storage.capture_bundle import CaptureBundle
 
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC))
 TEXT = FieldSpec(type=FieldType.TEXT, description="d", required=True)

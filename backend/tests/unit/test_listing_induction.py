@@ -5,19 +5,19 @@ steps induced from the item layer's blocks across the sample, verified by the en
 from datetime import UTC, datetime
 from pathlib import Path
 
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.executor import EngineExecutor, row_id
-from crawlerai.config_ir.induction import Published, SamplePage
-from crawlerai.config_ir.listing_induction import (
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.config_ir.executor import EngineExecutor, row_id
+from snowcrawl.config_ir.induction import Published, SamplePage
+from snowcrawl.config_ir.listing_induction import (
     ListingInduction,
     induce_listing,
 )
-from crawlerai.config_ir.model import ExtractionConfigIR, ListingSpec
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.schemas.types import SchemaDef
+from snowcrawl.config_ir.model import ExtractionConfigIR, ListingSpec
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.normalize.base import Context, Ok
+from snowcrawl.schemas.types import SchemaDef
 
 BASE = "https://shop.example.test/list"
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=BASE, page_url=BASE)

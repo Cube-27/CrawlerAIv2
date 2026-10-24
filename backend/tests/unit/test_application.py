@@ -3,9 +3,9 @@ platform's documented embed of one, never words on the page. The embed's names c
 
 import pytest
 
-from crawlerai.adapters.greenhouse import APPLICATION_EMBED
-from crawlerai.collect.application import holds_application
-from crawlerai.content.page import ParsedPage
+from snowcrawl.adapters.greenhouse import APPLICATION_EMBED
+from snowcrawl.collect.application import holds_application
+from snowcrawl.content.page import ParsedPage
 
 PAGE = "https://careers.example.com/jobs/7"
 LOADER = f"https://{sorted(APPLICATION_EMBED.loader_hosts)[0]}{APPLICATION_EMBED.loader_path}?for=example"

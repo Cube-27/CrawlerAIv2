@@ -13,12 +13,12 @@ from pathlib import Path
 
 import pytest
 
-from crawlerai import cli
-from crawlerai.acquire.http import fetch_http
-from crawlerai.acquire.ssrf import SafeConnector
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
-from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.storage.capture_bundle import decode, encode
+from snowcrawl import cli
+from snowcrawl.acquire.http import fetch_http
+from snowcrawl.acquire.ssrf import SafeConnector
+from snowcrawl.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from snowcrawl.core.engine_version import ENGINE_VERSION
+from snowcrawl.storage.capture_bundle import decode, encode
 from tests.local_server import LoopbackConnector, Reply, Server, serving
 from tests.stand_in import IMPERSONATE
 
@@ -159,7 +159,7 @@ def test_the_fetch_command_writes_a_bundle_that_decodes(
 ) -> None:
     # It needs no database or object store: the bundle goes to a file.
     for name in list(os.environ):
-        if name.upper().startswith("CRAWLERAI_"):
+        if name.upper().startswith("SNOWCRAWL_"):
             monkeypatch.delenv(name)
     server.route("/p", reply)
     out = tmp_path / "bundle.zst"

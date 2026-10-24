@@ -21,21 +21,21 @@ from pydantic import SecretStr
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.http import fetch_http
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector, Target
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.core.settings import Settings
-from crawlerai.db.models import Job, JobId, JobKind, UrlTask
-from crawlerai.llm.client import NO_LLM
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas import registry
-from crawlerai.schemas.types import SchemaDocument
-from crawlerai.services.fetching import Fetching
-from crawlerai.storage.fs import FsStore
-from crawlerai.worker.handlers.crawl import crawl_handler
-from crawlerai.worker.handlers.scrape import scrape_handler
-from crawlerai.worker.loop import TaskHandler, run_worker
+from snowcrawl.acquire.http import fetch_http
+from snowcrawl.acquire.rungs import Rungs
+from snowcrawl.acquire.ssrf import IPAddress, SafeConnector, Target
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.core.settings import Settings
+from snowcrawl.db.models import Job, JobId, JobKind, UrlTask
+from snowcrawl.llm.client import NO_LLM
+from snowcrawl.resolve.pipeline import EngineData
+from snowcrawl.schemas import registry
+from snowcrawl.schemas.types import SchemaDocument
+from snowcrawl.services.fetching import Fetching
+from snowcrawl.storage.fs import FsStore
+from snowcrawl.worker.handlers.crawl import crawl_handler
+from snowcrawl.worker.handlers.scrape import scrape_handler
+from snowcrawl.worker.loop import TaskHandler, run_worker
 from tests.db.support import TITLE, api, unpaced
 from tests.local_server import Reply, Server, serving
 from tests.stand_in import IMPERSONATE

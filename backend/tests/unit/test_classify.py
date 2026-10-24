@@ -2,9 +2,9 @@
 
 import pytest
 
-from crawlerai.acquire.classify import Redirect, classify, interstitial
-from crawlerai.acquire.types import BlockClass
-from crawlerai.db.models import PageKind
+from snowcrawl.acquire.classify import Redirect, classify, interstitial
+from snowcrawl.acquire.types import BlockClass
+from snowcrawl.db.models import PageKind
 
 _HTML = (("content-type", "text/html; charset=utf-8"),)
 _JSON = (("content-type", "application/json"),)

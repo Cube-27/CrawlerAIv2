@@ -20,19 +20,19 @@ from urllib.parse import urlsplit
 import pytest
 from patchright.async_api import Playwright
 
-import crawlerai
-from crawlerai.acquire import browser_session
-from crawlerai.acquire.browser import fetch_browser
-from crawlerai.acquire.browser_profiles import profile_name
-from crawlerai.acquire.browser_session import BrowserSession, HeadlessIdentity, browser_identity, open_browser
-from crawlerai.acquire.desktop_screen import desktop_screen
-from crawlerai.acquire.session import SiteSessions
-from crawlerai.acquire.ssrf import SafeConnector, Target
-from crawlerai.acquire.types import FetchPolicy
-from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.core.proxy import UNDECLARED, ExitPlace
+import snowcrawl
+from snowcrawl.acquire import browser_session
+from snowcrawl.acquire.browser import fetch_browser
+from snowcrawl.acquire.browser_profiles import profile_name
+from snowcrawl.acquire.browser_session import BrowserSession, HeadlessIdentity, browser_identity, open_browser
+from snowcrawl.acquire.desktop_screen import desktop_screen
+from snowcrawl.acquire.session import SiteSessions
+from snowcrawl.acquire.ssrf import SafeConnector, Target
+from snowcrawl.acquire.types import FetchPolicy
+from snowcrawl.core.engine_version import ENGINE_VERSION
+from snowcrawl.core.proxy import UNDECLARED, ExitPlace
 
-_SRC = Path(crawlerai.__file__).parent
+_SRC = Path(snowcrawl.__file__).parent
 
 
 class _Recorder:

@@ -4,10 +4,10 @@ absolute targets of its links, read from the document by the HTML rules (base UR
 import time
 from datetime import UTC, datetime
 
-from crawlerai.acquire.outcome import Content, Exchange, fetch_result
-from crawlerai.acquire.page_refs import MAX_LINKS, canonical_link, page_refs
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import PageRefs
+from snowcrawl.acquire.outcome import Content, Exchange, fetch_result
+from snowcrawl.acquire.page_refs import MAX_LINKS, canonical_link, page_refs
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.adapters.base import PageRefs
 
 FINAL = "https://careers.example.test/en/jobs"
 

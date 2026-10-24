@@ -15,20 +15,20 @@ from urllib.parse import parse_qs, urlsplit
 
 from pydantic import JsonValue
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.config_ir.api_recipe.learn import learn_recipe
-from crawlerai.config_ir.api_recipe.model import ParamPagination
-from crawlerai.config_ir.api_recipe.validate import RecipeValidated
-from crawlerai.config_ir.held_out import StoredPage
-from crawlerai.config_ir.induction import SamplePage
-from crawlerai.config_ir.validation import Facts, HeldOutPage, RecipeFieldReport
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import CaptureId, JobId, PageKind
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle
+from snowcrawl.acquire.api import JsonFetcher, JsonRequest
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.config_ir.api_recipe.learn import learn_recipe
+from snowcrawl.config_ir.api_recipe.model import ParamPagination
+from snowcrawl.config_ir.api_recipe.validate import RecipeValidated
+from snowcrawl.config_ir.held_out import StoredPage
+from snowcrawl.config_ir.induction import SamplePage
+from snowcrawl.config_ir.validation import Facts, HeldOutPage, RecipeFieldReport
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import CaptureId, JobId, PageKind
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.storage.capture_bundle import CaptureBundle
 from tests.support.captures import call, capture
 from tests.support.fake_llm import ScriptedClient
 

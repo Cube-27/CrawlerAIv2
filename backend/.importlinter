@@ -1,7 +1,7 @@
 # Import contracts. Run with `uv run lint-imports` from backend/.
 
 [importlinter]
-root_package = crawlerai
+root_package = snowcrawl
 include_external_packages = True
 
 # The nine field-type normalizers. A new type module is added here and to normalize-internals in
@@ -10,16 +10,16 @@ include_external_packages = True
 name = One module per field type
 type = independence
 modules =
-    crawlerai.normalize.text
-    crawlerai.normalize.money
-    crawlerai.normalize.enum
-    crawlerai.normalize.url
-    crawlerai.normalize.identifier
-    crawlerai.normalize.date
-    crawlerai.normalize.location
-    crawlerai.normalize.range
-    crawlerai.normalize.count
-    crawlerai.normalize.number
+    snowcrawl.normalize.text
+    snowcrawl.normalize.money
+    snowcrawl.normalize.enum
+    snowcrawl.normalize.url
+    snowcrawl.normalize.identifier
+    snowcrawl.normalize.date
+    snowcrawl.normalize.location
+    snowcrawl.normalize.range
+    snowcrawl.normalize.count
+    snowcrawl.normalize.number
 
 # The dispatcher imports the type modules; the type modules import only `vocab` (vocabularies, their matcher),
 # `numbers` (CLDR number reading), `units` (CLDR unit patterns), `strings` (the shared text forms) and `base` (results,
@@ -29,37 +29,37 @@ modules =
 name = Normalizer internals
 type = layers
 layers =
-    crawlerai.normalize.dispatch
-    crawlerai.normalize.text : crawlerai.normalize.money : crawlerai.normalize.enum : crawlerai.normalize.url : crawlerai.normalize.identifier : crawlerai.normalize.date : crawlerai.normalize.location : crawlerai.normalize.range : crawlerai.normalize.count : crawlerai.normalize.number
-    crawlerai.normalize.vocab : crawlerai.normalize.numbers : crawlerai.normalize.units
-    crawlerai.normalize.strings
-    crawlerai.normalize.base
+    snowcrawl.normalize.dispatch
+    snowcrawl.normalize.text : snowcrawl.normalize.money : snowcrawl.normalize.enum : snowcrawl.normalize.url : snowcrawl.normalize.identifier : snowcrawl.normalize.date : snowcrawl.normalize.location : snowcrawl.normalize.range : snowcrawl.normalize.count : snowcrawl.normalize.number
+    snowcrawl.normalize.vocab : snowcrawl.normalize.numbers : snowcrawl.normalize.units
+    snowcrawl.normalize.strings
+    snowcrawl.normalize.base
 
 # Indirect imports are allowed: callers use the normalizers, which use these libraries.
 [importlinter:contract:normalize-libs]
 name = Only normalizers import normalization libraries
 type = forbidden
 source_modules =
-    crawlerai.acquire
-    crawlerai.adapters
-    crawlerai.api
-    crawlerai.cli
-    crawlerai.collect
-    crawlerai.config_ir
-    crawlerai.content
-    crawlerai.core
-    crawlerai.crawl
-    crawlerai.db
-    crawlerai.llm
-    crawlerai.mcp_server
-    crawlerai.recurring
-    crawlerai.resolve
-    crawlerai.scheduler
-    crawlerai.schemas
-    crawlerai.search
-    crawlerai.services
-    crawlerai.storage
-    crawlerai.worker
+    snowcrawl.acquire
+    snowcrawl.adapters
+    snowcrawl.api
+    snowcrawl.cli
+    snowcrawl.collect
+    snowcrawl.config_ir
+    snowcrawl.content
+    snowcrawl.core
+    snowcrawl.crawl
+    snowcrawl.db
+    snowcrawl.llm
+    snowcrawl.mcp_server
+    snowcrawl.recurring
+    snowcrawl.resolve
+    snowcrawl.scheduler
+    snowcrawl.schemas
+    snowcrawl.search
+    snowcrawl.services
+    snowcrawl.storage
+    snowcrawl.worker
 forbidden_modules =
     babel
     price_parser
@@ -70,26 +70,26 @@ allow_indirect_imports = True
 name = Nothing outside adapters imports adapters except acquire and collect
 type = forbidden
 source_modules =
-    crawlerai.api
-    crawlerai.cli
-    crawlerai.config_ir
-    crawlerai.content
-    crawlerai.core
-    crawlerai.crawl
-    crawlerai.db
-    crawlerai.llm
-    crawlerai.mcp_server
-    crawlerai.normalize
-    crawlerai.recurring
-    crawlerai.resolve
-    crawlerai.scheduler
-    crawlerai.schemas
-    crawlerai.search
-    crawlerai.services
-    crawlerai.storage
-    crawlerai.worker
+    snowcrawl.api
+    snowcrawl.cli
+    snowcrawl.config_ir
+    snowcrawl.content
+    snowcrawl.core
+    snowcrawl.crawl
+    snowcrawl.db
+    snowcrawl.llm
+    snowcrawl.mcp_server
+    snowcrawl.normalize
+    snowcrawl.recurring
+    snowcrawl.resolve
+    snowcrawl.scheduler
+    snowcrawl.schemas
+    snowcrawl.search
+    snowcrawl.services
+    snowcrawl.storage
+    snowcrawl.worker
 forbidden_modules =
-    crawlerai.adapters
+    snowcrawl.adapters
 allow_indirect_imports = True
 
 # `|` siblings are independent of each other. acquire and adapters are `:` siblings because the adapters-isolated
@@ -101,37 +101,37 @@ allow_indirect_imports = True
 name = Layering
 type = layers
 layers =
-    crawlerai.api
-    crawlerai.mcp_server
-    crawlerai.services
-    crawlerai.crawl | crawlerai.recurring | crawlerai.search
-    crawlerai.config_ir
-    crawlerai.resolve | crawlerai.llm
-    crawlerai.collect
-    crawlerai.content
-    crawlerai.normalize
-    crawlerai.schemas
-    crawlerai.acquire : crawlerai.adapters
-    crawlerai.db | crawlerai.storage
-    crawlerai.core
+    snowcrawl.api
+    snowcrawl.mcp_server
+    snowcrawl.services
+    snowcrawl.crawl | snowcrawl.recurring | snowcrawl.search
+    snowcrawl.config_ir
+    snowcrawl.resolve | snowcrawl.llm
+    snowcrawl.collect
+    snowcrawl.content
+    snowcrawl.normalize
+    snowcrawl.schemas
+    snowcrawl.acquire : snowcrawl.adapters
+    snowcrawl.db | snowcrawl.storage
+    snowcrawl.core
 
 # Config learning: the release executor shares no code with the engine beyond the IR model, so that the two
-# executors agreeing is evidence that an export reproduces the engine. Its imports from crawlerai are the model and the
+# executors agreeing is evidence that an export reproduces the engine. Its imports from snowcrawl are the model and the
 # one decode of state documents both executors read (serializer formats, the RSC Flight reader); their own imports are
 # indirect, so they are allowed.
 [importlinter:contract:release-executor-isolated]
-name = The release executor imports only the IR model and the state decoders from crawlerai
+name = The release executor imports only the IR model and the state decoders from snowcrawl
 type = forbidden
 source_modules =
-    crawlerai.config_ir.release_executor
+    snowcrawl.config_ir.release_executor
 forbidden_modules =
-    crawlerai.**
+    snowcrawl.**
 ignore_imports =
-    crawlerai.config_ir.release_executor -> crawlerai.config_ir.model
-    crawlerai.config_ir.release_executor -> crawlerai.content.page
-    crawlerai.config_ir.release_executor -> crawlerai.content.rsc
-    crawlerai.config_ir.release_executor -> crawlerai.content.state
-    crawlerai.config_ir.release_executor -> crawlerai.content.state_decoders
+    snowcrawl.config_ir.release_executor -> snowcrawl.config_ir.model
+    snowcrawl.config_ir.release_executor -> snowcrawl.content.page
+    snowcrawl.config_ir.release_executor -> snowcrawl.content.rsc
+    snowcrawl.config_ir.release_executor -> snowcrawl.content.state
+    snowcrawl.config_ir.release_executor -> snowcrawl.content.state_decoders
 allow_indirect_imports = True
 
 # Nor does the engine executor reach the release executor, directly or not.
@@ -139,5 +139,5 @@ allow_indirect_imports = True
 name = The engine and release executors are independent
 type = independence
 modules =
-    crawlerai.config_ir.executor
-    crawlerai.config_ir.release_executor
+    snowcrawl.config_ir.executor
+    snowcrawl.config_ir.release_executor

@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from crawlerai.collect.base import ARRAY_ROW, PAGE, Candidate, Entity
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.normalize.base import Ok
-from crawlerai.resolve.ownership import EntityGraph
+from snowcrawl.collect.base import ARRAY_ROW, PAGE, Candidate, Entity
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.normalize.base import Ok
+from snowcrawl.resolve.ownership import EntityGraph
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 

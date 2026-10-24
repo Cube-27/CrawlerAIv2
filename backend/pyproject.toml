@@ -1,5 +1,5 @@
 [project]
-name = "crawlerai"
+name = "snowcrawl"
 version = "0.1.0"
 description = "Schema-driven web extraction engine."
 license = "AGPL-3.0-only"
@@ -46,7 +46,7 @@ dependencies = [
 ]
 
 [project.scripts]
-crawlerai = "crawlerai.cli:main"
+snowcrawl = "snowcrawl.cli:main"
 
 [project.optional-dependencies]
 parquet = [

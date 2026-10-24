@@ -8,17 +8,17 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.api.app import create_app
-from crawlerai.api.auth import caller, require_api_key
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import ApiKeyId, SchemaId
-from crawlerai.resolve.types import ExtractionResult
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.services.batch import BatchScrapeRequest
-from crawlerai.services.crawl import CrawlRequest
-from crawlerai.services.page_store import unpublished
-from crawlerai.services.scrape import ScrapeRequest
-from crawlerai.services.scrape_request import RenderOptions, SchemaUnusable, check_render
+from snowcrawl.api.app import create_app
+from snowcrawl.api.auth import caller, require_api_key
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import ApiKeyId, SchemaId
+from snowcrawl.resolve.types import ExtractionResult
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.services.batch import BatchScrapeRequest
+from snowcrawl.services.crawl import CrawlRequest
+from snowcrawl.services.page_store import unpublished
+from snowcrawl.services.scrape import ScrapeRequest
+from snowcrawl.services.scrape_request import RenderOptions, SchemaUnusable, check_render
 
 URL = "https://shop.example.test/p/1"
 BODY = {"urls": [URL], "formats": ["records"], "schema": {"id": str(uuid.UUID(int=1))}, "page_kind": "detail"}

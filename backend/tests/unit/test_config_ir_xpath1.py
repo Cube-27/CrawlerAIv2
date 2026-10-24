@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-from crawlerai.config_ir.xpath1 import XPath1Error, check_xpath1
+from snowcrawl.config_ir.xpath1 import XPath1Error, check_xpath1
 
 # Expressions of the shapes induction and the CSS translator write, plus every operator name in operator position.
 # XPath 2.0/3.1 (W3C) syntax that libxml2 does not parse, and an unclosed call.

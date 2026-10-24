@@ -31,8 +31,8 @@ def test_hostname_in_generic_code_fails_with_path_line_and_lowercase_host_once_p
     repo = make_repo(
         tmp_path / "repo",
         {
-            "backend/src/crawlerai/collect/hosts.py": 'X = 1\nHOST = "shop.example.com"\n',
-            "backend/src/crawlerai/acquire/fetch.py": 'U = "https://shop.retailer.test/p?q=1"\n',
+            "backend/src/snowcrawl/collect/hosts.py": 'X = 1\nHOST = "shop.example.com"\n',
+            "backend/src/snowcrawl/acquire/fetch.py": 'U = "https://shop.retailer.test/p?q=1"\n',
             "backend/tests/unit/test_x.py": 'URL = "https://jobs.example.net/1"\n',
             "a.txt": "see https://SHOP.EXAMPLE.COM/x and shop.example.com\n",
         },
@@ -43,13 +43,13 @@ def test_hostname_in_generic_code_fails_with_path_line_and_lowercase_host_once_p
     assert result.returncode == 1
     assert sorted(result.stdout.splitlines()) == [
         "a.txt:1: shop.example.com",
-        "backend/src/crawlerai/acquire/fetch.py:1: shop.retailer.test",
-        "backend/src/crawlerai/collect/hosts.py:2: shop.example.com",
+        "backend/src/snowcrawl/acquire/fetch.py:1: shop.retailer.test",
+        "backend/src/snowcrawl/collect/hosts.py:2: shop.example.com",
         "backend/tests/unit/test_x.py:1: jobs.example.net",
     ]
 
 
-@pytest.mark.parametrize("path", ["backend/src/crawlerai/adapters/platform.py", "docs/notes.md", "backend/uv.lock"])
+@pytest.mark.parametrize("path", ["backend/src/snowcrawl/adapters/platform.py", "docs/notes.md", "backend/uv.lock"])
 def test_exempt_paths_pass(tmp_path: Path, path: str) -> None:
     repo = make_repo(tmp_path / "repo", {path: "https://shop.example.com/\n"})
 
@@ -85,15 +85,15 @@ def test_python_code_is_read_only_in_strings_and_comments(tmp_path: Path) -> Non
     )
     repo = make_repo(
         tmp_path / "repo",
-        {"backend/src/crawlerai/collect/c.py": source, "broken.py": 'x = (\nhost = "shop.example.com"\n'},
+        {"backend/src/snowcrawl/collect/c.py": source, "broken.py": 'x = (\nhost = "shop.example.com"\n'},
     )
 
     result = run_scan(repo, allowlist=[])
 
     assert sorted(result.stdout.splitlines()) == [
-        "backend/src/crawlerai/collect/c.py:2: shop.example.com",
-        "backend/src/crawlerai/collect/c.py:3: jobs.example.net",
-        "backend/src/crawlerai/collect/c.py:5: www.example.org",
+        "backend/src/snowcrawl/collect/c.py:2: shop.example.com",
+        "backend/src/snowcrawl/collect/c.py:3: jobs.example.net",
+        "backend/src/snowcrawl/collect/c.py:5: www.example.org",
         "broken.py:2: shop.example.com",
     ]
 
@@ -152,12 +152,12 @@ def test_references_to_columns_the_schema_defines_are_not_hosts_but_lookalikes_a
     models = f'A = ForeignKey("{WIDGET_ID}")\nB = "shop.{WIDGET_ID}"\n'
     repo = make_repo(
         tmp_path / "repo",
-        {"backend/migrations/versions/0001_widgets.py": MIGRATION, "backend/src/crawlerai/db/models.py": models},
+        {"backend/migrations/versions/0001_widgets.py": MIGRATION, "backend/src/snowcrawl/db/models.py": models},
     )
 
     result = run_scan(repo, allowlist=[])
 
-    assert result.stdout.splitlines() == [f"backend/src/crawlerai/db/models.py:2: shop.{WIDGET_ID}"]
+    assert result.stdout.splitlines() == [f"backend/src/snowcrawl/db/models.py:2: shop.{WIDGET_ID}"]
 
 
 # schema.org paths ending in a TLD (`.name`), joined at run time like the names above.

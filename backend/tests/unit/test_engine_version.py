@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from crawlerai.core.engine_version import engine_version
+from snowcrawl.core.engine_version import engine_version
 
 SHA = "0123456789abcdef0123456789abcdef01234567"
 

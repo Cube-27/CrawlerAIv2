@@ -1,4 +1,4 @@
-"""Tests against a real Postgres, in a database of their own: `CRAWLERAI_TEST_DATABASE_URL`. CI provides one, and
+"""Tests against a real Postgres, in a database of their own: `SNOWCRAWL_TEST_DATABASE_URL`. CI provides one, and
 `make check` recreates one each run. Without it these tests are skipped."""
 
 import asyncio
@@ -20,13 +20,13 @@ from sqlalchemy import insert, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from crawlerai.acquire import politeness
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.config_ir.progressive import StateKey
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import (
+from snowcrawl.acquire import politeness
+from snowcrawl.acquire.rungs import Rungs
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.config_ir.progressive import StateKey
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import (
     Base,
     ConfigStatus,
     ExtractionConfig,
@@ -36,17 +36,17 @@ from crawlerai.db.models import (
     SiteId,
     SourceKind,
 )
-from crawlerai.normalize.dispatch import warm
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.resolve.preference import PRECEDENCE_TYPES
-from crawlerai.schemas import registry
-from crawlerai.schemas import types as schema_types
-from crawlerai.schemas.types import document_digest
-from crawlerai.services.fetching import Fetching
+from snowcrawl.normalize.dispatch import warm
+from snowcrawl.resolve.pipeline import EngineData
+from snowcrawl.resolve.preference import PRECEDENCE_TYPES
+from snowcrawl.schemas import registry
+from snowcrawl.schemas import types as schema_types
+from snowcrawl.schemas.types import document_digest
+from snowcrawl.services.fetching import Fetching
 from tests.db.support import PRICE, TITLE, Web, api, fetching_from, unpaced
 from tests.support.captures import fetched
 
-TEST_DATABASE_URL = "CRAWLERAI_TEST_DATABASE_URL"
+TEST_DATABASE_URL = "SNOWCRAWL_TEST_DATABASE_URL"
 VOCABULARY = Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld"
 # Every source kind ranked, so precedence types resolve (an unfitted order declines them).
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
@@ -324,9 +324,9 @@ def warmed() -> None:
 @pytest.fixture
 def app_env(warmed: None, database_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> pytest.MonkeyPatch:
     """The app's settings: the test database, an object store under `tmp_path/objects`, no trusted proxies."""
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + (tmp_path / "objects").as_posix().lstrip("/"))
-    monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
+    monkeypatch.setenv("SNOWCRAWL_DATABASE_URL", database_url)
+    monkeypatch.setenv("SNOWCRAWL_OBJECT_STORE", "fs:///" + (tmp_path / "objects").as_posix().lstrip("/"))
+    monkeypatch.setenv("SNOWCRAWL_TRUSTED_PROXIES", "[]")
     return monkeypatch
 
 

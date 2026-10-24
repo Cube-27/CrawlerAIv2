@@ -1,6 +1,6 @@
 import uuid
 
-from crawlerai.core.ids import uuid7
+from snowcrawl.core.ids import uuid7
 
 
 def test_uuid7_has_version_7_and_the_rfc_9562_variant() -> None:

@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import config, { refuseCrossSite } from "../../vite.config";
 import openapi from "../../openapi.json?raw";
 
-/** The dev server config as `pnpm dev` loads it with `CRAWLERAI_UI_API_KEY` set to `apiKey`; a process variable wins
+/** The dev server config as `pnpm dev` loads it with `SNOWCRAWL_UI_API_KEY` set to `apiKey`; a process variable wins
  * over the repo-root `.env` (Vite's `loadEnv`). */
 async function configWith(apiKey: string) {
-  vi.stubEnv("CRAWLERAI_UI_API_KEY", apiKey);
+  vi.stubEnv("SNOWCRAWL_UI_API_KEY", apiKey);
   vi.resetModules();
   const { default: loaded } = await import("../../vite.config");
   return loaded.server ?? {};
@@ -32,7 +32,7 @@ describe("pnpm dev proxy", () => {
     expect(unproxied).toEqual([]);
   });
 
-  it("attaches CRAWLERAI_UI_API_KEY as a bearer token to every proxied request", async () => {
+  it("attaches SNOWCRAWL_UI_API_KEY as a bearer token to every proxied request", async () => {
     const { proxy = {} } = await configWith("ui-test-key");
 
     expect(Object.values(proxy)).toEqual([

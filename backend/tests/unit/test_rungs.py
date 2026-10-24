@@ -9,14 +9,14 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import get_args
 
-from crawlerai.acquire.api import JsonRequest
-from crawlerai.acquire.memory import Remembered
-from crawlerai.acquire.rungs import BROWSER_MIN_S, Rungs, acquire
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import AdapterMatch, PageRefs, Shape
-from crawlerai.adapters.registry import Registry
-from crawlerai.core.capture import BlockClass, CaptureMethod
-from crawlerai.db.models import FetchMethod, PageKind
+from snowcrawl.acquire.api import JsonRequest
+from snowcrawl.acquire.memory import Remembered
+from snowcrawl.acquire.rungs import BROWSER_MIN_S, Rungs, acquire
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.adapters.base import AdapterMatch, PageRefs, Shape
+from snowcrawl.adapters.registry import Registry
+from snowcrawl.core.capture import BlockClass, CaptureMethod
+from snowcrawl.db.models import FetchMethod, PageKind
 from tests.support.captures import ScriptedRung
 
 URL = "https://shop.example.test/item/1"

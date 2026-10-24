@@ -4,15 +4,15 @@ rule as embedded JSON state, and addressed by its index in the bundle."""
 import json
 from datetime import UTC, datetime
 
-from crawlerai.collect.admission import Admitted
-from crawlerai.collect.base import Candidate
-from crawlerai.collect.xhr import XhrCollector
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import NetworkBody
+from snowcrawl.collect.admission import Admitted
+from snowcrawl.collect.base import Candidate
+from snowcrawl.collect.xhr import XhrCollector
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.normalize.base import Context, Ok
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.storage.capture_bundle import NetworkBody
 from tests.support.captures import call
 
 PAGE_URL = "https://shop.example.test/p/1"

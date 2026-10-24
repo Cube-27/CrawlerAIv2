@@ -7,9 +7,9 @@ import json
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.items import MIN_ITEMS
-from crawlerai.collect.network_match import data_calls
-from crawlerai.content.page import ParsedPage
+from snowcrawl.acquire.items import MIN_ITEMS
+from snowcrawl.collect.network_match import data_calls
+from snowcrawl.content.page import ParsedPage
 from tests.support.captures import call
 
 _NAMES = ("Alpha widget", "Beta gadget", "Gamma tool", "Delta part", "Epsilon kit", "Zeta set")

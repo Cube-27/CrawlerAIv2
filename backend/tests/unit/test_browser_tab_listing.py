@@ -9,9 +9,9 @@ from typing import Any
 
 import pytest
 
-from crawlerai.acquire import browser, browser_tab
-from crawlerai.acquire.browser_session import Failed
-from crawlerai.acquire.types import FetchPolicy, StepOutcome
+from snowcrawl.acquire import browser, browser_tab
+from snowcrawl.acquire.browser_session import Failed
+from snowcrawl.acquire.types import FetchPolicy, StepOutcome
 
 URL = "https://shop.example.test/c/1"
 

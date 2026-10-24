@@ -1,8 +1,8 @@
 """What role A reads of a sample page: reduced HTML, a cut that keeps the published values, and
 JSON documents as key paths without values. Pages are synthetic."""
 
-from crawlerai.config_ir.sample_view import KEYS_MAX_CHARS, Cut, cut_around, json_keys, reduced_html
-from crawlerai.content.page import ParsedPage
+from snowcrawl.config_ir.sample_view import KEYS_MAX_CHARS, Cut, cut_around, json_keys, reduced_html
+from snowcrawl.content.page import ParsedPage
 
 
 def test_reduced_html_drops_scripts_styles_comments_and_other_attributes() -> None:

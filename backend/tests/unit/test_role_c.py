@@ -10,29 +10,29 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.collect.base import PAGE, Candidate, Entity
-from crawlerai.collect.items.lines import BlockText
-from crawlerai.collect.labels import field_labels
-from crawlerai.config_ir.role_c import role_c
-from crawlerai.content.page import ParsedPage
-from crawlerai.content.text import CleanedText, TextRun
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import JobId, SchemaId
-from crawlerai.llm.client import (
+from snowcrawl.collect.base import PAGE, Candidate, Entity
+from snowcrawl.collect.items.lines import BlockText
+from snowcrawl.collect.labels import field_labels
+from snowcrawl.config_ir.role_c import role_c
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.content.text import CleanedText, TextRun
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import JobId, SchemaId
+from snowcrawl.llm.client import (
     BudgetExhausted,
     LLMFailure,
     OutputInvalid,
     ProviderUnavailable,
     request_hash,
 )
-from crawlerai.llm.roles.c_extract import (
+from snowcrawl.llm.roles.c_extract import (
     Filled,
     extract_detail,
     extract_listing,
 )
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.resolve.pipeline import GapReply, GapRequest, ListingGapReply, ListingGapRequest
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.normalize.base import Context, Ok
+from snowcrawl.resolve.pipeline import GapReply, GapRequest, ListingGapReply, ListingGapRequest
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 from tests.support.fake_llm import ScriptedClient
 
 JOB = JobId(uuid7())

@@ -8,20 +8,20 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.collect.base import PAGE, Candidate
-from crawlerai.db.models import SourceKind
-from crawlerai.normalize.base import Basis, Ok
-from crawlerai.resolve.derive import Derived
-from crawlerai.resolve.evidence import (
+from snowcrawl.collect.base import PAGE, Candidate
+from snowcrawl.db.models import SourceKind
+from snowcrawl.normalize.base import Basis, Ok
+from snowcrawl.resolve.derive import Derived
+from snowcrawl.resolve.evidence import (
     MIN_CALIBRATED_N,
     Bucket,
     Calibration,
     assess,
     evidence_of,
 )
-from crawlerai.resolve.preference import Chosen, Unpublished
-from crawlerai.resolve.types import FieldOutcome
-from crawlerai.schemas.types import FieldType
+from snowcrawl.resolve.preference import Chosen, Unpublished
+from snowcrawl.resolve.types import FieldOutcome
+from snowcrawl.schemas.types import FieldType
 
 ENTITY = "jsonld:0:$"
 KINDS: tuple[SourceKind, ...] = ("jsonld", "microdata", "og", "js_state", "xhr", "config", "llm")

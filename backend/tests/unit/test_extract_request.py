@@ -6,8 +6,8 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.services.batch import MAX_URLS
-from crawlerai.services.extract import ExtractRequest
+from snowcrawl.services.batch import MAX_URLS
+from snowcrawl.services.extract import ExtractRequest
 
 SCHEMA = {"id": str(uuid.UUID(int=1))}
 TITLE = {"type": "text", "required": True, "description": "The name"}

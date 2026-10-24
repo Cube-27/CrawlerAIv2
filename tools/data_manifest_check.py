@@ -2,7 +2,7 @@
 
 Vocabularies come from versioned external data. Each file under `backend/data/` must be listed in
 `backend/data/manifest.json` with its source URL, version, sha256, license and justification, and its bytes must
-match the pinned hash. An entry marked `"fetched": true` is downloaded by `crawlerai data fetch` and not committed:
+match the pinned hash. An entry marked `"fetched": true` is downloaded by `snowcrawl data fetch` and not committed:
 its file may be absent, and when present it must match its hash. Prints one line per problem and
 exits 1, or prints one summary line and exits 0.
 

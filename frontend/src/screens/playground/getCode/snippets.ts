@@ -5,7 +5,7 @@ import type { Endpoint } from "./endpoints";
  * are quoted per POSIX sh. */
 
 /** The environment variable every snippet reads the API key from (the UI holds no key). */
-export const KEY_VARIABLE = "CRAWLERAI_API_KEY";
+export const KEY_VARIABLE = "SNOWCRAWL_API_KEY";
 
 /** The request's body as the primary action sends it: JSON with a two-space indent. */
 function json(body: object): string {

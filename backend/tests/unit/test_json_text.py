@@ -9,7 +9,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.core.json_text import parse, parse_prefix
+from snowcrawl.core.json_text import parse, parse_prefix
 
 DEEP = "[" * 100_000 + "]" * 100_000
 

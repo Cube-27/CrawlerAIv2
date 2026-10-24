@@ -5,8 +5,8 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.db.jobs import JOB_TRANSITIONS, KIND_TRAITS, TASK_TRANSITIONS, kinds_with, settled_status
-from crawlerai.db.models import JobKind, JobStatus, ScheduledKind, TaskStatus
+from snowcrawl.db.jobs import JOB_TRANSITIONS, KIND_TRAITS, TASK_TRANSITIONS, kinds_with, settled_status
+from snowcrawl.db.models import JobKind, JobStatus, ScheduledKind, TaskStatus
 
 MACHINES = pytest.mark.parametrize(
     ("transitions", "statuses"),

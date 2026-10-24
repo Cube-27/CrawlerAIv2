@@ -10,12 +10,12 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.llm.client import MeteredClient, ProviderReply
-from crawlerai.llm.roles.s_schema import draft_name
-from crawlerai.llm.roles.s_wire import to_wire
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas.types import SchemaDef
-from crawlerai.services.fetching import Fetching
+from snowcrawl.llm.client import MeteredClient, ProviderReply
+from snowcrawl.llm.roles.s_schema import draft_name
+from snowcrawl.llm.roles.s_wire import to_wire
+from snowcrawl.resolve.pipeline import EngineData
+from snowcrawl.schemas.types import SchemaDef
+from snowcrawl.services.fetching import Fetching
 from tests.db.support import PRIVATE_HOST, TITLE, Web, api
 from tests.support.fake_llm import FakeProvider
 
@@ -59,7 +59,7 @@ async def client(
     data: EngineData | None,
 ) -> AsyncIterator[httpx.AsyncClient]:
     """The app with no LLM provider key, fetching `web`, its client asking `provider`."""
-    app_env.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
+    app_env.setenv("SNOWCRAWL_LLM_PROVIDERS", "anthropic")
     async with api(engine) as (app, client):
         app.state.runtime = replace(app.state.runtime, fetching=fetching, engine_data=data)
         if provider is not None:

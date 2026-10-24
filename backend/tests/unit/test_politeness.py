@@ -6,15 +6,15 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from crawlerai.acquire.politeness import (
+from snowcrawl.acquire.politeness import (
     RECOVERY_FACTOR,
     RECOVERY_RUN,
     HostLimiter,
     interval,
     retry_after,
 )
-from crawlerai.acquire.types import AttemptRecord
-from crawlerai.core.retry import FIRST_BACKOFF
+from snowcrawl.acquire.types import AttemptRecord
+from snowcrawl.core.retry import FIRST_BACKOFF
 
 NOW = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
 
@@ -90,7 +90,7 @@ def test_a_wait_after_a_pause_the_site_asked_for_goes_no_sooner_and_holds_the_ho
         slept.append(seconds)
         clock.now += seconds
 
-    monkeypatch.setattr("crawlerai.acquire.politeness.asyncio.sleep", sleep)
+    monkeypatch.setattr("snowcrawl.acquire.politeness.asyncio.sleep", sleep)
     start = clock.now
 
     admitted = asyncio.run(

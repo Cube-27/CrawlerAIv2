@@ -12,16 +12,16 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import IPAddress
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.challenges import SIGNATURES
-from crawlerai.core.capture import CaptureMethod
-from crawlerai.db.models import Capture, Job, UrlTask
-from crawlerai.services.fetching import Fetching, TargetRejected
-from crawlerai.services.scrape import ScrapeRequest, scrape
-from crawlerai.storage.base import ObjectStore
-from crawlerai.storage.fs import FsStore
+from snowcrawl.acquire.rungs import Rungs
+from snowcrawl.acquire.ssrf import IPAddress
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.adapters.challenges import SIGNATURES
+from snowcrawl.core.capture import CaptureMethod
+from snowcrawl.db.models import Capture, Job, UrlTask
+from snowcrawl.services.fetching import Fetching, TargetRejected
+from snowcrawl.services.scrape import ScrapeRequest, scrape
+from snowcrawl.storage.base import ObjectStore
+from snowcrawl.storage.fs import FsStore
 from tests.db.support import Page, Web, fetching_from
 
 pytestmark = pytest.mark.anyio

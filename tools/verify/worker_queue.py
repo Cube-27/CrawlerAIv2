@@ -7,7 +7,7 @@
 Each check runs TLC on the model (tools/verify/worker_queue/WorkerQueue.tla) with one instance and its properties,
 and must end as it expects: no error, or a violation of the named property (a known finding, a mutant). Anything
 else exits 1 and prints the counterexample as the steps of the code. Standard library only; it downloads the pinned
-tla2tools.jar, and a pinned Temurin JRE when no `java` 11+ is on PATH, into ~/.cache/crawlerai-tla.
+tla2tools.jar, and a pinned Temurin JRE when no `java` 11+ is on PATH, into ~/.cache/snowcrawl-tla.
 """
 
 import argparse
@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 MODEL = Path(__file__).resolve().parent / "worker_queue"
-CACHE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "crawlerai-tla"
+CACHE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "snowcrawl-tla"
 # TLA+ tools v1.7.4 ("Xenophanes", the latest stable release).
 TLA_JAR = (
     "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar",

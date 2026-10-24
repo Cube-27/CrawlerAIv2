@@ -12,13 +12,13 @@ from pydantic import JsonValue
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.types import FetchResult
-from crawlerai.db.models import ApiKey, Job, UrlTask
-from crawlerai.llm.client import MeteredClient, ProviderReply
-from crawlerai.llm.roles.s_schema import draft_name
-from crawlerai.llm.roles.s_wire import to_wire
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.services.fetching import Fetching
+from snowcrawl.acquire.types import FetchResult
+from snowcrawl.db.models import ApiKey, Job, UrlTask
+from snowcrawl.llm.client import MeteredClient, ProviderReply
+from snowcrawl.llm.roles.s_schema import draft_name
+from snowcrawl.llm.roles.s_wire import to_wire
+from snowcrawl.resolve.pipeline import EngineData
+from snowcrawl.services.fetching import Fetching
 from tests.db.support import KEY_LABEL, PRIVATE_HOST, UNRESOLVED_HOST, Page, Web, api
 from tests.support.fake_llm import FakeProvider
 

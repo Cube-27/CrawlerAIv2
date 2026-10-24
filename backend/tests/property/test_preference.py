@@ -11,14 +11,14 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.collect.base import PAGE, Candidate, Entity
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId, SourceKind
-from crawlerai.normalize.base import Ambiguous, Basis, Context, Invalid, NormalizeResult, Ok
-from crawlerai.resolve.derive import Derived, fill
-from crawlerai.resolve.ownership import EntityGraph
-from crawlerai.resolve.preference import (
+from snowcrawl.collect.base import PAGE, Candidate, Entity
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId, SourceKind
+from snowcrawl.normalize.base import Ambiguous, Basis, Context, Invalid, NormalizeResult, Ok
+from snowcrawl.resolve.derive import Derived, fill
+from snowcrawl.resolve.ownership import EntityGraph
+from snowcrawl.resolve.preference import (
     PRECEDENCE_TYPES,
     Chosen,
     Orders,
@@ -27,8 +27,8 @@ from crawlerai.resolve.preference import (
     Resolver,
     Unpublished,
 )
-from crawlerai.resolve.score import value_of
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.resolve.score import value_of
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 PAGE_URL = "https://shop.example.test/p/1"

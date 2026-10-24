@@ -11,9 +11,9 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.types import FetchPolicy
-from crawlerai.adapters.base import AdapterMatch
-from crawlerai.adapters.greenhouse import API, BOARD_HOSTS, Greenhouse
+from snowcrawl.acquire.types import FetchPolicy
+from snowcrawl.adapters.base import AdapterMatch
+from snowcrawl.adapters.greenhouse import API, BOARD_HOSTS, Greenhouse
 from tests.stand_in import StandInApi
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "greenhouse"

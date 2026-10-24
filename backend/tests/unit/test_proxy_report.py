@@ -7,9 +7,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from crawlerai.acquire.outcome import Content, Exchange, fetch_result, report_proxy
-from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
-from crawlerai.core.proxy import ProxyEndpoint, ProxyPool
+from snowcrawl.acquire.outcome import Content, Exchange, fetch_result, report_proxy
+from snowcrawl.acquire.types import BlockClass, FetchPolicy, FetchResult
+from snowcrawl.core.proxy import ProxyEndpoint, ProxyPool
 
 ENDPOINT = ProxyEndpoint.parse("http://proxy.example.com:3128")
 

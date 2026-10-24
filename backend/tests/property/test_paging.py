@@ -15,17 +15,17 @@ from pathlib import Path
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from crawlerai.acquire.browser_tab import Click, Drive, Ref
-from crawlerai.acquire.politeness import HostLimiter
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import SafeConnector
-from crawlerai.acquire.types import BrowserActions, FetchPolicy, FetchResult, PagedFetch
-from crawlerai.config_ir.api_recipe.execute import unserved
-from crawlerai.crawl.paging import Caps, collect
-from crawlerai.services.fetching import Fetching, grown
-from crawlerai.services.polite import HostRules
-from crawlerai.storage.capture_bundle import NetworkBody
-from crawlerai.storage.fs import FsStore
+from snowcrawl.acquire.browser_tab import Click, Drive, Ref
+from snowcrawl.acquire.politeness import HostLimiter
+from snowcrawl.acquire.rungs import Rungs
+from snowcrawl.acquire.ssrf import SafeConnector
+from snowcrawl.acquire.types import BrowserActions, FetchPolicy, FetchResult, PagedFetch
+from snowcrawl.config_ir.api_recipe.execute import unserved
+from snowcrawl.crawl.paging import Caps, collect
+from snowcrawl.services.fetching import Fetching, grown
+from snowcrawl.services.polite import HostRules
+from snowcrawl.storage.capture_bundle import NetworkBody
+from snowcrawl.storage.fs import FsStore
 
 _URL = "https://shop.example.test/list"
 _WAIT_S, _POLL_S = 0.02, 0.001  # fast waits: the simulated tab changes at once

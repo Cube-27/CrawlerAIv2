@@ -41,10 +41,10 @@ def test_no_module_executes_code_or_starts_a_process() -> None:
 @pytest.mark.parametrize(
     ("code", "expected"),
     [
-        ("exec(reply)\n", "crawlerai/planted.py:1 calls exec"),
-        ("import subprocess\n", "crawlerai/planted.py:1 imports subprocess"),
+        ("exec(reply)\n", "snowcrawl/planted.py:1 calls exec"),
+        ("import subprocess\n", "snowcrawl/planted.py:1 imports subprocess"),
     ],
 )
 def test_the_scan_finds_each_kind(code: str, expected: str) -> None:
-    path = SRC / "crawlerai" / "planted.py"
+    path = SRC / "snowcrawl" / "planted.py"
     assert violations(path, ast.parse(code)) == [expected]

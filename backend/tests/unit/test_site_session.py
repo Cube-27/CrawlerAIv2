@@ -14,22 +14,22 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import SecretStr
 
-from crawlerai.acquire.browser_session import context_key
-from crawlerai.acquire.http import fetch_http
-from crawlerai.acquire.memory import Remembered
-from crawlerai.acquire.outcome import Content, Exchange, fetch_result
-from crawlerai.acquire.rungs import Rungs, acquire
-from crawlerai.acquire.session import (
+from snowcrawl.acquire.browser_session import context_key
+from snowcrawl.acquire.http import fetch_http
+from snowcrawl.acquire.memory import Remembered
+from snowcrawl.acquire.outcome import Content, Exchange, fetch_result
+from snowcrawl.acquire.rungs import Rungs, acquire
+from snowcrawl.acquire.session import (
     ENGINE,
     CookieExport,
     SessionCookie,
     SiteSessions,
 )
-from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult, RequestContext
-from crawlerai.core.capture import CaptureMethod
-from crawlerai.core.proxy import SESSION_FETCHES
-from crawlerai.db.models import BrowserEngine
-from crawlerai.storage.capture_bundle import encode
+from snowcrawl.acquire.types import BlockClass, FetchPolicy, FetchResult, RequestContext
+from snowcrawl.core.capture import CaptureMethod
+from snowcrawl.core.proxy import SESSION_FETCHES
+from snowcrawl.db.models import BrowserEngine
+from snowcrawl.storage.capture_bundle import encode
 from tests.local_server import LoopbackConnector, Reply, Server, serving
 from tests.stand_in import IMPERSONATE
 

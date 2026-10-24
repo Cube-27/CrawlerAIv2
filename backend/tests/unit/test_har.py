@@ -4,7 +4,7 @@ members HAR 1.2 requires, the headers as the capture recorded them, and a body t
 import json
 from typing import Any
 
-from crawlerai.services.har import har
+from snowcrawl.services.har import har
 from tests.support.captures import PAGE_URL, call, capture
 
 _ITEMS = b'{"items": [{"name": "First item"}]}'

@@ -12,11 +12,11 @@ from typing import Any
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from crawlerai.acquire.api import JsonRequest, fetch_json
-from crawlerai.acquire.http import fetch_http
-from crawlerai.acquire.types import FetchPolicy, FetchResult, RequestContext
-from crawlerai.core.redaction import REDACTED, has_secrets
-from crawlerai.services.fetch_options import (
+from snowcrawl.acquire.api import JsonRequest, fetch_json
+from snowcrawl.acquire.http import fetch_http
+from snowcrawl.acquire.types import FetchPolicy, FetchResult, RequestContext
+from snowcrawl.core.redaction import REDACTED, has_secrets
+from snowcrawl.services.fetch_options import (
     KEEP_SECRETS,
     FetchOptions,
 )

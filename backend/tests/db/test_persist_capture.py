@@ -8,11 +8,11 @@ import pytest
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.acquire.persist import store_capture
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
-from crawlerai.db.models import Capture, Project, Site, SiteId
-from crawlerai.storage.capture_bundle import capture_key, decode, sha256_hex
-from crawlerai.storage.fs import FsStore
+from snowcrawl.acquire.persist import store_capture
+from snowcrawl.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from snowcrawl.db.models import Capture, Project, Site, SiteId
+from snowcrawl.storage.capture_bundle import capture_key, decode, sha256_hex
+from snowcrawl.storage.fs import FsStore
 from tests.support.captures import capture
 
 pytestmark = pytest.mark.anyio

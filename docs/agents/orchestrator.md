@@ -1,6 +1,6 @@
 # Orchestrator guide
 
-CrawlerAI v2 is built by one orchestrator agent and up to two builder agents, all Claude, each in its own
+Snowcrawl is built by one orchestrator agent and up to two builder agents, all Claude, each in its own
 [herdr](https://herdr.dev) tab on one Linux machine (WSL2 on Windows). This file is the orchestrator's job description.
 Builders follow `builder-protocol.md`. A plan in flight is kept at `docs/agents/plan.md` (absent between plans); its status
 table is yours to update when you open or merge a PR, and its last PR deletes it.
@@ -22,7 +22,7 @@ table is yours to update when you open or merge a PR, and its last PR deletes it
 The machine needs Docker, `uv`, `pnpm`, `gh` (logged in) and herdr; everything else is in this repo
 (`CLAUDE.md`, Commands).
 
-1. In herdr, open the `CrawlerAIv2` clone, run `claude --permission-mode auto`, and type `/crawlerai-orchestrator`.
+1. In herdr, open the `CrawlerAIv2` clone, run `claude --permission-mode auto`, and type `/snowcrawl-orchestrator`.
 2. Rebuild state from GitHub, not memory: `gh pr list --state open`, `git worktree list`, `herdr agent list`, and the
    plan's status table. An open PR whose builder isn't running gets a fresh builder on its existing branch (the brief
    says "continue PR #n").
@@ -173,7 +173,7 @@ choice under "Deviations".
 - `.claude/hooks/test_output_hook.py`: a PreToolUse hook that pipes pytest/vitest output through
   `test_output_filter.py`, so only failures and the final summary reach the agent (exit code kept). Put
   `TEST_FILTER=0` in a command to see full output.
-- `.claude/skills/crawlerai-orchestrator/`: `/crawlerai-orchestrator` loads this guide.
+- `.claude/skills/snowcrawl-orchestrator/`: `/snowcrawl-orchestrator` loads this guide.
 - `tools/orchestrator/`: `run_queue.sh` (the merge queue), `pr_ready.sh` (the readiness check), `new_worktree.sh`
   and `cleanup_worktree.sh` (worktrees), `test_db.sh` (a test database per worktree), `wait_ci.sh` (CI on a head),
   `unresolved.sh` (open review threads).

@@ -5,7 +5,7 @@ import { defineConfig, loadEnv, type ProxyOptions } from "vite-plus";
 // The dev server attaches the UI's API key to proxied requests, so the browser never holds one. Vite
 // reads no repo-root `.env` by itself, so it is loaded from `..`: pnpm runs scripts in this package's directory. The
 // variable has no `VITE_` prefix, so it never reaches client code. An empty value counts as unset (.env.example).
-const uiApiKey = loadEnv("development", "..", "")["CRAWLERAI_UI_API_KEY"];
+const uiApiKey = loadEnv("development", "..", "")["SNOWCRAWL_UI_API_KEY"];
 const target = "http://127.0.0.1:8000";
 
 // W3C Fetch Metadata: a browser marks each request with where it came from (`Sec-Fetch-Site`). The proxy attaches the
@@ -282,14 +282,14 @@ export default defineConfig({
         specifier: "vite-plus/oxlint-plugin",
       },
       {
-        name: "crawlerai",
+        name: "snowcrawl",
         specifier: "./lint/cognitive-complexity.js",
       },
     ],
     rules: {
       "vite-plus/prefer-vite-plus-imports": "error",
       // C11: cognitive complexity of at most 15 per function, the SonarCloud threshold (S3776).
-      "crawlerai/cognitive-complexity": ["error", { max: 15 }],
+      "snowcrawl/cognitive-complexity": ["error", { max: 15 }],
       // SonarCloud S3358 (nested ternary), S7718 (catch
       // parameter `error`) and S1186 (an empty function says why in a comment, which ESLint's rule allows).
       "no-nested-ternary": "error",

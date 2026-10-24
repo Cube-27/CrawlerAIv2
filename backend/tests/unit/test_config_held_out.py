@@ -2,11 +2,11 @@
 and its references are the valid structured or adapter values of the entities that published; a listing's rows are
 its records in stored order, with the page's fields split off and no references."""
 
-from crawlerai.config_ir.held_out import StoredCandidate, facts_of
-from crawlerai.config_ir.validation import Facts
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.config_ir.held_out import StoredCandidate, facts_of
+from snowcrawl.config_ir.validation import Facts
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 TEXT = FieldSpec(type=FieldType.TEXT, description="d")
 PAGE_TEXT = FieldSpec(type=FieldType.TEXT, description="d", scope="page")

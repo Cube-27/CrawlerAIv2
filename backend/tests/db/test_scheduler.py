@@ -11,23 +11,23 @@ from pydantic import SecretStr
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.core.settings import Settings
-from crawlerai.db.jobs import transition_job
-from crawlerai.db.keys import create_key
-from crawlerai.db.models import (
+from snowcrawl.acquire.rungs import Rungs
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.core.settings import Settings
+from snowcrawl.db.jobs import transition_job
+from snowcrawl.db.keys import create_key
+from snowcrawl.db.models import (
     Job,
     JobId,
     Project,
     UrlTask,
     WebhookDelivery,
 )
-from crawlerai.db.queue import claim_tasks
-from crawlerai.llm.client import NO_LLM
-from crawlerai.scheduler.loop import Periodic, periodic, run_scheduler
-from crawlerai.services.schedules import Submitting
-from crawlerai.storage.fs import FsStore
+from snowcrawl.db.queue import claim_tasks
+from snowcrawl.llm.client import NO_LLM
+from snowcrawl.scheduler.loop import Periodic, periodic, run_scheduler
+from snowcrawl.services.schedules import Submitting
+from snowcrawl.storage.fs import FsStore
 from tests.db.support import fetching_from
 
 pytestmark = pytest.mark.anyio

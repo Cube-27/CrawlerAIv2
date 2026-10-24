@@ -6,13 +6,13 @@
 # `docker compose up -d postgres` starts the database alone, for the tests that need one. `docker compose down` stops
 # everything and keeps the data; `down -v` deletes it too.
 #
-# The browser rung runs headless. With CRAWLERAI_BROWSER_HEADLESS=false in `.env` it runs headful under Xvfb inside
+# The browser rung runs headless. With SNOWCRAWL_BROWSER_HEADLESS=false in `.env` it runs headful under Xvfb inside
 # the container: no window appears on the host, which is how to run it headful on Windows and macOS.
-name: crawlerai
+name: snowcrawl
 
 # One image for the four backend services; `migrate` builds it, the others wait for it to finish.
 x-backend: &backend
-  image: crawlerai-backend
+  image: snowcrawl-backend
   pull_policy: never
   platform: linux/amd64
   env_file:
@@ -20,9 +20,9 @@ x-backend: &backend
       required: false
   environment:
     # Inside the compose network, whatever `.env` says for a host run.
-    CRAWLERAI_DATABASE_URL: postgresql+asyncpg://app:app@postgres:5432/crawlerai
-    CRAWLERAI_OBJECT_STORE: fs:///data/objects
-    CRAWLERAI_BROWSER_PROFILES: /data/browser-profiles
+    SNOWCRAWL_DATABASE_URL: postgresql+asyncpg://app:app@postgres:5432/snowcrawl
+    SNOWCRAWL_OBJECT_STORE: fs:///data/objects
+    SNOWCRAWL_BROWSER_PROFILES: /data/browser-profiles
   volumes:
     - objects:/data/objects
     - browser-profiles:/data/browser-profiles
@@ -34,14 +34,14 @@ services:
     environment:
       POSTGRES_PASSWORD: postgres
     ports:
-      - "127.0.0.1:${CRAWLERAI_POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${SNOWCRAWL_POSTGRES_PORT:-5432}:5432"
     volumes:
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       # Healthy only once the final server accepts TCP. On a fresh volume the entrypoint first runs init.sql on a
       # temporary socket-only server, which a socket check would already count as ready.
-      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "app", "-d", "crawlerai"]
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "app", "-d", "snowcrawl"]
       interval: 2s
       timeout: 5s
       retries: 30
@@ -54,13 +54,13 @@ services:
       dockerfile: ../infra/Dockerfile
       args:
         # The engine version names the commit, which the build cannot see: pass it to name one
-        # (`CRAWLERAI_GIT_SHA=$(git rev-parse HEAD) docker compose up --build`).
-        CRAWLERAI_GIT_SHA: ${CRAWLERAI_GIT_SHA:-0000000}
+        # (`SNOWCRAWL_GIT_SHA=$(git rev-parse HEAD) docker compose up --build`).
+        SNOWCRAWL_GIT_SHA: ${SNOWCRAWL_GIT_SHA:-0000000}
     restart: "no"
     command:
       - sh
       - -ec
-      - alembic upgrade head && crawlerai schemas sync && crawlerai apikey ensure --label ui /data/ui/key
+      - alembic upgrade head && snowcrawl schemas sync && snowcrawl apikey ensure --label ui /data/ui/key
     volumes:
       - ui:/data/ui
     depends_on:
@@ -82,7 +82,7 @@ services:
 
   worker:
     <<: *backend
-    command: ["crawlerai", "worker"]
+    command: ["snowcrawl", "worker"]
     # Chrome needs more shared memory than Docker's 64 MB default.
     shm_size: 1gb
     depends_on:
@@ -91,7 +91,7 @@ services:
 
   scheduler:
     <<: *backend
-    command: ["crawlerai", "scheduler"]
+    command: ["snowcrawl", "scheduler"]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -100,7 +100,7 @@ services:
     build:
       context: .
       dockerfile: infra/web/Dockerfile
-    image: crawlerai-web
+    image: snowcrawl-web
     ports:
       - "127.0.0.1:8080:8080"
     volumes:

@@ -7,8 +7,8 @@ import pytest
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.db.models import Job, JobId, Project, UsageEvent
-from crawlerai.llm.client import (
+from snowcrawl.db.models import Job, JobId, Project, UsageEvent
+from snowcrawl.llm.client import (
     BudgetExhausted,
     LLMRequest,
     MeteredClient,

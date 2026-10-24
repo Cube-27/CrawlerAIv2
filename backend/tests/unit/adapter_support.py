@@ -5,14 +5,14 @@ from pathlib import Path
 
 from pydantic import JsonValue
 
-from crawlerai.adapters.base import Adapter, AdapterMatch
-from crawlerai.collect.adapter import AdapterCollector
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.adapters.base import Adapter, AdapterMatch
+from snowcrawl.collect.adapter import AdapterCollector
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 VOCABULARY = Vocabulary.read(FIXTURES / "synthetic" / "schemaorg_vocabulary.jsonld")

@@ -75,6 +75,6 @@ worktrees/
 RESUME.md
 license-report/
 
-# --- Fetched data: `crawlerai data fetch` downloads it; never committed ---
+# --- Fetched data: `snowcrawl data fetch` downloads it; never committed ---
 backend/data/schemaorg/
 backend/data/publicsuffix/

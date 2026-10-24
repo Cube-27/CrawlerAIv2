@@ -7,9 +7,9 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.normalize import identifier
-from crawlerai.normalize.base import Context, Invalid, Ok
-from crawlerai.schemas.types import FieldSpec, FieldType, IdentifierScheme
+from snowcrawl.normalize import identifier
+from snowcrawl.normalize.base import Context, Invalid, Ok
+from snowcrawl.schemas.types import FieldSpec, FieldType, IdentifierScheme
 
 CTX = Context(captured_at=datetime(2026, 1, 1, tzinfo=UTC))
 SCHEMES: tuple[IdentifierScheme, ...] = ("gtin", "isbn", "mpn", "sku", "custom")

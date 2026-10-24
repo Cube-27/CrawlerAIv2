@@ -6,7 +6,7 @@
 # the branch (local and remote) is the head of a MERGED PR or an ancestor of origin/main. Deleting the remote branch of an open PR makes GitHub close that PR
 # (#128: a failed merge chained with `;`). On refusal, or when GitHub can't be read, it exits 1 with an ERROR on
 # stderr and keeps the worktree, the branches and the containers.
-# Removes only containers named crawlerai-* (with their anonymous volumes): never another project's containers.
+# Removes only containers named snowcrawl-* (with their anonymous volumes): never another project's containers.
 # Then removes all Docker build cache and dangling images: the owner keeps no build cache (2026-10-13), and a
 # pruned layer is only rebuilt on the next build.
 set -u
@@ -43,7 +43,7 @@ require_merged() {
 }
 
 require_merged
-for c in $(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E "^crawlerai-($wt|$short)(-|$)"); do
+for c in $(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E "^snowcrawl-($wt|$short)(-|$)"); do
   docker rm -f -v "$c" >/dev/null && echo "removed container $c and its volumes"
 done
 "$(dirname "${BASH_SOURCE[0]}")/test_db.sh" drop "$wt" || echo "warning: could not drop the test databases of $wt" >&2

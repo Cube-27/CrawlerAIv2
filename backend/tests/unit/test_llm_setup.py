@@ -10,10 +10,10 @@ import httpx
 import httpx2
 import pytest
 
-from crawlerai.llm.client import ModelClass
-from crawlerai.llm.providers.anthropic import AnthropicProvider
-from crawlerai.llm.providers.gemini import GeminiProvider
-from crawlerai.llm.setup import LLMSetup
+from snowcrawl.llm.client import ModelClass
+from snowcrawl.llm.providers.anthropic import AnthropicProvider
+from snowcrawl.llm.providers.gemini import GeminiProvider
+from snowcrawl.llm.setup import LLMSetup
 
 MODELS: dict[ModelClass, str] = {"fast": "fast-model", "strong": "strong-model"}
 KNOWN = frozenset({"fast-model", "strong-model"})

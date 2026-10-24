@@ -7,7 +7,7 @@ from ipaddress import IPv4Address, ip_address
 
 import pytest
 
-from crawlerai.acquire.ssrf import IPAddress, RejectReason, SafeConnector, SsrfRejected, Target, is_public
+from snowcrawl.acquire.ssrf import IPAddress, RejectReason, SafeConnector, SsrfRejected, Target, is_public
 
 _PUBLIC_V4 = "93.184.215.14"
 _PUBLIC_V6 = "2606:2800:21f:cb07::1"

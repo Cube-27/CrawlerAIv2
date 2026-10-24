@@ -12,12 +12,12 @@ from functools import partial
 import pytest
 from patchright.async_api import Error as PlaywrightError
 
-from crawlerai.acquire.api import JsonRequest
-from crawlerai.acquire.browser_send import send_in_page
-from crawlerai.acquire.browser_session import BrowserSession, open_browser
-from crawlerai.acquire.session import SiteSessions
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.core.engine_version import ENGINE_VERSION
+from snowcrawl.acquire.api import JsonRequest
+from snowcrawl.acquire.browser_send import send_in_page
+from snowcrawl.acquire.browser_session import BrowserSession, open_browser
+from snowcrawl.acquire.session import SiteSessions
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.core.engine_version import ENGINE_VERSION
 from tests.local_server import LoopbackConnector, Reply, Server, serving
 
 pytestmark = pytest.mark.browser

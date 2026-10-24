@@ -16,18 +16,18 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import AdapterMatch
-from crawlerai.adapters.oracle_recruiting import DOMAIN, PAGE_SIZE, RESOURCES, OracleRecruiting
-from crawlerai.collect.adapter import AdapterCollector
-from crawlerai.collect.vocabulary import Vocabulary
-from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Context
-from crawlerai.schemas.registry import load_presets
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.acquire.api import JsonFetcher, JsonRequest
+from snowcrawl.acquire.types import FetchPolicy, FetchResult
+from snowcrawl.adapters.base import AdapterMatch
+from snowcrawl.adapters.oracle_recruiting import DOMAIN, PAGE_SIZE, RESOURCES, OracleRecruiting
+from snowcrawl.collect.adapter import AdapterCollector
+from snowcrawl.collect.vocabulary import Vocabulary
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId
+from snowcrawl.normalize.base import Context
+from snowcrawl.schemas.registry import load_presets
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 from tests.stand_in import StandInApi
 
 ScriptedApi = Callable[[Callable[[JsonRequest], bytes], list[JsonRequest]], JsonFetcher]  # `scripted_api` (conftest)

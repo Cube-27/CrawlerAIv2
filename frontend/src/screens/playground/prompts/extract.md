@@ -1,8 +1,8 @@
 # call-extract
 
-Call the CrawlerAI extract endpoint to extract structured records from pages.
+Call the Snowcrawl extract endpoint to extract structured records from pages.
 
-- Send `POST /v1/extract` with `Authorization: Bearer $CRAWLERAI_API_KEY` and a JSON body.
+- Send `POST /v1/extract` with `Authorization: Bearer $SNOWCRAWL_API_KEY` and a JSON body.
 - Required: `urls` (a URL with a `*` is a glob, expanded through a map of its host), `schema` and `page_kind`.
 - `schema` is `{"id": "<schema id>"}` (a stored schema), an inline schema, or `{"prompt": "<what to extract>"}`; a
   prompt is drafted from the first pages before the job is queued, and the draft is returned as `schema`.
@@ -15,9 +15,9 @@ Call the CrawlerAI extract endpoint to extract structured records from pages.
 
 # integrate-extract
 
-Build an integration on the CrawlerAI extract endpoint (`POST /v1/extract`).
+Build an integration on the Snowcrawl extract endpoint (`POST /v1/extract`).
 
-- Read the base URL and the API key from configuration (`CRAWLERAI_API_KEY`); never hard-code a key.
+- Read the base URL and the API key from configuration (`SNOWCRAWL_API_KEY`); never hard-code a key.
 - Draft a schema once with a prompt, review it, store it, then send it by id, so every run has one shape.
 - Wait for the job with `webhook_url` or the event stream (resume with `Last-Event-ID`), then page through the
   `json_values` results with `cursor` until `next_cursor` is null.

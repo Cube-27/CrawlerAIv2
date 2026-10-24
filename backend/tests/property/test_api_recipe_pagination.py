@@ -9,21 +9,21 @@ from hypothesis import assume, given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.acquire.api import JsonRequest
-from crawlerai.collect.network_match import Call
-from crawlerai.config_ir.api_recipe.model import (
+from snowcrawl.acquire.api import JsonRequest
+from snowcrawl.collect.network_match import Call
+from snowcrawl.config_ir.api_recipe.model import (
     CursorPagination,
     LinkPagination,
     NextUrlPagination,
     Pagination,
     ParamPagination,
 )
-from crawlerai.config_ir.api_recipe.pagination import (
+from snowcrawl.config_ir.api_recipe.pagination import (
     first_request,
     infer,
     next_request,
 )
-from crawlerai.storage.capture_bundle import HeaderList
+from snowcrawl.storage.capture_bundle import HeaderList
 from tests.support.captures import call
 
 API = "https://api.example.test/v2/items"

@@ -10,9 +10,9 @@ from hypothesis import strategies as st
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ValidationError
 
-from crawlerai.config_ir import step_wire
-from crawlerai.config_ir.model import ExtractionConfigIR, FieldSteps, Step
-from crawlerai.schemas.types import FieldType
+from snowcrawl.config_ir import step_wire
+from snowcrawl.config_ir.model import ExtractionConfigIR, FieldSteps, Step
+from snowcrawl.schemas.types import FieldType
 
 _TAGS = ["div", "span", "p", "a", "li", "ul"]
 _CLASSES = ["x", "y", "price-now", "z1"]

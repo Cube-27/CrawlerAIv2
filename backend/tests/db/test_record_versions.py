@@ -10,16 +10,16 @@ from pydantic import JsonValue
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.core.egress import UNKNOWN, Egress
-from crawlerai.db.models import Extraction, Job, JobId, Project, Record, Site, SiteId
-from crawlerai.db.queue import insert_claimed
-from crawlerai.recurring.record_fp import record_fingerprint
-from crawlerai.recurring.versions import store_records
-from crawlerai.resolve.records import Delta, FieldChange, FieldMeta, RecordDraft, entity_key
-from crawlerai.resolve.task import RecordSource, StoredRecord
-from crawlerai.schemas import registry
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
-from crawlerai.services.records import RecordFilter, list_records
+from snowcrawl.core.egress import UNKNOWN, Egress
+from snowcrawl.db.models import Extraction, Job, JobId, Project, Record, Site, SiteId
+from snowcrawl.db.queue import insert_claimed
+from snowcrawl.recurring.record_fp import record_fingerprint
+from snowcrawl.recurring.versions import store_records
+from snowcrawl.resolve.records import Delta, FieldChange, FieldMeta, RecordDraft, entity_key
+from snowcrawl.resolve.task import RecordSource, StoredRecord
+from snowcrawl.schemas import registry
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
+from snowcrawl.services.records import RecordFilter, list_records
 
 pytestmark = pytest.mark.anyio
 

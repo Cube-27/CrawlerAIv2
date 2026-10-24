@@ -2,8 +2,8 @@
 
 import pytest
 
-from crawlerai.acquire.robots import Robots, snapshot_of
-from crawlerai.acquire.types import FetchResult
+from snowcrawl.acquire.robots import Robots, snapshot_of
+from snowcrawl.acquire.types import FetchResult
 from tests.support.captures import fetched
 
 URL = "https://shop.example.test/robots.txt"

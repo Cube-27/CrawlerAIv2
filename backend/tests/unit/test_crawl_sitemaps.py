@@ -5,7 +5,7 @@ import gzip
 
 import pytest
 
-from crawlerai.crawl.sitemaps import Sitemap, SitemapReader, read
+from snowcrawl.crawl.sitemaps import Sitemap, SitemapReader, read
 
 pytestmark = pytest.mark.anyio
 

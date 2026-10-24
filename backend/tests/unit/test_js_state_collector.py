@@ -10,16 +10,16 @@ from html import escape
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.collect.admission import Admitted
-from crawlerai.collect.base import ARRAY_ROW, PAGE, Candidate, Entity
-from crawlerai.collect.currencies import state_currencies
-from crawlerai.collect.js_state import JsStateCollector, state_documents
-from crawlerai.content.page import ParsedPage
-from crawlerai.content.state_decoders import revive_astro_props
-from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId, SourceKind
-from crawlerai.normalize.base import Context, NormalizeResult, Ok
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from snowcrawl.collect.admission import Admitted
+from snowcrawl.collect.base import ARRAY_ROW, PAGE, Candidate, Entity
+from snowcrawl.collect.currencies import state_currencies
+from snowcrawl.collect.js_state import JsStateCollector, state_documents
+from snowcrawl.content.page import ParsedPage
+from snowcrawl.content.state_decoders import revive_astro_props
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import SchemaId, SourceKind
+from snowcrawl.normalize.base import Context, NormalizeResult, Ok
+from snowcrawl.schemas.types import FieldSpec, FieldType, SchemaDef
 
 PAGE_URL = "https://shop.example.test/p/1"
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=PAGE_URL, page_url=PAGE_URL)
