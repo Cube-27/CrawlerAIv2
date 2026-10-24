@@ -7,7 +7,7 @@ from collections.abc import Callable
 import httpx
 import pytest
 
-from snowcrawl_sdk import APIError, Snowcrawl, JobTimeout, models
+from snowcrawl_sdk import APIError, JobTimeout, Snowcrawl, models
 from snowcrawl_sdk.webhooks import InvalidSignature, parse_webhook, sign, verify_signature
 
 JOB_ID = "0192a000-0000-7000-8000-0000000000aa"
