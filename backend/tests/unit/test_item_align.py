@@ -316,3 +316,19 @@ def test_lists_that_different_sections_hold_are_no_items_own_lists() -> None:
     )
 
     assert [row["url"] for row in _rows(body, _schema(title=_TITLE, url=_URL))] == [_url(f"/job/{n}") for n in range(3)]
+
+
+def test_a_card_whose_sections_hold_its_links_and_whose_other_links_refine_the_page_gives_its_item() -> None:
+    # RFC 3986 §3.3: a link to this page with another query (a filter) leads to no item, so the card's sections are
+    # not its own list (as share buttons are) and their links, the title's among them, stay the card's.
+    card = (
+        '<li class="c"><img src="/i/{i}.jpg" alt=""><div>'
+        '<div><a href="/p/{i}"><h2>Book {i}</h2></a><p>by <a href="/author/{i}">Author {i}</a></p></div>'
+        '<div><p>Code <a href="/isbn/{i}">97{i}</a></p></div>'
+        '<div><p>Seller <a href="/seller/{i}">Shop {i}</a></p><p>1{i}.50 EUR</p></div>'
+        '</div><a href="/search?used={i}">More copies</a></li>'
+    )
+
+    assert [(row["url"], row["title"]) for row in _rows(_repeat(card))] == [
+        (_url(f"/p/{i}"), f"Book {i}") for i in range(4)
+    ]
