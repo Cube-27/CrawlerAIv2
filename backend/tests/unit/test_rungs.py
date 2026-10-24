@@ -6,7 +6,7 @@ The rungs are stubs answering synthetic outcomes; no network.
 import asyncio
 import time
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import get_args
 
 from snowcrawl.acquire.api import JsonRequest
@@ -16,7 +16,10 @@ from snowcrawl.acquire.types import FetchPolicy, FetchResult
 from snowcrawl.adapters.base import AdapterMatch, PageRefs, Shape
 from snowcrawl.adapters.registry import Registry
 from snowcrawl.core.capture import BlockClass, CaptureMethod
-from snowcrawl.db.models import FetchMethod, PageKind
+from snowcrawl.core.ids import uuid7
+from snowcrawl.db.models import FetchMethod, JobId, PageKind, UrlTaskId
+from snowcrawl.db.queue import ClaimedTask, Finished
+from snowcrawl.services.page_task import queued_end
 from tests.support.captures import ScriptedRung
 
 URL = "https://shop.example.test/item/1"
@@ -200,6 +203,19 @@ def test_a_429_is_answered_once_in_the_browser_after_its_pause() -> None:
     rungs = Rungs(http=stubs.http, browser=stubs.browser)
     result = asyncio.run(acquire(URL, POLICY, Remembered(), rungs, admit_next=admit))
     assert (_attempts(result), stubs.browser.calls) == ([("http", "blocked")], [])
+
+
+def test_a_429_the_browser_answered_ends_the_task_whatever_the_browser_answered() -> None:
+    # The browser's own 429 is its one attempt's outcome: a retry would send HTTP and the browser again.
+    stubs = Web(_rung("http", "blocked", 429), _rung("browser", "blocked", 429))
+    task = ClaimedTask(
+        UrlTaskId(uuid7()), JobId(uuid7()), URL, URL, "detail", 1, 0, 0, None, None, "w", datetime.now(UTC)
+    )
+
+    result = stubs.acquire(POLICY)
+
+    assert [(a.method, a.status) for a in result.attempts] == [("http", 429), ("browser", 429)]
+    assert queued_end(result, task) == Finished("blocked", reason="http 429")
 
 
 # --- a shell asks its referral before the render ---------------

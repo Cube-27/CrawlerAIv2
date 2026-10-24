@@ -225,22 +225,23 @@ def _backed_off(result: FetchResult, task: ClaimedTask) -> FetchResult | TaskRes
         return result
     error = f"http {slowed.status}"
     after = backoff(slowed, task.attempts)
-    too_many = slowed.status == HTTPStatus.TOO_MANY_REQUESTS and (
-        _rendered_after(slowed, result.attempts) or task.attempts >= _TOO_MANY_TRIES
+    too_many = _rendered_after(result.attempts) or (
+        slowed.status == HTTPStatus.TOO_MANY_REQUESTS and task.attempts >= _TOO_MANY_TRIES
     )
     if after is None or too_many:
         return Finished("blocked", reason=error)
     return Failed(error, transient=True, after=after, exhausted="blocked")
 
 
-def _rendered_after(slowed: AttemptRecord, attempts: tuple[AttemptRecord, ...]) -> bool:
-    """Whether the page's HTTP 429 `slowed` was answered in the browser by a later attempt of the fetch (its one
-    browser attempt, `acquire.rungs`); an adapter's or a recipe's 429 is its endpoint's, which the browser does not
-    retry."""
-    if slowed.method != "http":
-        return False
-    later = attempts[next(i for i, attempt in enumerate(attempts) if attempt is slowed) + 1 :]
-    return any(attempt.method == "browser" for attempt in later)
+def _rendered_after(attempts: tuple[AttemptRecord, ...]) -> bool:
+    """Whether the page's HTTP 429 (RFC 6585 §4) was answered in the browser by a later attempt of the fetch (its one
+    browser attempt, `acquire.rungs`), whatever the browser answered: a 429 or 503 of its own is that attempt's
+    outcome, and a retry would send the HTTP request and the browser attempt again. An adapter's or a recipe's 429 is
+    its endpoint's (method `api`), which the browser does not retry."""
+    page = next(
+        (i for i, a in enumerate(attempts) if a.method == "http" and a.status == HTTPStatus.TOO_MANY_REQUESTS), None
+    )
+    return page is not None and any(attempt.method == "browser" for attempt in attempts[page + 1 :])
 
 
 def _further(plan: PagePlan, kept: FetchResult) -> tuple[FetchResult, ...]:
