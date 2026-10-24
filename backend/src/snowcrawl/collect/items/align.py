@@ -516,12 +516,14 @@ def _unsettled(
 def _meant(found: tuple[Spot, ...], spec: FieldSpec, view: "_View", ctx: Context) -> tuple[Spot, ...]:
     """A block's values of a field without those its markup says are not the field's (module docstring): restatements
     of a struck value, then, when one value is read at elements naming the field's schema.org property, the others.
-    Unchanged when one value is left or the markup does not decide."""
-    if len(_distinct(found, spec)) < 2:
+    Unchanged for a field that is not typed (a name, a link, an image), when one value is left or the markup does not
+    decide."""
+    if not is_typed(spec) or len(_distinct(found, spec)) < 2:
         return found
     former = view.struck_values(spec, ctx)
     current = tuple(s for s in found if s.xpath in view.struck_paths or _key(s, spec) not in former) or found
-    properties = [tuple(name_parts(named_property(p))) for p in parse_paths(spec.schema_org or "")]
+    paths = parse_paths(spec.schema_org) if spec.schema_org else ()
+    properties = [tuple(name_parts(named_property(p))) for p in paths if p.steps]
     own = tuple(s for s in current if (e := view.at(s.xpath)) is not None and _names_property(e, properties))
     return own if len(_distinct(own, spec)) == 1 else current
 
@@ -673,8 +675,13 @@ class _View:
 
     def struck_values(self, spec: FieldSpec, ctx: Context) -> set[object]:
         """The field's values the block's struck-through elements show (`content.text.struck`), by the type's
-        equality."""
-        lines = ((element, line) for element in self.struck if (line := self.line(element)) is not None)
+        equality: those the field would read were they not struck (`collect.items.spot.reads`: a struck `$25` is no
+        former `$25/kg`)."""
+        lines = (
+            (element, line)
+            for element in self.struck
+            if (line := self.line(element)) is not None and reads(spec, line, ctx, struck=False)
+        )
         return {_key(spot, spec) for element, line in lines for spot in spots(line, spec, ctx, self.paths[element], "")}
 
     def line(self, element: HtmlElement) -> str | None:
