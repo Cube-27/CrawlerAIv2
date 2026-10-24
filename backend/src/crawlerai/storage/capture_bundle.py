@@ -79,7 +79,8 @@ class NetworkBody(_Frozen):
     `method`, `request_body` and `request_headers` describe the request the body answered, which API discovery groups
     and binds by and header minimization replays; bundles written before they were kept decode
     with None. `request_body` is None also for a request without a body or with one that is not UTF-8 text.
-    `request_headers` are recorded as the page's are (no cookies), in the order sent.
+    `request_headers` are recorded as the page's are (header fields only: no credentials, no pseudo-headers), in the
+    order sent.
 
     `response_headers` are recorded the same way, in the order received; `resource_type` is the request's Fetch
     destination as the browser names it (`fetch`, `xhr`, `document`); `action` is how many browser actions the page
