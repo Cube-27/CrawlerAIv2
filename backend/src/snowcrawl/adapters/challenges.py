@@ -79,6 +79,12 @@ SIGNATURES: tuple[ChallengeSignature, ...] = (
         # The challenge interstitial's own configuration object (served with 202).
         stand_in_markers=("window.gokuProps",),
     ),
+    ChallengeSignature(
+        "litespeed",
+        # The web server's reCAPTCHA bot verification: the form of the document it serves in place of the page
+        # (with 200) posts the token to this server-handled path, which no page it lets through links.
+        stand_in_markers=("/.lsrecap/recaptcha",),
+    ),
 )
 
 
