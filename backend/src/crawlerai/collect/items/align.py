@@ -89,7 +89,7 @@ from pydantic import ValidationError
 from crawlerai.acquire.items import MIN_ITEMS, Group, copies_navigation, hyperlinks, shows_items
 from crawlerai.collect.base import ITEM_BLOCK, Candidate, Entity
 from crawlerai.collect.dom_images import decorative, image_source
-from crawlerai.collect.items.links import current_page, is_heading, item_links, leads_to, tag_path
+from crawlerai.collect.items.links import current_page, is_heading, item_links, leads_to, link_targets, tag_path
 from crawlerai.collect.items.spot import Spot, is_typed, reads, spots
 from crawlerai.collect.items.stated import Stated, Word, continues, same, words
 from crawlerai.collect.locator import format_locator
@@ -166,7 +166,8 @@ def align(page: ParsedPage, schema: SchemaContent, ctx: Context) -> tuple[Items,
     roles = field_roles(schema)
     if schema.page_kind != "listing" or "url" not in roles.values():
         return ()
-    sublists = _sublist_links(page.item_groups)
+    here = canonical_url(ctx.page_url, None) if ctx.page_url is not None else None
+    sublists = _sublist_links(page.item_groups, ctx.base_url, here)
     chrome = chrome_links(page.lxml_tree, ctx.base_url)
     aligned = [
         (rank, a)
@@ -180,17 +181,19 @@ def align(page: ParsedPage, schema: SchemaContent, ctx: Context) -> tuple[Items,
     return tuple(a.items(schema, ctx, number, rank < _MAIN_GROUPS) for number, (rank, a) in enumerate(order))
 
 
-def _sublist_links(groups: Sequence[Group]) -> frozenset[HtmlElement]:
+def _sublist_links(groups: Sequence[Group], base: str | None, here: str | None) -> frozenset[HtmlElement]:
     """The hyperlinks of items' own lists (their share buttons, their colour swatches), whose links lead to an item's
     related documents, not to the item (`_View.of`): groups that each lie inside one block of another group, where two
     or more of that group's blocks hold one at one tag path (the structure repeats per item, DEPTA: one template
     renders every item's list alike; a grid inside one section of a page is not an item's list, nor are the different
-    lists the page's sections hold) and each such block also links outside it (the item's own link; a section holding
-    a list of items is no item)."""
+    lists the page's sections hold) and each such block also links outside it to a document (`link_targets`: the
+    item's own link; a section holding a list of items is no item). A link back to this page in another state of its
+    query (a filter, a sort; RFC 3986 §3.3) is no item's link: a card whose other links only refine the page keeps its
+    sections' links, its title's among them."""
     owner_of = {block: number for number, group in enumerate(groups) for block in group}
     nested: dict[tuple[int, str], list[tuple[HtmlElement, frozenset[HtmlElement]]]] = {}
     for number, group in enumerate(groups):
-        if (found := _item_list(group, number, owner_of)) is not None:
+        if (found := _item_list(group, number, owner_of, base, here)) is not None:
             owner, _ = found
             nested.setdefault((owner_of[owner], tag_path(owner, group[0])), []).append(found)
     repeated = (lists for lists in nested.values() if len({owner for owner, _ in lists}) >= 2)
@@ -198,16 +201,17 @@ def _sublist_links(groups: Sequence[Group]) -> frozenset[HtmlElement]:
 
 
 def _item_list(
-    group: Group, number: int, owner_of: Mapping[HtmlElement, int]
+    group: Group, number: int, owner_of: Mapping[HtmlElement, int], base: str | None, here: str | None
 ) -> tuple[HtmlElement, frozenset[HtmlElement]] | None:
     """The one block of another group that the group lies in, and the group's hyperlinks, when that block also links
-    outside the group; else None."""
+    outside the group to a document other than this page (`link_targets`); else None."""
     owners = {_owning_block(block, owner_of, number) for block in group}
     owner = owners.pop() if len(owners) == 1 else None
     if owner is None:
         return None
     inner = frozenset(anchor for block in group for anchor in hyperlinks(block))
-    return (owner, inner) if any(anchor not in inner for anchor in hyperlinks(owner)) else None
+    outside = (anchor for anchor in hyperlinks(owner) if anchor not in inner)
+    return (owner, inner) if link_targets(outside, base, here) else None
 
 
 def _owning_block(block: HtmlElement, owner_of: Mapping[HtmlElement, int], group: int) -> HtmlElement | None:
