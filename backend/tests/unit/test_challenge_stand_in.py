@@ -29,6 +29,16 @@ def test_a_2xx_page_showing_a_stand_in_marker_is_blocked_and_labelled(sig: Chall
     assert challenge_label(status, _HTML, body, URL) == sig.vendor
 
 
+@pytest.mark.parametrize("sig", _STAND_INS, ids=[s.vendor for s in _STAND_INS])
+def test_a_2xx_shell_showing_a_stand_in_marker_is_blocked(sig: ChallengeSignature) -> None:
+    # A verification document: one short heading and a form, too little text for a page (a shell), no site structure.
+    marker = sig.stand_in_markers[0]
+    body = f'<html><body><h3>Checking</h3><form method="POST" action="/x">{marker}</form></body></html>'
+
+    assert block_class_of(200, _HTML, body) == "blocked"
+    assert challenge_label(200, _HTML, body, URL) == sig.vendor
+
+
 @pytest.mark.parametrize(
     "reference",
     [

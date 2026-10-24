@@ -42,6 +42,8 @@ _UNAVAILABLE_FOR_LEGAL_REASONS = 451
 _SET_COOKIE = "set-cookie"  # RFC 6265 §4.1
 # The classes a challenge takes (`classify`): a refusal, or a document with nothing of the page in it.
 CHALLENGED: Final[frozenset[BlockClass]] = frozenset({"blocked", "shell"})
+# The classes a stand-in marker turns `blocked`: a document, whether it shows the page's text or too little of it.
+_MARKABLE: Final[frozenset[BlockClass]] = frozenset({"ok", "shell"})
 
 
 def block_class_of(
@@ -55,14 +57,14 @@ def block_class_of(
     content_only: bool = False,
 ) -> BlockClass:
     """The block class of a response whose body decoded to `text` (`classify`, with the `redirect` the rung followed),
-    except that a 2xx HTML document (RFC 9110 §15.3) showing a vendor's stand-in marker (`adapters.challenges`) is
-    `blocked`: the vendor served it in place of the page, whatever its status says, and the browser may pass it where
-    HTTP did not. The marker needs corroboration: a document that carries the page's structured data
-    (`classify.usable_content`, an item of one of the `types` the task reads the page for) is the page, whatever vendor
-    markup it also holds."""
+    except that a 2xx HTML document (RFC 9110 §15.3), `ok` or `shell`, showing a vendor's stand-in marker
+    (`adapters.challenges`) is `blocked`: the vendor served it in place of the page, whatever its status says, and the
+    browser may pass it where HTTP did not. The marker needs corroboration: a document that carries the page's
+    structured data (`classify.usable_content`, an item of one of the `types` the task reads the page for) is the page,
+    whatever vendor markup it also holds, and keeps its class."""
     block_class = classify(status, headers, text, page_kind, redirect, types=types, content_only=content_only)
-    if block_class == "ok" and 200 <= status < 300 and is_html(headers) and stand_in_vendor(text) is not None:
-        return "ok" if usable_content(text, fetched_as(page_kind, redirect), types) else "blocked"
+    if block_class in _MARKABLE and 200 <= status < 300 and is_html(headers) and stand_in_vendor(text) is not None:
+        return block_class if usable_content(text, fetched_as(page_kind, redirect), types) else "blocked"
     return block_class
 
 
