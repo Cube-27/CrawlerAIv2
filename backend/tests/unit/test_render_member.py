@@ -69,8 +69,9 @@ def test_render_fields_are_the_schemas() -> None:
     )
 
     check_render(RenderOptions(mode="locate", fields=["title"]), schema)
+    unknown = RenderOptions(mode="locate", fields=["title", "size"])
     with pytest.raises(SchemaUnusable, match="size"):
-        check_render(RenderOptions(mode="locate", fields=["title", "size"]), schema)
+        check_render(unknown, schema)
 
 
 def test_a_listing_without_rows_leaves_each_row_field_for_the_locate_run() -> None:

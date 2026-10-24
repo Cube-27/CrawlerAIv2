@@ -128,8 +128,8 @@ def reference_errors(fields: Mapping[str, FieldSpec], vocabulary: Vocabulary) ->
 def _reference_errors(path: str, spec: FieldSpec, vocabulary: Vocabulary, errors: list[tuple[str, str]]) -> None:
     if spec.schema_org is not None:
         errors.extend((f"{path}.schema_org", reason) for reason in _path_problems(spec.schema_org, vocabulary))
-    if spec.vocab is not None and spec.vocab.startswith("schema:"):
-        enumeration = spec.vocab.removeprefix("schema:")
+    if spec.vocab is not None and spec.vocab.startswith(_SCHEMA_PREFIX):
+        enumeration = spec.vocab.removeprefix(_SCHEMA_PREFIX)
         if not vocabulary.is_a(enumeration, _ENUMERATION) or enumeration == _ENUMERATION:
             errors.append((f"{path}.vocab", f"{enumeration} is not a schema.org enumeration"))
     if spec.item is not None:

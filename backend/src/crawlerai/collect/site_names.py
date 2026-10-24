@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 from crawlerai.acquire.public_suffix import default_suffixes
 from crawlerai.normalize.strings import fold
 
-_SEPARATOR = re.compile(r"(?<!\s)\s+[^\w\s]\s+")
+_SEPARATOR = re.compile(r"(?<!\s)\s++[^\w\s]\s++")
 _WORD = re.compile(r"\w+")
 # Structural bound: the runs of n parts number n(n+1)/2, so only a name's first parts are combined; a site name of
 # more than this many separator-set-apart parts is a keyword list, not a name.

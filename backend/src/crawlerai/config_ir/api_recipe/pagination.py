@@ -48,7 +48,7 @@ Scalar = str | int | float
 _Slot = tuple[PageWhere, str]
 # RFC 8288 §3: `<target>` then `;`-separated parameters; a link-value list is `,`-separated (RFC 9110 §5.6.1).
 _QUOTED: Final = r'"(?:[^"\\]|\\.)*"'
-_LINK_VALUE: Final = re.compile(r"<([^>]*)>((?:\s*;\s*[^;,\"]*(?:" + _QUOTED + r")?)*)")
+_LINK_VALUE: Final = re.compile(r"<([^>]*)>((?:\s*;[^;,\"]*(?:" + _QUOTED + r")?)*)")
 _LINK_PARAM: Final = re.compile(r';\s*([^\s=;,]+)\s*(?:=\s*(?:"((?:[^"\\]|\\.)*)"|([^\s;,]*)))?')
 # RFC 8288 §3.3: `rel` holds one or more relation types separated by whitespace, compared case-insensitively.
 _NEXT: Final = "next"

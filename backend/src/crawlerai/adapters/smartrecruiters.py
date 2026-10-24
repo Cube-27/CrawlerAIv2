@@ -90,7 +90,8 @@ class SmartRecruiters:
                 return None
 
     def serves(self, match: AdapterMatch, endpoint: str) -> bool:
-        return endpoint.startswith(f"{_postings(match.tenant)}?") or endpoint.startswith(f"{_postings(match.tenant)}/")
+        postings = _postings(match.tenant)
+        return endpoint.startswith((f"{postings}?", f"{postings}/"))
 
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         match = self.detect(url)

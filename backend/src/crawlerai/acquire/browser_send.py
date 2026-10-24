@@ -84,13 +84,15 @@ async def send_in_page(
     run = Render(request.page_url, policy, engine_version, scope)
     if run.route(pools):
         try:
-            async with asyncio.timeout(policy.browser_timeout_s):
-                async with site_profile(warm_url, policy, session, connector or SafeConnector(), run) as held:
-                    page = await _warm(held, warm_url, policy, session, run)
-                    held.keep = True
-                    await _send(held, page, request, policy, run)
-                    # A profile the site refused is not reused, as a render's is not (`Render.finish`).
-                    held.keep = run.block_class != "blocked"
+            async with (
+                asyncio.timeout(policy.browser_timeout_s),
+                site_profile(warm_url, policy, session, connector or SafeConnector(), run) as held,
+            ):
+                page = await _warm(held, warm_url, policy, session, run)
+                held.keep = True
+                await _send(held, page, request, policy, run)
+                # A profile the site refused is not reused, as a render's is not (`Render.finish`).
+                held.keep = run.block_class != "blocked"
         except Failed as failed:
             run.failed(failed.error, failed.exchange)
         except TimeoutError:

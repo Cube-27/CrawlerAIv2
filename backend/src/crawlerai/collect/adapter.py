@@ -227,7 +227,11 @@ def _in_major_units(raw: JsonValue, places: int) -> str | None:
     digits (`2900`, 2 places: `29.00`); None for any other value, or for places no unit has (-1)."""
     if places < 0 or isinstance(raw, bool):
         return None
-    digits = str(raw) if isinstance(raw, int) else raw if isinstance(raw, str) and raw.isascii() else None
+    digits: str | None = None
+    if isinstance(raw, int):
+        digits = str(raw)
+    elif isinstance(raw, str) and raw.isascii():
+        digits = raw
     if digits is None or not digits.isdigit():
         return None
     return format(Decimal(digits).scaleb(-places), "f")

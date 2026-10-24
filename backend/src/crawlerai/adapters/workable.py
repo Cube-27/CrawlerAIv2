@@ -73,5 +73,5 @@ class Workable:
         endpoint = f"{API}/{quote(match.tenant, safe='')}?details=true"
         return await send(JsonRequest(url=endpoint, page_url=url), policy)
 
-    def shapes(self, match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
+    def shapes(self, _match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
         return _SHAPES

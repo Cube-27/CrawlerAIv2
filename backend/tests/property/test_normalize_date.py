@@ -141,5 +141,6 @@ def test_a_year_outside_1970_to_2100_is_invalid(raw: str, spec: FieldSpec) -> No
 
 def test_a_lone_surrogate_is_invalid_and_another_type_is_a_programming_error() -> None:
     assert normalize("2026-03-04\ud800") == Invalid("surrogate")
+    text_spec = FieldSpec(type=FieldType.TEXT)
     with pytest.raises(TypeError):
-        normalize("2026-03-04", FieldSpec(type=FieldType.TEXT))
+        normalize("2026-03-04", text_spec)

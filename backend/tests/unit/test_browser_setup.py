@@ -238,8 +238,9 @@ def test_inv42_inv43_chrome_in_a_profile_with_the_guards_webrtc_policy_in_each_m
     assert recorder.probe == {"channel": "chrome", "headless": headless, "proxy": proxy}
     assert [urlsplit(url).hostname for url in recorder.navigated] == ["127.0.0.1"]
     # Read once per process and mode: a session opened again (a restart) starts no second browser.
+    fetch_again = _fetch_once(headless=headless)
     with pytest.raises(_Stop):
-        asyncio.run(_fetch_once(headless=headless))
+        asyncio.run(fetch_again)
     assert recorder.probes == 1
     assert recorder.preferences["webrtc"] == {
         "ip_handling_policy": "disable_non_proxied_udp",

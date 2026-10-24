@@ -78,6 +78,8 @@ _ASSIGNMENT = re.compile(r"(?:\bwindow\s*\.\s*|\b(?:var|let|const)\s+)(?!\d)[\w$
 _DECODER = json.JSONDecoder()
 # schema.org: a type's IRI is the vocabulary IRI plus its name; either scheme names the same term.
 _SCHEMA_ORG = re.compile(r"^https?://schema\.org/")
+# JSON-LD 1.1 §3.1: the keyword that holds a node's context.
+_CONTEXT = "@context"
 # XPath 1.0 §4.2: `string()` is the context node's string-value.
 _STRING_VALUE = etree.XPath("string()")
 
@@ -427,10 +429,10 @@ def _scoped(document: Value) -> Iterator[tuple[dict[str, Value], bool]]:
         if isinstance(value, list):
             stack.extend((item, in_schema) for item in reversed(value))
         elif isinstance(value, dict):
-            if "@context" in value:
-                in_schema = _schema_org_after(value["@context"], in_schema)
+            if _CONTEXT in value:
+                in_schema = _schema_org_after(value[_CONTEXT], in_schema)
             yield value, in_schema
-            stack.extend((child, in_schema) for key, child in reversed(value.items()) if key != "@context")
+            stack.extend((child, in_schema) for key, child in reversed(value.items()) if key != _CONTEXT)
 
 
 def _schema_org_after(context: Value, in_schema: bool) -> bool:

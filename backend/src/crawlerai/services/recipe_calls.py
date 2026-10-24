@@ -321,7 +321,7 @@ def _endpoint(key: EndpointKey, group: _Group, schema: SchemaDef) -> Endpoint:
         body_shape=None if key.body is None else list(key.body),
         samples=list(group.samples),
         calls=group.calls,
-        fields=[match for name in schema.fields if (match := _field(name, group)) is not None],
+        fields=[match for match in (_field(name, group) for name in schema.fields) if match is not None],
         rows=group.rows,
     )
 
