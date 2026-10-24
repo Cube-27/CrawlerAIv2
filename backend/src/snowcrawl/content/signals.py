@@ -48,7 +48,8 @@ UNREADABLE: Final[frozenset[Signal]] = frozenset({"closed_shadow_root", "obfusca
 
 # Unicode Private Use Areas: the BMP area (U+E000-U+F8FF) and planes 15 and 16 (from U+F0000).
 _PUA_BMP, _PUA_PLANES = range(0xE000, 0xF900), 0xF0000
-# HTML Standard, valid custom element names: a hyphen in the name, and not one of the reserved SVG/MathML names.
+# HTML Standard, valid custom element names: an ASCII lowercase letter first, a hyphen in the name, and not one of the
+# reserved SVG/MathML names. The parser's own node names (`-comment`, `-text`) start with the hyphen and are none.
 _CUSTOM_TAG = re.compile(r"<[a-z][^\s/>]*-", re.IGNORECASE)
 _RESERVED = frozenset(
     {
@@ -125,7 +126,11 @@ def _document_signals(page: ParsedPage, source_html: str) -> Iterable[Signal]:
 
 def _custom_tags(tree: lexbor.LexborHTMLParser) -> set[str]:
     root = tree.root
-    return set() if root is None else {node.tag for node in root.traverse() if node.tag and "-" in node.tag}
+    return set() if root is None else {tag for node in root.traverse() if _custom(tag := node.tag or "")}
+
+
+def _custom(tag: str) -> bool:
+    return tag[:1].isascii() and tag[:1].isalpha() and "-" in tag
 
 
 def _named(path: str, name: str) -> bool:
@@ -156,7 +161,7 @@ def _closed_root_suspected(tree: lexbor.LexborHTMLParser, source_html: str) -> b
     root = source.root
     for node in [] if root is None else root.traverse():
         tag = node.tag or ""
-        if "-" not in tag or tag in _RESERVED or tag == _FLUTTER_VIEW or tag.startswith(_FLUTTER_PREFIX):
+        if not _custom(tag) or tag in _RESERVED or tag == _FLUTTER_VIEW or tag.startswith(_FLUTTER_PREFIX):
             continue
         if not node.text(deep=True).strip() and not any(_declares_root(child) for child in node.iter()):
             return True
