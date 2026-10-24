@@ -9,9 +9,11 @@ values, array indices written `[*]`, or the body itself when it is not JSON: one
 A call carries data for the page when one of its strings is visible in the page text (`VisibleIndex`): the page shows
 what the call loaded. Its rows are the object items of the one array whose items show the most of their own: an item
 counts when it holds a visible string no other item of the array holds (a value every item repeats, a currency or a
-category, says nothing of which item is shown). JSON numbers are not counted: a page shows a number formatted (a
-currency sign, grouping), and a short number matches any counter on the page. An array whose items show fewer than
-`MIN_ITEMS` is no listing's rows (`acquire.items`).
+category, says nothing of which item is shown). Strings are compared in the text form the page text is indexed in
+(`normalize.text.text_form`: references resolved, composed, white space collapsed and trimmed, as HTML rendering
+collapses it), so values that differ only in white space are one value. JSON numbers are not counted: a page shows a
+number formatted (a currency sign, grouping), and a short number matches any counter on the page. An array whose items
+show fewer than `MIN_ITEMS` is no listing's rows (`acquire.items`).
 """
 
 from collections.abc import Iterator, Mapping, Sequence
@@ -26,6 +28,7 @@ from crawlerai.acquire.items import MIN_ITEMS
 from crawlerai.collect import json_doc
 from crawlerai.content.page import ParsedPage
 from crawlerai.core import json_text
+from crawlerai.normalize.text import text_form
 from crawlerai.storage.capture_bundle import NetworkBody, network_json
 
 # RFC 9110 §15.3: the 2xx class.
@@ -229,4 +232,5 @@ def _own_hits(items: list[JsonValue], page: ParsedPage, memo: dict[str, bool]) -
 
 
 def _strings(item: JsonValue) -> set[str]:
-    return {value for _, value in json_doc.scalars(item) if isinstance(value, str)}
+    """The item's strings in the text form (module docstring), white space alone dropped."""
+    return {form for _, value in json_doc.scalars(item) if isinstance(value, str) and (form := text_form(value))}
