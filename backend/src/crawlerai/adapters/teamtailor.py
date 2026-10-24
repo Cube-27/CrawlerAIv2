@@ -83,7 +83,7 @@ class Teamtailor:
             raise ValueError("not a career site URL this adapter detects")
         return serving(await send(JsonRequest(url=_feed(match.tenant), page_url=url), policy), _rows)
 
-    def shapes(self, match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
+    def shapes(self, _match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
         return _SHAPES
 
 

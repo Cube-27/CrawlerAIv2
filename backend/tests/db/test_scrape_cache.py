@@ -74,8 +74,9 @@ async def test_cache_only_serves_a_capture_only_to_the_same_cookie_value(
     same = await scrape(engine, fetching, _scrape(url, fetch={"cache": "only", "cookies": {"sid": "alice"}}))
     assert same.capture_id == first.capture_id
     for other in ({"cookies": {"sid": "bob"}}, {}):
+        request = _scrape(url, fetch={"cache": "only", **other})
         with pytest.raises(NotCached):
-            await scrape(engine, fetching, _scrape(url, fetch={"cache": "only", **other}))
+            await scrape(engine, fetching, request)
     async with engine.connect() as conn:
         policy: dict[str, Any] = (
             await conn.execute(select(Capture.fetch_policy).where(Capture.id == first.capture_id))

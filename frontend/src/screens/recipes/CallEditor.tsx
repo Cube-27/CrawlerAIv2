@@ -293,8 +293,8 @@ function PaginationEditor({
   const at = [...part, "pagination"];
   const shown = JSON.stringify(call.pagination ?? null, null, 2);
   // The text typed, while the pagination is the engineer's; otherwise the draft's, which a new proposal replaces.
-  const [typed, setText] = useState<string | null>(null);
-  const [isValid, setValid] = useState(true);
+  const [typed, setTyped] = useState<string | null>(null);
+  const [isValid, setIsValid] = useState(true);
   const text = typed !== null && isEdited(handlers.edits, at) ? typed : shown;
   return (
     <div className="flex flex-col gap-2">
@@ -302,12 +302,12 @@ function PaginationEditor({
         label="Pagination (JSON; null for none)"
         value={text}
         onChange={(next) => {
-          setText(next);
+          setTyped(next);
           try {
             handlers.onEdit(at, JSON.parse(next) as unknown);
-            setValid(true);
+            setIsValid(true);
           } catch {
-            setValid(false);
+            setIsValid(false);
           }
         }}
       />
@@ -321,8 +321,8 @@ function PaginationEditor({
         isEdited={isEdited(handlers.edits, at)}
         onReset={() => {
           handlers.onReset(at);
-          setText(null);
-          setValid(true);
+          setTyped(null);
+          setIsValid(true);
         }}
       />
     </div>

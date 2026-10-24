@@ -64,7 +64,7 @@ from crawlerai.normalize.strings import collapse
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # A label's end: a colon (U+003A, or the fullwidth U+FF1A that CJK text writes) after optional white space.
-_COLON = re.compile(r"\s*[:\uff1a]")
+_COLON = re.compile(r"(?<!\s)\s*+[:\uff1a]")
 
 # The structures a pair is read from: rows and description lists (HTML Standard §4.9), `Label: value` lines,
 # and sibling containers of one shape.

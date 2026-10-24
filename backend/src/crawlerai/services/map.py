@@ -44,7 +44,7 @@ from crawlerai.db.models import Job, JobId
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.services.fetching import Fetching, SiteHttp, TargetRejected, check_target
 from crawlerai.services.page_formats import format_member
-from crawlerai.services.page_store import DEFAULT_PROJECT, SiteRow, record_fetch_usage, site_row
+from crawlerai.services.page_store import DEFAULT_PROJECT, record_fetch_usage, site_row
 from crawlerai.services.polite import IN_PLACE, NoTurn, ReadRules, Turns, listed_sitemaps, rules_of
 from crawlerai.services.scrape_request import absolute_http_url
 from crawlerai.storage.capture_bundle import CaptureBundle
@@ -134,11 +134,11 @@ async def map_urls(
     start = canonicalize(request.url) or request.url  # the request's validator refuses a URL without a canonical form
     host = urlsplit(start).hostname or ""
     found = _Found(Scope(host, tuple(request.include), tuple(request.exclude)), request.limit)
-    job_id, site = await _start(engine, request, host)
+    job_id = await _start(engine, request, host)
     attempts: list[AttemptRecord] = []
     try:
         async with asyncio.timeout(timeout_s):
-            await _discover(engine, fetching, request, start, site, found, attempts)
+            await _discover(engine, fetching, request, start, found, attempts)
     except TimeoutError:
         found.cut = True
     except TargetRejected:
@@ -152,7 +152,7 @@ async def map_urls(
     return result
 
 
-async def _start(engine: AsyncEngine, request: MapRequest, host: str) -> tuple[JobId, SiteRow]:
+async def _start(engine: AsyncEngine, request: MapRequest, host: str) -> JobId:
     async with engine.begin() as conn:
         job_id = (
             await conn.execute(
@@ -168,7 +168,8 @@ async def _start(engine: AsyncEngine, request: MapRequest, host: str) -> tuple[J
                 .returning(Job.id)
             )
         ).scalar_one()
-        return job_id, await site_row(conn, host)
+        await site_row(conn, host)
+        return job_id
 
 
 async def _discover(
@@ -176,7 +177,6 @@ async def _discover(
     fetching: Fetching,
     request: MapRequest,
     start: str,
-    site: SiteRow,
     found: _Found,
     attempts: list[AttemptRecord],
 ) -> None:
@@ -184,7 +184,7 @@ async def _discover(
     before the sitemaps, which can take the rest of the timeout. The start page is fetched even when its links are not
     taken, for where it is: when the site redirects it to another host of the site (`crawl.rules.located`), the scope,
     robots.txt and the sitemaps are that host's."""
-    polite = await _polite(engine, fetching, request, site, request.url, attempts)
+    polite = await _polite(engine, fetching, request, request.url, attempts)
     if polite is None:
         return
     page = await polite.fetch(request.url, polite.policy)
@@ -193,9 +193,9 @@ async def _discover(
     if host != found.scope.host:
         found.scope = replace(found.scope, host=host)
         async with engine.begin() as conn:
-            site = await site_row(conn, host)
+            await site_row(conn, host)
         # Only the sitemaps are read under the redirect target's robots.txt: without them it is not looked up.
-        polite = await _polite(engine, fetching, request, site, site_url, attempts) if request.use_sitemaps else None
+        polite = await _polite(engine, fetching, request, site_url, attempts) if request.use_sitemaps else None
     if page is not None and page.block_class == "ok" and request.llms_txt:
         found.start_page = await asyncio.to_thread(_start_page, page.bundle)
     if request.use_links and page is not None and page.block_class == "ok":
@@ -213,11 +213,10 @@ async def _polite(
     engine: AsyncEngine,
     fetching: Fetching,
     request: MapRequest,
-    site: SiteRow,
     url: str,
     attempts: list[AttemptRecord],
 ) -> SiteHttp | None:
-    """Fetches from `site`, under the robots.txt of `url` there when `request` obeys it; `None` when that robots.txt is
+    """Fetches under the robots.txt of `url` when `request` obeys it; `None` when that robots.txt is
     unreachable, or its request's turn is further off than a caller waits."""
     policy = FetchPolicy(method_hint="http", respect_robots=request.respect_robots)
     try:

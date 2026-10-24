@@ -99,7 +99,7 @@ export function TestStep({
   fieldTypes: FieldTypes;
 }>) {
   // The samples' URLs until the engineer types others.
-  const [typed, setText] = useState<string | null>(null);
+  const [typed, setTyped] = useState<string | null>(null);
   const text = typed ?? sampleUrls.join("\n");
   const urls = urlsOf(text);
   const problem = problemOf(test.error);
@@ -112,7 +112,7 @@ export function TestStep({
         label={`URLs to test (one per line, at most ${String(MAX_TEST_URLS)})`}
         value={text}
         placeholder="https://example.com/item/3"
-        onChange={setText}
+        onChange={setTyped}
       />
       <div>
         <Button

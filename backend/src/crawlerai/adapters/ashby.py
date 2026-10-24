@@ -76,5 +76,5 @@ class Ashby:
             JsonRequest(url=f"{API}/{quote(match.tenant, safe='')}?includeCompensation=true", page_url=url), policy
         )
 
-    def shapes(self, match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
+    def shapes(self, _match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
         return _SHAPES

@@ -583,7 +583,11 @@ def _typed(documents: list[object], types: frozenset[str], member: str | None = 
 def _type_names(found: object) -> Iterator[str]:
     """The names of a JSON-LD `@type` (a string or an array of them), each also as a full schema.org IRI or compact
     `schema:` name (JSON-LD 1.1 §3.2: a type is an IRI; schema.org's are its terms under its namespace)."""
-    for name in [found] if isinstance(found, str) else found if isinstance(found, list) else []:
+    if isinstance(found, str):
+        found = [found]
+    elif not isinstance(found, list):
+        return
+    for name in found:
         if isinstance(name, str):
             yield _SCHEMA_ORG.sub("", name)
 

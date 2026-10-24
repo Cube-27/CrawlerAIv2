@@ -23,7 +23,8 @@ no() { echo "NOT READY #$pr: $*"; exit 1; }
 
 # The first "total" of a SonarCloud search answer: the issue count, or the hotspot count under "paging".
 sonar_total() {
-  curl -fsS "$sonar/$1" | grep -o '"total":[0-9]*' | head -1 | cut -d: -f2
+  local path=$1
+  curl -fsS "$sonar/$path" | grep -o '"total":[0-9]*' | head -1 | cut -d: -f2
   return 0
 }
 

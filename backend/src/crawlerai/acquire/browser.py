@@ -199,12 +199,14 @@ async def fetch_browser(
     if run.route(pools):
         try:
             extra_s = steps_budget_s(policy.steps) + SCROLL_MAX_S + (ARTIFACT_TIMEOUT_S if policy.captures_page else 0)
-            async with asyncio.timeout(policy.browser_timeout_s + extra_s):
-                async with rendered(url, policy, session, connector or SafeConnector(), run) as page:
-                    await run.read(page, scroll=True)
-                    if policy.screenshot == "viewport":
-                        await scroll_back(page.page)  # the viewport the page first showed
-                    run.artifacts = await capture_artifacts(page.page, policy)
+            async with (
+                asyncio.timeout(policy.browser_timeout_s + extra_s),
+                rendered(url, policy, session, connector or SafeConnector(), run) as page,
+            ):
+                await run.read(page, scroll=True)
+                if policy.screenshot == "viewport":
+                    await scroll_back(page.page)  # the viewport the page first showed
+                run.artifacts = await capture_artifacts(page.page, policy)
             if export is not None:
                 export.cookies, export.proxy = run.cookies, run.proxy
         except Failed as failed:

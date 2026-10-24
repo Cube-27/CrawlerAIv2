@@ -30,8 +30,8 @@ log() { echo "$(date +%H:%M:%S) $*"; return 0; }
 
 # get ID: the id's state line from QUEUE.state ("" when queued). `asked` lines only count the asks of an id, so a
 # restart keeps the count.
-get() { awk -v id="$1" '$1 == id && $2 != "asked" { line = $0 } END { print line }' "$state"; return 0; }
-asks() { awk -v id="$1" '$1 == id && $2 == "asked" { n++ } END { print n + 0 }' "$state"; return 0; }
+get() { local id=$1; awk -v id="$id" '$1 == id && $2 != "asked" { line = $0 } END { print line }' "$state"; return 0; }
+asks() { local id=$1; awk -v id="$id" '$1 == id && $2 == "asked" { n++ } END { print n + 0 }' "$state"; return 0; }
 put() { echo "$*" >> "$state"; return 0; }   # the last line of an id wins
 
 # tell MESSAGE: a herdr notification, and the escalation agent's prompt when one is named. One per event.
@@ -42,42 +42,46 @@ tell() {
   return 0
 }
 
-hold() { put "$1 held ${2:-}"; tell "$1: $3"; return 0; }
+hold() { local id=$1 held=${2:-} reason=$3; put "$id held $held"; tell "$id: $reason"; return 0; }
 
 status() {
-  herdr agent get "$1" 2>/dev/null | grep -o '"agent_status":"[a-z]*"' | head -1 | cut -d'"' -f4
+  local id=$1
+  herdr agent get "$id" 2>/dev/null | grep -o '"agent_status":"[a-z]*"' | head -1 | cut -d'"' -f4
   return 0
 }
 
 # The agent's completion_seq: it grows each time the agent ends a turn (herdr reports it once a turn has ended).
 turn_of() {
-  herdr agent get "$1" 2>/dev/null | grep -o '"completion_seq":[0-9]*' | head -1 | cut -d: -f2
+  local id=$1
+  herdr agent get "$id" 2>/dev/null | grep -o '"completion_seq":[0-9]*' | head -1 | cut -d: -f2
   return 0
 }
 
 # The report line that ended the agent's last turn, if it ended with one.
 report_of() {
-  herdr agent read "$1" --source recent-unwrapped --lines 40 2>/dev/null | grep -E "$report" | tail -1 | sed 's/^\s*//'
+  local id=$1
+  herdr agent read "$id" --source recent-unwrapped --lines 40 2>/dev/null | grep -E "$report" | tail -1 | sed 's/^\s*//'
   return 0
 }
 
 # ask ID MESSAGE: send the builder MESSAGE with the standing line; a third ask for one id holds it instead.
 ask() {
-  if (( $(asks "$1") >= 2 )); then hold "$1" "" "asked twice without a READY that pr_ready.sh accepts; last: $2"; return 0; fi
-  put "$1 asked"
-  done_seq[$1]=$(turn_of "$1")
-  herdr agent prompt "$1" "$2 $standing" >/dev/null || hold "$1" "" "could not prompt the builder"
-  log "$1: asked: $2"
+  local id=$1 message=$2
+  if (( $(asks "$id") >= 2 )); then hold "$id" "" "asked twice without a READY that pr_ready.sh accepts; last: $message"; return 0; fi
+  put "$id asked"
+  done_seq[$id]=$(turn_of "$id")
+  herdr agent prompt "$id" "$message $standing" >/dev/null || hold "$id" "" "could not prompt the builder"
+  log "$id: asked: $message"
   return 0
 }
 
-merged() { [[ $(get "$1") == "$1 merged"* ]]; }
+merged() { local id=$1; [[ $(get "$id") == "$id merged"* ]]; return $?; }
 
 # checking ID: true while a pr_ready.sh started in the id's worktree still runs. A builder ends its turn while that
 # check runs in the background and is woken when it exits, so such a turn end needs no ask.
 checking() {
-  local wt pid
-  wt=$(worktrees_root)/$1
+  local id=$1 wt pid
+  wt=$(worktrees_root)/$id
   for pid in $(ps -eo pid=,args= | awk '/pr_ready\.sh/ && !/awk/ { print $1 }'); do
     [[ $(readlink "/proc/$pid/cwd" 2>/dev/null) == "$wt"* ]] && return 0
   done
@@ -85,9 +89,9 @@ checking() {
 }
 
 deps_merged() {
-  local dep
-  [[ $1 == - ]] && return 0
-  for dep in ${1//,/ }; do merged "$dep" || return 1; done
+  local deps=$1 dep
+  [[ $deps == - ]] && return 0
+  for dep in ${deps//,/ }; do merged "$dep" || return 1; done
   return 0
 }
 
@@ -164,6 +168,7 @@ while true; do
   while read -r id deps brief owner <&3; do
     case $(get "$id") in
       "$id running"*) watch "$id" "$owner" ;;
+      *) ;;
     esac
   done 3< <(awk '!/^#/ && NF' "$queue")
   while read -r id deps brief owner <&3; do

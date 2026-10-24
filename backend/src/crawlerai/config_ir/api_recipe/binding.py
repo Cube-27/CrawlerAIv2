@@ -117,7 +117,9 @@ class Served:
         if binder.kind == "warm_up_xpath":
             found = read_xpath(binder.arg, answer.page)
             # XPath 1.0 §4.2 `string()`: an integral number is written without a decimal point.
-            return None if found is None else _scalar_text(int(found) if _integral(found) else found)
+            if found is None:
+                return None
+            return _scalar_text(int(found) if _integral(found) else found)
         if binder.kind == "warm_up_regex":
             matched = re.compile(binder.arg, PCRE_FLAGS).search(answer.text)
             return None if matched is None else matched[1]
