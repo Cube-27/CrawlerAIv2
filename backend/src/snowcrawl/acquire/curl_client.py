@@ -3,9 +3,9 @@ every request pinned to the address the SSRF guard checked or sent through a pro
 while they stream, redirects followed by hand through the guard with the fetch's own cookies, and every
 failure a short reason that never contains the URL.
 
-A request's headers are merged into the impersonation's defaults, the browser rung's own headers in place of the
-profile's (`acquire.impersonate`): a header the profile sends keeps the profile's position with the request's value, a
-`None` value removes it, and any other header follows the profile's.
+A request's headers are merged into the impersonation's defaults, the headers `acquire.impersonate` takes from the
+browser rung in place of the profile's: a header the profile sends keeps the profile's position with the request's
+value, a `None` value removes it, and any other header follows the profile's.
 """
 
 import asyncio
@@ -148,9 +148,9 @@ async def send(
 ) -> Sent:
     """Fetch `url` with `first` through the pool `policy.proxy_pool` names (an endpoint picked for the URL's host),
     within the policy's caps and time budget; `transport` replaces the network (tests). A site `session` is carried only
-    through its own endpoint while the pool has it available: its cookies seed the fetch's
-    jar, and the hops keep the impersonation's own headers. The caller's context (`policy.context`) belongs to the
-    page: it goes with the hops to the host of `page_url` (the page a JSON request is made for; `url` itself by
+    through its own endpoint while the pool has it available: its cookies seed the fetch's jar, and the hops send the
+    headers of the browser that earned them (`Impersonation.replaying`). The caller's context (`policy.context`) belongs
+    to the page: it goes with the hops to the host of `page_url` (the page a JSON request is made for; `url` itself by
     default), and to no other host (`follow`)."""
     started = time.monotonic()
     try:
@@ -165,7 +165,9 @@ async def send(
     try:
         async with AsyncExitStack() as stack:
             if transport is None:
-                transport = await stack.enter_async_context(curl_transport(impersonate, proxy, limits, traffic))
+                # A session's cookies go with the headers of the browser that earned them (`acquire.impersonate`).
+                identity = impersonate.replaying(session is not None)
+                transport = await stack.enter_async_context(curl_transport(identity, proxy, limits, traffic))
             last = await follow(
                 url,
                 first,

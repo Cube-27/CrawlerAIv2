@@ -3,17 +3,21 @@ a site that sees both rungs, and the cookies one hands the other, sees one brows
 
 At startup the browser rung's Chrome is started once, loading no site, to read the headers that name it on a navigation
 (`browser_session.browser_identity`, in the browser rung's mode: its user agent as its profiles send it, its client
-hints, `Accept` and `Accept-Language`). The rungs send those in place of their impersonation's own, and impersonate
-curl_cffi's Chrome profile nearest its major for the TLS and HTTP/2 handshake, with a warning when none matches it
-exactly. A target the operator sets (`SNOWCRAWL_IMPERSONATE`) is kept with its own headers and starts no browser. A
-process that runs the browser rung does not start when that Chrome cannot be read (`BrowserUnread`): its HTTP rung would
-name another browser than its renders. A process without it (`snowcrawl fetch` over HTTP) keeps the default target's own
-headers, with a warning.
+hints, `Accept` and `Accept-Language`). The rungs impersonate curl_cffi's Chrome profile nearest its major for the TLS
+and HTTP/2 handshake. When that profile is the browser's major, they send the browser's headers in place of the
+profile's own. When none is, with a warning, every header names the profile's major, as its handshake does: the
+profile's own client hints, `Accept` and order, with the browser's platform (its user agent with the profile's major in
+the product token, `Sec-CH-UA-Platform`) and its `Accept-Language`. A request that carries cookies the browser rung
+earned (`acquire.session`) sends the browser's own headers in either case: a clearance cookie may be bound to the user
+agent that earned it. A target the operator sets (`SNOWCRAWL_IMPERSONATE`) is kept with its own headers and starts no
+browser. A process that runs the browser rung does not start when that Chrome cannot be read (`BrowserUnread`): its HTTP
+rung would name another browser than its renders. A process without it (`snowcrawl fetch` over HTTP) keeps the default
+target's own headers, with a warning.
 """
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final, cast, get_args
 
 from curl_cffi.requests import BrowserTypeLiteral
@@ -30,7 +34,11 @@ log = logging.getLogger(__name__)
 # curl_cffi's desktop Chrome profiles are named `chrome<major>`; lettered and Android variants are other clients.
 _CHROME_PROFILE: Final = re.compile(r"chrome(\d+)")
 # The product token of Chrome's user agent (Chromium's reduced user agent: `Chrome/<major>.0.0.0`).
-_CHROME_PRODUCT: Final = re.compile(r"\bChrome/(\d+)\.")
+_CHROME_PRODUCT: Final = re.compile(r"\bChrome/(\d+)(?:\.\d+)*")
+_USER_AGENT = "user-agent"
+# The browser's headers that name its platform (the user agent's platform token, User-Agent Client Hints
+# `Sec-CH-UA-Platform`) and its user's language (RFC 9110 §12.5.4), not its version.
+_OWN: Final = frozenset({_USER_AGENT, "sec-ch-ua-platform", "accept-language"})
 _IMPERSONATE = "impersonate"
 
 
@@ -40,11 +48,17 @@ class BrowserUnread(RuntimeError):
 
 @dataclass(frozen=True)
 class Impersonation:
-    """The curl_cffi target whose TLS, HTTP/2 and header order the rungs send, and the headers that replace the
-    target's own of the same name (lowercase names; none: the target's own)."""
+    """The curl_cffi target whose TLS, HTTP/2 and header order the rungs send, the headers that replace the
+    target's own of the same name (lowercase names; none: the target's own), and those that replace them on a request
+    that carries cookies the browser rung earned (none: `headers`)."""
 
     target: BrowserTypeLiteral
     headers: HeaderList = ()
+    earned: HeaderList = ()
+
+    def replaying(self, earned: bool) -> "Impersonation":
+        """The impersonation of a request that carries cookies the browser rung earned, when `earned`."""
+        return replace(self, headers=self.earned) if earned and self.earned else self
 
 
 async def rung_impersonation(settings: AcquireSettings, *, browser_rung: bool) -> Impersonation:
@@ -57,14 +71,25 @@ async def rung_impersonation(settings: AcquireSettings, *, browser_rung: bool) -
         headers = await _read_headers(settings.browser_headless)
     except (PlaywrightError, OSError) as e:  # the driver or the browser could not be started
         return _unread("did not start", configured, browser_rung, e)
-    agent = next((value for name, value in headers if name == "user-agent"), "")
+    agent = next((value for name, value in headers if name == _USER_AGENT), "")
     major = _CHROME_PRODUCT.search(agent)
     if major is None:
         return _unread("names no Chrome in its user agent", configured, browser_rung)
     target = nearest_target(int(major.group(1)))
-    if _major(target) != int(major.group(1)):
-        log.warning("no curl_cffi Chrome profile for Chrome %s: impersonating %s", major.group(1), target)
-    return Impersonation(target, headers)
+    if (profile := _major(target)) == int(major.group(1)):
+        return Impersonation(target, headers)
+    log.warning("no curl_cffi Chrome profile for Chrome %s: impersonating %s", major.group(1), target)
+    return Impersonation(target, _naming(headers, cast(int, profile)), headers)
+
+
+def _naming(headers: HeaderList, major: int) -> HeaderList:
+    """The browser's headers that name its platform and its user, not its version (`_OWN`), the user agent's product
+    token naming `major` as Chromium's reduced user agent does (`Chrome/<major>.0.0.0`)."""
+    return tuple(
+        (name, _CHROME_PRODUCT.sub(f"Chrome/{major}.0.0.0", value, count=1) if name == _USER_AGENT else value)
+        for name, value in headers
+        if name in _OWN
+    )
 
 
 def _unread(
