@@ -50,14 +50,13 @@ The main region is the `main` element, else the one `role="main"` landmark, else
 none when the page has several. The DOM collectors read the main region, else the body.
 """
 
-import re
 from collections.abc import Iterator
 from typing import Literal
 
 from lxml.html import HtmlElement
 from selectolax.lexbor import LexborNode
 
-from snowcrawl.content.dom import tokens
+from snowcrawl.content.dom import name_parts, tokens
 from snowcrawl.content.page import ParsedPage
 from snowcrawl.content.text import NOT_RENDERED, hidden
 from snowcrawl.normalize.strings import collapse
@@ -102,8 +101,6 @@ _FURNITURE_TOKENS = frozenset({"ad", "ads", "advert", "widget", "overlay"})
 # A part that makes the word after it something the element has or lacks rather than what it is: `has-no-sidebar`,
 # `page-with-sidebar`, `without-header` name a layout with or without that furniture, not the furniture.
 _QUALIFIERS = frozenset({"has", "with", "without", "no", "non", "not"})
-# The parts of a class or id: split at `-`, `_` and camelCase boundaries (`apphub_HeaderTop`, `siteHeader`).
-_PARTS = re.compile(r"[-_]+|(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 # Above this share of the page's text outside hyperlinks an element is the page's content, whatever it is named; above
 # it, the weak signs together name the page's layout.
 _MAX_SHARE = 0.4
@@ -273,7 +270,7 @@ def _words(names: list[str]) -> set[str]:
     """The furniture words among the names' parts, but for one a qualifier precedes (`_QUALIFIERS`)."""
     found: set[str] = set()
     for name in names:
-        parts = [part.lower() for part in _PARTS.split(name)]
+        parts = name_parts(name)
         found.update(word for before, word in zip(("", *parts), parts, strict=False) if before not in _QUALIFIERS)
     return found & _FURNITURE_WORDS
 

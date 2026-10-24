@@ -200,6 +200,24 @@ def test_a_card_that_is_a_link_holding_another_link_is_read_as_the_html_parser_b
     ]
 
 
+def test_of_a_cards_several_amounts_the_one_its_markup_names_the_price_is_the_price() -> None:
+    # HTML Standard microdata `itemprop`, `class` and `data-*` naming schema.org `price`: the item's own price node; the
+    # `s` element: a struck former price, restated for screen readers.
+    named = (
+        '<li class="c"><a href="/p/{i}">Kettle {i}</a><p><span {mark}>1{i}.50 EUR</span></p>'
+        "<div><span>Others <b>9{i}.00 EUR</b> and <b>8{i}.00 EUR</b></span></div></li>"
+    )
+    restated = (
+        '<li class="c"><a href="/p/{i}">Kettle {i}</a><div><s>{i}9.99 EUR</s><span>was {i}9.99 EUR</span></div>'
+        "<div><h3>1{i}.50 EUR</h3><span>now 1{i}.50 EUR</span></div></li>"
+    )
+    expected = [{"amount": f"1{i}.50", "currency": "EUR"} for i in range(4)]
+
+    for mark in ('itemprop="price"', 'data-test="listing-price"', 'class="itemPrice"'):
+        assert [row.get("price") for row in _rows(_repeat(named.replace("{mark}", mark)))] == expected
+    assert [row.get("price") for row in _rows(_repeat(restated))] == expected
+
+
 def test_a_card_showing_a_second_amount_off_the_aligned_place_declines() -> None:
     # C7: the price place shows a "worth" amount in two tiles whose offer price sits in their button instead.
     tile = (
