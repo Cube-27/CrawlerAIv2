@@ -18,6 +18,7 @@ hands the context's cookies to a site session (`acquire.session`).
 """
 
 import asyncio
+import logging
 import time
 from collections.abc import Awaitable, Callable, Collection, Sequence
 from dataclasses import dataclass, field
@@ -55,6 +56,8 @@ InPage = Callable[[JsonRequest, FetchPolicy, str], Awaitable[FetchResult]]
 # The eager fragments a document at a URL declares, as (id, absolute URL) pairs (`content.fragments.eager_frames`,
 # which sits above `acquire`, so the process hands it in).
 FramePlan = Callable[[str, str], Sequence[tuple[str, str]]]
+
+log = logging.getLogger(__name__)
 
 
 # A fetch so far: the outcome kept, every attempt and their duration.
@@ -94,6 +97,10 @@ class ExportingRung(Protocol):
 BROWSER_MIN_S: Final = 20.0
 _UNAVAILABLE = 503  # RFC 9110 §15.6.4
 _TOO_MANY = 429  # RFC 6585 §4
+# Why a browser retry the HTTP outcome called for was not sent (`_unsent`): the task's budget is spent, or the site's
+# rate admits no further request within the caller's wait.
+NO_BUDGET: Final = "no_budget"
+NOT_ADMITTED: Final = "not_admitted"
 # The HTTP outcomes the browser may pass where HTTP did not: a block, and a shell (a challenge's, or a script-only
 # document's, rendered once per page).
 _BROWSER_EVIDENCE: frozenset[BlockClass] = frozenset({"shell", "blocked"})
@@ -353,16 +360,23 @@ async def _page(url: str, policy: FetchPolicy, remembered: Remembered, rungs: Ru
         referred, attempts, duration_ms = await retry.refer((result, attempts, duration_ms))
         if referred is not result:
             return referred, attempts, duration_ms
-    # The budget is checked again once admitted: the wait for the site's turn may have spent it.
-    if (
-        not retried
-        or not retry.in_budget()
-        or not await _admitted(retry.admit_next, after=_paused_by(result))
-        or not retry.in_budget()
-    ):
+    if not retried:
+        return await _as_last_page(result, policy, last=True), attempts, duration_ms
+    if (unsent := await _unsent(retry, _paused_by(result))) is not None:
+        log.info("browser retry not sent: %s (http %s)", unsent, result.bundle.manifest.status_code)
         return await _as_last_page(result, policy, last=True), attempts, duration_ms
     rendered = await _browser_retry(url, policy, rungs, result)
     return await _kept(result, rendered, policy), attempts + rendered.attempts, duration_ms + rendered.duration_ms
+
+
+async def _unsent(retry: _Retry, pause: timedelta) -> str | None:
+    """Why the browser retry is not sent (`NO_BUDGET`, `NOT_ADMITTED`), or None once the site's rate admitted it after
+    `pause`. The budget is checked again once admitted: the wait for the site's turn may have spent it."""
+    if not retry.in_budget():
+        return NO_BUDGET
+    if not await _admitted(retry.admit_next, after=pause):
+        return NOT_ADMITTED
+    return None if retry.in_budget() else NO_BUDGET
 
 
 async def _kept(result: FetchResult, rendered: FetchResult, policy: FetchPolicy) -> FetchResult:
