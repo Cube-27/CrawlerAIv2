@@ -53,8 +53,14 @@ C4):
   §4.10.7: a box of one row shows only its selected option, an add-on's other prices); a money field reads by its price
   role (`collect.items.spot.reads`: no amount written
   per unit or per period for the price). A place every block gives the same value at is the
-  template's (a shipping threshold) when another place gives the field differing values. A block whose places give one
-  value publishes it; one whose places give several (a price and an instalment) gives an `ambiguous_in_block`
+  template's (a shipping threshold) when another place gives the field differing values. Of the several values a
+  block's places give, those its markup says are not the field's are left out (`_meant`): a value a shown element
+  restates from one the block strikes through is that former value (HTML Standard, the `s` element: no longer
+  accurate; the screen-reader copy of a struck list price), and where one value is read at elements that name the
+  field's schema.org property on themselves (HTML Standard: a microdata `itemprop` name; or a part of a token of their
+  `class` or a `data-*` attribute, read as the furniture names of `content.regions` are), that one is the
+  item's own, the others the card's further amounts (a rollup of other offers, a shipping cost). A block whose places
+  give one value publishes it; one whose places give several (a price and an instalment) gives an `ambiguous_in_block`
   candidate, which publishes nothing unless a structured row bound to the block agrees with one of them
   (`collect.items.bind`). So does a block showing, beside its aligned value, another value of the field in the same
   currency at a place too few blocks share (`_unsettled`): nothing in the markup says which is the field's.
@@ -94,7 +100,8 @@ from snowcrawl.collect.items.spot import Spot, is_typed, reads, spots
 from snowcrawl.collect.items.stated import Stated, Word, continues, same, words
 from snowcrawl.collect.locator import format_locator
 from snowcrawl.collect.schema_org_map import candidate, is_item_url
-from snowcrawl.content.dom import tokens
+from snowcrawl.collect.vocabulary import schema_term
+from snowcrawl.content.dom import name_parts, tokens
 from snowcrawl.content.page import ParsedPage
 from snowcrawl.content.segment import block_links, chrome_links, text_path
 from snowcrawl.content.text import completed, hidden, xpath_step
@@ -306,10 +313,11 @@ class _Aligned:
                 continue
             seen.add(view.link)
             entity = Entity(id=f"{ITEM_BLOCK}:{number}:{i}", types=(ITEM_BLOCK,), urls=(view.link,), parent=None)
-            spots = {name: found[i] for name, found in self.fields.items() if found[i]}
+            fields = schema.fields
+            spots = {name: _meant(found[i], fields[name], view, ctx) for name, found in self.fields.items() if found[i]}
             blocks.append(Block(view.block, entity, view.link, spots))
             for name, found in spots.items():
-                made = _candidate(name, schema.fields[name], entity.id, found, view, ctx, diagnostics)
+                made = _candidate(name, fields[name], entity.id, found, view, ctx, diagnostics)
                 if made is not None:
                     candidates.append(made)
                     ambiguous[name] += isinstance(made.normalized, Ambiguous)
@@ -505,6 +513,41 @@ def _unsettled(
     return settled
 
 
+def _meant(found: tuple[Spot, ...], spec: FieldSpec, view: "_View", ctx: Context) -> tuple[Spot, ...]:
+    """A block's values of a field without those its markup says are not the field's (module docstring): restatements
+    of a struck value, then, when one value is read at elements naming the field's schema.org property, the others.
+    Unchanged when one value is left or the markup does not decide."""
+    if len(_distinct(found, spec)) < 2:
+        return found
+    former = view.struck_values(spec, ctx)
+    current = tuple(s for s in found if s.xpath in view.struck_paths or _key(s, spec) not in former) or found
+    properties = [tuple(name_parts(named_property(p))) for p in parse_paths(spec.schema_org or "")]
+    own = tuple(s for s in current if (e := view.at(s.xpath)) is not None and _names_property(e, properties))
+    return own if len(_distinct(own, spec)) == 1 else current
+
+
+def _names_property(element: HtmlElement, properties: Sequence[tuple[str, ...]]) -> bool:
+    """Whether the element names one of the schema.org `properties` (each as its name's parts) on itself: as a
+    microdata `itemprop` token, bare or as a schema.org IRI (HTML Standard, microdata names), or as a run of the parts
+    of a token of its `class` or of a `data-*` attribute (`content.dom.name_parts`)."""
+    names = (name for attribute, value in element.attrib.items() for name in _attribute_names(attribute, value))
+    return any(_runs(name, wanted) for name in names for wanted in properties)
+
+
+def _attribute_names(attribute: str, value: str) -> list[tuple[str, ...]]:
+    """The parts of the names an attribute of `_names_property` gives; none for another attribute."""
+    if attribute == "itemprop":
+        return [tuple(name_parts(term)) for t in tokens(value) if (term := schema_term(t) if ":" in t else t)]
+    if attribute == "class" or attribute.startswith("data-"):
+        return [tuple(name_parts(t)) for t in tokens(value)]
+    return []
+
+
+def _runs(parts: tuple[str, ...], run: tuple[str, ...]) -> bool:
+    """Whether `run` is a contiguous run of `parts`."""
+    return bool(run) and any(parts[i : i + len(run)] == run for i in range(len(parts) - len(run) + 1))
+
+
 def _currency(spot: Spot) -> object:
     """A money spot's currency (None where the page leaves it unclear); None for another type."""
     value = spot.normalized.value
@@ -623,6 +666,16 @@ class _View:
         while node is not None and node not in self.holding_unshown and node is not self.block.getparent():
             self.holding_unshown.add(node)
             node = node.getparent()
+
+    @property
+    def struck_paths(self) -> set[str]:
+        return {self.paths[element] for element in self.struck}
+
+    def struck_values(self, spec: FieldSpec, ctx: Context) -> set[object]:
+        """The field's values the block's struck-through elements show (`content.text.struck`), by the type's
+        equality."""
+        lines = ((element, line) for element in self.struck if (line := self.line(element)) is not None)
+        return {_key(spot, spec) for element, line in lines for spot in spots(line, spec, ctx, self.paths[element], "")}
 
     def line(self, element: HtmlElement) -> str | None:
         """The element's shown text when it is on one line (`ParsedPage.text_spans`), white space collapsed."""

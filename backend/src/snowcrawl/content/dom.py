@@ -9,6 +9,8 @@ from snowcrawl.normalize.url import canonical_url
 # HTML Living Standard §2.3.1: ASCII whitespace is tab, LF, FF, CR and space.
 _ASCII_WHITESPACE_CHARS = "\t\n\f\r "
 _ASCII_WHITESPACE = re.compile(r"[\t\n\f\r ]+")
+# The parts of a class or id: split at `-`, `_` and camelCase boundaries (`apphub_HeaderTop`, `siteHeader`).
+_PARTS = re.compile(r"[-_]+|(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 
 
 def strip(value: str | None) -> str | None:
@@ -19,6 +21,11 @@ def strip(value: str | None) -> str | None:
 def tokens(value: str | None) -> list[str]:
     """HTML Living Standard §2.3.2: the tokens of a set of space-separated tokens, in order."""
     return [token for token in _ASCII_WHITESPACE.split(value or "") if token]
+
+
+def name_parts(name: str) -> list[str]:
+    """The lowercased parts of a class, id or other name token (`_PARTS`)."""
+    return [part.lower() for part in _PARTS.split(name) if part]
 
 
 def document_base_url(page: ParsedPage, final_url: str) -> str:
